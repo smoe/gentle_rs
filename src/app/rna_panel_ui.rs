@@ -18,6 +18,8 @@ enum Page {
     Prepare,
     Screen,
     Runs,
+    Inspect,
+    Export,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -585,6 +587,8 @@ impl GENtleApp {
                 (Page::Prepare, "Prepare", "rna_panel.tab.prepare"),
                 (Page::Screen, "Screen", "rna_panel.tab.screen"),
                 (Page::Runs, "Runs", "rna_panel.tab.runs"),
+                (Page::Inspect, "Inspect", "rna_panel.tab.inspect"),
+                (Page::Export, "Export", "rna_panel.tab.export"),
             ] {
                 capture(
                     &ui.selectable_value(&mut self.rna_panel_ui.page, page, label),

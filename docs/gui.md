@@ -52,8 +52,19 @@ Undo removes project registration, not the external panel file. Clearing the
 checkbox makes a file-only build; CLI/agents control the same choice with
 `register_in_project`.
 
-Targeted FASTQ summary inspection remains a shared **Shell / Agent Assistant**
-workflow pending the native inspector/export step, not a new RNA Mapping tab.
+The native **Inspect** page projects the shared panel, screen or summary record.
+Published runs reopen with their exact result binding; saved-file inspection
+after restart is explicit and does not invent a submitted-service receipt.
+The view retains verified/missing file units, control diagnostics, sample
+coverage, all class/member associations and non-claims. Nomination prefixes are
+bounded and explicitly unverified; **Verify summary tables** is separate bounded
+background work, not a FASTQ reread. Long count tables use virtualized rows.
+**Add screen to summary** or **Export > Add screen reports...** selects explicit
+inputs. Review the summary request before **Export reviewed summary (writes
+files)**; compatibility/deduplication remains engine-owned. Reopen the bound
+summary and review its retained source hashes and partial coverage. Nothing is
+automatically attached to the project graph.
+
 [Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
 `panel-cancel` routes for every stage. Export read-support summaries with

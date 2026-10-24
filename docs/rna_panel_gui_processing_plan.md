@@ -55,13 +55,19 @@ Do not infer a new result from an existing output filename.
    poll receipts and submit marker control; closing does not cancel. Draft IO is
    a shared `panel-screen --request ... [--save ...]` flag, not a second classifier.
    Synthetic review/edit/close/semantic/approval/round-trip tests are authored.
-3. **Read-only inspector and summary export. Next implementation step.**
+3. **Read-only inspector and summary export. Implemented; Glen/CI verification pending.**
    Project shared panel/screen/summary metadata and bounded row prefixes. Show
    sample coverage, verified/missing units, original/effective bindings and exact
    ambiguous class/member sets. Retain cancelled/control-error distinctions.
    Export through the existing shared operation with write approval, then reopen
    the bound published summary. Explicit table verification is not FASTQ reread.
-4. **Tutorial 10.04 and parity acceptance handoff. Pending.**
+   Inspect/Export pages use shared operations; published run/summary reopening
+   carries the exact binding, explicit saved-file reopening remains available.
+   Inspector hydration and subsequent prefix/verification requests retain the
+   viewed hash; a changed record cannot silently replace the inspected snapshot.
+   Virtualized count tables preserve complete class/member sets and unknowns.
+   Shared-report projection/export-review regressions are authored, not run.
+4. **Tutorial 10.04 and parity acceptance handoff. Next implementation step.**
    Supply a complete synthetic no-shell rehearsal through native controls and
    matching CLI/MCP/inner-agent routes. Add semantic targets/typed checkpoints,
    schema/approval/parity tests and LF/CRLF freshness coverage where required.

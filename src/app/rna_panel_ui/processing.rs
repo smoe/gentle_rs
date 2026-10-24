@@ -9,6 +9,8 @@ use crate::engine::{
 use crate::engine_shell::{ShellExecutionOptions, quote_shell_arg};
 use crate::runtime_status::RuntimeStatusFrameState;
 
+mod evidence;
+
 struct Reviewed {
     request: ScreenRnaReadPanelRequest,
     json: String,
@@ -19,6 +21,8 @@ enum Task {
     Draft { load: bool },
     Screen,
     Cancel(u64),
+    Inspect(evidence::InspectionRequest),
+    Export,
 }
 
 struct PendingTask {
@@ -47,6 +51,7 @@ pub(super) struct Processing {
     serial: u64,
     status: String,
     error: Option<String>,
+    evidence: evidence::Evidence,
 }
 
 impl Default for Processing {
@@ -72,6 +77,7 @@ impl Default for Processing {
             serial: 0,
             status: String::new(),
             error: None,
+            evidence: evidence::Evidence::default(),
         }
     }
 }
@@ -225,6 +231,7 @@ impl GENtleApp {
     }
 
     pub(super) fn poll_rna_processing_jobs(&mut self) {
+        let mut published = vec![];
         for run in &mut self.rna_panel_ui.processing.runs {
             if let Some(receipt) = self.agent_command_service.status(run.id) {
                 run.receipt = Some(receipt);
@@ -244,6 +251,11 @@ impl GENtleApp {
                 Task::Screen => {
                     if let Some(run) = state.runs.iter_mut().find(|r| r.id == id) {
                         run.receipt = receipt;
+                        if let Some(binding) =
+                            run.receipt.as_ref().and_then(|r| r.artifact_result.clone())
+                        {
+                            published.push(binding);
+                        }
                         run.detail = match result {
                             Ok(_) => run
                                 .receipt
@@ -320,11 +332,58 @@ impl GENtleApp {
                     }
                     Err(error) => state.error = Some(error),
                 },
+                Task::Inspect(request) => {
+                    state.evidence.loading = false;
+                    match result.and_then(|run| evidence::Loaded::from_result(request, run.output))
+                    {
+                        Ok(loaded) => {
+                            state.evidence.loaded = Some(loaded);
+                            state.evidence.error = None;
+                        }
+                        Err(error) => state.evidence.error = Some(error),
+                    }
+                }
+                Task::Export => {
+                    if let Some(binding) = receipt.as_ref().and_then(|r| r.artifact_result.clone())
+                    {
+                        published.push(binding);
+                    }
+                    state.evidence.export_detail = match result {
+                        Ok(_) => receipt
+                            .as_ref()
+                            .and_then(|r| r.error.clone())
+                            .unwrap_or_else(|| "Published summary retained".into()),
+                        Err(error) => error,
+                    };
+                }
+            }
+        }
+        for binding in &published {
+            self.rna_panel_ui
+                .processing
+                .evidence
+                .published(binding.clone());
+        }
+        if let Some(binding) = published.pop() {
+            if !self.rna_panel_ui.processing.evidence.loading {
+                if let Err(error) =
+                    self.start_rna_inspection(evidence::InspectionRequest::bound(binding))
+                {
+                    self.rna_panel_ui.processing.evidence.error = Some(error);
+                }
             }
         }
     }
 
     pub(super) fn render_rna_processing(&mut self, ui: &mut egui::Ui) {
+        if self.rna_panel_ui.page == Page::Inspect {
+            self.render_rna_inspector(ui);
+            return;
+        }
+        if self.rna_panel_ui.page == Page::Export {
+            self.render_rna_export(ui);
+            return;
+        }
         if self.rna_panel_ui.page == Page::Runs {
             self.render_rna_runs(ui);
             return;
@@ -675,6 +734,7 @@ impl GENtleApp {
 
     fn render_rna_runs(&mut self, ui: &mut egui::Ui) {
         let mut cancel = None;
+        let mut inspect = None;
         if let Some(error) = &self.rna_panel_ui.processing.error {
             ui.colored_label(egui::Color32::RED, error);
         }
@@ -696,6 +756,7 @@ impl GENtleApp {
                             if button(ui, "Copy report binding", &format!("rna_panel.run.{}.binding", run.id)) {
                                 if let Ok(json) = serde_json::to_string_pretty(binding) { ui.ctx().copy_text(json); }
                             }
+                            if button(ui, "Open bound result", &format!("rna_panel.run.{}.inspect", run.id)) { inspect = Some(binding.clone()); }
                         }
                         if !terminal(receipt) && !run.cancel_pending && !run.cancel_requested
                             && button(ui, "Request cancellation", &format!("rna_panel.run.{}.cancel", run.id)) { cancel = Some(run.id); }
@@ -708,9 +769,23 @@ impl GENtleApp {
             for receipt in self.agent_command_service.receipts() {
                 if receipt.rna_progress.is_some() || receipt.artifact_result.is_some() {
                     ui.label(format!("{}: {:?} / {}", receipt.job_id, receipt.state, receipt.phase));
+                    if let Some(binding) = receipt.artifact_result {
+                        if button(ui, "Open bound result", &format!("rna_panel.shared.{}.inspect", receipt.job_id)) { inspect = Some(binding); }
+                    }
                 }
             }
         });
+        if let Some(binding) = inspect {
+            self.rna_panel_ui
+                .processing
+                .evidence
+                .published(binding.clone());
+            if let Err(error) =
+                self.start_rna_inspection(evidence::InspectionRequest::bound(binding))
+            {
+                self.rna_panel_ui.processing.evidence.error = Some(error);
+            }
+        }
         if let Some(id) = cancel {
             let request = self
                 .rna_panel_ui

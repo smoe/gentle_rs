@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-24 - Native RNA Evidence Inspection And Summary Export
+
+- Add Inspect/Export pages over the existing shared operations, with automatic
+  bound reopening of published runs/summaries and explicit saved-file reopening.
+  Preserve submitted/effective identities, verified/missing inputs, failed-control
+  diagnostics, sample coverage and every class/member set; do not assign isoforms.
+- Keep nomination prefix inspection bounded/unverified and summary-table checks
+  explicit, background and separate from original-read verification. Subsequent
+  inspection retains the viewed hash; changed metadata cannot silently replace
+  the prior snapshot. Virtualized count tables avoid dropping stored rows.
+- Review explicit summary sources/output before file writing; core compatibility,
+  duplicate checks and immutable publication remain shared. No graph attachment.
+  Authored shared-report projection/export-review tests await Glen/CI Rust/native
+  execution. Tutorial 10.04 now explains these native controls.
+
 ## 2026-10-24 - Native RNA Screen Setup And Monitor
 
 - Add native Screen/Runs pages over the same app command service: explicit file,

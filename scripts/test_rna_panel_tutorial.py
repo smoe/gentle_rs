@@ -16,6 +16,20 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_native_inspector_and_export_use_shared_records_and_preserve_ambiguity(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing/evidence.rs").read_text()
+        for phrase in ("Operation::InspectRnaReadPanel", "Operation::ExportRnaReadPanelSummary",
+                       "expected_result:", "expected_content", "co_nomination_sets", "member_ids",
+                       "legacy_class_unresolved", "artifact_content_verified", "sample_coverage",
+                       "control_error", "export_request", "show_rows", "RnaReadPanelSummary"):
+            self.assertIn(phrase, source)
+        for forbidden in ("File::open", "visit_fastq", "GzDecoder"):
+            self.assertNotIn(forbidden, source)
+        guide = re.sub(r"\s+", " ", GUIDE.read_text())
+        for phrase in ("Open bound result", "Inspect nomination prefix", "Add screen to summary",
+                       "Export reviewed summary (writes files)", "Verify summary tables"):
+            self.assertIn(phrase, guide)
+
     def test_native_screen_uses_shared_service_and_explicit_review_without_fastq_io(self):
         source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
         for phrase in ("agent_command_service.submit_parsed", "Operation::ScreenRnaReadPanel",

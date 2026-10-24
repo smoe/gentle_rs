@@ -469,6 +469,20 @@ inspectable. If a run failed before publication, never open a presumed old
 
 ## 4. Read The Evidence, Not Just The Largest Count
 
+In the native **Inspect** page, a finished run reopens with its exact published
+binding. You can also use **Runs > Open bound result**. After restart, choose a
+saved report explicitly; paste its retained binding if you have one. Without it,
+the GUI checks the saved metadata but does not invent an original service receipt.
+Inspect the displayed outcome before counts: `control_error` remains failed,
+`cancelled` remains partial, and named uncompleted inputs are unassessed.
+
+Choose a verified file and a positive row count (up to 1000), then **Inspect
+nomination prefix**. Read each row's class, member IDs, orientations, read
+coordinates and supported junction offsets together. This is a bounded prefix:
+`artifact_content_verified=false` does not mean the entire TSV was re-hashed.
+Changing/replacing the inspected report during a later prefix or verification
+request is refused; refresh the new file deliberately rather than merging views.
+
 Each verified file has a nomination TSV under `artifacts/file_NNNN/` and its
 own checksum receipt. The TSV retains original read IDs plus file/record identity
 and **decompressed** record offsets. Those offsets are not seek positions in
@@ -503,6 +517,25 @@ There is no oligo(dT) flip, automatic primer trimming, expression estimate,
 whole-transcriptome uniqueness claim or calibrated confidence score.
 
 ### 4.1 Export Supporting Read Counts, Not Molecule Copies
+
+For a GUI-only export, click **Add screen to summary** in Inspect, or use
+**Export > Add screen reports...** to select explicit report files. Choose a
+fresh summary parent/directory. **Review summary request** shows the exact
+paths and JSON; **Export reviewed summary (writes files)** approves that
+captured request. The shared engine checks panel/policy compatibility, duplicate
+input hashes and retained partial-source status; the GUI does not sum rows.
+Export binds the source contents actually inspected by the engine, not a promise
+that external files could not have changed since you selected their paths.
+Review the final source-report hashes in the bound summary.
+
+Reopen with **Open bound summary** or the automatic Inspect view. Check source
+outcomes, sample coverage, singleton support and exact class/member co-nomination
+sets separately. Long tables scroll without silently truncating stored rows.
+Historical member-only associations stay `legacy_class_unresolved`; an unknown
+requested sample must not acquire numerical zero rows. **Verify summary tables**
+checks only the three exported tables in bounded background work (256 MB), not
+the original FASTQ or nomination sidecars. Keep the report and receipt-bound TSVs
+together. Project save/undo does not delete or reattach those external files.
 
 `panel-export-summary` turns one or more saved screen reports into tables you
 can inspect in a spreadsheet. It reads their retained `artifacts/panel.json`,
