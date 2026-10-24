@@ -178,6 +178,7 @@ impl CommandExecutionService {
             command,
             ShellCommand::ReferencePrepare { .. }
                 | ShellCommand::RnaReadPanelSources { .. }
+                | ShellCommand::RnaReadPanelScreenDraft { .. }
                 | ShellCommand::Workflow { .. }
                 | ShellCommand::Op { .. }
                 | ShellCommand::MacrosRun { .. }

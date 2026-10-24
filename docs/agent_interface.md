@@ -10,6 +10,14 @@ reference definitions are not read-support results, and undo does not delete
 exported files. Every tutorial 10.04 screen/inspect/cancel/summary route remains
 shared; no OS helper or implicit sequencing run is needed.
 
+The native Screen/Runs pages use those same requests and command service. The
+metadata-only `panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]`
+flag loads/saves a draft without admitting a run or reading its inputs. Saving
+requires confirmation, also via MCP `agent_execute_plan`; the raw scientific
+operation is unchanged. A native Run freezes reviewed sample/checksum/policy
+and panel-hash bindings. Closing a monitor does not cancel. Process-local IDs
+are observations, not cross-process handles or restart recovery.
+
 Targeted FASTQ [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 has shared routes for preparation (`rna-reads panel-demo`), source binding
 (`panel-build`), streaming (`panel-screen`), inspection (`panel-show`) and

@@ -42,7 +42,7 @@ Do not infer a new result from an existing output filename.
    Document journal ownership and headless/GUI adapter equivalence.
    Python source/checkout checks: 89 passed. Scoped rustfmt, maturity freshness
    and whitespace checks pass. Rust regressions are authored, not executed.
-2. **Screen setup and nonmodal monitor. Next implementation step.**
+2. **Screen setup and nonmodal monitor. Implemented; Glen/CI verification pending.**
    Extend the existing RNA workspace, using the app-level command service.
    Review/copy/save typed requests; selecting files is not execution approval.
    Generate fresh output/control paths. Capture immutable reviewed request and
@@ -51,7 +51,11 @@ Do not infer a new result from an existing output filename.
    Add shared portable observation only where existing process-local receipts
    cannot provide CLI/MCP/agent access; no invented cross-process numeric job IDs
    or restart recovery. Do not run disk inspection/hash work on the paint thread.
-3. **Read-only inspector and summary export. Pending.**
+   Native Screen/Runs pages capture reviewed immutable requests, independently
+   poll receipts and submit marker control; closing does not cancel. Draft IO is
+   a shared `panel-screen --request ... [--save ...]` flag, not a second classifier.
+   Synthetic review/edit/close/semantic/approval/round-trip tests are authored.
+3. **Read-only inspector and summary export. Next implementation step.**
    Project shared panel/screen/summary metadata and bounded row prefixes. Show
    sample coverage, verified/missing units, original/effective bindings and exact
    ambiguous class/member sets. Retain cancelled/control-error distinctions.

@@ -62,6 +62,13 @@ supplied as `panel-show PATH --binding BINDING_JSON_OR_@FILE` for exact reopenin
 do not substitute an arbitrary existing `report.json` after a failed run. This
 rechecks metadata bindings, not the original reads or a now-changed manifest.
 
+`rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]`
+only loads/round-trips typed draft metadata. It does not inspect the panel,
+read a manifest, open FASTQ or approve execution. `--save` atomically writes a
+fresh JSON file and requires agent confirmation; it never overwrites a draft.
+This shared-shell flag also serves MCP `agent_execute_plan`, scripts and the
+native request editor. The scientific raw operation remains `ScreenRnaReadPanel`.
+
 Catalog discovery and guarded local provider updates use the same shared shell:
 `catalog doctor`, `catalog search --entity product|provider|protocol --query TEXT`,
 `catalog updates preview BUNDLE_PATH --scope user|project --output PREVIEW_PATH`,

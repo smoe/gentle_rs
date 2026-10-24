@@ -691,6 +691,10 @@ pub enum ShellCommand {
     RnaReadPanelSources {
         gene_set_id: Option<String>,
     },
+    RnaReadPanelScreenDraft {
+        request: Box<crate::engine::ScreenRnaReadPanelRequest>,
+        output_path: Option<String>,
+    },
     InspectSplicingAttract {
         seq_id: String,
         feature_id: usize,
@@ -7486,6 +7490,9 @@ impl ShellCommand {
             Self::RnaReadPanelSources { .. } => {
                 "inspect loaded RNA-panel source groups without writing files".into()
             }
+            Self::RnaReadPanelScreenDraft { .. } => {
+                "inspect or save RNA screen-request metadata without processing inputs".into()
+            }
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
                     "inspect feature expert view for '{seq_id}' target={}",
@@ -14242,6 +14249,9 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        if let Self::RnaReadPanelScreenDraft { output_path, .. } = self {
+            return output_path.is_some();
+        }
         if let Self::Catalog(command) = self {
             return command.mutating();
         }
@@ -19840,6 +19850,7 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "description": if inspect { "Read content-bound metadata and bounded unverified nomination rows; explicitly opt into bounded verification of three summary tables only. Inspection success does not change a saved control_error analysis outcome. No source mutation or original-read revalidation." } else { "Prepare a synthetic demo, build a panel, screen FASTQ/gzip once, export class-bound partial co-nomination counts, or request cancellation. Post-start marker faults return control_error with verified units retained and a structured diagnostic; not authorized cancellation or successful analysis. Summaries retain this source diagnostic and stay partial; preflight/data/resource failures remain hard errors. No whole-read compatibility, isoform winner, molecule copy count, trimming, oligo(dT) flip, POD5 or expression claim. External artifact writes require approval; no project sequence mutation." },
         "panel_preparation_contract": "rna-reads panel-build --list-sources [GENE_SET_ID] is read-only: source inventory v1 retains geometry diagnostics, blank unknown provenance, expected source hashes and existing gene-set resolution bindings. Optional ID requests unique exact stable-ID source mapping. Build gene_set:{resolution_id,resolution_sha256} reuses the stored operand with full member/context checks, not a new gene-list model. Optional base_panel_path extends unchanged loaded originals with new sources; duplicate loci fail, output_path is new. Recomposition supplies all sources without a base. register_in_project=true retains an undoable graph snapshot with set/source/parent links, not read support; undo does not delete files. Legacy omitted/false remains file-only. Existing screens/summaries retain their original panel binding. Native UI: ui open|focus|close rna-read-panel. No implicit extraction, download, rescoring or FASTQ run.",
         "request_template": template, "request_template_is_example_not_resolved_input": true,
+        "screen_draft_contract": "panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE] loads/saves typed draft metadata without opening panel/manifest/FASTQ or admitting screening. Returns gentle.rna_read_panel_screen_draft.v1. Saving requires parsed-command write confirmation, fresh atomic output and returns a byte-hash receipt; no project journal. Shared-shell/MCP agent_execute_plan/scripting route; raw scientific Operation is unchanged. Native Screen/Runs freeze reviewed requests and expose cached progress plus request-bound marker cancellation; close does not cancel.",
         "artifact_execution_contract": "Pin the reviewed panel with expected_panel_sha256. Managed standalone screen/summary results retain submitted/effective request, panel/report content, path and outcome bindings without merging a live project journal. A late host cancel cannot relabel published evidence. Use InspectRnaReadPanel.expected_result or panel-show PATH --binding BINDING_JSON_OR_@FILE for exact reopening; never infer a new result from an existing filename or reread a changed manifest to infer submission. Missing legacy fields mean unpinned/unrecorded, not verified provenance. Process-local job receipts are not cross-process worker handles. Plain metadata/control use independent bounded lanes; explicit table verification remains bounded background work.",
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
@@ -63033,6 +63044,18 @@ fn execute_feature_expert_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::RnaReadPanelScreenDraft {
+            request,
+            output_path,
+        } => {
+            let draft = engine
+                .rna_read_panel_screen_draft(request, output_path.as_deref())
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(draft).map_err(|e| e.to_string())?,
+            })
+        }
         ShellCommand::RnaReadPanelSources { gene_set_id } => {
             let (selected_gene_set, sources) = match gene_set_id {
                 Some(id) => {
@@ -68928,7 +68951,8 @@ fn execute_shell_command_with_options_dispatch_inner(
     }
     if matches!(
         command,
-        ShellCommand::RnaReadPanelSources { .. }
+        ShellCommand::RnaReadPanelScreenDraft { .. }
+            | ShellCommand::RnaReadPanelSources { .. }
             | ShellCommand::InspectFeatureExpert { .. }
             | ShellCommand::InspectSplicingAttract { .. }
             | ShellCommand::SplicingCrypticScreen { .. }
@@ -69280,7 +69304,8 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::RnaReadPanelSources { .. }
+        ShellCommand::RnaReadPanelScreenDraft { .. }
+        | ShellCommand::RnaReadPanelSources { .. }
         | ShellCommand::InspectFeatureExpert { .. }
         | ShellCommand::GenomicRegions { .. }
         | ShellCommand::InspectSplicingAttract { .. }

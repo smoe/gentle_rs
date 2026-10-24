@@ -16,6 +16,23 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_native_screen_uses_shared_service_and_explicit_review_without_fastq_io(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
+        for phrase in ("agent_command_service.submit_parsed", "Operation::ScreenRnaReadPanel",
+                       "Operation::CancelRnaReadPanel", "Operation::InspectRnaReadPanel",
+                       "expected_panel_sha256", "reviewed_request", "declared_complete: false",
+                       "decoder read-ahead", "rna_screen_window_close_does_not_cancel"):
+            self.assertIn(phrase, source)
+        for forbidden in ("visit_fastq", "GzDecoder", "read_to_end", "File::open"):
+            self.assertNotIn(forbidden, source)
+        parser = (ROOT / "src/engine_shell/command_parsers.rs").read_text()
+        self.assertIn('"--request"', parser)
+        self.assertIn("ShellCommand::RnaReadPanelScreenDraft", parser)
+        guide = GUIDE.read_text()
+        for phrase in ("Native Setup And Monitoring", "Run reviewed screen (writes files)",
+                       "File copy finished", "Copy report binding", "--save NEW_FILE"):
+            self.assertIn(phrase, guide)
+
     def test_table_verifier_uses_the_declared_streaming_hash_backend(self):
         dependencies = tomllib.loads((ROOT / "Cargo.toml").read_text())["dependencies"]
         self.assertIn("ring", dependencies)

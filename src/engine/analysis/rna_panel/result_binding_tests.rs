@@ -4,6 +4,71 @@ use super::tests::{request, starter};
 use super::*;
 
 #[test]
+fn rna_panel_screen_draft_roundtrips_without_opening_inputs_or_overwriting_files() {
+    // Hand-crafted invalid-for-execution draft; none of these input paths exists.
+    let mut engine = GentleEngine::default();
+    let request: ScreenRnaReadPanelRequest = serde_json::from_value(serde_json::json!({
+        "schema": RNA_PANEL_SCREEN_REQUEST_SCHEMA, "panel_path": "absent-panel.json",
+        "files": [], "md5_manifest_path": "absent-manifest", "output_dir": "absent-output"
+    }))
+    .unwrap();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal = engine.journal_len();
+    let td = tempfile::tempdir().unwrap();
+    let path = td.path().join("draft with 'quotes'.json");
+    let line = format!(
+        "rna-reads panel-screen --request {} --save {}",
+        crate::engine_shell::quote_shell_arg(&serde_json::to_string(&request).unwrap()),
+        crate::engine_shell::quote_shell_arg(&path.display().to_string())
+    );
+    let command = crate::engine_shell::parse_shell_line(&line).unwrap();
+    assert!(
+        command.is_state_mutating(),
+        "external write needs agent approval"
+    );
+    let saved = crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!saved.state_changed);
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(
+        saved.output["artifact"]["sha256"],
+        sha256_prefixed_bytes(&bytes)
+    );
+    assert!(crate::engine_shell::execute_shell_command(&mut engine, &command).is_err());
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    for text in [
+        String::from_utf8(bytes).unwrap(),
+        serde_json::to_string_pretty(&request)
+            .unwrap()
+            .replace('\n', "\r\n"),
+    ] {
+        fs::write(&path, text).unwrap();
+        let load = format!(
+            "rna-reads panel-screen --request {}",
+            crate::engine_shell::quote_shell_arg(&format!("@{}", path.display()))
+        );
+        let command = crate::engine_shell::parse_shell_line(&load).unwrap();
+        assert!(!command.is_state_mutating());
+        let result = crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+        assert_eq!(
+            result.output["request"],
+            serde_json::to_value(&request).unwrap()
+        );
+        assert!(result.output["artifact"].is_null());
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.journal_len(), journal);
+    assert!(!td.path().join("absent-output").exists());
+    assert!(
+        engine
+            .rna_read_panel_screen_draft(
+                &request,
+                Some(&td.path().join("../escape.json").display().to_string())
+            )
+            .is_err()
+    );
+}
+
+#[test]
 fn rna_panel_legacy_request_bytes_and_cancel_identity_survive_optional_fields() {
     let bytes = br#"{"cancel_path":null,"files":[],"md5_manifest_path":null,"output_dir":"run","panel_path":"panel.json","policy":{"kmer_len":15,"max_anchors_per_read":100000,"max_equivalence_classes":4096,"max_index_postings":2000000,"min_chain_bases":45,"min_junction_flank_bp":5,"write_locus_fastas":false},"schema":"gentle.rna_read_panel_screen_request.v1"}"#;
     for text in [

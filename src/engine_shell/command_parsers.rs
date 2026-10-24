@@ -13299,6 +13299,22 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "panel-screen" if tokens.get(2).is_some_and(|s| s == "--request") => {
+            if tokens.len() != 4 && !(tokens.len() == 6 && tokens[4] == "--save") {
+                return Err(
+                    "Use rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]"
+                        .into(),
+                );
+            }
+            let request = parse_required_json_payload::<crate::engine::ScreenRnaReadPanelRequest>(
+                &tokens[3],
+                "RNA screen request",
+            )?;
+            Ok(ShellCommand::RnaReadPanelScreenDraft {
+                request: Box::new(request),
+                output_path: tokens.get(5).cloned(),
+            })
+        }
         "panel-build" if (3..=4).contains(&tokens.len()) && tokens[2] == "--list-sources" => {
             Ok(ShellCommand::RnaReadPanelSources {
                 gene_set_id: tokens.get(3).cloned(),

@@ -471,6 +471,50 @@ mod tests {
     }
 
     #[test]
+    fn rna_screen_draft_save_requires_agent_confirmation_without_processing_reads() {
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("synthetic request.json");
+        let request = serde_json::json!({"schema":"gentle.rna_read_panel_screen_request.v1",
+            "panel_path":"never-open-panel", "files":[], "output_dir":"never-create-run"});
+        let plan = AgentPlanResult {
+            schema: "gentle.agent_plan_result.v1".into(),
+            assistant_message: "Synthetic draft only".into(),
+            questions: vec![],
+            candidates: vec![AgentPlanCandidate {
+                candidate_id: "draft".into(),
+                title: "Save draft".into(),
+                kind: AgentPlanCandidateKind::Shell,
+                execution_mode: AgentPlanExecutionMode::Auto,
+                shell_command: Some(format!(
+                    "rna-reads panel-screen --request {} --save {}",
+                    crate::engine_shell::quote_shell_arg(&request.to_string()),
+                    crate::engine_shell::quote_shell_arg(&path.display().to_string())
+                )),
+                ..Default::default()
+            }],
+        };
+        let mut engine = GentleEngine::default();
+        let denied = execute_agent_plan_candidate_with_feedback(
+            &mut engine,
+            &plan,
+            "draft",
+            false,
+            &ShellExecutionOptions::default(),
+        );
+        assert_eq!(denied.feedback.status, AgentExecutionStatus::Blocked);
+        assert!(!path.exists());
+        execute_agent_plan_candidate(
+            &mut engine,
+            &plan,
+            "draft",
+            true,
+            &ShellExecutionOptions::default(),
+        )
+        .unwrap();
+        assert!(path.is_file());
+    }
+
+    #[test]
     fn read_only_shell_and_rna_inspection_do_not_require_confirm() {
         let temp = tempfile::tempdir().unwrap();
         let mut candidate = AgentPlanCandidate {

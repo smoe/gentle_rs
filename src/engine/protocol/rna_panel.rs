@@ -215,6 +215,15 @@ pub struct ScreenRnaReadPanelRequest {
     pub cancel_path: Option<String>,
 }
 
+/// Draft metadata only: reading/saving is not file-completion, checksum or policy admission.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelScreenDraft {
+    pub schema: String,
+    pub request: ScreenRnaReadPanelRequest,
+    pub artifact: Option<RnaReadPanelArtifact>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 /// Qualifying seed-chain evidence, never an exclusive transcript assignment.

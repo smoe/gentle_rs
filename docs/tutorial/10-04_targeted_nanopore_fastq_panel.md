@@ -272,6 +272,52 @@ of the same locus as two independent genes. There is no automatic consensus.
 
 ## 3. Start With One Completed FASTQ Chunk
 
+### Native Setup And Monitoring
+
+In **Genome > RNA Read Panel... > Screen**, choose **Use prepared panel**, or
+choose a saved panel and click **Inspect panel**. Check its gene/transcript count
+and content hash. An imported request must also have its panel inspected; a
+saved hash alone is not evidence that you reviewed this session's reference.
+
+1. Set the sample, barcode and priming for newly added files. The buttons
+   **26R266-1 / barcode13** and **26R266-2 / barcode14** are explicit owner-supplied
+   presets, never filename guesses. **Add FASTQ files...** selects individual
+   plain or gzipped files without opening their contents. Edit each row as
+   needed and check **File copy finished** only when you know copying is done.
+2. Choose the supplier **MD5 manifest**, or expand each **Checksum binding**
+   to supply its expected digest/exact manifest key. Select either a merged
+   delivery file or its chunks, not both. Keep all files in one screen request
+   within the same explicit panel and policy.
+3. Review **Screen policy**, then **Choose output parent...** to propose fresh
+   run/control paths. No directory is watched and no existing report is reused.
+   **Fresh run paths** changes the request, not an active run. File dialogs do
+   not approve screening; **Save request...** saves only typed draft metadata.
+4. Click **Review request**, inspect the complete captured JSON, and only then
+   **Run reviewed screen (writes files)**. Copy JSON/CLI command for the same
+   shared contract. Changing files, sample bindings, thresholds or paths clears
+   review; the in-flight request never changes with the form.
+5. In **Runs**, observe file ordinal, sample, current-file reads and compressed
+   bytes. These bytes include **decoder read-ahead**, not verified completion or
+   an ETA. Continue using other windows or talking to the agent. Closing this
+   window does not cancel the approved worker.
+6. **Request cancellation** writes the same request-bound marker as the CLI.
+   A written marker requests termination; wait for the published outcome. A
+   marker-write failure does not mean cancellation. A late request cannot
+   relabel an already-published completed result. `control_error` is failed
+   analysis with preserved verified units; see section 3.1, not an empty result.
+
+**Checkpoint:** retain the published report path and **Copy report binding**.
+Never open a presumed `report.json` after a hard failure. Session-local run IDs
+do not reconnect workers after restart; saved report/binding inspection is the
+portable evidence. Native runtime/responsiveness acceptance remains Glen/CI work.
+
+The agent and CLI can round-trip that same draft without processing inputs:
+`rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]`.
+Saving requires write approval; executing the scientific request remains the
+separate `panel-screen REQUEST_JSON_OR_@FILE` command below.
+
+### Equivalent Terminal Run
+
 Set `DATA` to your current download directory and `ANALYSIS` to a new directory
 outside the download. In the owner's current layout DATA is
 `$HOME/GitHub/gentle_rs/data/MelanomaEnrichedSequencing`; adjust it after moving

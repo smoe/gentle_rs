@@ -42,6 +42,9 @@ fn classify(op: Operation) -> Policy {
 /// Native/agent callers pass the frozen shared-parser result through submit_parsed.
 pub(super) fn admission(command: &ShellCommand) -> Policy {
     match command {
+        ShellCommand::RnaReadPanelScreenDraft {
+            output_path: None, ..
+        } => Policy::Observe { expensive: false },
         ShellCommand::Op { payload } => serde_json::from_str::<Operation>(payload)
             .map(classify)
             .unwrap_or(Policy::Project),
@@ -51,6 +54,15 @@ pub(super) fn admission(command: &ShellCommand) -> Policy {
 
 /// Resolve an Op payload once on the worker, then execute exactly those captured bytes.
 pub(super) fn freeze(command: &mut ShellCommand) -> Result<Policy, String> {
+    if matches!(
+        command,
+        ShellCommand::RnaReadPanelScreenDraft {
+            output_path: None,
+            ..
+        }
+    ) {
+        return Ok(Policy::Observe { expensive: false });
+    }
     let ShellCommand::Op { payload } = command else {
         return Ok(Policy::Project);
     };

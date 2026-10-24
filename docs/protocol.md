@@ -85,6 +85,13 @@ panel/report/row payloads are the same; no adapter-local classification is added
   A replacement valid panel is refused before indexing, streaming or staging.
   Omitted/None is the historical unpinned behavior, not proof of prior review;
   the absent field is omitted from serialization/cancel identities.
+- `rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]`
+  returns `gentle.rna_read_panel_screen_draft.v1` (`request`, optional artifact).
+  This metadata-only shared-shell helper is not scientific admission: unfinished
+  drafts may be saved without opening panel/manifest/FASTQ. Saving requires
+  approval, fresh-path atomic publication and retains a raw-byte hash receipt.
+  No project journal or source mutation. The native editor drops serialized
+  panel pins on load and requires a fresh panel inspection/review before Run.
 - `gentle.rna_read_panel_screen.v2`: effective request with resolved expected
   digests, panel SHA-256, posting count, `completed|cancelled|control_error` status, verified
   `files_completed`, `files_not_completed`, named `inputs_not_completed`, nonclaims and explicit false

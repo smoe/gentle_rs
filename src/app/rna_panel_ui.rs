@@ -10,6 +10,16 @@ use crate::engine::{
 };
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+mod processing;
+
+#[derive(Default, PartialEq, Eq, Clone, Copy)]
+enum Page {
+    #[default]
+    Prepare,
+    Screen,
+    Runs,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Binding {
     instance: u64,
@@ -52,6 +62,8 @@ struct Pending {
 #[derive(Default)]
 pub(super) struct RnaPanelUiState {
     pub(super) open: bool,
+    page: Page,
+    processing: processing::Processing,
     choices: Vec<RnaReadPanelSourceChoice>,
     gene_sets: Vec<RnaReadPanelGeneSetChoice>,
     gene_set: Option<RnaReadPanelGeneSetBinding>,
@@ -88,6 +100,7 @@ impl RnaPanelUiState {
     }
 
     fn opened(&mut self, path: String, panel: RnaReadPanel) {
+        self.page = Page::Prepare;
         self.gene_set = panel
             .gene_set_resolution
             .as_deref()
@@ -416,7 +429,7 @@ impl GENtleApp {
         egui::Id::new("hosted_rna_panel")
     }
     pub(super) fn rna_panel_pending(&self) -> bool {
-        self.rna_panel_ui.pending.is_some()
+        self.rna_panel_ui.pending.is_some() || self.rna_panel_ui.processing.pending()
     }
     pub(super) fn open_rna_panel_dialog(&mut self) {
         let was_open = self.rna_panel_ui.open;
@@ -431,7 +444,7 @@ impl GENtleApp {
     }
 
     fn start_rna_panel_action(&mut self, ctx: &egui::Context, action: Action) {
-        if self.rna_panel_pending() {
+        if self.rna_panel_ui.pending.is_some() {
             return;
         }
         let binding = match self.engine.try_read() {
@@ -480,6 +493,7 @@ impl GENtleApp {
     }
 
     pub(super) fn poll_rna_panel_action(&mut self) {
+        self.poll_rna_processing_jobs();
         let Some(pending) = &self.rna_panel_ui.pending else {
             return;
         };
@@ -564,8 +578,24 @@ impl GENtleApp {
         let mut action = None;
         let mut retrieve = false;
         let mut inspect_sets = false;
-        let busy = self.rna_panel_pending();
+        let busy = self.rna_panel_ui.pending.is_some();
         ui.heading("RNA Read Panel");
+        ui.horizontal_wrapped(|ui| {
+            for (page, label, id) in [
+                (Page::Prepare, "Prepare", "rna_panel.tab.prepare"),
+                (Page::Screen, "Screen", "rna_panel.tab.screen"),
+                (Page::Runs, "Runs", "rna_panel.tab.runs"),
+            ] {
+                capture(
+                    &ui.selectable_value(&mut self.rna_panel_ui.page, page, label),
+                    id,
+                );
+            }
+        });
+        if self.rna_panel_ui.page != Page::Prepare {
+            self.render_rna_processing(ui);
+            return;
+        }
         ui.horizontal_wrapped(|ui| {
             let refresh = ui.add_enabled(!busy, egui::Button::new("Refresh loaded loci"));
             capture(&refresh, "rna_panel.refresh");

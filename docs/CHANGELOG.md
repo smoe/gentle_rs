@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-24 - Native RNA Screen Setup And Monitor
+
+- Add native Screen/Runs pages over the same app command service: explicit file,
+  sample/checksum/policy binding, inspected panel pin, immutable reviewed Run,
+  fresh paths and request-bound cancellation. Closing keeps work alive; cached
+  read-ahead/reads are not completion or checksum acceptance. File-only outcomes
+  remain separate from live project edits and graph attachment.
+- Add shared metadata-only draft load/save under `panel-screen --request`, with
+  fresh atomic saving, agent write confirmation and no FASTQ admission/IO.
+- Author synthetic review/edit, close, semantic-target, draft LF/CRLF/quoted-path
+  and approval tests. Rust/native checks remain Glen/CI; inspector/export and
+  complete tutorial acceptance continue in the active plan.
+
 ## 2026-10-24 - Retain Bound File-Only RNA Results
 
 - Classify only standalone screen and summary export as artifact-only managed

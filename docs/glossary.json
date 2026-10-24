@@ -33,7 +33,7 @@
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-screen",
          "summary": "Stream completed FASTQ or gzip files once through one combined multi-locus index, verifying compressed-byte checksums at EOF and preserving all qualifying transcript candidates. No isoform identification or expression claim; writes a new audited directory.",
-         "usage": "rna-reads panel-screen REQUEST_JSON_OR_@FILE"
+         "usage": "rna-reads panel-screen REQUEST_JSON_OR_@FILE|--request REQUEST_JSON_OR_@FILE [--save NEW_FILE]"
       },
       {
          "aliases": [], "engine_operations": ["ExportRnaReadPanelSummary"],
