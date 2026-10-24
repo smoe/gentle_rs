@@ -98,6 +98,7 @@ impl GentleEngine {
                     ]),
                     qualifiers: vec![
                         ("gene".into(), Some(format!("SYN_{i}"))),
+                        ("gene_id".into(), Some(format!("SYN_{i}"))),
                         ("transcript_id".into(), Some(id.into())),
                     ],
                 });
@@ -117,11 +118,31 @@ impl GentleEngine {
             });
             sequences.push(sequence);
         }
-        GentleEngine::from_state(state)
+        let mut demo_engine = GentleEngine::from_state(state);
+        // Resolved synthetic IDs enable the same native gene-set preparation as real loci.
+        demo_engine.upsert_gene_set_resolution_artifact(GeneSetResolutionReport {
+            schema: "gentle.gene_set_resolution.v1".into(),
+            op_id: Some("rna_demo_genes".into()),
+            request: GeneSetRequest::ExplicitMembers {
+                members: (0..5).map(|i| format!("SYN_{i}")).collect(),
+            },
+            requested_member_count: 5,
+            resolved_member_count: 5,
+            resolved_members: (0..5)
+                .map(|i| GeneSetResolvedMember {
+                    dedup_key: format!("SYN_{i}"),
+                    symbol: format!("SYN_{i}"),
+                    gene_id: Some(format!("SYN_{i}")),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        })?;
+        demo_engine
             .state()
             .save_to_path(&stage.path().join("starter.json").display().to_string())?;
         let build = BuildRnaReadPanelRequest {
-            gene_set: None,
+            gene_set: Some(demo_engine.rna_read_panel_gene_sets()?.remove(0).binding),
             register_in_project: None,
             base_panel_path: None,
             schema: RNA_PANEL_BUILD_SCHEMA.into(),

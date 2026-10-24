@@ -2,21 +2,21 @@
    "commands": [
       {
          "aliases": [], "engine_operations": ["PrepareRnaReadPanelDemo"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-demo",
          "summary": "Prepare five artificial independent loci, alternative terminal exons, two tiny FASTQ.gz files and checksum-bound requests in a fresh directory. Tutorial 10.04 rehearsal only; no project mutation or biological control claim.",
          "usage": "rna-reads panel-demo OUTPUT_DIR"
       },
       {
          "aliases": [], "engine_operations": ["InspectRnaReadPanel"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-show",
          "summary": "Inspect content-bound panel/screen/summary metadata or a bounded unverified nomination prefix. Explicit --verify-artifacts verifies only the three summary tables within 256 MB, never original FASTQ or nomination sidecars; default display remains metadata-only.",
          "usage": "rna-reads panel-show PATH [--file-id ID] [--rows N] [--verify-artifacts] [--binding BINDING_JSON_OR_@FILE]"
       },
       {
          "aliases": [], "engine_operations": ["CancelRnaReadPanel"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-cancel",
          "summary": "Request cooperative cancellation using the explicit screen request's marker. Never modifies inputs or overwrites a marker; request is not proof of termination.",
          "usage": "rna-reads panel-cancel REQUEST_JSON_OR_@FILE"
@@ -30,14 +30,14 @@
       },
       {
          "aliases": [], "engine_operations": ["ScreenRnaReadPanel"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-screen",
          "summary": "Stream completed FASTQ or gzip files once through one combined multi-locus index, verifying compressed-byte checksums at EOF and preserving all qualifying transcript candidates. No isoform identification or expression claim; writes a new audited directory.",
          "usage": "rna-reads panel-screen REQUEST_JSON_OR_@FILE|--request REQUEST_JSON_OR_@FILE [--save NEW_FILE]"
       },
       {
          "aliases": [], "engine_operations": ["ExportRnaReadPanelSummary"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-export-summary",
          "summary": "Export supporting-read counts per sample/transcript and exact ambiguous member sets from explicit same-panel/same-policy reports, without rereading FASTQ. Refuse duplicate input hashes; cancelled sources remain partial. No molecule-copy, expression or exclusive isoform claim. Writes a fresh directory with receipt-bound TSVs and JSON.",
          "usage": "rna-reads panel-export-summary REQUEST_JSON_OR_@FILE"

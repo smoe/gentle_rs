@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-24 - Complete The Native RNA Tutorial Rehearsal
+
+- Reuse shared synthetic-demo preparation in the native workspace. Its starter
+  now has exact toy gene IDs and a stored resolved gene set, enabling the same
+  native binding/build path as real references without private reads or a shell.
+- Extend tutorial 10.04 from preparation through request review, nonmodal runs,
+  bound prefix inspection and summary/table export. Add semantic outcome/hash
+  bindings, typed manual checkpoints, capture requirements and a Glen/CI handoff.
+  Catalog/readme and actual menu/palette oracle expose the five added native
+  command paths; scientific routes and approvals remain unchanged. Refresh
+  maturity source hashes. Raw-operation surfacing stays separately classified.
+- Author an app-route regression holding the live project write lock through
+  screen, poll, bound reopen and summary; retain classes/unknowns with no journal
+  mutation. Add metadata/projection checks. Rust/native/live-agent checks and
+  screenshots remain Glen/CI work, not an asserted GUI acceptance pass. No
+  private input, queued scheduler, result graph attachment or push.
+- Verification: 104 Python source/checkout/maturity tests, scoped rustfmt,
+  maturity freshness and whitespace pass. Canonical Rust generator, compilation,
+  native/platform scheduling and live-model acceptance remain unrun locally.
+
 ## 2026-10-24 - Native RNA Evidence Inspection And Summary Export
 
 - Add Inspect/Export pages over the existing shared operations, with automatic

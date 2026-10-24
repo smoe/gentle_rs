@@ -2,6 +2,14 @@
 
 ## Multi-Locus FASTQ Screening
 
+The native RNA Read Panel workspace now projects preparation, reviewed request
+setup, nonmodal receipts, bound inspection and summary export through these
+same operations. The synthetic demo additionally supplies annotated toy stable
+gene IDs and a stored resolved gene set for no-shell preparation. This changes
+new demo source/panel hashes, not historical-schema interpretation. No native
+acceptance, actual sequencing result, queued scheduler or result attachment is
+implied. See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md).
+
 New shared operations are `PrepareRnaReadPanelDemo {output_dir}`,
 `BuildRnaReadPanel {request}`, `ScreenRnaReadPanel {request}`,
 `InspectRnaReadPanel {path, file_id?, rows=0, verify_artifacts=false}`, `CancelRnaReadPanel {request}`

@@ -1,7 +1,8 @@
-//! Native multi-locus RNA-panel preparation over the shared, immutable panel builder.
+//! Native RNA-panel preparation, reviewed screening, monitoring and evidence inspection.
 //!
-//! Drafts are session-local. Background workers use history-free snapshots;
-//! saved panels and earlier read-screen reports are never edited in place.
+//! Drafts are session-local. Preparation uses history-free project snapshots;
+//! file-only processing uses the shared command service's independent policy.
+//! Saved panels and earlier read-screen reports are never edited in place.
 
 use super::*;
 use crate::engine::{
@@ -218,6 +219,10 @@ fn capture(_response: &egui::Response, _id: &str) {
         None,
         if _id.ends_with(".filter") || _id.ends_with(".output") {
             crate::gui_test_support::GuiTestWidgetKind::TextInput
+        } else if _id.starts_with("rna_panel.tab.") {
+            crate::gui_test_support::GuiTestWidgetKind::Tab
+        } else if _id.ends_with(".complete") {
+            crate::gui_test_support::GuiTestWidgetKind::Checkbox
         } else {
             crate::gui_test_support::GuiTestWidgetKind::Button
         },
@@ -235,6 +240,36 @@ fn capture_input(_response: &egui::Response, _id: String) {
         None,
         crate::gui_test_support::GuiTestWidgetKind::TextInput,
         false,
+        None,
+    );
+}
+
+fn capture_status(_response: &egui::Response, _id: &str, _subject: Option<&str>, _outcome: &str) {
+    #[cfg(feature = "gui-test-support")]
+    crate::gui_test_support::register_response_with_outcome(
+        _response,
+        _id,
+        "window.rna_read_panel",
+        _subject,
+        crate::gui_test_support::GuiTestWidgetKind::Status,
+        false,
+        Some(_outcome),
+    );
+}
+
+fn capture_selection(_response: &egui::Response, _id: &str, _selected: bool) {
+    #[cfg(feature = "gui-test-support")]
+    crate::gui_test_support::register_response_with_outcome(
+        _response,
+        _id,
+        "window.rna_read_panel",
+        None,
+        if _id.starts_with("rna_panel.tab.") {
+            crate::gui_test_support::GuiTestWidgetKind::Tab
+        } else {
+            crate::gui_test_support::GuiTestWidgetKind::Checkbox
+        },
+        _selected,
         None,
     );
 }
@@ -590,12 +625,11 @@ impl GENtleApp {
                 (Page::Inspect, "Inspect", "rna_panel.tab.inspect"),
                 (Page::Export, "Export", "rna_panel.tab.export"),
             ] {
-                capture(
-                    &ui.selectable_value(&mut self.rna_panel_ui.page, page, label),
-                    id,
-                );
+                let response = ui.selectable_value(&mut self.rna_panel_ui.page, page, label);
+                capture_selection(&response, id, self.rna_panel_ui.page == page);
             }
         });
+        self.render_rna_rehearsal_controls(ui);
         if self.rna_panel_ui.page != Page::Prepare {
             self.render_rna_processing(ui);
             return;

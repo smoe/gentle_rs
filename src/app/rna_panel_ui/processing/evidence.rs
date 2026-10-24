@@ -322,7 +322,8 @@ impl GENtleApp {
                 table(ui, "rna_panel_members", panel.templates.len(), |ui, i| { let t = &panel.templates[i]; ui.label(format!("{} | {} | {} | {} bases | junctions {:?} | source exons {:?}", t.member_id, t.transcript_id, t.strand, t.sequence.len(), t.junction_offsets, t.source_exons)); });
             }
             if let Some(report) = &loaded.content.rna_read_panel_screen {
-                ui.heading(format!("Scientific outcome: {}", report.status));
+                let outcome = ui.heading(format!("Scientific outcome: {}", report.status));
+                capture_status(&outcome, "rna_panel.inspect.outcome", Some(&report.content_sha256), &report.status);
                 ui.label(format!("Panel: {}", report.panel_sha256));
                 ui.label(format!("Submitted request: {}", report.submitted_request_sha256.as_deref().unwrap_or("not recorded (legacy)")));
                 if let Some(binding) = &loaded.binding { ui.label(format!("Effective request: {}", binding.effective_request_sha256)); }
@@ -335,10 +336,11 @@ impl GENtleApp {
                     table(ui, "rna_missing_files", missing.len(), |ui, i| { let f = &missing[i]; ui.label(format!("Unassessed: {} / {} / {} | {}", f.sample_id, f.barcode, f.priming, f.path)); });
                 } else if !report.files_not_completed.is_empty() { ui.label(format!("Unfinished legacy file IDs: {:?}; sample association unavailable", report.files_not_completed)); }
                 ui.add_enabled_ui(!state.loading && !report.files_completed.is_empty(), |ui| {
-                    egui::ComboBox::from_id_salt("rna_inspect_file").selected_text(if state.file_id.is_empty() { "Choose verified file" } else { &state.file_id }).show_ui(ui, |ui| {
-                        for file in &report.files_completed { ui.selectable_value(&mut state.file_id, file.file_id.clone(), &file.file_id); }
+                    let picker = egui::ComboBox::from_id_salt("rna_inspect_file").selected_text(if state.file_id.is_empty() { "Choose verified file" } else { &state.file_id }).show_ui(ui, |ui| {
+                        for file in &report.files_completed { capture(&ui.selectable_value(&mut state.file_id, file.file_id.clone(), &file.file_id), &format!("rna_panel.inspect.file.{}", file.file_id)); }
                     });
-                    let response = ui.add(egui::DragValue::new(&mut state.rows).range(0..=1000));
+                    capture(&picker.response, "rna_panel.inspect.file");
+                    let response = ui.add(egui::DragValue::new(&mut state.rows).range(1..=1000));
                     capture_input(&response, "rna_panel.inspect.rows".into());
                     if button(ui, "Inspect nomination prefix", "rna_panel.inspect.prefix") && !state.file_id.is_empty() { action = Some(loaded.inspect_again(Some(state.file_id.clone()), state.rows, false)); }
                 });
@@ -355,7 +357,8 @@ impl GENtleApp {
                 for nonclaim in &report.nonclaims { ui.label(nonclaim); }
             }
             if let Some(summary) = &loaded.content.rna_read_panel_summary {
-                ui.heading(format!("Summary coverage: {}", summary.completeness));
+                let outcome = ui.heading(format!("Summary coverage: {}", summary.completeness));
+                capture_status(&outcome, "rna_panel.inspect.outcome", Some(&summary.content_sha256), &summary.completeness);
                 ui.label(format!("Panel: {}", summary.panel_sha256));
                 ui.label(format!("Original inputs reverified: {}; nomination sidecars reverified: {}", summary.original_inputs_reverified, summary.nomination_sidecars_reverified));
                 ui.label(format!("Class/member counts complete: {:?}", summary.class_member_counts_complete));
@@ -373,7 +376,10 @@ impl GENtleApp {
                     table(ui, "rna_summary_legacy_sets", sets.len(), |ui, i| { let r = &sets[i]; ui.label(format!("{} | {} reads | {:?}", r.sample_id, r.reads, r.member_ids)); });
                 }
                 for artifact in &summary.artifacts { ui.label(format!("{} | {} bytes | {}", artifact.path, artifact.bytes, artifact.sha256)); }
-                if let Some(verification) = &loaded.content.rna_read_panel_verification { ui.strong(format!("Tables verified: {} bytes | {}", verification.verified_bytes, verification.scope)); }
+                if let Some(verification) = &loaded.content.rna_read_panel_verification {
+                    let outcome = ui.strong(format!("Tables verified: {} bytes | {}", verification.verified_bytes, verification.scope));
+                    capture_status(&outcome, "rna_panel.inspect.verification", Some(&verification.summary_sha256), "verified_tables_only");
+                }
                 if !state.loading && button(ui, "Verify summary tables", "rna_panel.inspect.verify") { action = Some(loaded.inspect_again(None, 0, true)); }
                 for nonclaim in &summary.nonclaims { ui.label(nonclaim); }
             }
@@ -478,29 +484,8 @@ impl GENtleApp {
                 }
             });
         if export {
-            let result = self
-                .rna_panel_ui
-                .processing
-                .evidence
-                .export_request()
-                .and_then(|request| {
-                    self.submit_rna_operation(
-                        Operation::ExportRnaReadPanelSummary {
-                            request: Box::new(request),
-                        },
-                        Task::Export,
-                    )
-                });
-            match result {
-                Ok(id) => {
-                    let state = &mut self.rna_panel_ui.processing.evidence;
-                    state.export_job = Some(id);
-                    state.reviewed_export = None;
-                    state.export_detail =
-                        "Export admitted; source compatibility is checked by the shared engine"
-                            .into();
-                }
-                Err(error) => self.rna_panel_ui.processing.evidence.error = Some(error),
+            if let Err(error) = self.start_reviewed_rna_export() {
+                self.rna_panel_ui.processing.evidence.error = Some(error);
             }
         }
         if let Some(binding) = open
@@ -509,11 +494,121 @@ impl GENtleApp {
             self.rna_panel_ui.processing.evidence.error = Some(error);
         }
     }
+
+    fn start_reviewed_rna_export(&mut self) -> Result<(), String> {
+        let request = self.rna_panel_ui.processing.evidence.export_request()?;
+        let id = self.submit_rna_operation(
+            Operation::ExportRnaReadPanelSummary {
+                request: Box::new(request),
+            },
+            Task::Export,
+        )?;
+        let state = &mut self.rna_panel_ui.processing.evidence;
+        state.export_job = Some(id);
+        state.reviewed_export = None;
+        state.export_detail =
+            "Export admitted; source compatibility is checked by the shared engine".into();
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn drain(app: &mut GENtleApp) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        while app.rna_panel_pending() && std::time::Instant::now() < deadline {
+            app.poll_rna_panel_action();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(
+            !app.rna_panel_pending(),
+            "native command-service test timed out"
+        );
+        assert!(
+            app.rna_panel_ui.processing.evidence.error.is_none(),
+            "{:?}",
+            app.rna_panel_ui.processing.evidence.error
+        );
+    }
+
+    #[test]
+    fn rna_native_screen_monitor_bound_reopen_and_summary_work_without_the_live_project_lock() {
+        // Complete app-control path over the public fixed-LCG rehearsal, not native acceptance.
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path().join("native synthetic");
+        GentleEngine::default()
+            .prepare_rna_read_panel_demo(&root.display().to_string())
+            .unwrap();
+        let read = |file: &str| std::fs::read(root.join("artifacts").join(file)).unwrap();
+        let mut engine = GentleEngine::from_state(
+            serde_json::from_slice::<crate::engine::ProjectState>(&read("starter.json")).unwrap(),
+        );
+        let build =
+            serde_json::from_slice::<BuildRnaReadPanelRequest>(&read("build.json")).unwrap();
+        let panel = engine.build_rna_read_panel(&build).unwrap();
+        assert_eq!(
+            engine
+                .rna_read_panel_gene_set_sources(&build.gene_set.unwrap().resolution_id)
+                .unwrap()
+                .1
+                .len(),
+            5
+        );
+        let mut request: ScreenRnaReadPanelRequest =
+            serde_json::from_slice(&read("screen.json")).unwrap();
+        request.expected_panel_sha256 = Some(panel.content_sha256);
+        let mut app = GENtleApp::default();
+        app.rna_panel_ui.processing.draft = request;
+        app.rna_panel_ui.processing.review().unwrap();
+        let shared = app.engine.clone();
+        let mut live = shared.write().unwrap();
+        live.auxiliary_metadata_mut()
+            .insert("unrelated_live_edit".into(), serde_json::json!(true));
+        let journal = live.journal_len();
+        app.start_rna_screen().unwrap();
+        app.close_rna_panel_dialog();
+        drain(&mut app);
+        let loaded = app
+            .rna_panel_ui
+            .processing
+            .evidence
+            .loaded
+            .as_ref()
+            .unwrap();
+        let report = loaded.content.rna_read_panel_screen.as_ref().unwrap();
+        assert_eq!(report.status, "completed");
+        assert_eq!(report.files_completed.len(), 2);
+        assert!(loaded.binding.is_some());
+        let state = &mut app.rna_panel_ui.processing.evidence;
+        state.request = serde_json::from_slice(&read("summary.json")).unwrap();
+        state.reviewed_export = Some((
+            state.request.clone(),
+            serde_json::to_string(&state.request).unwrap(),
+        ));
+        app.start_reviewed_rna_export().unwrap();
+        drain(&mut app);
+        let loaded = app
+            .rna_panel_ui
+            .processing
+            .evidence
+            .loaded
+            .as_ref()
+            .unwrap();
+        let summary = loaded.content.rna_read_panel_summary.as_ref().unwrap();
+        assert_eq!(summary.completeness, "complete");
+        assert_eq!(summary.samples.len(), 2);
+        assert!(summary.samples.iter().all(|s| s.reads == 4));
+        assert!(!summary.co_nomination_sets.as_ref().unwrap().is_empty());
+        assert!(loaded.binding.is_some());
+        assert_eq!(live.state().metadata["unrelated_live_edit"], true);
+        assert_eq!(
+            live.journal_len(),
+            journal,
+            "file-only native runs never merge their private journal"
+        );
+    }
 
     fn inspect(engine: &mut GentleEngine, request: &InspectionRequest) -> serde_json::Value {
         let (command, _) = op_command(Operation::InspectRnaReadPanel {

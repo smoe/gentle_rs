@@ -23,6 +23,7 @@ enum Task {
     Cancel(u64),
     Inspect(evidence::InspectionRequest),
     Export,
+    Demo(String),
 }
 
 struct PendingTask {
@@ -52,6 +53,7 @@ pub(super) struct Processing {
     status: String,
     error: Option<String>,
     evidence: evidence::Evidence,
+    demo: Option<String>,
 }
 
 impl Default for Processing {
@@ -78,6 +80,7 @@ impl Default for Processing {
             status: String::new(),
             error: None,
             evidence: evidence::Evidence::default(),
+            demo: None,
         }
     }
 }
@@ -274,9 +277,9 @@ impl GENtleApp {
                         match result {
                             Ok(_) => {
                                 run.cancel_requested = true;
-                                run.detail =
-                                    "Cancellation marker written; termination is not yet confirmed"
-                                        .into();
+                                run.detail = if run.receipt.as_ref().is_some_and(terminal) {
+                                    "Cancellation marker written after termination; published outcome unchanged"
+                                } else { "Cancellation marker written; termination is not yet confirmed" }.into();
                             }
                             Err(error) => {
                                 run.detail = format!(
@@ -356,6 +359,13 @@ impl GENtleApp {
                         Err(error) => error,
                     };
                 }
+                Task::Demo(path) => match result {
+                    Ok(_) => {
+                        state.demo = Some(path.clone());
+                        state.status = format!("Synthetic rehearsal saved: {path}");
+                    }
+                    Err(error) => state.error = Some(error),
+                },
             }
         }
         for binding in &published {
@@ -461,12 +471,22 @@ impl GENtleApp {
                             ));
                         }
                     });
-                    ui.monospace(
+                    let pin = ui.monospace(
                         state
                             .draft
                             .expected_panel_sha256
                             .as_deref()
                             .unwrap_or("Panel not inspected"),
+                    );
+                    capture_status(
+                        &pin,
+                        "rna_panel.screen.panel_binding",
+                        state.draft.expected_panel_sha256.as_deref(),
+                        if state.draft.expected_panel_sha256.is_some() {
+                            "reviewed"
+                        } else {
+                            "not_evaluated"
+                        },
                     );
                     ui.separator();
                     ui.horizontal_wrapped(|ui| {
@@ -555,7 +575,11 @@ impl GENtleApp {
                             });
                             let complete =
                                 ui.checkbox(&mut file.declared_complete, "File copy finished");
-                            capture(&complete, &format!("rna_panel.screen.file.{i}.complete"));
+                            capture_selection(
+                                &complete,
+                                &format!("rna_panel.screen.file.{i}.complete"),
+                                file.declared_complete,
+                            );
                             changed |= complete.changed();
                             ui.collapsing("Checksum binding", |ui| {
                                 changed |= optional_input(
@@ -732,6 +756,57 @@ impl GENtleApp {
         }
     }
 
+    pub(super) fn render_rna_rehearsal_controls(&mut self, ui: &mut egui::Ui) {
+        let mut prepare = None;
+        ui.horizontal_wrapped(|ui| {
+            if button(
+                ui,
+                "Prepare synthetic rehearsal... (writes files)",
+                "rna_panel.demo.prepare",
+            ) && let Some(parent) = rfd::FileDialog::new().pick_folder()
+            {
+                prepare = Some(
+                    parent
+                        .join(format!("rna-panel-demo-{}", Self::now_unix_ms()))
+                        .display()
+                        .to_string(),
+                );
+            }
+            if let Some(root) = &self.rna_panel_ui.processing.demo {
+                ui.label(root);
+                if button(ui, "Copy starter path", "rna_panel.demo.starter") {
+                    ui.ctx().copy_text(
+                        std::path::Path::new(root)
+                            .join("artifacts/starter.json")
+                            .display()
+                            .to_string(),
+                    );
+                }
+                if button(ui, "Copy screen-request path", "rna_panel.demo.request") {
+                    ui.ctx().copy_text(
+                        std::path::Path::new(root)
+                            .join("artifacts/screen.json")
+                            .display()
+                            .to_string(),
+                    );
+                }
+            }
+        });
+        if let Some(path) = prepare
+            && let Err(error) = self.submit_rna_operation(
+                Operation::PrepareRnaReadPanelDemo {
+                    output_dir: path.clone(),
+                },
+                Task::Demo(path),
+            )
+        {
+            self.rna_panel_ui.processing.error = Some(error);
+        }
+        if let Some(error) = &self.rna_panel_ui.processing.error {
+            ui.colored_label(egui::Color32::RED, error);
+        }
+    }
+
     fn render_rna_runs(&mut self, ui: &mut egui::Ui) {
         let mut cancel = None;
         let mut inspect = None;
@@ -751,7 +826,8 @@ impl GENtleApp {
                             ui.label(format!("{} reads in current file; compressed bytes {}/{} (decoder read-ahead, not verified completion)", progress.processed_reads, progress.compressed_bytes_read, progress.compressed_bytes_total));
                         }
                         if let Some(binding) = &receipt.artifact_result {
-                            ui.strong(format!("Published outcome: {}", binding.outcome));
+                            let outcome = ui.strong(format!("Published outcome: {}", binding.outcome));
+                            capture_status(&outcome, &format!("rna_panel.run.{}.outcome", run.id), Some(&binding.report_content_sha256), &binding.outcome);
                             ui.label(&binding.report_path);
                             if button(ui, "Copy report binding", &format!("rna_panel.run.{}.binding", run.id)) {
                                 if let Ok(json) = serde_json::to_string_pretty(binding) { ui.ctx().copy_text(json); }

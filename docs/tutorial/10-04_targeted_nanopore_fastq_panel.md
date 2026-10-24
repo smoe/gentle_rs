@@ -1,6 +1,6 @@
 # 10.04: What Did Our Targeted cDNA Primers Recover?
 
-Status: manual/hybrid; implementation and Rust/native acceptance pending Glen/CI.
+Status: manual/hybrid; native workflow implemented, Rust/native acceptance pending Glen/CI.
 This is a first working lesson for us to improve together, not a validated assay.
 
 ## The Question
@@ -71,6 +71,66 @@ previous run. Model/live GUI interaction is not accepted merely by testing
 these deterministic commands; Glen/CI must verify those boundaries separately.
 
 ## 1. Rehearse Without Your Sequencing Data
+
+### GUI-Only Rehearsal
+
+Start with a disposable project and a verified source-matched desktop build.
+This path requires no GUI Shell, terminal, private reads or network. Keep the
+rehearsal directory separate from your sequencing downloads.
+
+1. Open **Genome > RNA Read Panel...** and click **Prepare synthetic rehearsal...
+   (writes files)**. Choose an existing empty working parent. GENtle proposes a
+   fresh child directory and writes five artificial loci, a resolved five-member
+   synthetic gene set, tiny gzipped reads, MD5 manifest and request JSON files.
+   It does not replace the active project or run reads. Copy the starter path.
+2. Use **File > Open Project** to open that `artifacts/starter.json`. This
+   replaces the active project, which is why the rehearsal is disposable.
+   Return to **Prepare**, click **Refresh loaded loci**, select the stored
+   synthetic set (five `SYN_0` through `SYN_4` members), then **Bind loaded
+   gene-set members**. The synthetic `gene_id` annotations—not similar labels—
+   establish this mapping. These are toy IDs, not Ensembl identifiers.
+3. In **Declared provenance defaults**, enter source `hand_crafted`, assembly
+   `synthetic`, release `v1`; **Fill missing draft provenance**. Keep every
+   annotated transcript selected. Choose `artifacts/panel.json` as the fresh
+   **New panel file**, keep **Keep panel in project graph**, and **Build new
+   panel**. Require five genes, five loci and ten selected/annotated transcripts.
+   Inspect the reference graph if desired; it is not sequencing evidence.
+4. In **Screen**, **Load request...** from `artifacts/screen.json`, then
+   **Inspect panel** (or **Use prepared panel**). Inspect the actual content hash.
+   The two generated files already have completed-copy assertions, synthetic
+   sample/barcode bindings, k=12, minimum chain=24, junction flank=4 and FASTA
+   export enabled. Keep `DEMO_1`/`DEMO_2`, not the real-library presets. Review
+   both file rows, manifest and fresh output/control paths.
+5. **Review request**, inspect/copy its JSON, optionally **Save request...** to
+   a fresh file, then **Run reviewed screen (writes files)**. In **Runs**, watch
+   progress and use another window; closing/reopening this workspace must not
+   cancel. These tiny files may complete before you see intermediate progress.
+   Use a separate explicitly approved larger synthetic run for cancel/wakeup
+   acceptance; do not use private downloads merely to slow down the rehearsal.
+6. Open the bound result in **Inspect**. Require `completed`, two verified file
+   units and four reads per file. Choose the first file and four rows, then
+   **Inspect nomination prefix**. `demo_0` co-nominates two same-gene transcripts;
+   `demo_1` has A's junction support while B remains nominated through the shared
+   exon; `demo_3` is unmatched. Gene-set preparation uses discovered namespaced
+   locus/member IDs, which need not be the CLI demo's literal `locus_0:0` IDs.
+   Compare them via the panel's gene/transcript/source map, not label guesses.
+7. **Add screen to summary**, then **Export**. Choose a fresh output parent,
+   **Review summary request**, and **Export reviewed summary (writes files)**.
+   Inspect the bound summary: both synthetic samples retain four verified reads
+   and the exact class/member sets; no fractional redistribution or isoform
+   winner appears. **Verify summary tables** and retain its table-only receipt.
+8. Save/reopen the project and explicitly reopen the saved external report
+   in **Inspect**. Paste a copied result binding when available. This checks
+   evidence, not recovery of the old worker. Undoing panel registration must
+   not remove external panel, report or table files.
+
+The generated starter and request files can also be used through the inner
+agent or the CLI path below. Native discovery may assign different locus IDs
+and source fingerprints than `build.json`; copying the native reviewed request
+is the exact replay route. Do not claim byte-identical reports from different
+panels merely because both use the same toy genes.
+
+### CLI Rehearsal
 
 Use an externally verified, source-matched GENtle CLI containing the panel
 commands. Do not build Rust for this tutorial on a host where builds are
@@ -715,6 +775,37 @@ nomination rates. Then record which step was unclear and what extra table or
 plot would help. Neither a maximum score nor a TapeStation band proves identity.
 
 ## Verification Scope
+
+### Typed Checkpoints And Capture Targets
+
+These are acceptance requirements, not recorded passes. Glen should retain a
+checkpoint ledger pairing requested action, resolved semantic target, X11 event,
+before/after snapshot generations, typed scientific JSON result, hashes and
+failure class. A screenshot proves visible presentation, not scientific success.
+Use the repository's source/binary/geometry/snapshot-bound screenshot policy;
+no capture or private-data run was performed while authoring this lesson.
+
+| Stage | Native semantic target(s) | Typed postcondition / retained evidence |
+| --- | --- | --- |
+| Prepare demo | `rna_panel.demo.prepare` | Fresh `artifacts/starter.json`, `screen.json`, tiny FASTQ.gz and manifest; active project unchanged |
+| Bind/build | `rna_panel.refresh`, `rna_panel.build` | Panel `gene_count=5`, `locus_count=5`, `selected_transcript_count=10`, `annotated_transcript_count=10`; retain actual panel SHA and source/member map |
+| Review | `rna_panel.tab.screen`, `rna_panel.screen.load`, `rna_panel.screen.inspect_panel`, `rna_panel.screen.panel_binding`, `rna_panel.screen.review` | Pin status `reviewed` with panel-hash subject; captured request has explicit files/identities/checksums/policy; edits invalidate review |
+| Run/observe | `rna_panel.screen.run`, `rna_panel.tab.runs` | Final report `status=completed`, `files_completed` length 2, each `reads=4`, empty missing ledger; receipt binding matches submitted/effective request and panel/report hashes |
+| Inspect | `rna_panel.inspect.file`, `rna_panel.inspect.rows`, `rna_panel.inspect.prefix`, `rna_panel.inspect.outcome` | Outcome role remains `completed`; first 4 rows retain two candidates on shared exon, A's junction evidence without excluding B, and unmatched N read; `artifact_content_verified=false` |
+| Export | `rna_panel.inspect.add_summary`, `rna_panel.tab.export`, `rna_panel.export.review`, `rna_panel.export.run` | Summary `completeness=complete`, 2 samples, 4 verified reads per sample, nonempty exact class/member sets; no molecule or exclusive isoform inference |
+| Verify | `rna_panel.inspect.verify`, `rna_panel.inspect.verification` | Role `verified_tables_only` bound to summary SHA; 3 table receipts, `original_inputs_reverified=false` |
+
+Retain permitted synthetic screenshots for setup/review, progress/outcome,
+nomination prefix, summary ambiguity and verification. A fast tiny fixture may
+not expose running progress; do not fabricate it. If a dialog/control cannot be
+resolved by the current native/Xvfb harness, record `harness_gap`, not guessed
+coordinates or a false scientific failure. This manual/hybrid chapter does not
+claim a newly executable generic `gui_acceptance.v1` runner contract.
+
+Separately test cancellation/control errors, four occupied execution slots,
+other-window/agent responsiveness, project replacement, close/reopen and report
+restart inspection. These need observable scheduling, not just the tiny fixture's
+completed state. Preserve all statuses and bindings described in section 3.1.
 
 Synthetic Rust tests are authored but not run locally; Glen/CI owns execution,
 cross-platform paths/gzip, canonical parity/catalog freshness and native checks.

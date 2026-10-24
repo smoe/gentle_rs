@@ -65,6 +65,12 @@ files)**; compatibility/deduplication remains engine-owned. Reopen the bound
 summary and review its retained source hashes and partial coverage. Nothing is
 automatically attached to the project graph.
 
+**Prepare synthetic rehearsal... (writes files)** creates only a fresh synthetic
+directory through the existing shared demo operation; it does not load a project
+or run reads. The starter includes a resolved toy gene set for native preparation.
+Use File > Open Project explicitly and follow the complete no-shell rehearsal
+in tutorial 10.04. Capture/runtime/scientific acceptance remains Glen/CI work.
+
 [Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
 `panel-cancel` routes for every stage. Export read-support summaries with

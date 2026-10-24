@@ -52,8 +52,11 @@ guards. Shared result bindings distinguish submitted/effective requests and
 panel/report identities; metadata inspection can verify the expected binding
 without rereading manifests, original FASTQ or current locus records. Observation
 and marker control have separately bounded host lanes; neither is run on the
-paint thread or gated by full execution slots. Native screen/monitor/inspector
-work is tracked in [the active plan](rna_panel_gui_processing_plan.md).
+paint thread or gated by full execution slots. Native Prepare/Screen/Runs/
+Inspect/Export pages project the same shared contracts. UI edits cannot change
+an approved in-flight request; closing the view is not cancellation. Explicit
+saved-file reopening is not worker recovery. Integration acceptance is tracked
+in [the implementation ledger](rna_panel_gui_processing_plan.md).
 
 ## Publication projections
 

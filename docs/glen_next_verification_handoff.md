@@ -1,5 +1,79 @@
 # Glen: Next Verification And Return
 
+## Native RNA Processing And Tutorial 10.04, 2026-10-24
+
+Integrate `4603d029` (execution/bindings), `a87fb9c6` (setup/monitor),
+`6d7d6ef3` (inspector/export) and the subsequent rehearsal/parity commit at
+ordinary current main; do not freeze another candidate. The earlier unrelated
+goal remains paused. No local Codex Rust/native run, private sequencing access,
+capture, provider call or push is claimed.
+
+Run focused checks, then normal full CI on that exact integrated SHA:
+
+```sh
+cargo test --locked --lib -j1 rna_panel_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_screen_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_native_ -- --test-threads=1
+cargo test --locked --lib -j1 command_execution -- --test-threads=1
+cargo test --locked --lib -j1 rna_artifact_writes -- --test-threads=1
+cargo test --locked --test capability_registry_parity --test parity_matrix_freshness
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_examples_docs
+cargo test --locked --lib --features gui-test-support -j1 rna_screen_native_semantic_targets -- --test-threads=1
+cargo fmt --all -- --check
+python3 -m unittest scripts.test_rna_panel_tutorial scripts.test_tutorial_checkouts scripts.test_capability_maturity
+```
+
+The `rna_screen_` filter includes draft-save agent confirmation. Preserve
+existing RNA MCP, GUI intent/palette, approval and command-service contracts.
+The authored app test holds the live project write lock across native screen,
+monitor, bound reopening and summary export; require two synthetic samples,
+four reads each, retained class/member sets and no live journal append. This
+is not native GUI evidence. Keep the channel-controlled late-cancel/concurrent-
+job tests below and ordinary mutator stale rejection.
+
+With a verified source-matched docs binary, check catalog/manifest/parity
+generation and tutorial replay using the repo's normal commands. The five
+new native command cells and GUI totals were projected from the changed
+glossary; exact Rust generator freshness still needs execution. Maturity
+projections were refreshed by their Python generator. The synthetic demo now
+contains stable toy `gene_id` qualifiers and a stored resolved gene set so
+native preparation uses the real binding path. New demo/panel/report hashes
+legitimately change; legacy omitted-field hashes must not.
+
+Follow [the GUI-only rehearsal](tutorial/10-04_targeted_nanopore_fastq_panel.md#gui-only-rehearsal)
+and its [typed checkpoints](tutorial/10-04_targeted_nanopore_fastq_panel.md#typed-checkpoints-and-capture-targets).
+Retain permitted synthetic source/binary/snapshot-bound screenshots of setup,
+progress/outcome, nomination prefix, summary ambiguity and table verification.
+Test native and hosted narrow-window scrolling. Missing dialog/control automation
+coverage is `harness_gap`, not guessed clicks or a biology verdict. This chapter
+remains manual/hybrid, not a new generic acceptance-runner contract.
+
+Use an observable source-bound synthetic job for scheduling checks: other windows
+and agent conversation stay usable; close/reopen does not cancel; four occupied
+execution slots do not block marker control/plain inspection; table verification
+uses bounded execution capacity. Verify cancel before/during/after publication,
+marker-write failure and post-start control_error retention. Reopen saved bindings
+after restart without claiming worker recovery. On Windows test handles, quoted/
+Unicode paths, raw traversal, fresh atomic draft save/no overwrite and LF/CRLF
+request/cancel identity. Do not use private downloads to slow down the rehearsal.
+
+Inner/outer-agent rehearsal covers `ui open rna-read-panel`, discovery/build,
+metadata-only `panel-screen --request ... [--save ...]`, approved screening,
+`introspect runtime`, request-bound cancel, bound `panel-show`, summary export
+and table verification. Writes stay `ask`; draft saving via MCP uses
+`agent_execute_plan`, scientific operations remain `op`/workflow/script accessible.
+Compare canonical scientific payloads, not host-local job IDs or timestamps.
+No model call was made here. Return SHA/toolchain/platform, exact commands,
+ledger/hash locations and classified failures via the main-maintaining thread.
+Queueing and short result-graph attachment stay separate.
+
+Exercise existing size budgets explicitly: interactive result metadata is capped
+at 16 MiB. An oversized artifact run retains its bound compact receipt/full
+disk report; an oversized inspection can refuse rather than silently truncate.
+Measure actual metadata size for the intended panel/file counts before claiming
+large-library GUI coverage. Paging beyond that budget is not implemented here.
+
 ## File-Only RNA Execution And Result Bindings, 2026-10-24
 
 At the ordinary integrated source, run the focused `rna_panel_` lib filter,
@@ -33,8 +107,9 @@ do not infer file-only policy from `state_changed=false` or caller JSON. Review
 `submit_parsed` freezing versus raw-text worker parsing, agent project-change
 handling and compact-result feedback. Cross-process cancellation remains the
 request-bound marker; these process-local job IDs are not portable handles.
-The active [processing plan](rna_panel_gui_processing_plan.md) continues with
-native setup/monitor/inspector/export and tutorial acceptance in later commits.
+Native setup/monitor/inspector/export and the rehearsal are implemented;
+integrated runtime/native acceptance is described above and in the
+[processing plan](rna_panel_gui_processing_plan.md).
 
 ## Gene-Set RNA Panel Preparation And Graph, 2026-10-24
 

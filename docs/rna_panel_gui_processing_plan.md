@@ -67,12 +67,27 @@ Do not infer a new result from an existing output filename.
    viewed hash; a changed record cannot silently replace the inspected snapshot.
    Virtualized count tables preserve complete class/member sets and unknowns.
    Shared-report projection/export-review regressions are authored, not run.
-4. **Tutorial 10.04 and parity acceptance handoff. Next implementation step.**
+4. **Tutorial 10.04 and parity acceptance handoff. Implemented; Glen/CI acceptance pending.**
    Supply a complete synthetic no-shell rehearsal through native controls and
    matching CLI/MCP/inner-agent routes. Add semantic targets/typed checkpoints,
    schema/approval/parity tests and LF/CRLF freshness coverage where required.
    Glen captures permitted source-bound screenshots and verifies native/hosted
    interaction, platform file handles, live-agent access and responsiveness.
+   Synthetic starter now includes a resolved gene set and exact toy gene IDs;
+   native demo preparation is the existing shared operation. Full no-shell
+   rehearsal, source/catalog metadata, semantic controls/statuses and typed
+   manual checkpoints are documented. Actual GUI handlers/oracle entries now
+   justify prominence; scientific routes and approvals remain unchanged.
+   This is not a new generic runner contract or an executed GUI pass.
+
+Implementation commits: `4603d029` (Step 0), `a87fb9c6` (setup/monitor),
+`6d7d6ef3` (inspector/export), followed by the rehearsal/parity commit.
+Scoped implementation is complete; [Glen/CI verification](glen_next_verification_handoff.md#native-rna-processing-and-tutorial-1004-2026-10-24)
+remains separate. No current-source Rust/native acceptance, screenshot, live
+model, large-data throughput or private-library biological result is claimed.
+Final local checks: 104 Python source/checkout/maturity tests passed; scoped
+rustfmt, maturity freshness and whitespace checks passed. Rust generator,
+compilation, native capture and live-model acceptance remain unrun here.
 
 Commit each completed step and rebase on local `main`, preserving unrelated
 changes. Record actual verification and exact commits here; never promote
