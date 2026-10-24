@@ -91,6 +91,23 @@
   capability-maturity freshness and whitespace pass. This is not Rust/native
   acceptance and does not establish live-agent responsiveness or throughput.
 
+## 2026-10-24 - Reconcile The Landed Gel-Density Review
+
+- Recheck Claude's positive review against `08b29ad6`; retain the existing
+  verified density projection, legacy output and explicit GUI/CLI defaults.
+  No algorithm, renderer, tutorial, stored result or scientific policy changes.
+- Clarify in GUI Help that summary and QQ wait for successful comparison
+  verification. Failure exposes no trusted numbers; raw CLI inspection remains
+  diagnostic. Extend the existing consolidated Glen checklist with this native
+  behavior, mode/export parity and stale-result checks, not a new audit campaign.
+- Link the existing `91070ae4` catalog repair and recorded six-test protocol
+  pass without reclassifying older failed runs or claiming current full-suite,
+  platform, native, scientific or release acceptance. Real-data subtraction
+  remains undecided; no new Rust execution, push, capture or dispatch.
+- Verification: 54 source/fixture Python tests, documentation status and
+  whitespace checks pass. Session-close: four OK, two expected intentional-tree/
+  manual-plan warnings, zero failures; roadmap remains 400 lines.
+
 ## 2026-10-24 - Native And Shared RNA-Panel Preparation
 
 - Add Genome > RNA Read Panel, command-palette and shared UI-intent access for

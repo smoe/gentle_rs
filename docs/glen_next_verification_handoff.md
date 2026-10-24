@@ -508,9 +508,34 @@ The repaired registry keeps all four catalog commands shell-reachable on
 MCP/JS/Lua without fake engine operations or n/a exceptions; provider update
 confirmation remains unchanged. Do not re-pin matrix counts merely to pass.
 
-For gel native follow-up, only actual project replacement, explicit selection
-switch and separate Cancel-button behavior remain from this return. Retain
-honest platform/X11/Xvfb versus physical-host scope and original captures;
+Review reconciliation, 2026-10-24: the repair is already in `91070ae4`, not a
+new gel defect to implement. The [density rebase return](gel_workbench.md#comparison-density-verification-2026-10-20)
+records all six protocol `gel_workbench` tests passing on `09639034` plus the
+density slice, including the canonical parity projection. The earlier failure
+above remains evidence for its older source, not today's gate result. That
+filtered pass does not certify a current unfiltered protocol/CI run; keep the
+commands above in normal consolidated verification, without repeating a full
+campaign merely to relabel the SHA.
+
+For gel native follow-up, actual project replacement, explicit selection
+switch and separate Cancel-button behavior remain from Glen's `bb1686bd` return.
+At the next consolidated native run, also check the later density UI explicitly:
+
+- Select a saved comparison: summary and QQ must wait for **Verify and display
+  saved comparison**, rather than appearing immediately. Successful replay
+  reveals the shared profile panel, summary and QQ together. A deliberately
+  mismatching copy must show the failure reason without a trusted curve,
+  summary or QQ; raw CLI `inspect_comparison` remains diagnostic, not validation.
+- Select **Signal per size width**, verify, then explicitly select **Legacy bin
+  integrals** and verify again. Mode/selection/revision changes must remove the
+  previous view; exercise project replacement, Cancel and close during work so
+  no late result returns. Confirm the selector also drives PDF export. Use
+  explicit density in the CLI for GUI/PDF comparison; omission remains legacy.
+- Preserve saved integrals/statistics, zero versus gaps and the common-axis
+  acquisition caveat. The separate unscaled custom-only reference is not an
+  algebra coefficient or normalization. Real-data subtraction remains undecided.
+
+Retain honest platform/X11/Xvfb versus physical-host scope and original captures;
 green automated guards do not close these paths. Do not repeat completed gel
 arithmetic, six-command 10.03, JSON/PDF or five-page legacy comparisons just
 to relabel them; recheck affected paths if their source changes. Any native

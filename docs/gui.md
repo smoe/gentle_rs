@@ -285,8 +285,12 @@ Ordered algebra export appends verified result/provenance pages. Legacy or
 mismatching results stay diagnosable but cannot be report-exported. Existing
 comparison pages retain their legacy bin-total display when export mode is omitted.
 **Verify and display saved comparison** prepares a verified profile-only panel
-in the worker, retaining native summaries and QQ without duplication. Its
-session-only selector defaults to **Signal per size width** and also controls
+in the worker. Selecting a saved comparison alone shows neither its summary
+nor QQ: both appear with the panel only after successful verification. A failed
+check shows the reason, not trusted numbers or a previous plot. For diagnosis,
+CLI `inspect_comparison` still exposes the raw, unverified saved report; it does
+not authorize display or export. The GUI's session-only selector defaults to
+**Signal per size width** and also controls
 PDF comparison export; **Legacy bin integrals** is available explicitly. Mode,
 selection or revision changes invalidate the picture; canceled/closed/project
 changes reject late results. If busy, wait and prepare the selected mode again.
