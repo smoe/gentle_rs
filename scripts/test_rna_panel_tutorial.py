@@ -16,6 +16,44 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_shared_mature_sequences_are_diagnostics_not_source_identity_in_both_checkouts(self):
+        panel = (ROOT / "src/engine/analysis/rna_panel.rs").read_text(encoding="utf-8")
+        types = (ROOT / "src/engine/protocol/rna_panel.rs").read_text(encoding="utf-8")
+        tests = (ROOT / "src/engine/analysis/rna_panel/tests.rs").read_text(encoding="utf-8")
+        legacy_tests = (ROOT / "src/engine/tests.rs").read_text(encoding="utf-8")
+        for crlf in (False, True):
+            with self.subTest(crlf=crlf):
+                source = panel.replace("\n", "\r\n") if crlf else panel
+                overlap = source.split("fn source_overlaps(", 1)[1].split(
+                    "fn shared_transcript_sequences(", 1)[0]
+                self.assertNotIn("shared_transcript_sequences", overlap)
+                self.assertNotIn("template.sequence_sha256", overlap)
+                self.assertIn("same_declared_gene", overlap)
+                self.assertIn("panel_shared_sequence_binding", source)
+                self.assertIn("not physical source identity", source)
+                schema = types.replace("\n", "\r\n") if crlf else types
+                self.assertRegex(schema, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub shared_transcript_sequences: Option<Vec<RnaReadPanelSharedTranscriptSequence>>')
+        for name in (
+            "rna_panel_duplicate_extracts_with_different_extents_require_source_identity_not_rna_equality",
+            "rna_panel_cross_gene_identical_mature_sequences_keep_both_members_and_one_ambiguous_count",
+            "rna_panel_shared_sequence_diagnostic_is_exact_selected_digest_bound_and_legacy_optional",
+        ):
+            self.assertIn("fn " + name, tests)
+        for name in (
+            "rna_legacy_single_gene_and_multi_gene_sparse_outputs_survive_file_only_panel_build",
+            "rna_legacy_noop_sparse_expansion_preserves_full_scientific_output",
+        ):
+            self.assertIn("fn " + name, legacy_tests)
+        self.assertIn('remove("generated_at_unix_ms")', legacy_tests)
+        for path in ("src/app/rna_panel_ui.rs", "src/app/rna_panel_ui/processing/evidence.rs"):
+            self.assertIn("panel.shared_transcript_sequences", (ROOT / path).read_text(encoding="utf-8"))
+        for text in (GUIDE.read_text(encoding="utf-8"), GUIDE.read_text(encoding="utf-8").replace("\n", "\r\n")):
+            guide = re.sub(r"\s+", " ", text)
+            for phrase in ("shared_transcript_sequences", "different flanks or extraction extents",
+                           "genuinely indistinguishable transcripts of different genes",
+                           "both members remain", "not biological uniqueness"):
+                self.assertIn(phrase, guide)
+
     def test_historical_source_and_budget_review_repairs_have_scoped_contracts(self):
         panel = (ROOT / "src/engine/analysis/rna_panel.rs").read_text(encoding="utf-8")
         legacy = (ROOT / "src/engine/analysis/rna_reads.rs").read_text(encoding="utf-8")

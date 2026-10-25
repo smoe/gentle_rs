@@ -318,6 +318,10 @@ impl GENtleApp {
             if let Some(panel) = &loaded.content.rna_read_panel {
                 ui.heading(format!("{} genes / {} loci / {} selected of {} transcripts", panel.gene_count, panel.locus_count, panel.selected_transcript_count, panel.annotated_transcript_count));
                 if !panel.overlapping_source_pairs.is_empty() { ui.label(format!("Overlapping source pairs: {:?}", panel.overlapping_source_pairs)); }
+                if let Some(shared) = &panel.shared_transcript_sequences {
+                    ui.label("Shared mature sequences: review source provenance; sequence equality does not establish one gene.");
+                    table(ui, "rna_shared_transcript_sequences", shared.len(), |ui, i| { let group = &shared[i]; ui.label(format!("{} | loci {:?} | members {:?}", group.sequence_sha256, group.locus_ids, group.member_ids)); });
+                } else { ui.label("Shared mature-sequence diagnostic: not recorded in this historical panel."); }
                 table(ui, "rna_panel_sources", panel.loci.len(), |ui, i| { let l = &panel.loci[i]; ui.label(format!("{} | {} | {} | {} | {} | {} | {}", l.source.locus_id, l.source.gene_symbol, l.source.gene_id, l.source.assembly, l.source.annotation_release, l.source.source, l.source_record_sha256)); });
                 table(ui, "rna_panel_members", panel.templates.len(), |ui, i| { let t = &panel.templates[i]; ui.label(format!("{} | {} | {} | {} bases | junctions {:?} | source exons {:?}", t.member_id, t.transcript_id, t.strand, t.sequence.len(), t.junction_offsets, t.source_exons)); });
             }

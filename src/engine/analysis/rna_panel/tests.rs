@@ -110,6 +110,299 @@ pub(super) fn request(
     }
 }
 
+fn shared_mature_sequence_sources(
+    directory: &Path,
+    same_declared_gene: bool,
+) -> (GentleEngine, BuildRnaReadPanelRequest, String) {
+    // Independent synthetic flanks and exon boundaries, but exactly the same 60-base RNA.
+    let (mut engine, mut build) = starter(2, directory);
+    let mature = bases(875, 60);
+    for (i, exons) in [vec![(10, 40), (70, 100)], vec![(20, 40), (80, 120)]]
+        .into_iter()
+        .enumerate()
+    {
+        let mut sequence = bases(900 + i as u64, 150 + i * 30).into_bytes();
+        let mut offset = 0;
+        for &(start, end) in &exons {
+            sequence[start..end].copy_from_slice(&mature.as_bytes()[offset..offset + end - start]);
+            offset += end - start;
+        }
+        let mut dna = DNAsequence::from_sequence(&String::from_utf8(sequence).unwrap()).unwrap();
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(
+                exons
+                    .into_iter()
+                    .map(|(start, end)| {
+                        gb_io::seq::Location::simple_range(start as i64, end as i64)
+                    })
+                    .collect(),
+            ),
+            qualifiers: vec![
+                ("gene".into(), Some(format!("SYN_{i}"))),
+                ("transcript_id".into(), Some(format!("synthetic_tx_{i}"))),
+            ],
+        });
+        engine
+            .state_mut()
+            .sequences
+            .insert(format!("source_{i}"), dna);
+    }
+    if same_declared_gene {
+        // A real crop of the first synthetic source, with source-local exon coordinates shifted.
+        let full = engine.state().sequences["source_0"].get_forward_string();
+        let mut cropped = DNAsequence::from_sequence(&full[5..125]).unwrap();
+        cropped.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(5, 35),
+                gb_io::seq::Location::simple_range(65, 95),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("SYN_0".into())),
+                ("transcript_id".into(), Some("synthetic_tx_cropped".into())),
+            ],
+        });
+        engine
+            .state_mut()
+            .sequences
+            .insert("source_1".into(), cropped);
+        build.sources[1].gene_id = build.sources[0].gene_id.clone();
+    }
+    (engine, build, mature)
+}
+
+#[test]
+fn rna_panel_duplicate_extracts_with_different_extents_require_source_identity_not_rna_equality() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, mut build, mature) = shared_mature_sequence_sources(td.path(), true);
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    assert!(panel.loci.iter().all(|l| l.genome_anchor.is_none()));
+    assert_ne!(
+        panel.loci[0].source_record_sha256,
+        panel.loci[1].source_record_sha256
+    );
+    assert_ne!(
+        panel.loci[0].source_sequence_sha256,
+        panel.loci[1].source_sequence_sha256
+    );
+    assert_eq!(panel.templates[0].sequence, mature);
+    assert_eq!(panel.templates[0].sequence, panel.templates[1].sequence);
+    assert_eq!(
+        panel.overlapping_source_pairs,
+        vec![("locus_0".into(), "locus_1".into())]
+    );
+    assert_eq!(panel.shared_transcript_sequences.as_ref().unwrap().len(), 1);
+    let run = request(&panel, td.path(), &mature);
+    let mut progress_calls = 0;
+    let error = engine
+        .screen_rna_read_panel(run.clone(), &mut |_| {
+            progress_calls += 1;
+            true
+        })
+        .unwrap_err();
+    assert!(error.message.starts_with("panel_overlapping_sources:"));
+    assert_eq!(progress_calls, 0);
+    assert!(!Path::new(&run.output_dir).exists());
+    // Without a common declared identity/anchor, the same crop must remain a warning,
+    // not a sequence-based assertion of gene identity or an automatic merge/refusal.
+    build.sources[1].gene_id = "SYN_OTHER_PROVIDER_ID".into();
+    build.output_path = td
+        .path()
+        .join("unresolved-source-panel.json")
+        .display()
+        .to_string();
+    let unresolved = engine.build_rna_read_panel(&build).unwrap();
+    assert!(unresolved.overlapping_source_pairs.is_empty());
+    assert_eq!(
+        unresolved
+            .shared_transcript_sequences
+            .as_ref()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn rna_panel_cross_gene_identical_mature_sequences_keep_both_members_and_one_ambiguous_count() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, mut build, mature) = shared_mature_sequence_sources(td.path(), false);
+    build.sources[0].source = "synthetic_ensembl".into();
+    build.sources[1].source = "synthetic_refseq".into();
+    for source in &mut build.sources {
+        source.gene_symbol = "SHARED_LABEL".into();
+    }
+    let before = encode(engine.state()).unwrap();
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    assert!(panel.overlapping_source_pairs.is_empty());
+    assert_ne!(
+        panel.loci[0].source_sequence_sha256,
+        panel.loci[1].source_sequence_sha256
+    );
+    assert_ne!(
+        panel.templates[0].junction_offsets,
+        panel.templates[1].junction_offsets
+    );
+    let expected = vec![RnaReadPanelSharedTranscriptSequence {
+        sequence_sha256: sha256_prefixed_str(&mature),
+        locus_ids: vec!["locus_0".into(), "locus_1".into()],
+        member_ids: vec!["locus_0:0".into(), "locus_1:0".into()],
+    }];
+    assert_eq!(
+        panel.shared_transcript_sequences.as_ref().unwrap(),
+        &expected
+    );
+    let mut inspector = engine.clone_without_history();
+    let command = crate::engine_shell::parse_shell_line(&format!(
+        "rna-reads panel-show {}",
+        crate::engine_shell::quote_shell_arg(&build.output_path),
+    ))
+    .unwrap();
+    assert!(!command.is_state_mutating());
+    let inspected = crate::engine_shell::execute_shell_command(&mut inspector, &command).unwrap();
+    assert_eq!(
+        inspected.output["result"]["rna_read_panel"]["shared_transcript_sequences"],
+        serde_json::to_value(&expected).unwrap()
+    );
+    build.sources.reverse();
+    build.output_path = td.path().join("reordered-panel.json").display().to_string();
+    let reordered = engine.build_rna_read_panel(&build).unwrap();
+    assert_eq!(encode(&panel).unwrap(), encode(&reordered).unwrap());
+    let run = request(&panel, td.path(), &mature);
+    let report = engine
+        .screen_rna_read_panel(run.clone(), &mut |_| true)
+        .unwrap();
+    assert_eq!(report.status, "completed");
+    assert_eq!(report.files_completed[0].reads, 1);
+    let keys = report.files_completed[0]
+        .equivalence_classes
+        .keys()
+        .collect::<Vec<_>>();
+    assert_eq!(keys.len(), 1);
+    let key: RnaReadPanelNominationSetKey = serde_json::from_str(keys[0]).unwrap();
+    assert_eq!(key.class, "multi_locus_ambiguous");
+    assert_eq!(key.member_ids, expected[0].member_ids);
+    let (_, _, rows, _) = engine
+        .inspect_rna_read_panel(
+            &Path::new(&run.output_dir)
+                .join("report.json")
+                .to_string_lossy(),
+            Some("file_0000"),
+            1,
+        )
+        .unwrap();
+    let rows = rows.unwrap();
+    assert_eq!(rows.rows[0].candidates.len(), 2);
+    assert!(
+        rows.rows[0]
+            .candidates
+            .iter()
+            .all(|c| c.read_orientation == "as_read")
+    );
+    let summary = engine
+        .export_rna_read_panel_summary(&ExportRnaReadPanelSummaryRequest {
+            schema: RNA_PANEL_SUMMARY_REQUEST_SCHEMA.into(),
+            report_paths: vec![
+                Path::new(&run.output_dir)
+                    .join("report.json")
+                    .display()
+                    .to_string(),
+            ],
+            output_dir: td.path().join("summary").display().to_string(),
+        })
+        .unwrap();
+    assert_eq!(summary.samples[0].reads, 1);
+    assert_eq!(summary.samples[0].single_candidate_reads, 0);
+    assert_eq!(summary.samples[0].co_nominated_reads, Some(1));
+    let sets = summary.co_nomination_sets.as_ref().unwrap();
+    assert_eq!(sets.len(), 1);
+    assert_eq!(sets[0].member_ids, expected[0].member_ids);
+    assert_eq!(sets[0].reads, 1);
+    assert_eq!(summary.transcripts.len(), 2);
+    assert!(
+        summary
+            .transcripts
+            .iter()
+            .all(|t| t.single_candidate_reads == 0 && t.co_nominated_reads == Some(1))
+    );
+    assert_eq!(encode(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn rna_panel_shared_sequence_diagnostic_is_exact_selected_digest_bound_and_legacy_optional() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build, mature) = shared_mature_sequence_sources(td.path(), false);
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let mut invalid = panel.clone();
+    invalid.shared_transcript_sequences.as_mut().unwrap()[0]
+        .member_ids
+        .pop();
+    seal_panel(&mut invalid).unwrap();
+    assert_eq!(
+        validate_panel(&invalid).unwrap_err().message,
+        "panel_shared_sequence_binding"
+    );
+    let mut legacy = panel.clone();
+    legacy.shared_transcript_sequences = None;
+    for locus in &mut legacy.loci {
+        locus.source_sequence_sha256 = None;
+    }
+    seal_panel(&mut legacy).unwrap();
+    let bytes = encode(&legacy).unwrap();
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("shared_transcript_sequences")
+    );
+    let restored: RnaReadPanel = serde_json::from_slice(&bytes).unwrap();
+    validate_panel(&restored).unwrap();
+    assert_eq!(encode(&restored).unwrap(), bytes);
+    let policy = RnaReadPanelPolicy {
+        kmer_len: 8,
+        min_chain_bases: 16,
+        min_junction_flank_bp: 3,
+        ..Default::default()
+    };
+    let (new_index, _) = build_index(&panel, &policy).unwrap();
+    let (legacy_index, _) = build_index(&restored, &policy).unwrap();
+    assert_eq!(
+        encode(
+            &nominate(&panel, &new_index, &policy, mature.as_bytes(), &mut || {
+                false
+            })
+            .unwrap()
+        )
+        .unwrap(),
+        encode(
+            &nominate(
+                &restored,
+                &legacy_index,
+                &policy,
+                mature.as_bytes(),
+                &mut || false
+            )
+            .unwrap()
+        )
+        .unwrap()
+    );
+    let mut separate = panel;
+    separate.templates[1]
+        .sequence
+        .replace_range(0..1, if &mature[..1] == "A" { "C" } else { "A" });
+    separate.templates[1].sequence_sha256 = sha256_prefixed_str(&separate.templates[1].sequence);
+    separate.shared_transcript_sequences = Some(shared_transcript_sequences(&separate.templates));
+    seal_panel(&mut separate).unwrap();
+    validate_panel(&separate).unwrap();
+    assert!(
+        separate
+            .shared_transcript_sequences
+            .as_ref()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn rna_panel_cross_source_identical_dna_without_anchors_is_flagged_before_streaming() {
     let td = tempfile::tempdir().unwrap();
@@ -163,6 +456,7 @@ fn rna_panel_legacy_locus_sequence_hash_is_absent_not_fabricated_and_stays_diges
     for locus in &mut panel.loci {
         locus.source_sequence_sha256 = None;
     }
+    panel.shared_transcript_sequences = None;
     seal_panel(&mut panel).unwrap();
     let bytes = encode(&panel).unwrap();
     assert!(

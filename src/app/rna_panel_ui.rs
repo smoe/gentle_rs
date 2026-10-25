@@ -875,6 +875,17 @@ impl GENtleApp {
                     }
                     if let Some(panel) = &state.panel {
                         ui.monospace(&panel.content_sha256);
+                        if let Some(shared) = &panel.shared_transcript_sequences {
+                            if !shared.is_empty() {
+                                ui.colored_label(
+                                    egui::Color32::YELLOW,
+                                    format!(
+                                        "{} mature sequences shared across loci; review source identities, not an automatic duplicate verdict",
+                                        shared.len()
+                                    ),
+                                );
+                            }
+                        }
                         if !panel.overlapping_source_pairs.is_empty() {
                             ui.colored_label(
                                 egui::Color32::RED,

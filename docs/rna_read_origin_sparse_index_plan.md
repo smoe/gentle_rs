@@ -5,8 +5,11 @@ portable `rna-reads panel-*` contract, with all qualifying member sets and
 same-pass supplier MD5/compressed SHA-256 verification. See [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 and [the protocol](protocol.md#multi-locus-fastq-screening). Rust/native/real-data
 acceptance is pending. This does not repair or relabel legacy annotation-order
-ties, the 64-posting chain cap or strand-filter/matched-target ordering below;
-the new panel does not use those winner/cap paths. Legacy FASTA intake now
+ties or the 64-posting chain cap; the new panel does not use those winner/cap
+paths. The separate `39ac4e44` repair moves matched-target bookkeeping after
+strand filtering. Its rerun and the [full-output regression comparisons](glen_next_verification_handoff.md#shared-sequence-ambiguity-and-legacy-output-regressions-2026-10-25)
+remain external verification, not acceptance of legacy winner semantics.
+Legacy FASTA intake now
 refuses FASTQ rather than treating a quality `>` as a sequence header.
 
 Source review: 2026-10-07. Multi-gene transcript targeting, origin classes and
@@ -59,8 +62,8 @@ into possibly replaced gzip. Potential duplicate source views are refused, not
 merged automatically. Its `*_candidate` classes deliberately avoid "unique
 isoform" or "proven chimera" language. Demo/show/cancel routes were added to
 make every tutorial stage available to the inner agent without OS shell tools.
-Separate repairs of legacy same-strand winner ties, the 64-posting cap and
-matched-before-strand-filter bookkeeping remain open; do not count the new
+Separate repairs of legacy same-strand winner ties and the 64-posting cap
+remain open; do not count the new
 panel's deterministic tests as fixing or accepting that legacy path.
 
 1. Annotation-independent genomic ROI seed capture. The current engine warns

@@ -153,6 +153,19 @@ implicit change to the competitor universe. A locus-position index requires
 measurement and per-template candidate-equivalence evidence before replacing
 current chaining; the best genomic chain cannot silently discard alternatives.
 
+Owner-authorized duplicate-source/ambiguity follow-up, 2026-10-25: keep physical
+source admission separate from exact mature-sequence sharing. Unequal extracts
+with a repeated declared assembly/gene identity remain refused. Sequence-equal
+selected transcripts across otherwise independent loci become a digest-bound
+`shared_transcript_sequences` diagnostic, not inferred gene identity or an
+automatic rejection/merge. Missing source relations require human provenance
+review; labels, matching RNA or a hash do not resolve them. Preserve every
+qualifying member and count the cross-gene co-nomination set once. Historical
+diagnostic absence stays omitted, not an empty-check verdict. No changes to
+legacy winner selection, posting caps or thresholds follow. Legacy regressions
+compare complete reports before/after file-only panel building and equivalent
+no-op expansion, excluding only creation time and explicit mode notices.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

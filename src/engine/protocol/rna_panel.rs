@@ -133,6 +133,15 @@ pub struct RnaReadPanelTemplate {
     pub source_exons: Vec<(usize, usize)>,
 }
 
+/// Exact selected mature-sequence sharing, not evidence that the loci are one gene.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSharedTranscriptSequence {
+    pub sequence_sha256: String,
+    pub locus_ids: Vec<String>,
+    pub member_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 /// Independent source namespaces and mature templates, bound by a canonical content digest.
@@ -147,6 +156,9 @@ pub struct RnaReadPanel {
     pub annotated_transcript_count: usize,
     /// Potential duplicate source views are disclosed, never silently counted as independent loci.
     pub overlapping_source_pairs: Vec<(String, String)>,
+    /// Selected-template diagnostic only; absent on historical panels, never an identity verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_transcript_sequences: Option<Vec<RnaReadPanelSharedTranscriptSequence>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,5 +1,43 @@
 # Glen: Next Verification And Return
 
+## Shared-Sequence Ambiguity And Legacy Output Regressions, 2026-10-25
+
+At ordinary integrated source, run:
+
+```sh
+cargo test --locked --lib -j1 rna_panel_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_legacy_ -- --test-threads=1
+cargo test --locked --lib -j1 multi_gene_sparse -- --test-threads=1
+cargo test --locked --lib -j1 rna_sparse_target_gene_presence_ -- --test-threads=1
+cargo check -q --locked --tests
+cargo check -q --locked --all-features --tests
+```
+
+New panels bind optional `shared_transcript_sequences` over selected templates.
+Exact mature-sequence equality across independent loci is a diagnostic, not an
+overlap verdict. Review unknown source relations rather than merging/rejecting
+genes by matching RNA. The synthetic tests cover differing source extents with
+repeated declared gene identity (refused), distinct gene IDs with a reused label
+and identical mature RNA/different exon boundaries (retained as two candidates,
+one cross-gene set/read), deterministic order, honest re-digestion tampering and
+legacy omission/nomination equivalence. Current-source `panel-show` must expose
+the same groups as the native preview/Inspect and inner-agent/MCP shared route.
+The two `rna_legacy_` tests compare entire scientific reports with only creation
+time and documented mode notices normalized; candidate scores, supports,
+histograms and other warnings are retained. These are regression comparisons,
+not independently executed historical byte baselines or biological acceptance.
+
+Follow tutorial 10.04's source-review note in the native/agent rehearsal.
+New explicit builds change panel identities; absent legacy diagnostics remain
+unrecorded without rewriting old panels. Existing budget failures, conservative
+whole-source overlap guards and marker/cancellation outcomes are unchanged.
+Rust/native execution and real-library calibration remain Glen/CI work; the
+previous unrelated goal stays paused and no private inputs or push are involved.
+Local checks: `python3 -m unittest scripts.test_rna_panel_tutorial
+scripts.test_tutorial_checkouts scripts.test_capability_maturity` passes 113
+tests; scoped rustfmt, maturity freshness and whitespace also pass. These are
+source/checkout checks, not execution of the new Rust comparisons or GUI.
+
 ## Focused macOS Labware Evidence, 2026-10-25
 
 The owner forwarded Claude's completed review/test report for exactly

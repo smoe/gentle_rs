@@ -51039,6 +51039,198 @@ fn test_interpret_rna_reads_multi_gene_sparse_adds_target_gene_templates() {
 }
 
 #[test]
+fn rna_legacy_single_gene_and_multi_gene_sparse_outputs_survive_file_only_panel_build() {
+    // Hand-crafted synthetic exons from the existing fixture, not a real gene or a panel oracle.
+    assert_eq!(RnaReadOriginMode::default(), RnaReadOriginMode::SingleGene);
+    let td = tempdir().unwrap();
+    let dna = splicing_multi_gene_test_sequence();
+    let sequence = dna.get_forward_string();
+    let gene1 = format!("{}{}", &sequence[5..20], &sequence[31..45]);
+    let gene2 = format!("{}{}", &sequence[61..75], &sequence[86..100]);
+    let path = td.path().join("legacy reads.fa");
+    fs::write(
+        &path,
+        format!(
+            ">gene1\n{gene1}\n>gene2\n{gene2}\n>unmatched\n{}\n",
+            "N".repeat(40)
+        ),
+    )
+    .unwrap();
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_a".into(), dna);
+    let engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let run = |mode, targets: &[String]| {
+        engine
+            .interpret_rna_reads_report(
+                "seq_a",
+                0,
+                RnaReadInterpretationProfile::NanoporeCdnaV1,
+                &path.to_string_lossy(),
+                RnaReadInputFormat::Fasta,
+                SplicingScopePreset::TargetGroupTargetStrand,
+                mode,
+                targets,
+                false,
+                &RnaReadSeedFilterConfig::default(),
+                &RnaReadAlignConfig::default(),
+                Some("legacy_regression"),
+            )
+            .unwrap()
+    };
+    let single = run(RnaReadOriginMode::SingleGene, &[]);
+    let sparse = run(RnaReadOriginMode::MultiGeneSparse, &["GENE2".into()]);
+    for (report, passed) in [(&single, 1), (&sparse, 2)] {
+        assert_eq!(report.read_count_total, 3);
+        assert_eq!(report.read_count_seed_passed, passed);
+        assert_eq!(report.read_count_aligned, 0);
+        assert_eq!(report.read_length_counts_all.iter().sum::<u64>(), 3);
+        assert_eq!(
+            report.read_length_counts_seed_passed.iter().sum::<u64>(),
+            passed as u64
+        );
+        assert_eq!(report.origin_class_counts.values().sum::<usize>(), 3);
+        assert_eq!(report.hits.len(), 3);
+        assert!(
+            report
+                .hits
+                .iter()
+                .any(|h| h.sequence == gene1 && h.passed_seed_filter)
+        );
+        assert!(
+            report
+                .hits
+                .iter()
+                .any(|h| h.sequence == "N".repeat(40) && !h.passed_seed_filter)
+        );
+    }
+    assert!(
+        single
+            .hits
+            .iter()
+            .any(|h| h.sequence == gene2 && !h.passed_seed_filter)
+    );
+    assert!(
+        sparse
+            .hits
+            .iter()
+            .any(|h| h.sequence == gene2 && h.passed_seed_filter)
+    );
+    let panel = engine
+        .build_rna_read_panel(&BuildRnaReadPanelRequest {
+            schema: RNA_PANEL_BUILD_SCHEMA.into(),
+            sources: vec![RnaReadPanelSource {
+                locus_id: "synthetic_gene1".into(),
+                seq_id: "seq_a".into(),
+                source_feature_id: 0,
+                source: "hand_crafted".into(),
+                assembly: "synthetic".into(),
+                annotation_release: "v1".into(),
+                gene_id: "GENE1".into(),
+                gene_symbol: "GENE1".into(),
+                selected_transcript_ids: vec![],
+                expected_source_record_sha256: None,
+            }],
+            output_path: td.path().join("panel.json").display().to_string(),
+            base_panel_path: None,
+            gene_set: None,
+            register_in_project: None,
+        })
+        .unwrap();
+    assert_eq!(panel.selected_transcript_count, 2);
+    // Compare every report field, including scores, candidates, support arrays and notices.
+    // Only wall-clock creation time is nondeterministic; input/report identities stay identical.
+    let canonical = |report: &RnaReadInterpretationReport| {
+        let mut value = serde_json::to_value(report).unwrap();
+        assert!(
+            value
+                .as_object_mut()
+                .unwrap()
+                .remove("generated_at_unix_ms")
+                .is_some()
+        );
+        value
+    };
+    assert_eq!(
+        canonical(&single),
+        canonical(&run(RnaReadOriginMode::SingleGene, &[]))
+    );
+    assert_eq!(
+        canonical(&sparse),
+        canonical(&run(RnaReadOriginMode::MultiGeneSparse, &["GENE2".into()]))
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn rna_legacy_noop_sparse_expansion_preserves_full_scientific_output() {
+    // Same synthetic template universe: GENE1 is already present on the target strand.
+    let td = tempdir().unwrap();
+    let dna = splicing_multi_gene_test_sequence();
+    let sequence = dna.get_forward_string();
+    let read = format!("{}{}", &sequence[5..20], &sequence[31..45]);
+    let path = td.path().join("reads.fa");
+    fs::write(&path, format!(">synthetic\n{read}\n")).unwrap();
+    let mut state = ProjectState::default();
+    state.sequences.insert("seq_a".into(), dna);
+    let engine = GentleEngine::from_state(state);
+    let run = |mode| {
+        engine
+            .interpret_rna_reads_report(
+                "seq_a",
+                0,
+                RnaReadInterpretationProfile::NanoporeCdnaV1,
+                &path.to_string_lossy(),
+                RnaReadInputFormat::Fasta,
+                SplicingScopePreset::TargetGroupTargetStrand,
+                mode,
+                &["GENE1".into()],
+                false,
+                &RnaReadSeedFilterConfig::default(),
+                &RnaReadAlignConfig::default(),
+                Some("noop_expansion"),
+            )
+            .unwrap()
+    };
+    let mut single = run(RnaReadOriginMode::SingleGene);
+    let mut sparse = run(RnaReadOriginMode::MultiGeneSparse);
+    assert_eq!(single.read_count_seed_passed, 1);
+    assert_eq!(sparse.read_count_seed_passed, 1);
+    let single_notice = "target_gene_ids were provided but origin_mode=single_gene; extra target genes are ignored unless origin_mode=multi_gene_sparse";
+    let sparse_notices = [
+        "origin_mode=multi_gene_sparse active: no additional transcript lanes were added from target_gene_ids (baseline scope already covered requested genes or none matched)",
+        "multi_gene_sparse matched target genes: GENE1",
+    ];
+    assert_eq!(
+        single
+            .warnings
+            .iter()
+            .filter(|w| w.as_str() == single_notice)
+            .count(),
+        1
+    );
+    single.warnings.retain(|w| w != single_notice);
+    for notice in sparse_notices {
+        assert_eq!(
+            sparse
+                .warnings
+                .iter()
+                .filter(|w| w.as_str() == notice)
+                .count(),
+            1
+        );
+        sparse.warnings.retain(|w| w != notice);
+    }
+    single.generated_at_unix_ms = 0;
+    sparse.generated_at_unix_ms = 0;
+    sparse.origin_mode = RnaReadOriginMode::SingleGene;
+    assert_eq!(
+        serde_json::to_value(single).unwrap(),
+        serde_json::to_value(sparse).unwrap()
+    );
+}
+
+#[test]
 fn rna_sparse_target_gene_presence_obeys_strand_without_losing_existing_lanes() {
     // Hand-crafted synthetic genes from the existing sparse-template fixture.
     for reverse in [false, true] {

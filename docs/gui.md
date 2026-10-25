@@ -64,6 +64,12 @@ checkbox makes a file-only build; CLI/agents control the same choice with
 `register_in_project`.
 
 The native **Inspect** page projects the shared panel, screen or summary record.
+New panel previews warn about exact mature sequences shared across loci;
+inspection lists their sequence hashes and all locus/member IDs. Check source
+provenance: shared RNA can reflect duplicate annotation views or distinct genes.
+This diagnostic does not block or merge otherwise independent loci. Missing
+historical diagnostics are labelled unrecorded; only selected templates are
+compared. Existing overlapping-source admission remains separate.
 Published runs reopen with their exact result binding; saved-file inspection
 after restart is explicit and does not invent a submitted-service receipt.
 The view retains verified/missing file units, control diagnostics, sample

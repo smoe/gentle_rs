@@ -83,6 +83,19 @@ panel/report/row payloads are the same; no adapter-local classification is added
   assembly/gene ID or same-strand overlapping genome anchors is flagged. Use
   independently extracted records for disjoint genes on one larger sequence;
   no source reconciliation or biological consensus is inferred.
+  New panels also record optional `shared_transcript_sequences`: exact selected
+  mature-sequence hashes with sorted `locus_ids` and `member_ids` spanning more
+  than one locus. This is a digest-bound diagnostic, not a source-overlap rule.
+  Different flanks or extraction extents can hide a duplicate source from the
+  whole-record DNA check; shared mature RNA alone cannot distinguish that case
+  from genuine cross-gene sequence sharing. Review source identities/coordinates;
+  never merge or reject loci merely because their mature transcripts match.
+  Repeated declared assembly/gene IDs still trigger existing source admission,
+  including extracts of unequal length. All qualifying independent members stay
+  in nominations and summary sets. The diagnostic covers selected templates only,
+  not excluded/unannotated transcripts; empty means no exact selected cross-locus
+  matches, not uniqueness. Historical absence stays omitted/unrecorded and keeps
+  old hashes; new explicit builds include the field, even when empty.
   Optional `gene_set_resolution` embeds the selected target operand and
   `parent_panel_sha256` binds extension provenance; both contribute to the panel
   hash and are omitted in historical panels. Thus an extension and an independent

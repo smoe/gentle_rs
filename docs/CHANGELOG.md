@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-25 - Separate Shared RNA Sequences From Source Identity
+
+- Add optional digest-bound cross-locus mature-sequence groups to new panels,
+  exposed by shared inspection and thin native preview/inspection views.
+  Preserve all qualifying members and count each ambiguous set once; matching
+  mature RNA does not establish duplicate physical sources. Unequal extracts
+  with repeated declared gene/assembly identity keep the existing refusal.
+  Historical omitted fields/hashes and legacy screening policies stay intact.
+- Author synthetic different-extent duplicate, distinct-gene shared-sequence,
+  exactness/order/tamper/legacy-byte and summary-count regressions. Pin complete
+  legacy single-gene/sparse report preservation across file-only panel building
+  and no-op expansion, retaining scientific fields and narrowly handling clock/
+  request-mode differences. Update tutorial 10.04 and the Glen handoff.
+- Rust/native verification stays with Glen/CI; no real reads, budget/index
+  changes, identity inference, goal resumption or push.
+- Verification: 113 Python source/tutorial/LF-CRLF checkout/maturity checks,
+  scoped rustfmt, maturity freshness and whitespace pass. Session-close has
+  four OK, two expected working-tree/manual-plan warnings and no failures.
+  These do not execute the newly authored Rust assertions or native views.
+
 ## 2026-10-25 - Record Reported Focused macOS Labware Verification
 
 - Retain the owner-forwarded Claude report at `39ac4e44`: protocol labware

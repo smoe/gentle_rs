@@ -156,6 +156,37 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
     pairs
 }
 
+fn shared_transcript_sequences(
+    templates: &[RnaReadPanelTemplate],
+) -> Vec<RnaReadPanelSharedTranscriptSequence> {
+    let mut groups = BTreeMap::<&str, Vec<&RnaReadPanelTemplate>>::new();
+    for template in templates {
+        groups
+            .entry(&template.sequence_sha256)
+            .or_default()
+            .push(template);
+    }
+    groups
+        .into_iter()
+        .filter_map(|(hash, members)| {
+            let loci = members
+                .iter()
+                .map(|t| t.locus_id.clone())
+                .collect::<BTreeSet<_>>();
+            (loci.len() > 1).then(|| RnaReadPanelSharedTranscriptSequence {
+                sequence_sha256: hash.into(),
+                locus_ids: loci.into_iter().collect(),
+                member_ids: members
+                    .iter()
+                    .map(|t| t.member_id.clone())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+            })
+        })
+        .collect()
+}
+
 impl GentleEngine {
     /// Source-picker projection using the same transcript grouping/templates as panel construction.
     /// Missing provenance stays blank for explicit caller review, never guessed from a record name.
@@ -308,6 +339,7 @@ impl GentleEngine {
             selected_transcript_count: 0,
             annotated_transcript_count: 0,
             overlapping_source_pairs: vec![],
+            shared_transcript_sequences: None,
             gene_set_resolution,
             parent_panel_sha256,
         };
@@ -427,6 +459,7 @@ impl GentleEngine {
             .len();
         panel.selected_transcript_count = panel.templates.len();
         panel.overlapping_source_pairs = source_overlaps(&panel.loci);
+        panel.shared_transcript_sequences = Some(shared_transcript_sequences(&panel.templates));
         project::validate_gene_set(&panel)?;
         seal_panel(&mut panel)?;
         validate_panel(&panel)?;
@@ -554,6 +587,13 @@ fn validate_panel(panel: &RnaReadPanel) -> Result<(), EngineError> {
     }
     if bases > 32_000_000 {
         return Err(bad("panel_reference_budget: 32 million transcript bases"));
+    }
+    if panel
+        .shared_transcript_sequences
+        .as_ref()
+        .is_some_and(|groups| groups != &shared_transcript_sequences(&panel.templates))
+    {
+        return Err(bad("panel_shared_sequence_binding"));
     }
     Ok(())
 }
@@ -944,6 +984,7 @@ fn screen_with_clock(
             "A nonempty selected_transcript_ids removes unselected competitors from the index. Single-candidate support is relative to that restricted panel, not isoform resolution.".into(),
             "Low-complexity/repeat words are not masked. Per-template posting work can grow with shared isoforms; resource-budget failure is not biological absence.".into(),
             "Duplicate-source checks do not establish biological identity or completeness. Historical panels without source_sequence_sha256 cannot check identical forward DNA across independently loaded records.".into(),
+            "Identical selected mature transcripts across loci flag sequence sharing, not physical source identity. Different extracts can be duplicate annotations or genuine cross-gene ambiguity; all qualifying members remain nominated, never merged or exclusively assigned.".into(),
             "A read spanning one isoform's distinguishing junction can still co-nominate an alternative through a shared exon. Junction confirmation remains separate; no conflicting isoform is eliminated by this screen.".into(),
             "Every supported template/orientation is retained. No primer trimming or oligo(dT) orientation flip is applied.".into(),
             "Lookup uppercases bases and converts U to T; quality characters are validated but do not filter or weight nominations. Raw input bytes remain digest-bound.".into(),

@@ -230,6 +230,17 @@ not the older single-locus RNA-read Mapping workspace.
    Older panels may omit this hash: their cross-source DNA-duplicate coverage
    is unknown. Rebuild explicitly from reviewed loaded sources to add the check;
    opening an old file does not silently update its evidence or hash.
+   Also review `shared_transcript_sequences` in **Inspect** or `panel-show`.
+   It lists exact mature sequences shared by selected members of different
+   loci, even when their source DNA has different flanks or extraction extents.
+   This warning cannot decide whether those are duplicate views of one gene or
+   genuinely indistinguishable transcripts of different genes. Check stable
+   source identities and coordinates before curating the panel. Matching RNA
+   must not silently merge genes or force one winner: both members remain in
+   the co-nomination set, counted once per read. Repeated declared assembly/gene
+   IDs remain blocked by the existing overlap check. An empty sharing list means
+   only no exact match among selected templates, not biological uniqueness;
+   historical panels may omit the diagnostic, meaning unrecorded.
 6. Inspect the main **Lineage Graph**: the target gene set leads to an **RNA
    panel** node with gene/transcript counts, also linked to loaded source DNA.
    These are reference definitions, not sequencing-support results. Right-click
