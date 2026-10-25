@@ -110,6 +110,75 @@ fn evaluate_unchanged(
 }
 
 #[test]
+fn genome_edit_intent_preserves_unreconciled_state_on_success_and_refusal() {
+    for reverse in [false, true] {
+        for inline in [false, true] {
+            let (mut engine, loaded_request) = loaded(reverse, false);
+            let req = if inline {
+                request(reverse)
+            } else {
+                loaded_request
+            };
+            assert!(engine.state().lineage.nodes.is_empty());
+            assert!(engine.state().lineage.seq_to_node.is_empty());
+            assert!(engine.state().container_state.containers.is_empty());
+            assert!(
+                engine
+                    .state()
+                    .container_state
+                    .seq_to_latest_container
+                    .is_empty()
+            );
+            let original = serde_json::to_vec(engine.state()).unwrap();
+
+            // Independent controls prove neither repair would be a no-op here.
+            let mut lineage_repaired = engine.clone();
+            lineage_repaired.reconcile_lineage_nodes();
+            assert!(
+                lineage_repaired
+                    .state()
+                    .lineage
+                    .seq_to_node
+                    .contains_key("synthetic_loaded")
+            );
+            assert!(
+                lineage_repaired
+                    .state()
+                    .container_state
+                    .containers
+                    .is_empty()
+            );
+            assert_ne!(
+                serde_json::to_vec(lineage_repaired.state()).unwrap(),
+                original
+            );
+            let mut containers_repaired = engine.clone();
+            containers_repaired.reconcile_containers();
+            assert!(
+                containers_repaired
+                    .state()
+                    .container_state
+                    .seq_to_latest_container
+                    .contains_key("synthetic_loaded")
+            );
+            assert!(containers_repaired.state().lineage.nodes.is_empty());
+            assert_ne!(
+                serde_json::to_vec(containers_repaired.state()).unwrap(),
+                original
+            );
+
+            let mut refused = req.clone();
+            refused.expected_sequence_sha256 = format!("sha256:{}", "0".repeat(64));
+            let error = evaluate_unchanged(&mut engine, refused).unwrap_err();
+            assert!(error.cause_chain[0].ends_with("sequence_digest_mismatch"));
+            let report = evaluate_unchanged(&mut engine, req).unwrap();
+            assert_eq!(report.desired_genomic_forward_sequence, "ATGTAC");
+            assert_eq!(serde_json::to_vec(engine.state()).unwrap(), original);
+        }
+    }
+}
+
+#[test]
 fn genome_edit_intent_both_strands_reconstruct_exactly_once_without_persistence() {
     for reverse in [false, true] {
         let mut engine = GentleEngine::new();
@@ -310,7 +379,15 @@ fn genome_edit_intent_ambiguity_is_independent_of_optional_guide_filters() {
     req.intent.inserted = "t".into();
     let report = evaluate_unchanged(&mut GentleEngine::new(), req).unwrap();
     assert_eq!(report.source_sequence_sha256, SOURCE_HASH);
+    assert_eq!(report.source_sequence, "ACGTAC");
     assert_eq!(report.request.intent.deleted, "C");
+    assert_eq!(report.request.intent.inserted, "T");
+    assert_eq!(
+        report.request.target,
+        GenomeEditTarget::InlineSequence {
+            sequence: "acgtac".into(),
+        }
+    );
 }
 
 #[test]

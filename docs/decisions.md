@@ -262,11 +262,20 @@ serialized projection status cannot certify those facts. Genomic and synthetic
 identities remain disjoint. Retained unversioned names do not authorize guessed
 accessions, inline reference association is caller-declared, and absent
 annotations stay unavailable. Desired sequence strings in a transient report
-are neither materialized project DNA nor observed alleles. Generic adapter
-reachability must preserve no-mutation semantics; MCP's independent tool
-confirmation does not authorize a state-file write for this inspection. Future
+are neither materialized project DNA nor observed alleles. For this operation,
+generic adapter reachability must preserve no-mutation semantics; MCP's
+independent tool confirmation does not authorize a state-file write for this inspection. Future
 editor feasibility, persisted handoff/apply and laboratory review need their
 own explicit contracts, not a widened S1 or transferred sequence-design approval.
+
+S1's no-reconcile and no-state-file-save guarantees are explicit operation
+policy, not implied by every registry `CapabilityMutation::ReadOnly` label.
+That class also includes file writers such as `SaveFile`; legacy previews can
+reconcile state, and `PlanDnaSequenceDesign` has an optional report path. Do not
+replace confirmation, history, reconciliation or persistence rules with that
+label alone. Before S2, separately review a shared lifecycle policy that
+distinguishes project effects, external writes, reconciliation and confirmation;
+preserve existing adapter gates until that policy and its regressions land.
 
 ## Synthetic Sequence-Design Boundaries
 

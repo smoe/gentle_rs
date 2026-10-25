@@ -86,6 +86,26 @@ field; other operations' serialization and legacy ROI deserialization remain
 unchanged. Scientific/editor suitability and all later workflow slices remain
 unimplemented, not implied by arithmetic or parser checks.
 
+### Landed S1 Review Reconciliation (2026-10-25)
+
+Source check: local main `09e62b3f`, no fetch, build or scientific review.
+The owner forwarded Claude's source-only review of `472c84d6` at `b1bae75e`.
+Original S1 plan: validate one reference-bound SNV without project mutation;
+keep S2 and broader lifecycle changes outside that authorization.
+
+| Claude feedback | Source check and bounded follow-up |
+| --- | --- |
+| A: no test pins the no-reconcile guard | Existing `loaded()` fixtures insert DNA directly into a new engine without lineage/containers, and `evaluate_unchanged()` compares state bytes on success/refusal. They already cover the guard indirectly. Add a named regression with independent controls proving each reconcile routine changes the fixture, for both strands and inline/loaded targets. |
+| B: derive one inspection helper from registry `ReadOnly` | Do not apply this literally: the registry also labels `SaveFile` read-only, and currently labels `PlanDnaSequenceDesign` mutating despite its history/confirmation exemptions. Its optional path can write a report. One boolean cannot replace these distinct lifecycle policies safely. A shared, explicitly reviewed policy remains a prerequisite before S2, not part of this narrow patch. |
+| C: clarify whether S1's guarantee applies to every preview | Scope no-reconcile/no-state-file-save explicitly to S1 in the decision record; do not silently change legacy preview or file-writer behavior. |
+| D: mixed coordinate names look like an off-by-one | Name the numerically equivalent half-open window end at the comparison. Preserve arithmetic, checked bounds and existing edge tests. |
+| E: submitted versus canonical allele wording | State that S1 uppercases returned intent alleles without separate raw-allele fields. The original inline target spelling remains in `request.target`. Preserve submitted/canonical placement only as a requirement for future repeat-indel normalization, not an implemented S1 promise. |
+
+The new named regression and strengthened case-normalization assertions require
+Glen/CI execution under the standing no-local-Rust restriction. They are not a
+new acceptance pass or authority to begin S2. No registry, permission, mutation,
+serialization or biology contract is broadened.
+
 ### Software Review Reconciliation (2026-10-22)
 
 Original proposal: S1 reference-bound intent, S2 editor feasibility, S4 saved
@@ -382,9 +402,11 @@ position. Resolve the loaded extraction to a genomic-forward reference window
 `R` and map absolute coordinates to window-local `s,e` before reconstructing
 `R[..s] + inserted + R[e..]`. Never index a reverse-oriented local sequence with
 absolute genomic coordinates. Bind both the original extraction and `R` hashes;
-the report retains the transforms back to the loaded display. Preserve submitted
-and canonical forms when normalizing repeat indels; never shift coordinates
-without a recorded reference-bound transform. Synthetic examples below use
+the report retains the transforms back to the loaded display. S1 returns uppercase
+intent alleles without separate raw-allele fields; inline target spelling stays
+as submitted. A future repeat-indel normalization must preserve submitted and
+canonical placements; never shift coordinates without a recorded reference-bound
+transform. Synthetic examples below use
 an explicitly zero-origin forward reference. Initial S1 accepts one SNV only;
 the insertion/deletion rules describe later extensions, not first-slice scope.
 Short indels and overlapping/multi-edit/haplotype combinations require later

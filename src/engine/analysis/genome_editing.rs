@@ -318,7 +318,9 @@ impl GentleEngine {
                 "Intent must change the reference allele",
             ));
         }
-        if edit.start_0based < origin || edit.end_0based_exclusive > anchor.end_1based {
+        // A 1-based inclusive end is numerically the 0-based exclusive boundary.
+        let window_end_0based_exclusive = anchor.end_1based;
+        if edit.start_0based < origin || edit.end_0based_exclusive > window_end_0based_exclusive {
             return Err(refusal(
                 "outside_sequence",
                 "Edit lies outside the exact source window",
