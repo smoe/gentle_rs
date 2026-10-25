@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-25 - Repair Native RNA Module Paths And Command Baseline Types
+
+- Fix the owner's E0583 by explicitly binding the path-loaded native RNA
+  workspace to `rna_panel_ui/processing.rs`, and that file to its existing
+  `processing/evidence.rs` child. The missing processing methods were cascades;
+  keep their handlers rather than replacing calls or disabling the workspace.
+- Rename the worker's numeric journal baseline so it no longer shadows the
+  optional admission baseline used by the project-commit guard. Preserve absent
+  admission/replaced-instance refusal, operation counts and independent artifact
+  retention; no stale/cancel/lock guard, public contract or dependency changes.
+- Add LF/CRLF source regressions for the complete native module-path chain and
+  distinct baseline roles. Both fail before the repair and pass afterward;
+  all 19 RNA tutorial source checks and scoped rustfmt pass. These are not
+  compilation or native acceptance. No local Rust build/test/check or push.
+- The 12 capability-maturity checks, source freshness, documentation status and
+  whitespace also pass. Rustfmt resolves the full native module tree. Session-
+  close: four OK, two expected dirty-tree/manual-plan warnings, no failures;
+  roadmap remains 400 lines. Unrelated paper, private inputs and outputs remain.
+
 ## 2026-10-24 - Complete The Native RNA Tutorial Rehearsal
 
 - Reuse shared synthetic-demo preparation in the native workspace. Its starter

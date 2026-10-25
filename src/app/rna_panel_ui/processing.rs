@@ -9,6 +9,7 @@ use crate::engine::{
 use crate::engine_shell::{ShellExecutionOptions, quote_shell_arg};
 use crate::runtime_status::RuntimeStatusFrameState;
 
+#[path = "processing/evidence.rs"]
 mod evidence;
 
 struct Reviewed {

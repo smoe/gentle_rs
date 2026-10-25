@@ -16,6 +16,33 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_native_panel_module_paths_resolve_to_tracked_children(self):
+        modules = (
+            ("src/app.rs", "rna_panel_ui", "app/rna_panel_ui.rs"),
+            ("src/app/rna_panel_ui.rs", "processing", "rna_panel_ui/processing.rs"),
+            ("src/app/rna_panel_ui/processing.rs", "evidence", "processing/evidence.rs"),
+        )
+        for parent, child, relative in modules:
+            source_path = ROOT / parent
+            source = source_path.read_text(encoding="utf-8")
+            for text in (source, source.replace("\n", "\r\n")):
+                with self.subTest(parent=parent, child=child, crlf="\r\n" in text):
+                    match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
+                    self.assertIsNotNone(match, f"{parent} needs an explicit path for {child}")
+                    self.assertEqual(match.group(1), relative)
+                    self.assertTrue((source_path.parent / match.group(1)).is_file())
+
+    def test_command_admission_baseline_is_not_shadowed_by_a_journal_count(self):
+        source = (ROOT / "src/command_execution.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            worker = text.split("let mut detached = if let Some", 1)[1].split(
+                "let mut bytes = bounded_output", 1)[0]
+            self.assertIn("let journal_before_execution = detached.engine().journal_len();", worker)
+            self.assertIn("saturating_sub(journal_before_execution)", worker)
+            self.assertIn("project_commit && (baseline.is_none()", worker)
+            self.assertIn("Some(detached.engine().instance_id()) != owner", worker)
+            self.assertNotRegex(worker, r"let\s+baseline\s*=")
+
     def test_full_native_rehearsal_and_prominence_have_actual_shared_handlers(self):
         source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
         evidence = (ROOT / "src/app/rna_panel_ui/processing/evidence.rs").read_text()

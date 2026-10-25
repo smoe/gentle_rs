@@ -1,5 +1,22 @@
 # Glen: Next Verification And Return
 
+## Native RNA Compile Repairs, 2026-10-25
+
+The owner's build exposed two primary integration defects: missing explicit
+paths for the native processing/evidence modules, and a numeric journal count
+shadowing the optional command-admission baseline. The missing UI-method errors
+were cascades of the module failure. Both are repaired without disabling UI
+handlers or weakening project-commit/stale/cancel safeguards. Two new LF/CRLF
+source regressions fail before repair and pass afterward; they are not Rust
+verification. Include this repair at the next ordinary integrated source.
+
+Before the native rehearsal, run the default `cargo check -q --locked --tests`
+and headless check below, then the existing `command_execution`, `rna_screen_`
+and `rna_native_` filters. Retain replaced-project refusal, retained-operation
+counts, artifact-only no-commit behavior and the existing native handlers.
+Report actual source/toolchain/platform, primary failures and cascades through
+Steffen. Do not repeat completed campaigns or impose a new source freeze.
+
 ## Native RNA Processing And Tutorial 10.04, 2026-10-24
 
 Integrate `4603d029` (execution/bindings), `a87fb9c6` (setup/monitor),

@@ -11,6 +11,7 @@ use crate::engine::{
 };
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+#[path = "rna_panel_ui/processing.rs"]
 mod processing;
 
 #[derive(Default, PartialEq, Eq, Clone, Copy)]

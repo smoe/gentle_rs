@@ -425,7 +425,7 @@ impl CommandExecutionService {
                 } else {
                     GentleEngine::new().fork_detached_execution()
                 };
-                let baseline = detached.engine().journal_len();
+                let journal_before_execution = detached.engine().journal_len();
                 if cancel.load(Ordering::Acquire) { return Err("Command cancelled after snapshot; execution did not start".into()); }
                 {
                     let mut job = worker_job.lock().unwrap();
@@ -465,7 +465,7 @@ impl CommandExecutionService {
                     true
                 })));
                 let result = work(detached.engine_mut(), callback);
-                let retained_operations = detached.engine().journal_len().saturating_sub(baseline);
+                let retained_operations = detached.engine().journal_len().saturating_sub(journal_before_execution);
                 worker_job.lock().unwrap().receipt.computed_operations = if result.is_err() && retained_operations == 0 { None } else { Some(retained_operations) };
                 let WorkResult { mut run, publication } = result?;
                 let project_commit = matches!(&publication, Publication::Project);
