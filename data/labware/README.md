@@ -234,8 +234,18 @@ JSON). Compare them with this change before accepting legacy byte identity.
 If those baselines are committed, include provenance, scoped LF checkout policy
 and LF/CRLF checkout coverage. No legacy geometry formula or template identity
 is intentionally changed here; source inspection is not a byte-exact pass.
-The new carrier Rust tests are authored but not locally executed. Native
-GUI controls, fresh source-matched exports and physical fit remain unverified.
+The owner forwarded Claude's focused macOS report at exactly
+`39ac4e4425d02d5374181a1c2a5e0fb9ae35d884`: protocol 14 passed, render 4 passed,
+root labware/rack/agent-parity/mutation/glossary filters 289 passed, and all
+11 Python/OpenSCAD checks passed without skips. OpenSCAD actually rendered the
+parameterized repository templates, including box and strip mesh checks; these
+are not GENtle-exported-file renders. The [attributed evidence record](../../docs/glen_next_verification_handoff.md#focused-macos-labware-evidence-2026-10-25)
+notes the absent raw logs/toolchain details and the separate earlier Codex-host
+OpenSCAD incompatibility. No Rust or OpenSCAD rerun was performed by Codex.
+Full `--lib`/normal CI including Windows, the nine legacy baseline files,
+fresh source-matched GENtle exports and native GUI review remain open. No
+physical fit, cap/lid clearance, material/temperature or release qualification
+follows, and this report does not accept later revisions.
 
 ## PCR 0.2 ml drawing and 96-position carrier
 

@@ -1,5 +1,38 @@
 # Glen: Next Verification And Return
 
+## Focused macOS Labware Evidence, 2026-10-25
+
+The owner forwarded Claude's completed review/test report for exactly
+`39ac4e4425d02d5374181a1c2a5e0fb9ae35d884`, including disclosure cleanup
+`ab692041` and derived storage box `c217d0b0`. Reported results on macOS:
+
+| Scope | Reported result |
+| --- | --- |
+| Protocol crate labware tests | 14 passed |
+| Render crate labware tests | 4 passed |
+| Root labware/rack/agent-parity/mutation/glossary filters | 289 passed |
+| Python/OpenSCAD checks | 11 passed, none skipped |
+
+Claude explicitly reports actual OpenSCAD rendering, including storage-box
+mesh bounds and cut strips. These checks render repository templates with
+literal parameters, not files exported by GENtle. They do not establish
+physical fit, cap/lid clearance, material/temperature suitability or native GUI
+acceptance. The earlier Codex-host OpenSCAD/Qt processor failure remains a
+separate environment observation, not a failure of Claude's reported run.
+
+The supplied summary does not include raw logs, exact command transcripts,
+toolchain/profile or OpenSCAD version. Preserve those separately if available;
+this is an attributed report, not an independently rerun or manifest-verified
+receipt. It does not certify later source or close release/scientific gates.
+The strip-test repair is no longer awaiting its first reported focused rerun.
+
+Remaining Glen/CI work: normal CI and full `--lib`, including Windows; the nine
+provenance-bound legacy carrier baseline files; OpenSCAD renders of fresh
+source-matched GENtle exports for carriers/strips/boxes; and native GUI review.
+Do not repeat the reported focused campaign solely because older sections below
+still request it. Recheck affected boundaries when their source changes. Square
+SVG cells and measured commercial-box profiles remain optional separate work.
+
 ## Historical RNA Review Follow-Up, 2026-10-25
 
 Run focused `rna_panel_`, `rna_sparse_target_gene_presence_`, `rna_read` and
@@ -34,10 +67,11 @@ Rust tests. The earlier unrelated goal remains paused; `outputs/` is untouched.
 
 ## Derived Square-Cell Storage Box, 2026-10-25
 
-Run `cargo test --locked -p gentle-protocol labware_`,
-`cargo test --locked -p gentle-render labware_`,
-`cargo test --locked --lib -j1 labware_ -- --test-threads=1`, normal full `--lib`
-and `cargo check -q --locked --tests` at integrated source. New authored tests:
+The [reported focused macOS pass](#focused-macos-labware-evidence-2026-10-25)
+supersedes the initial protocol/render/root-filter execution request at
+`39ac4e44`; full `--lib`, normal CI/Windows and source-matched export/native
+checks remain open. Retain `cargo check -q --locked --tests` in normal CI.
+Authored storage-box tests include:
 `labware_storage_box_geometry_has_square_cells_variable_grids_and_separate_lid`,
 `labware_storage_box_refuses_invalid_grids_unknown_caps_and_colliding_collars`,
 `labware_storage_box_exports_variable_grids_square_cells_and_all_disclosures`,
@@ -59,12 +93,14 @@ byte identity, physical fit, cap/lid clearance, material/freezer/ice suitability
 Windows/native interaction and release acceptance are not established here.
 Local verification: 19 focused source/maturity checks pass and existing SCAD
 source-template projections match the pre-box source for collar/floor/PCR96.
-`python3 -m unittest scripts.test_labware_models -v` was attempted: installed
-OpenSCAD/Qt aborts before parsing with `Incompatible processor ... neon`, also
-for unchanged tube/carrier/strip models. All four mesh methods therefore remain
-unaccepted, not skipped or fixed by relaxing the checks. Retry on Glen's
-compatible host. The four maturity JSON projections changed only because the
-glossary now lists the additive template choice.
+On the earlier Codex host, `python3 -m unittest scripts.test_labware_models -v`
+was attempted: installed OpenSCAD/Qt aborted before parsing with
+`Incompatible processor ... neon`, also
+for unchanged tube/carrier/strip models. That attempt did not accept any mesh
+method. Claude subsequently reports all 11 checks passing on a compatible
+macOS environment; GENtle-exported-file rendering remains separate. The four
+maturity JSON projections changed only because the glossary now lists the
+additive template choice.
 
 ## Compact Carrier Disclosure Construction, 2026-10-25
 

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-25 - Record Reported Focused macOS Labware Verification
+
+- Retain the owner-forwarded Claude report at `39ac4e44`: protocol labware
+  14 passed, render labware 4 passed, root filtered tests 289 passed, and
+  Python/OpenSCAD 11 passed without skips. Actual OpenSCAD template rendering
+  is reported; GENtle-exported files and physical fit were not tested by it.
+- Update the labware README, consolidated Glen handoff and existing roadmap
+  line so the strip repair no longer awaits its first reported focused rerun.
+  Preserve full-suite/normal CI including Windows, nine legacy baselines,
+  fresh exported-file renders and native GUI acceptance as open work.
+- Attribute results to Claude's supplied summary, not a Codex rerun or a
+  manifest-verified receipt; raw logs/toolchain details were not supplied.
+  No runtime, geometry, generated artifacts or release/scientific approval
+  change. No local Rust build, OpenSCAD rerun or push.
+
 ## 2026-10-25 - Accept Owned Semantic GUI Test IDs
 
 - Let the GUI-test metadata wrapper own validated semantic IDs so dynamic RNA
