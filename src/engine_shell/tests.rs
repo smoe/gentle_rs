@@ -92,6 +92,7 @@ fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
         RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
         RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
         RackPhysicalTemplateKind::PcrTube96PositionCarrier,
+        RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
     ] {
         let parsed = parse_shell_line(&format!(
             "racks openscad rack-1 {} --template {}",
@@ -127,6 +128,7 @@ fn labware_carrier_templates_round_trip_shell_and_generic_operations() {
         "safe_lock_tube_rack_collar_seated",
         "safe_lock_tube_rack_floor_seated",
         "pcr_tube_96_position_carrier",
+        "safe_lock_storage_box_derived",
     ] {
         assert!(error.contains(name));
     }

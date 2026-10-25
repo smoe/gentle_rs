@@ -35127,6 +35127,7 @@ fn labware_carriers_preserve_legacy_json_and_export_both_support_modes() {
             .unwrap();
         let report: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         let spec = &report["physical_template"];
+        assert!(spec.get("storage_box").is_none());
         let is_collar = template == RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated;
         let is_floor = template == RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated;
         if !is_collar && !is_floor {
@@ -35364,6 +35365,141 @@ fn labware_compact_engine(rows: usize, columns: usize) -> GentleEngine {
         },
     );
     GentleEngine::from_state(state)
+}
+
+#[test]
+fn labware_storage_box_exports_variable_grids_square_cells_and_all_disclosures() {
+    // Hand-crafted rack with an empty A1 placement, never a physical-fit fixture.
+    for (rows, columns, width, depth) in [(9, 9, 104.95, 104.95), (4, 12, 139.0, 48.2)] {
+        let mut engine = labware_compact_engine(rows, columns);
+        engine
+            .state_mut()
+            .container_state
+            .racks
+            .get_mut("compact")
+            .unwrap()
+            .profile
+            .blocked_coordinates
+            .push("B2".into());
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("derived box's export");
+        let template = RackPhysicalTemplateKind::SafeLockStorageBoxDerived;
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: "compact".into(),
+                template,
+                path: path.display().to_string(),
+            })
+            .unwrap();
+        let scad = fs::read_to_string(&path).unwrap();
+        for marker in [
+            "module gentle_storage_box()",
+            "module gentle_storage_box_insert()",
+            "module gentle_storage_box_lid()",
+            "cell_count = rows * columns;",
+            "for (row = [0 : rows - 1])",
+            "for (column = [0 : columns - 1])",
+            "cube([cell_width_mm, cell_width_mm, divider_height_mm + 0.1])",
+            "support_mode=floor_seated",
+            "geometry_basis=drawing_derived_unverified_storage_box",
+            "// nonclaim:",
+            "// assumption:",
+            "closed_height is ApproximateDrawing",
+            "translate([exterior_width_mm + 10, 0, 0]) gentle_storage_box_lid()",
+        ] {
+            assert!(scad.contains(marker), "{marker}");
+        }
+        assert!(!scad.contains("cylinder("));
+        assert!(scad.contains(&format!("rows = {rows};")));
+        assert!(scad.contains(&format!("columns = {columns};")));
+        engine
+            .apply(Operation::ExportRackSimulationJson {
+                rack_id: "compact".into(),
+                template,
+                path: path.display().to_string(),
+            })
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let spec: RackPhysicalTemplateSpec =
+            serde_json::from_value(value["physical_template"].clone()).unwrap();
+        assert_eq!(spec.family, RackPhysicalTemplateFamily::StorageBox);
+        let g = spec.storage_box.unwrap();
+        assert_eq!(g.rows * g.columns, rows * columns);
+        assert_eq!(value["slots"].as_array().unwrap().len(), rows * columns);
+        assert!((f64::from(spec.overall_width_mm) - width).abs() < 1e-4);
+        assert!((f64::from(spec.overall_depth_mm) - depth).abs() < 1e-4);
+        assert_eq!(spec.rack_height_mm, 47.0);
+        assert!((g.exterior_width_mm - width).abs() < 1e-9);
+        assert!((g.exterior_depth_mm - depth).abs() < 1e-9);
+        assert!((value["slots"][0]["center_mm"]["x"].as_f64().unwrap() - 7.075).abs() < 1e-4);
+        assert!((value["slots"][0]["center_mm"]["y"].as_f64().unwrap() - 7.075).abs() < 1e-4);
+        if rows == 9 {
+            let last = &value["slots"][80];
+            assert_eq!(last["coordinate"], "I9");
+            assert!((last["center_mm"]["x"].as_f64().unwrap() - 97.875).abs() < 1e-4);
+            assert!((last["center_mm"]["y"].as_f64().unwrap() - 97.875).abs() < 1e-4);
+        }
+        for op in labware_compact_export_operations(template, path.to_str().unwrap()) {
+            engine.apply(op).unwrap();
+            let content = fs::read_to_string(&path).unwrap();
+            if content.contains("<svg") {
+                assert_eq!(
+                    content
+                        .matches("Drawing-derived; unverified fit/material/temperature")
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    content
+                        .matches("Square cells drawn as round markers")
+                        .count(),
+                    1
+                );
+                assert!(
+                    content.contains("GENtle-derived geometry, not a model of any commercial box")
+                );
+            }
+        }
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    }
+}
+
+#[test]
+fn labware_storage_box_refuses_compact_pitch_before_any_export_write() {
+    let mut engine = labware_compact_engine(9, 9);
+    engine
+        .apply(Operation::SetRackCarrierPitch {
+            rack_id: "compact".into(),
+            pitch_um: Some(14_000),
+        })
+        .unwrap();
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("must remain untouched");
+    for op in labware_compact_export_operations(
+        RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
+        path.to_str().unwrap(),
+    ) {
+        assert!(
+            engine
+                .apply(op)
+                .unwrap_err()
+                .message
+                .starts_with("carrier_pitch_override_unsupported:")
+        );
+        assert!(!path.exists());
+    }
+    fs::write(&path, "existing artifact").unwrap();
+    assert!(
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: "compact".into(),
+                template: RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
+                path: path.display().to_string(),
+            })
+            .is_err()
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"existing artifact");
 }
 
 fn labware_compact_export_operations(

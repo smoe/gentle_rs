@@ -1,5 +1,39 @@
 # Glen: Next Verification And Return
 
+## Derived Square-Cell Storage Box, 2026-10-25
+
+Run `cargo test --locked -p gentle-protocol labware_`,
+`cargo test --locked -p gentle-render labware_`,
+`cargo test --locked --lib -j1 labware_ -- --test-threads=1`, normal full `--lib`
+and `cargo check -q --locked --tests` at integrated source. New authored tests:
+`labware_storage_box_geometry_has_square_cells_variable_grids_and_separate_lid`,
+`labware_storage_box_refuses_invalid_grids_unknown_caps_and_colliding_collars`,
+`labware_storage_box_exports_variable_grids_square_cells_and_all_disclosures`,
+`labware_storage_box_refuses_compact_pitch_before_any_export_write`.
+Extended carrier shell/generic-op, GUI label and legacy metadata guards remain.
+
+Require 9x9 dimensions 104.95 x 104.95 x 47 mm and A1/I9 centres, plus 4x12
+139 x 48.2 x 47 mm, complete physical cells despite blocked positions, the
+separate lid and clear override refusals. The source-derived Python mesh checks
+are not Rust exporter execution. A long synthetic cone propagates the existing
+`collar_not_above_top` derivation refusal, not an invented cone-only error.
+
+Generate source-matched 9x9 and 4x12 exports; render OpenSCAD box/insert/lid and
+inspect all four SVG disclosures. Verify the native dropdown, round-marker
+warning, variable grids and compact-override error. Commit the nine historical
+carrier baselines from `1c5be317` with provenance/LF-CRLF coverage and compare
+older spec/SCAD/simulation bytes. No existing output is intentionally changed;
+byte identity, physical fit, cap/lid clearance, material/freezer/ice suitability,
+Windows/native interaction and release acceptance are not established here.
+Local verification: 19 focused source/maturity checks pass and existing SCAD
+source-template projections match the pre-box source for collar/floor/PCR96.
+`python3 -m unittest scripts.test_labware_models -v` was attempted: installed
+OpenSCAD/Qt aborts before parsing with `Incompatible processor ... neon`, also
+for unchanged tube/carrier/strip models. All four mesh methods therefore remain
+unaccepted, not skipped or fixed by relaxing the checks. Retry on Glen's
+compatible host. The four maturity JSON projections changed only because the
+glossary now lists the additive template choice.
+
 ## Compact Carrier Disclosure Construction, 2026-10-25
 
 The optional cleanup builds disclosure vectors directly, preserving their

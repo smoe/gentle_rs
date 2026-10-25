@@ -5232,8 +5232,14 @@ Exports:
   refuse an override rather than ignore it; the field is hidden for them.
   New exports retain support mode, assumptions and nonclaims. Selecting a
   template neither assigns tube identity to samples nor qualifies fabrication,
-  cap clearance, ice/freezer use or commercial-rack compatibility. Storage
-  boxes remain separate profiles requiring dimensions/dividers/lid evidence.
+  cap clearance, ice/freezer use or commercial-rack compatibility.
+  **Safe-Lock 1.5/2.0 ml - derived storage box (unverified)** uses the chosen
+  row/column grid, square 10.15-mm cells, 1.2-mm dividers and a 2-mm floor.
+  OpenSCAD exports the box, insert and separate lid; SVG positions remain round
+  and visibly say **Square cells drawn as round markers**. Clear any compact
+  pitch override first. This is a derived design target, not measured fit or
+  suitability; caps/hinges may collide. Commercial-box profiles still require
+  independent dimensions/dividers/lid evidence.
   Grid formats are variable, not restricted to 9x9; changing rows/columns keeps
   the selected pitch and does not qualify a commercial-box fit.
   `PCR 0.2 ml - 8x12 carrier (unverified)` requires exactly eight rows and twelve

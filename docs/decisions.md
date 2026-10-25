@@ -2006,7 +2006,19 @@ wall thickness, not a requirement for literal tube-to-tube contact. This does
 not establish cap/lid clearance, dimensional tolerance or freezer suitability.
 The [Semadeni example and missing fit evidence](../data/labware/README.md#different-storage-box-formats)
 are recorded as a source lead, not a qualified compatibility profile.
-Box modeling remains unimplemented. New template metadata is
+Owner-authorized derived-box slice, 2026-10-25: `safe_lock_storage_box_derived`
+is a GENtle-derived design, not a commercial-box profile. Preserve variable
+grids, floor-supported tubes and square top-view cells. Body-snug is a design
+target: 9.85-mm body plus 0.15-mm radial clearance gives a 10.15-mm cell.
+Choose 1.2-mm dividers as an engineering assumption above the 1.15-mm minimum
+needed for the existing 0.5-mm collar gap; pitch is 11.35 mm. Dividers stop at
+the existing floor-seated depth, below the collar. Walls/floor, approximate
+closed height, lid clearances and skirt are explicit assumptions, not fit or
+temperature evidence. Caps/hinges may collide. The SCAD projects box, insert
+and separate lid; SVG markers remain round with an explicit visible disclosure.
+Commercial-box profiles, square SVG cells and measured fit remain unimplemented.
+Saved compact-carrier pitch is refused for this separate template, never ignored.
+New template metadata is
 optional and omitted for legacy templates so their serialized bytes and
 geometry remain unchanged. No new template establishes verified fit.
 

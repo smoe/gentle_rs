@@ -20,6 +20,103 @@ pub const COLLAR_TOP_MARGIN: f64 = 5.0;
 /// Compact-layout engineering allowances, not measured strength/cap clearance.
 pub const MIN_WEB: f64 = 0.8;
 pub const COLLAR_GAP: f64 = 0.5;
+/// Derived storage-box engineering assumptions, not measured fit or tolerances.
+pub const RADIAL_CLEARANCE_SNUG: f64 = 0.15;
+pub const BOX_DIVIDER_THICKNESS: f64 = 1.2;
+pub const BOX_WALL_THICKNESS: f64 = 2.0;
+pub const BOX_LID_CLEARANCE: f64 = 3.0;
+pub const LID_FIT_CLEARANCE: f64 = 0.3;
+pub const LID_TOP_THICKNESS: f64 = 2.0;
+pub const LID_SKIRT_HEIGHT: f64 = 8.0;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// GENtle-derived square-cell box; millimetres, never commercial-box or physical-fit evidence.
+pub struct StorageBoxGeometry {
+    pub rows: usize,
+    pub columns: usize,
+    pub cell_width_mm: f64,
+    pub divider_thickness_mm: f64,
+    pub pitch_mm: f64,
+    pub divider_height_mm: f64,
+    pub wall_thickness_mm: f64,
+    pub interior_width_mm: f64,
+    pub interior_depth_mm: f64,
+    pub interior_height_mm: f64,
+    pub exterior_width_mm: f64,
+    pub exterior_depth_mm: f64,
+    pub exterior_height_mm: f64,
+    pub lid_fit_clearance_mm: f64,
+    pub lid_top_thickness_mm: f64,
+    pub lid_skirt_height_mm: f64,
+    pub lid_inner_width_mm: f64,
+    pub lid_inner_depth_mm: f64,
+    pub lid_exterior_width_mm: f64,
+    pub lid_exterior_depth_mm: f64,
+    pub lid_exterior_height_mm: f64,
+}
+
+/// Admit the grid first, then derive a floor-supported box from the worst profile dimensions.
+pub fn derive_storage_box_geometry(
+    profiles: &[TubeProfile],
+    rows: usize,
+    columns: usize,
+) -> Result<StorageBoxGeometry, String> {
+    admit_rack_grid(rows, columns)?;
+    let carrier = derive_tube_carrier_geometry(profiles, RackTubeSupportMode::FloorSeated)?;
+    let mut body: f64 = 0.0;
+    let mut closed: f64 = 0.0;
+    let mut collar: f64 = 0.0;
+    for profile in profiles {
+        body = body.max(required_dimension(
+            &profile.body_outer_diameter,
+            "body outer diameter",
+        )?);
+        collar = collar.max(required_dimension(
+            &profile.collar_outer_diameter,
+            "collar diameter",
+        )?);
+        closed = closed.max(
+            required_dimension(&profile.closed_height, "closed height").map_err(|_| {
+                "cap_height_unknown: storage box requires a documented closed height".to_string()
+            })?,
+        );
+    }
+    let cell = body + 2.0 * RADIAL_CLEARANCE_SNUG;
+    let pitch = cell + BOX_DIVIDER_THICKNESS;
+    if pitch < collar + COLLAR_GAP {
+        return Err("box_collar_overlap: adjacent collars need a 0.5 mm gap".into());
+    }
+    let width = columns as f64 * cell + (columns - 1) as f64 * BOX_DIVIDER_THICKNESS;
+    let depth = rows as f64 * cell + (rows - 1) as f64 * BOX_DIVIDER_THICKNESS;
+    let exterior_width = width + 2.0 * BOX_WALL_THICKNESS;
+    let exterior_depth = depth + 2.0 * BOX_WALL_THICKNESS;
+    let lid_inner_width = exterior_width + 2.0 * LID_FIT_CLEARANCE;
+    let lid_inner_depth = exterior_depth + 2.0 * LID_FIT_CLEARANCE;
+    Ok(StorageBoxGeometry {
+        rows,
+        columns,
+        cell_width_mm: cell,
+        divider_thickness_mm: BOX_DIVIDER_THICKNESS,
+        pitch_mm: pitch,
+        divider_height_mm: carrier.bore_depth_mm,
+        wall_thickness_mm: BOX_WALL_THICKNESS,
+        interior_width_mm: width,
+        interior_depth_mm: depth,
+        interior_height_mm: closed + BOX_LID_CLEARANCE,
+        exterior_width_mm: exterior_width,
+        exterior_depth_mm: exterior_depth,
+        exterior_height_mm: BOX_WALL_THICKNESS + closed + BOX_LID_CLEARANCE,
+        lid_fit_clearance_mm: LID_FIT_CLEARANCE,
+        lid_top_thickness_mm: LID_TOP_THICKNESS,
+        lid_skirt_height_mm: LID_SKIRT_HEIGHT,
+        lid_inner_width_mm: lid_inner_width,
+        lid_inner_depth_mm: lid_inner_depth,
+        lid_exterior_width_mm: lid_inner_width + 2.0 * BOX_WALL_THICKNESS,
+        lid_exterior_depth_mm: lid_inner_depth + 2.0 * BOX_WALL_THICKNESS,
+        lid_exterior_height_mm: LID_TOP_THICKNESS + LID_SKIRT_HEIGHT,
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -606,6 +703,85 @@ fn brand_pcr_strip_profile() -> TubeProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labware_storage_box_geometry_has_square_cells_variable_grids_and_separate_lid() {
+        let profiles = [
+            tube_profile(TubeProfileId::EppendorfSafeLock15ml),
+            tube_profile(TubeProfileId::EppendorfSafeLock20ml),
+        ];
+        for (rows, columns, width, depth) in [
+            (9, 9, 100.95, 100.95),
+            (1, 1, 10.15, 10.15),
+            (4, 12, 135.0, 44.2),
+        ] {
+            let g = derive_storage_box_geometry(&profiles, rows, columns).unwrap();
+            for (actual, expected) in [
+                (g.cell_width_mm, 10.15),
+                (g.divider_thickness_mm, 1.2),
+                (g.pitch_mm, 11.35),
+                (g.divider_height_mm, 22.0),
+                (g.interior_height_mm, 45.0),
+                (g.interior_width_mm, width),
+                (g.interior_depth_mm, depth),
+                (g.exterior_width_mm, width + 4.0),
+                (g.exterior_depth_mm, depth + 4.0),
+                (g.exterior_height_mm, 47.0),
+                (g.lid_inner_width_mm, width + 4.6),
+                (g.lid_inner_depth_mm, depth + 4.6),
+                (g.lid_exterior_width_mm, width + 8.6),
+                (g.lid_exterior_depth_mm, depth + 8.6),
+                (g.lid_exterior_height_mm, 10.0),
+            ] {
+                assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+            }
+            assert_eq!(g.rows, rows);
+            assert_eq!(g.columns, columns);
+            let roundtrip: StorageBoxGeometry =
+                serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+            assert_eq!(roundtrip, g);
+        }
+    }
+
+    #[test]
+    fn labware_storage_box_refuses_invalid_grids_unknown_caps_and_colliding_collars() {
+        // Hand-mutated drawing profiles are synthetic invalid geometry, not vendor data.
+        let base = tube_profile(TubeProfileId::EppendorfSafeLock20ml);
+        let mut profile = base.clone();
+        profile.collar_outer_diameter.value_mm = Some(11.0);
+        assert!(
+            derive_storage_box_geometry(&[profile], 9, 9)
+                .unwrap_err()
+                .starts_with("box_collar_overlap:")
+        );
+        let mut profile = base.clone();
+        profile.closed_height.value_mm = None;
+        assert!(
+            derive_storage_box_geometry(&[profile], 9, 9)
+                .unwrap_err()
+                .starts_with("cap_height_unknown:")
+        );
+        let mut profile = base;
+        profile.cylindrical_section_length.value_mm = Some(1.0);
+        let expected =
+            derive_tube_carrier_geometry(&[profile.clone()], RackTubeSupportMode::FloorSeated)
+                .unwrap_err();
+        assert!(expected.starts_with("collar_not_above_top:"));
+        assert_eq!(
+            derive_storage_box_geometry(&[profile], 9, 9).unwrap_err(),
+            expected
+        );
+        assert!(
+            derive_storage_box_geometry(&[], 0, 5)
+                .unwrap_err()
+                .starts_with("rack_grid_empty:")
+        );
+        assert!(
+            derive_storage_box_geometry(&[], 1, 1537)
+                .unwrap_err()
+                .starts_with("rack_grid_limit:")
+        );
+    }
 
     #[test]
     fn labware_pcr_strip_count_bounds_and_source_dimensions() {
