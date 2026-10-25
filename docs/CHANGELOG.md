@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-25 - Pin S1 Inspection Of Unreconciled Projects
+
+- Reconcile Claude's landed-S1 review against `09e62b3f`. Existing loaded
+  fixtures already exercise unreconciled state; add an explicit both-strand,
+  inline/loaded success/refusal regression with independent lineage/container
+  repair controls. Strengthen the distinction between uppercase returned
+  alleles, uppercase source DNA and the retained inline target spelling.
+- Name the half-open window end without changing its value or bounds. Clarify
+  S1-only no-reconcile/no-save policy and future indel normalization wording.
+  Defer a broad lifecycle helper pending explicit policy review: registry
+  `ReadOnly` also includes file writers, and legacy preview rules differ.
+- Record the bounded Glen/CI rerun and pre-S2 policy prerequisite. No registry,
+  confirmation, history, persistence, serialized report or biological behavior
+  changes; no local Rust execution, push, capture or new release gate.
+- Verification: 48 source/tutorial Python checks, documentation status,
+  rustfmt and whitespace pass. These do not execute the new Rust assertions;
+  their integrated execution remains in the consolidated Glen/CI request.
+
 ## 2026-10-25 - Align RNA Rehearsal Fixtures With Bound Result Contracts
 
 - Repair glossary flag fixtures with a hand-crafted typed RNA result binding

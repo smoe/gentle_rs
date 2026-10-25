@@ -464,6 +464,10 @@ Required fields are `schema`, exactly one `target` (`loaded_sequence` with
 whitespace or U. Expected SHA-256 binds uppercase DNA in source orientation;
 the report separately hashes genomic-forward and desired sequences. Identity
 strings are at most 256 trimmed, non-control bytes; contig aliases at most 32.
+Returned `request.intent.deleted` and `request.intent.inserted` are uppercase;
+S1 does not retain a second raw-allele spelling or normalize indel positions.
+An inline target retains its submitted spelling in `request.target`, while
+`source_sequence` is the separately validated uppercase sequence.
 
 `anchor` has positive 1-based inclusive `start_1based`/`end_1based` and explicit
 `plus`/`minus` strand, with length equal to the entire supplied window. `intent`

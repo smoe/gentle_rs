@@ -1,5 +1,29 @@
 # Glen: Next Verification And Return
 
+## S1 SNV State-Preservation Follow-Up, 2026-10-25
+
+At the next ordinary integrated verification, include the named
+`genome_edit_intent_preserves_unreconciled_state_on_success_and_refusal` regression
+and existing CLI/MCP boundary tests:
+
+```sh
+cargo test --locked --lib -j1 genome_edit_intent -- --test-threads=1
+cargo test --locked --bin gentle_cli -j1 genome_edit_intent -- --test-threads=1
+cargo check -q --locked --tests
+```
+
+The new fixture
+demonstrates that each reconcile routine independently changes state, then
+requires unchanged state/revisions/history on successful and refused SNV
+inspection for both orientations and inline/loaded input. The case-only test
+also distinguishes uppercase reported alleles from retained inline spelling.
+These Rust changes have not been executed locally. Return the actual source,
+platform/toolchain, executed counts and primary failures through Steffen; do not
+reinterpret earlier S1 results as this patch's acceptance. No new capture,
+release gate or standalone audit campaign. The [broader lifecycle-policy review](base_prime_editing_preparation.md#landed-s1-review-reconciliation-2026-10-25)
+must precede S2 and must not grant file/confirmation exemptions from a broad
+`ReadOnly` registry label. No editor feasibility or laboratory work is added.
+
 ## RNA Glossary And Bound-Rehearsal Fixtures, 2026-10-25
 
 The owner's four library failures expose stale fixtures after result binding:
