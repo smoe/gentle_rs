@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-25 - Build Compact Carrier Disclosures Explicitly
+
+- Construct conservative/compact nonclaims and assumptions directly instead
+  of overwriting vector positions. Preserve wording, order and geometry for
+  existing templates, including the conservative fields shared by compact ones.
+- Extend the existing compact-pitch export regression to compare the first two
+  nonclaims against the conservative spec. Rust/export-byte verification remains
+  Glen/CI work; no local Rust/native run or push.
+
 ## 2026-10-25 - Pin S1 Inspection Of Unreconciled Projects
 
 - Reconcile Claude's landed-S1 review against `09e62b3f`. Existing loaded

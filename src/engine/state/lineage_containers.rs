@@ -2482,7 +2482,30 @@ impl GentleEngine {
         let opening = geometry.opening_diameter_mm as f32;
         let edge = geometry.edge_margin_mm as f32;
         let front = 10.0;
-        let mut spec = RackPhysicalTemplateSpec {
+        let compact_pitch = pitch_um.map(|value| f64::from(value) / 1000.0);
+        let nonclaims = vec![
+            "No verified physical fit or cap clearance; not a commercial rack replica".into(),
+            "No material, sterility, freezer, ice, thermal or autoclave suitability".into(),
+            match compact_pitch {
+                Some(pitch) => format!("Compact spacing {pitch} mm overrides the conservative 20 mm side-view envelope; closed caps and hinges may collide; clearance is not checked"),
+                None => "Conservative spacing from approximate side-view width, not a measured cap outline".into(),
+            },
+        ];
+        let mut assumptions = vec![
+            "RADIAL_CLEARANCE_COLLAR=0.15 mm; RADIAL_CLEARANCE_FLOOR=0.30 mm".into(),
+            "MIN_COLLAR_LEDGE=0.20 mm; TIP_CLEARANCE=2.0 mm".into(),
+            "CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
+            "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
+            match compact_pitch {
+                Some(pitch) => format!("compact pitch={pitch} mm; edge margin kept at the conservative value"),
+                None => "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
+            },
+            "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
+        ];
+        if compact_pitch.is_some() {
+            assumptions.push("MIN_WEB=0.8 mm; COLLAR_GAP=0.5 mm".into());
+        }
+        Ok(RackPhysicalTemplateSpec {
             kind,
             family: RackPhysicalTemplateFamily::TubeRack,
             container_format: "eppendorf_safe_lock_1_5ml_or_2_0ml".into(),
@@ -2504,33 +2527,17 @@ impl GentleEngine {
             overall_depth_mm: front + edge + opening + (profile.rows - 1) as f32 * pitch,
             support_mode: Some(mode),
             tube_profiles: ids,
-            geometry_basis: Some("drawing_derived_unverified".into()),
-            nonclaims: vec![
-                "No verified physical fit or cap clearance; not a commercial rack replica".into(),
-                "No material, sterility, freezer, ice, thermal or autoclave suitability".into(),
-                "Conservative spacing from approximate side-view width, not a measured cap outline".into(),
-            ],
-            assumptions: vec![
-                "RADIAL_CLEARANCE_COLLAR=0.15 mm; RADIAL_CLEARANCE_FLOOR=0.30 mm".into(),
-                "MIN_COLLAR_LEDGE=0.20 mm; TIP_CLEARANCE=2.0 mm".into(),
-                "CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
-                "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
-                "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
-                "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
-            ],
-        };
-        if let Some(pitch_um) = pitch_um {
-            let pitch = f64::from(pitch_um) / 1000.0;
-            spec.geometry_basis = Some("drawing_derived_unverified_compact".into());
-            spec.nonclaims[2] = format!(
-                "Compact spacing {pitch} mm overrides the conservative 20 mm side-view envelope; closed caps and hinges may collide; clearance is not checked"
-            );
-            spec.assumptions[4] =
-                format!("compact pitch={pitch} mm; edge margin kept at the conservative value");
-            spec.assumptions
-                .push("MIN_WEB=0.8 mm; COLLAR_GAP=0.5 mm".into());
-        }
-        Ok(spec)
+            geometry_basis: Some(
+                if compact_pitch.is_some() {
+                    "drawing_derived_unverified_compact"
+                } else {
+                    "drawing_derived_unverified"
+                }
+                .into(),
+            ),
+            nonclaims,
+            assumptions,
+        })
     }
 
     fn pcr96_carrier_spec(

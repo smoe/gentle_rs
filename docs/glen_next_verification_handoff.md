@@ -1,5 +1,15 @@
 # Glen: Next Verification And Return
 
+## Compact Carrier Disclosure Construction, 2026-10-25
+
+The optional cleanup builds disclosure vectors directly, preserving their
+strings/order rather than rewriting `nonclaims[2]` or `assumptions[4]`. Run
+`cargo test --locked --lib -j1 labware_compact_pitch_exports_geometry_persists_and_clears_without_drift -- --test-threads=1`
+and the normal `labware_`/legacy-export checks. The extended assertion compares
+the two common nonclaims against the conservative spec; existing clear/reset
+SCAD equality remains. Rust/export-byte acceptance is unrun locally. No template
+numbers, mutation policy or release scope changed.
+
 ## S1 SNV State-Preservation Follow-Up, 2026-10-25
 
 At the next ordinary integrated verification, include the named

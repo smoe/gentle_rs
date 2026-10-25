@@ -35419,6 +35419,15 @@ fn labware_compact_pitch_exports_geometry_persists_and_clears_without_drift() {
     })
     .unwrap();
     let original = fs::read(&path).unwrap();
+    let original_json_path = dir.path().join("original.json");
+    e.apply(Operation::ExportRackSimulationJson {
+        rack_id: "compact".into(),
+        template,
+        path: original_json_path.to_str().unwrap().into(),
+    })
+    .unwrap();
+    let conservative: serde_json::Value =
+        serde_json::from_slice(&fs::read(original_json_path).unwrap()).unwrap();
     e.apply(Operation::SetRackCarrierPitch {
         rack_id: "compact".into(),
         pitch_um: Some(14_000),
@@ -35449,6 +35458,12 @@ fn labware_compact_pitch_exports_geometry_persists_and_clears_without_drift() {
     })
     .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&fs::read(json_path).unwrap()).unwrap();
+    for index in 0..2 {
+        assert_eq!(
+            json["physical_template"]["nonclaims"][index],
+            conservative["physical_template"]["nonclaims"][index]
+        );
+    }
     assert_eq!(json["physical_template"]["overall_width_mm"], 132.0);
     assert_eq!(json["physical_template"]["pitch_x_mm"], 14.0);
     for (index, coordinate, x, y) in [(0, "A1", 10.0, 15.225), (80, "I9", 122.0, 127.225)] {
