@@ -1,4 +1,78 @@
 //! Sequence export helpers and render-side formatting.
+//!
+//! This module provides the `RenderSequence` component for rendering DNA sequences
+//! as text rows in the GUI. It orchestrates multiple sequence row types (DNA bases,
+//! restriction enzyme sites, reverse complement, amino acid translations) into a
+//! unified, scrollable view.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Multi-Row Sequence Display**: Composes multiple `SequenceRow` variants into
+//!   a vertical stack, enabling users to view the DNA sequence alongside derived
+//!   information (restriction sites, reverse complement, translations).
+//!
+//! - **Row Type Management**: Creates and manages different row types:
+//!   - `RowDna`: The primary DNA base sequence
+//!   - `RowRestrictionEnzymes`: Restriction enzyme cut sites aligned to sequence
+//!   - Reverse complement row: Shows the complementary strand
+//!   - Amino acid translation rows: Deferred pending engine contracts (see architecture)
+//!
+//! - **Scroll and Selection Tracking**: Manages vertical scrolling through
+//!   sequence blocks and tracks the selection anchor for multi-block selections.
+//!
+//! - **Block-Based Virtualization**: Only renders visible sequence blocks to
+//!   maintain performance with long sequences. Blocks are sized consistently
+//!   based on the current zoom level.
+//!
+//! - **Separator Rows**: Inserts blank separator rows between content rows for
+//!   visual clarity.
+//!
+//! ## Design Principles
+//!
+//! - **Deferred Translation**: Amino acid translation rows are explicitly deferred
+//!   in the architecture contract until transcript/CDS-aware translation is
+//!   implemented in the engine. See `docs/architecture.md` for details.
+//!
+//! - **Dynamic Row Composition**: Rows are created based on `DnaDisplay` settings,
+//!   allowing users to toggle which derived information is visible without
+//!   reloading the sequence.
+//!
+//! - **Consistent Block Sizing**: All DNA sequence rows use the same block height
+//!   and horizontal layout to ensure alignment across rows.
+//!
+//! - **Thread Safety**: Uses `Arc<RwLock<...>>` for shared display state; each row
+//!   holds its own reference to the shared state.
+//!
+//! ## Invariants
+//!
+//! - The DNA base row is always present (cannot be toggled off)
+//! - Separator rows are inserted between content rows, never at the start
+//! - Block dimensions are consistent across all rows at the same zoom level
+//! - Selection anchors are cleared when scrolling changes the visible region
+//!
+//! ## Failure Modes
+//!
+//! - Empty sequences render as empty rows without errors
+//! - Missing display state defaults to sensible visibility settings
+//! - Extremely long sequences use virtualization to maintain performance
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`dna_display`**: Provides the `DnaDisplay` configuration for row visibility
+//! - **`sequence_rows`**: Defines the `SequenceRow` enum and common row traits
+//! - **`sequence_rows_dna`**: Implements the DNA base row renderer
+//! - **`sequence_rows_restriction_enzymes`**: Implements the restriction site row
+//! - **`sequence_rows_blank`**: Implements the blank separator row
+//!
+//! ## Architecture Note
+//!
+//! Amino acid translation is explicitly deferred per:
+//! ```text
+//! docs/architecture.md -> "Amino-acid translation row contract (deferred)"
+//! ```
+//! The row creation logic includes a placeholder comment marking this as a
+//! future extension point. Do not implement translation rows without first
+//! implementing the engine-side transcript/CDS contracts.
 
 use crate::{
     dna_display::{AminoAcidFrame, DnaDisplay},

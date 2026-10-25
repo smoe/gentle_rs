@@ -1,4 +1,88 @@
-//! Linear-map DNA renderer.
+//! Linear-map DNA renderer implementation.
+//!
+//! This module implements the concrete renderer for linear (non-circular) DNA sequences.
+//! It handles all aspects of visualizing linear sequences: base-letter rendering,
+//! feature lanes, restriction enzyme sites, GC content tracks, ORFs, regulatory
+//! element overlays, and construct reasoning evidence overlays.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Base-letter Rendering**: Draws individual DNA bases using the adaptive routing
+//!   logic from `linear_base_routing`. Supports standard, helical, and condensed modes.
+//!
+//! - **Feature Lanes**: Renders annotation features (genes, CDS, exons, promoters,
+//!   etc.) as horizontal lanes with appropriate colors, labels, and geometries.
+//!   Feature visibility is controlled by `DnaDisplay` configuration.
+//!
+//! - **Restriction Enzyme Sites**: Displays restriction enzyme cut sites as vertical
+//!   ticks or labeled markers. Sites can be selected, hovered, and queried.
+//!
+//! - **Analysis Overlays**: Renders GC content tracks, open reading frames,
+//!   methylation sites, and other analysis-derived visualizations.
+//!
+//! - **Construct Reasoning Overlays**: Visualizes construct-reasoning evidence
+//!   (e.g., similarity regions, assembly anchors) as semi-transparent spans over
+//!   the sequence.
+//!
+//! - **Regulatory Element Tracks**: Displays regulatory features (enhancers,
+//!   silencers, promoters) with distinct styling from coding features.
+//!
+//! - **Interactive Selection**: Manages feature and position selection states,
+//!   hover detection, and visual feedback for user interactions.
+//!
+//! - **Coordinate System**: Maintains viewport coordinate mapping between sequence
+//!   positions and screen pixels, enabling precise hit-testing and rendering.
+//!
+//! ## Design Principles
+//!
+//! - **Density-Adaptive**: Automatically adjusts detail level based on zoom. At high
+//!   zoom levels, individual bases are visible; at low zoom, features collapse to
+//!   summary representations.
+//!
+//! - **Layered Rendering**: Features are drawn in specific layers to ensure proper
+//!   occlusion: construct reasoning overlays at bottom, then regulatory elements,
+//!   then coding features, then restriction sites, then base letters at top.
+//!
+//! - **Consistent Metrics**: All vertical dimensions use a consistent set of constants
+//!   (`FEATURE_HEIGHT`, `FEATURE_GAP`, `BASELINE_MARGIN`, etc.) defined at the module
+//!   level for easy tuning and consistency.
+//!
+//! - **Performance Optimization**: Uses incremental rendering and visible-region
+//!   culling. Only features within or near the viewport are processed for rendering.
+//!
+//! - **Thread Safety**: Internal state is protected by `RwLock`; the module expects
+//!   to be wrapped in `Arc<RwLock<RenderDnaLinear>>` by callers.
+//!
+//! ## Invariants
+//!
+//! - The renderer always reflects the current `DNAsequence` and `DnaDisplay` state
+//! - Feature coordinates are mapped from sequence positions to screen positions
+//!   using the current viewport and zoom level
+//! - Selection and hover states are always consistent with the current mouse position
+//! - Base-letter rendering mode is recomputed whenever viewport or sequence changes
+//!
+//! ## Failure Modes
+//!
+//! - Zero-length sequences render as empty (no panic)
+//! - Extremely large sequences use culling to avoid performance issues
+//! - Invalid viewport dimensions (zero width/height) skip rendering gracefully
+//! - Panics during rendering are caught by the caller (`RenderDna::render`)
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`linear_base_routing`**: Provides the adaptive base-letter mode selection
+//! - **`dna_display`**: Provides display configuration and visibility settings
+//! - **`render_dna`**: The parent facade that holds and manages this renderer
+//! - **`gc_contents`**: Provides GC content calculations for the GC track
+//! - **`open_reading_frame`**: Provides ORF detection for ORF track rendering
+//!
+//! ## Constants Reference
+//!
+//! The module defines numerous `const` values for sizing and spacing:
+//! - `BASELINE_*` constants control the central sequence baseline layout
+//! - `FEATURE_*` constants control feature lane dimensions
+//! - `*_MAX_BP_PER_PX` constants control when detail features are visible
+//! - `REGULATORY_*` constants control regulatory track dimensions
 
 use crate::{
     dna_display::{

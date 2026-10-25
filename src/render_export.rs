@@ -1,4 +1,79 @@
-//! Shared export surfaces (SVG and snapshot pathways).
+//! Shared export surfaces for headless SVG rendering and snapshot generation.
+//!
+//! This module provides adapter-neutral SVG export functionality that allows
+//! GENtle to generate publication-quality vector graphics without requiring a
+//! running GUI. The same rendering logic used for interactive display is reused
+//! here to ensure visual consistency between screen and export.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Linear Sequence Exports**: Renders linear DNA maps as SVG with configurable
+//!   dimensions, including all feature lanes, restriction sites, and analysis overlays.
+//!   Supports both standard and compact layouts.
+//!
+//! - **Circular Sequence Exports**: Renders circular DNA maps (plasmids) as SVG
+//!   with the origin at top, radial feature layout, and circular coordinate system.
+//!
+//! - **Feature Label Deduplication**: Intelligently avoids overlapping labels by
+//!   tracking rendered label positions and skipping duplicates within a threshold.
+//!
+//! - **Sizing and Layout Constants**: Defines all SVG-specific dimensions at module
+//!   level for consistency across exports. Constants are grouped by feature type
+//!   (linear vs circular, feature vs regulatory vs variation).
+//!
+//! - **Text Measurement**: Provides accurate text bounding box calculations for
+//!   SVG text elements, accounting for font metrics and monospace character widths.
+//!
+//! ## Design Principles
+//!
+//! - **Adapter-Neutral**: This module is used by CLI export commands, GUI export
+//!   actions, MCP tool invocations, and automated workflows. All produce identical
+//!   SVG output for identical inputs.
+//!
+//! - **Deterministic Output**: Given the same sequence, display settings, and
+//!   export parameters, the generated SVG is byte-identical across runs and platforms.
+//!
+//! - **Publication-Ready**: SVG output uses appropriate defaults for publication
+//!   (1200x700px for linear, with clear margins, readable fonts, and color schemes
+//!   that work in both color and grayscale printing).
+//!
+//! - **Progressive Enhancement**: SVG includes semantic grouping (`<g>` elements)
+//!   and metadata where applicable, making it amenable to post-processing.
+//!
+//! - **No External Dependencies**: SVG generation uses the pure-Rust `svg` crate
+//!   and produces standalone SVG files without requiring external libraries.
+//!
+//! ## Invariants
+//!
+//! - Export dimensions are always positive (caller validates parameters)
+//! - Empty sequences produce minimal valid SVG (not empty files)
+//! - Label deduplication prevents visual overlap in dense regions
+//! - All coordinates in SVG are non-negative
+//!
+//! ## Failure Modes
+//!
+//! - Invalid dimensions (zero or negative) are rejected before rendering
+//! - Missing features are omitted from output without error
+//! - Extremely long labels are truncated to prevent layout breakage
+//! - Unicode in labels is preserved in SVG text elements
+//!
+//! ## Usage Examples
+//!
+//! CLI export:
+//! ```bash
+//! gentle_cli export sequence --format svg --output my_plasmid.svg
+//! ```
+//!
+//! GUI export: `File -> Export -> SVG`
+//!
+//! MCP: `tools call gentle.export_sequence_svg`
+//!
+//! ## Constants Reference
+//!
+//! - `W`, `H`: Default SVG canvas dimensions (1200x700)
+//! - `LINEAR_SVG_*`: Linear-specific padding and header dimensions
+//! - `CIRCULAR_*`: Circular-specific sizing for labels and markers
+//! - `*_DEDUP_DISTANCE_PX`: Minimum pixel separation for label deduplication
 
 use crate::{
     dna_sequence::DNAsequence,

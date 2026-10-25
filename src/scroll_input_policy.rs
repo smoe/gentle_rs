@@ -1,4 +1,84 @@
 //! Shared GUI scroll/pan/zoom intent mapping and keyboard scroll helpers.
+//!
+//! This module provides a centralized input handling policy for scroll, pan, and zoom
+//! interactions across all GENtle GUI canvases and viewports. It translates raw input
+//! events (mouse wheel, trackpad, keyboard) into semantic intents that renderers can
+//! consume consistently.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Wheel/Trackpad Intent Classification**: Interprets mouse wheel and trackpad
+//!   scroll events based on modifier keys. By default:
+//!   - No modifier: Pan/Scroll in the scroll direction
+//!   - Shift key: Zoom (in/out based on scroll direction)
+//!
+//! - **Keyboard Navigation**: Maps arrow keys to pan or zoom intents for
+//!   zoomable canvases, with configurable step sizes.
+//!
+//! - **Intent Types**: Defines semantic intent types that decouple input handling
+//!   from renderer logic:
+//!   - `WheelIntent`: Wheel/trackpad scroll classification (Pan, Zoom, None)
+//!   - `ArrowIntent`: Keyboard arrow key classification (Pan, Zoom, None)
+//!   - `ZoomDirection`: Direction of zoom (In, Out)
+//!
+//! - **Configuration Constants**: Exposes tunable parameters for input sensitivity:
+//!   - `DEFAULT_CANVAS_PAN_STEP`: Arrow key pan distance for zoomable canvases (40px)
+//!   - `DEFAULT_SCROLLAREA_KEYBOARD_STEP`: Arrow key scroll distance for list/table panes (48px)
+//!
+//! ## Design Principles
+//!
+//! - **Modifier-Based Mode Switching**: Shift key toggles between pan and zoom modes
+//!   for wheel input, providing a standard interaction pattern across all viewports.
+//!
+//! - **Dominant Axis Detection**: For zoom intents, uses the dominant axis (larger
+//!   delta magnitude) to determine zoom direction, allowing both vertical and
+//!   horizontal trackpad gestures to zoom consistently.
+//!
+//! - **Epsilon-Based Dead Zone**: Ignores scroll deltas below `DELTA_EPSILON` (0.0001)
+//!   to prevent jitter from noise in input devices.
+//!
+//! - **Explicit Intent Passing**: Renderers receive semantic intents (`WheelIntent`,
+//!   `ArrowIntent`) rather than raw input events, making behavior easier to test
+//!   and modify.
+//!
+//! - **Cursor Feedback**: Returns appropriate `CursorIcon` values to provide visual
+//!   feedback about the current interaction mode (e.g., grab cursor for pan, zoom
+//!   cursor for zoom).
+//!
+//! ## Invariants
+//!
+//! - Wheel zoom direction: positive delta = zoom in, negative delta = zoom out
+//! - Arrow pan direction: matches the arrow key direction
+//! - Shift modifier always triggers zoom mode for wheel input
+//! - Small deltas (< epsilon) are always ignored
+//!
+//! ## Failure Modes
+//!
+//! - Zero or NaN deltas are treated as no-op (not pan/zoom)
+//! - Missing input state defaults to no modifiers (pan mode)
+//! - Negative step sizes are treated as positive (absolute value)
+//!
+//! ## Usage Patterns
+//!
+//! Typical renderer integration:
+//! ```ignore
+//! let wheel_intent = scroll_input_policy::wheel_intent(input.scroll_delta, input.modifiers);
+//! match wheel_intent {
+//!     WheelIntent::Pan { delta } => { /* adjust viewport offset */ }
+//!     WheelIntent::Zoom { direction, amount } => { /* adjust zoom level */ }
+//!     WheelIntent::None => {}
+//! }
+//! ```
+//!
+//! For keyboard navigation in zoomable canvas:
+//! ```ignore
+//! let arrow_intent = scroll_input_policy::arrow_intent(&input, modifiers);
+//! match arrow_intent {
+//!     ArrowIntent::Pan { delta } => { /* adjust viewport offset */ }
+//!     ArrowIntent::Zoom { direction } => { /* adjust zoom level */ }
+//!     ArrowIntent::None => {}
+//! }
+//! ```
 
 use eframe::egui::{self, CursorIcon, InputState, Key, Modifiers, Vec2};
 

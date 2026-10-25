@@ -1,4 +1,70 @@
-//! Shared DNA rendering entry points.
+//! Shared DNA rendering entry points and unified renderer facade.
+//!
+//! This module provides the central `RenderDna` enum that serves as the primary
+//! interface for rendering DNA sequences in GENtle's GUI. It abstracts over the
+//! concrete renderer implementations (`RenderDnaLinear` and `RenderDnaCircular`)
+//! to provide a unified API for sequence visualization, interaction, and state queries.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Renderer Dispatch**: Automatically selects between linear and circular renderer
+//!   based on the underlying `DNAsequence` topology. The `RenderDna::new()` constructor
+//!   inspects `dna.is_circular()` and instantiates the appropriate variant.
+//!
+//! - **Unified Interaction API**: Provides a single interface for mouse/pointer events
+//!   (`on_click`, `on_hover`, `on_double_click`) that delegates to the active renderer.
+//!   This ensures consistent interaction behavior regardless of sequence topology.
+//!
+//! - **Selection and Hover Queries**: Exposes methods to query current selections
+//!   and hover states for features, restriction sites, and reasoning evidence overlays.
+//!   These queries are topology-aware and return `None` for operations not supported
+//!   by a given topology (e.g., exon frame cues only for linear sequences).
+//!
+//! - **Cache Invalidation**: Centralizes cache invalidation for sequence-derived
+//!   data (e.g., GC content, ORFs, feature layouts) so changes to the underlying
+//!   sequence or display settings propagate correctly to both renderers.
+//!
+//! - **Utility Functions**: Provides shared helper functions for feature classification
+//!   (`is_feature_pointy`, `is_variation_feature`, etc.), color assignments, and
+//!   exon frame cue calculations used by both renderers.
+//!
+//! ## Design Principles
+//!
+//! - **Topology Transparency**: Callers use `RenderDna` without needing to know whether
+//!   the sequence is circular or linear. The enum dispatch handles this internally.
+//!
+//! - **Thread Safety**: Uses `Arc<RwLock<...>>` for shared ownership of renderer state,
+//!   allowing concurrent read access during rendering while supporting exclusive write
+//!   access for state mutations. All public methods handle lock acquisition internally.
+//!
+//! - **Panic Recovery**: The `render()` method uses `catch_unwind` to recover from
+//!   rendering panics gracefully, logging the error and continuing UI updates.
+//!
+//! - **Adapter-Neutral**: While primarily used by the GUI, the same renderer logic
+//!   and state can be exercised through CLI and MCP routes via the shared shell.
+//!
+//! ## Invariants
+//!
+//! - A `RenderDna` instance always matches its underlying sequence's circularity
+//! - Selection states are cleared when incompatible selections are made (e.g.,
+//!   selecting a feature clears restriction site selection and vice versa)
+//! - Only linear sequences support exon frame cues; circular sequences return `None`
+//! - All renderer state mutations are guarded by `RwLock` writes
+//!
+//! ## Failure Modes
+//!
+//! - If renderer lock acquisition fails, methods return early with `None` or no-op
+//! - Rendering panics are caught and logged, but do not crash the application
+//! - Empty or zero-length sequences render as empty views without errors
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`dna_display`**: Provides the shared `DnaDisplay` configuration state
+//! - **`render_dna_linear`**: Handles linear sequence rendering implementation
+//! - **`render_dna_circular`**: Handles circular sequence rendering implementation
+//! - **`linear_base_routing`**: Determines base-letter display mode for linear renderer
+//! - **`repeat_features`**: Classifies and displays repeat element features
+//! - **`restriction_enzyme`**: Provides restriction enzyme site data and keys
 
 use crate::{
     dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},

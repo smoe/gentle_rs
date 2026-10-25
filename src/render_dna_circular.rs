@@ -1,4 +1,87 @@
-//! Circular-map DNA renderer.
+//! Circular-map DNA renderer implementation.
+//!
+//! This module implements the concrete renderer for circular (closed) DNA sequences
+//! such as plasmids, viral genomes, and circular chromosomes. It visualizes the
+//! sequence as a circular map with the origin at the top, features as radial
+//! segments, and analysis overlays as concentric rings.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Circular Coordinate System**: Manages the transformation between linear
+//!   sequence coordinates and angular positions (0-360 degrees) on the circle.
+//!   The origin (position 0) is always at the top (angle 0 = -90 degrees in egui's
+//!   coordinate system where Y increases downward).
+//!
+//! - **Radial Feature Layout**: Renders features as arc segments at different radii
+//!   based on feature type and hierarchy. Inner features (e.g., CDS within genes) are
+//!   drawn at smaller radii than their parent features.
+//!
+//! - **Circular Feature Geometry**: Computes angular spans and radial positions for
+//!   features that may cross the origin (position 0). These features are "unrolled"
+//!   and split into two segments if necessary to maintain visual continuity.
+//!
+//! - **Multiple Cloning Site (MCS) Visualization**: Provides specialized rendering
+//!   for MCS regions with clear labels and directional indicators.
+//!
+//! - **Construct Reasoning Overlays**: Displays construct-reasoning evidence
+//!   (similarity, homology) as concentric rings with configurable thickness and
+//!   gap factors.
+//!
+//! - **ORF Color Coding**: Uses a consistent color scheme for open reading frames
+//!   across all circular views: frame -1/-2/-3 in light colors, frame +1/+2/+3
+//!   in dark colors for quick visual identification.
+//!
+//! - **Restriction Site Marks**: Shows restriction enzyme cut sites as ticks or
+//!   labels around the circle perimeter.
+//!
+//! - **GC Content Visualization**: Renders GC content as a continuous ring with
+//!   color-coded regions.
+//!
+//! ## Design Principles
+//!
+//! - **Origin at Top**: Position 0 is always rendered at the top of the circle
+//!   (12 o'clock position), matching common plasmid map conventions.
+//!
+//! - **Clockwise Layout**: Sequence positions increase in clockwise direction,
+//!   consistent with standard circular genome representations.
+//!
+//! - **Hierarchical Radii**: Parent features (e.g., genes) occupy outer rings,
+//!   while child features (e.g., CDS, exons) occupy inner rings, preventing
+//!   visual overlap and making hierarchy visually apparent.
+//!
+//! - **Origin-Crossing Handling**: Features that span the origin are split into
+//!   two segments: one from start to end-of-sequence, and one from start-of-sequence
+//!   to end. Both segments are rendered with the same styling.
+//!
+//! - **Thread Safety**: Internal state is protected by `RwLock`; the module expects
+//!   to be wrapped in `Arc<RwLock<RenderDnaCircular>>` by callers.
+//!
+//! ## Invariants
+//!
+//! - All angular calculations use the circular sequence length as the full 360-degree range
+//! - Features are always rendered within the circle bounds, never extending beyond
+//! - Origin-crossing features are split into at most two segments
+//! - MCS features are rendered with distinct styling for easy identification
+//!
+//! ## Failure Modes
+//!
+//! - Zero-length sequences are not supported (caller must ensure non-zero length)
+//! - Invalid angular ranges (NaN, infinite) are clamped to valid values
+//! - Extremely small circles skip feature rendering to avoid visual clutter
+//! - Panics during rendering are caught by the caller (`RenderDna::render`)
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`render_dna`**: The parent facade that holds and manages this renderer
+//! - **`dna_display`**: Provides display configuration and visibility settings
+//! - **`gc_contents`**: Provides GC content calculations for circular GC ring
+//! - **`feature_location`**: Provides utilities for normalizing and unwrapping feature ranges
+//!
+//! ## Constants Reference
+//!
+//! - `MCS_CIRCULAR_LABEL_*` constants control MCS label positioning
+//! - `CONSTRUCT_REASONING_CIRCULAR_*` constants control overlay ring appearance
+//! - `ORF_COLORS` provides the frame-to-color mapping for ORF visualization
 
 use crate::{
     dna_display::{

@@ -1,4 +1,63 @@
 //! Restriction-enzyme sequence-row renderer implementation.
+//!
+//! This module implements the `RowRestrictionEnzymes` renderer for displaying restriction
+//! enzyme cut sites as a row aligned with the DNA base sequence. It shows enzyme
+//! recognition sequences inline with the DNA, enabling users to see cut sites in
+//! sequence context.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Cut Site Display**: Renders restriction enzyme recognition sequences at their
+//!   exact positions within the DNA sequence, using a distinct visual style (typically
+//!   a different color or underline) to distinguish them from regular bases.
+//!
+//! - **Position Alignment**: Ensures cut sites are horizontally aligned with their
+//!   corresponding positions in the DNA base row above, maintaining visual correlation.
+//!
+//! - **Batch Rendering**: Like `RowDna`, uses batching (default 10) to optimize
+//!   rendering of dense restriction site regions.
+//!
+//! - **Block Virtualization**: Only renders restriction sites within visible blocks,
+//!   matching the virtualization strategy of the DNA base row.
+//!
+//! - **Visual Distinction**: Uses color coding and styling to make restriction sites
+//!   visually distinct from regular DNA bases while maintaining readability.
+//!
+//! ## Design Principles
+//!
+//! - **Contextual Display**: Shows restriction sites inline with sequence bases to
+//!   provide immediate context. This is different from the separate restriction site
+//!   lane in the main DNA map view.
+//!
+//! - **Shared Layout**: Matches the block and batch layout of `RowDna` to ensure
+//!   perfect horizontal alignment between the DNA row and restriction enzyme row.
+//!
+//! - **Performance Parity**: Uses the same optimization strategies as `RowDna`
+//!   (batching, virtualization) to maintain performance with long sequences.
+//!
+//! - **Thread Safety**: Holds `Arc<RwLock<...>>` references to shared state.
+//!
+//! ## Invariants
+//!
+//! - Restriction sites are always displayed at their correct sequence positions
+//! - Block dimensions match those of the aligned DNA row
+//! - Batch size is always positive (default 10)
+//! - Only enzymes with valid recognition sequences are displayed
+//!
+//! ## Failure Modes
+//!
+//! - Empty sequences render as empty row (no panic)
+//! - Sequences with no restriction sites render as empty row
+//! - Invalid enzyme definitions are skipped during rendering
+//! - Overlapping restriction sites are all displayed (no deduplication)
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`sequence_rows`**: Defines the row enum that includes this renderer
+//! - **`render_sequence`**: Orchestrates multiple rows including this one
+//! - **`dna_sequence`**: Provides the underlying DNA sequence data
+//! - **`restriction_enzyme`**: Provides restriction enzyme definitions and recognition sequences
+//! - **`dna_display`**: Provides display configuration
 
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, restriction_enzyme::RestrictionEnzymeKey,

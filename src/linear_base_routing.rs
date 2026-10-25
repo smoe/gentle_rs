@@ -1,7 +1,50 @@
 //! Adaptive routing decisions for linear DNA base-letter rendering.
 //!
-//! This module centralizes density-based mode selection so renderer and GUI
-//! status panels report identical behavior.
+//! This module centralizes density-based mode selection so renderer and GUI status
+//! panels report identical behavior. It determines how to display individual DNA bases
+//! when zoomed in, choosing between standard single-row, helical multi-row, and
+//! condensed multi-row layouts based on available space and sequence density.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Mode Selection**: Automatically selects the appropriate rendering mode based on
+//!   viewport width, sequence span, and font scaling. The decision is purely deterministic
+//!   from the input parameters.
+//!
+//! - **Density Calculation**: Computes base density ratios (bases per pixel) and
+//!   compares against configurable thresholds to determine readability.
+//!
+//! - **Configuration Constants**: Exposes tuning parameters for density thresholds
+//!   (`AUTO_STANDARD_MAX_DENSITY`, `AUTO_HELICAL_MAX_DENSITY`, etc.) that control
+//!   when each mode activates.
+//!
+//! ## Design Principles
+//!
+//! - **Single Source of Truth**: Both `RenderDnaLinear` and GUI status widgets use
+//!   `decide_linear_base_routing()` to ensure consistent mode reporting. There is no
+//!   duplicate logic in the renderer.
+//!
+//! - **Conservative Estimates**: Glyph width estimation uses `GLYPH_WIDTH_SCALE = 0.62`
+//!   which is intentionally conservative. Real rendered glyphs are often narrower, so
+//!   we allow a small overlap buffer above 1.0 density before switching modes.
+//!
+//! - **Tiered Density**: Three distinct density tiers with explicit thresholds:
+//!   - Standard (1-row): up to ~1.5 bases/px
+//!   - Helical (2-row): up to ~2.0 bases/px
+//!   - Condensed (10-row): up to ~10.0 bases/px
+//!
+//! ## Invariants
+//!
+//! - Mode decisions are deterministic for identical inputs
+//! - Threshold constants are `pub const` for external tuning without breaking changes
+//! - The `decision_reason` string in `LinearBaseRoutingDecision` is human-readable
+//!   for debugging and GUI status display
+//!
+//! ## Failure Modes
+//!
+//! - Zero viewport width or zero span returns `Off` mode with appropriate reason
+//! - Extremely large sequences (>usize max) would overflow; caller must bound inputs
+//! - Font size constraints (min/max) prevent unreadable or infinite scaling
 
 use crate::engine::LinearSequenceLetterLayoutMode;
 

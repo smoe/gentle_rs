@@ -1,4 +1,70 @@
 //! Sequence-row abstraction shared by specialized row renderers.
+//!
+//! This module defines the `SequenceRow` enum that serves as the common type for all
+//! sequence row implementations. It provides the abstraction layer between the
+//! `RenderSequence` orchestrator and concrete row renderers, enabling polymorphic
+//! row composition with a unified interface.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Row Enum Definition**: Defines all supported row types as variants of
+//!   `SequenceRow`, each carrying its specific renderer implementation.
+//!
+//! - **Uniform Interface**: Provides common methods that all row types implement:
+//!   - `compute_line_height()`: Calculates the row's vertical height based on viewport
+//!   - `paint()`: Renders the row content within its allocated rectangle
+//!   - `get_line_height()`: Returns the current computed height
+//!   - `get_row_type_name()`: Returns a human-readable type identifier
+//!
+//! - **Deferred Implementations**: Includes placeholder variants and methods for
+//!   features that are explicitly deferred in the architecture (`AminoAcids`, `Features`,
+//!   `Proteases`). These are marked with architecture contract references.
+//!
+//! - **Optimization Support**: The `#[inline(always)]` attribute on `paint()` ensures
+//!   hot rendering paths have minimal call overhead.
+//!
+//! ## Design Principles
+//!
+//! - **Extensible Enum**: New row types can be added as new variants without changing
+//!   the core interface. Each variant carries its own state.
+//!
+//! - **Trait-Based Dispatch**: Uses Rust's enum dispatch pattern rather than dynamic
+//!   dispatch (trait objects) for maximum performance in the rendering hot path.
+//!
+//! - **Explicit Deferral**: Deferred row types (AminoAcids, Features, Proteases) have
+//!   no-op or minimal implementations with clear architecture references, preventing
+//!   accidental implementation before contracts are ready.
+//!
+//! - **Shared Dependencies**: All row types share common dependencies (painter,
+//!   rectangle, display state) to ensure consistent rendering behavior.
+//!
+//! ## Invariants
+//!
+//! - Each row variant carries all state needed for its rendering
+//! - The `paint()` method never panics (implementations handle edge cases)
+//! - Deferred variants have minimal or no-op implementations
+//!
+//! ## Failure Modes
+//!
+//! - Deferred row types render as empty (no crash, no content)
+//! - Invalid display state defaults to sensible behavior
+//! - Zero-size viewport dimensions are handled gracefully
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`render_sequence`**: The orchestrator that composes multiple rows
+//! - **`sequence_rows_dna`**: DNA base sequence row implementation
+//! - **`sequence_rows_blank`**: Blank separator row implementation
+//! - **`sequence_rows_restriction_enzymes`**: Restriction enzyme row implementation
+//!
+//! ## Architecture Notes
+//!
+//! Multiple variants are explicitly deferred per architecture contracts:
+//! - `AminoAcids`: Deferred pending transcript/CDS-aware translation in engine
+//! - `Features`: Deferred pending feature-row visualization contracts
+//! - `Proteases`: Deferred pending protease digestion visualization contracts
+//!
+//! See `docs/architecture.md` for the amino-acid translation row contract details.
 
 use crate::{
     dna_display::DnaDisplay, sequence_rows_blank::RowBlank, sequence_rows_dna::RowDna,

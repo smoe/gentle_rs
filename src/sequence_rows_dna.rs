@@ -1,4 +1,78 @@
 //! DNA base-row renderer implementation.
+//!
+//! This module implements the `RowDna` renderer for displaying DNA base sequences
+//! as text in a scrollable row. It handles the actual character-level rendering of
+//! nucleotide sequences with support for batching, position numbering, and
+//! reverse complement display.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Base Character Rendering**: Draws individual DNA bases (A, C, G, T, and
+//!   IUPAC ambiguity codes) as monospace characters in the row.
+//!
+//! - **Position Numbering**: Optionally displays position numbers above or below
+//!   the sequence. Position format follows the sequence's coordinate system.
+//!
+//! - **Reverse Complement Support**: Can render the reverse complement strand
+//!   when requested, with appropriate labeling and without position numbers
+//!   (since reverse complement positions would be confusing in a forward display).
+//!
+//! - **Batching**: Renders bases in batches (default 10) to reduce the number of
+//!   individual draw calls while maintaining visual fidelity.
+//!
+//! - **Block Layout**: Divides the sequence into visible blocks based on the
+//!   current viewport and zoom level. Only visible blocks are rendered for
+//!   performance.
+//!
+//! - **Styling**: Applies consistent colors and strokes for bases, position numbers,
+//!   and block separators. Uses monospace font for base alignment.
+//!
+//! ## Design Principles
+//!
+//! - **Virtualized Rendering**: Only bases within the visible viewport are rendered,
+//!   enabling smooth display of very long sequences without performance degradation.
+//!
+//! - **Batch Optimization**: Bases are rendered in batches to minimize draw calls.
+//!   The batch size (10 by default) balances between too many small calls and
+//!   losing visual distinction between bases.
+//!
+//! - **Position Toggle**: Position numbers can be toggled on/off via `show_position`
+//!   to reduce clutter when viewing long sequences.
+//!
+//! - **Reverse Complement Mode**: The `reverse_complement()` method creates a new
+//!   row that displays the complementary strand, with `show_position` disabled
+//!   to avoid coordinate confusion.
+//!
+//! - **Thread Safety**: Holds `Arc<RwLock<...>>` references to shared DNA sequence
+//!   and display state, allowing concurrent access during rendering.
+//!
+//! ## Invariants
+//!
+//! - Block dimensions are computed from viewport size and zoom level
+//! - Batch size is always positive (default 10)
+//! - Position numbers are always displayed in forward orientation
+//! - Reverse complement rows never show position numbers
+//!
+//! ## Failure Modes
+//!
+//! - Empty sequences render as empty blocks (no panic)
+//! - Invalid zoom levels result in sensible defaults
+//! - Missing DNA sequence defaults to empty display
+//! - Non-IUPAC characters are rendered using the `IupacCode` formatter
+//!
+//! ## Performance Characteristics
+//!
+//! - Batching reduces draw calls by roughly 10x for typical zoom levels
+//! - Block-based virtualization ensures O(visible_bases) rendering complexity
+//! - All measurements are cached in the row struct to avoid recomputation
+//!
+//! ## Relationship to Other Modules
+//!
+//! - **`sequence_rows`**: Defines the row enum that includes this renderer
+//! - **`render_sequence`**: Orchestrates multiple rows including this one
+//! - **`dna_sequence`**: Provides the underlying DNA sequence data
+//! - **`dna_display`**: Provides display configuration
+//! - **`iupac_code`**: Handles IUPAC ambiguity code formatting
 
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, iupac_code::IupacCode,

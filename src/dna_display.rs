@@ -1,4 +1,54 @@
 //! Shared DNA display configuration and visibility policies.
+//!
+//! This module owns the central display state and rendering policies for DNA sequence
+//! visualization across GENtle's GUI. It serves as the single source of truth for how
+//! sequences, features, annotations, and analysis results are presented to users.
+//!
+//! ## Core Responsibilities
+//!
+//! - **Display State (`DnaDisplay`)**: Manages visibility toggles, layout modes, and
+//!   rendering parameters for DNA views (linear and circular). This state is shared
+//!   between the main sequence window and specialized renderers.
+//!
+//! - **Selection Model (`Selection`)**: Tracks user-selected sequence regions with
+//!   support for circular sequence wrapping. Selections drive feature highlighting,
+//!   extraction operations, and coordinate-based interactions.
+//!
+//! - **Feature Visibility**: Centralizes policies for showing/hiding feature types
+//!   (genes, CDS, exons, regulatory elements, variants, etc.) and custom feature classes.
+//!
+//! - **Restriction Enzyme Display**: Controls which restriction sites are visible
+//!   and how they are rendered, including preferred enzyme sets and display modes.
+//!
+//! - **Color Schemes**: Defines consistent color mappings for feature types,
+//!   evidence classes, and construct reasoning overlays used throughout all renderers.
+//!
+//! ## Design Principles
+//!
+//! - **Adapter-Neutral State**: `DnaDisplay` configuration applies equally to GUI,
+//!   CLI-exported SVG, and headless rendering. The same display settings produce
+//!   equivalent visual outputs regardless of entry point.
+//!
+//! - **Circular vs Linear Consistency**: Selection and visibility logic handles both
+//!   circular and linear topologies transparently. Circular wrapping is explicit in
+//!   the `Selection` model, not scattered across call sites.
+//!
+//! - **Performance by Design**: Display state uses `Arc<RwLock<...>>` for shared
+//!   ownership without cloning large configuration structs during rendering.
+//!
+//! ## Invariants
+//!
+//! - Selections are always bounded by sequence length (wrapped for circular)
+//! - Feature visibility is additive: hiding a parent class (e.g., "gene") hides
+//!   all child features regardless of their individual settings
+//! - Color assignments are deterministic: same feature type + evidence class =
+//!   same color across sessions
+//!
+//! ## Failure Modes
+//!
+//! - Empty sequences (length 0) return empty selections and bounds; never panic
+//! - Unknown feature kinds default to visible with a neutral color
+//! - Invalid display mode values fall back to sensible defaults with warnings
 
 use crate::{
     engine::{
