@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-25 - Align RNA Rehearsal Fixtures With Bound Result Contracts
+
+- Repair glossary flag fixtures with a hand-crafted typed RNA result binding
+  and the required `--request` companion for draft `--save`. Add a focused Rust
+  parser regression retaining invalid-binding and missing-mode refusals; do not
+  skip flags, loosen JSON parsing or allow draft saving on scientific execution.
+- Reopen the MCP screen using its receipt-bound report path, not a temporary
+  directory alias that differs on macOS. Require the forged-hash case to fail
+  specifically on content binding. Keep exact location comparison in production.
+- Update summary and MCP parity expectations for request-bound provenance:
+  changed output paths/report ordering legitimately change submitted-request and
+  content hashes. Independently compute those expected hashes and compare full
+  records, including counts, ambiguity, source provenance and table receipts.
+  Validate each request/result binding and compare MCP/direct verification on
+  the same bound summary. Preserve LF/CRLF, no-input-reread, tamper, incompatible
+  policy, confirmation and unchanged-state checks. Production is unchanged;
+  Rust execution remains external, with no local build or push.
+- Verification: 108 Python source/maturity/LF-CRLF checkout checks, scoped
+  rustfmt, documentation status, maturity freshness and whitespace pass.
+  Session-close: four OK, two expected dirty-tree/manual-plan warnings and no
+  failures; roadmap remains 400 lines. No current-source Rust pass is claimed.
+
 ## 2026-10-25 - Repair Native RNA Module Paths And Command Baseline Types
 
 - Fix the owner's E0583 by explicitly binding the path-loaded native RNA

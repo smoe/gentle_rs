@@ -1361,6 +1361,21 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--transcript-order" => "transcript_id".to_string(),
         "--input" | "--request" if token.contains("JSON") => "{}".to_string(),
         _ => match token {
+            // Hand-crafted parser-only binding; execution still validates report identity.
+            "BINDING_JSON_OR_@FILE" => {
+                let digest = format!("sha256:{}", "0".repeat(64));
+                serde_json::json!({
+                    "schema": "gentle.rna_read_panel_result_binding.v1",
+                    "kind": "screen",
+                    "submitted_request_sha256": digest,
+                    "effective_request_sha256": digest,
+                    "panel_sha256": digest,
+                    "report_content_sha256": digest,
+                    "report_path": "synthetic-report.json",
+                    "outcome": "completed"
+                })
+                .to_string()
+            }
             "A1" | "B1" => token.to_string(),
             "CSV" => "A,B".to_string(),
             "DNA" | "QUERY_SEQUENCE" | "SEQ" => "ACGTACGTACGT".to_string(),
@@ -2098,6 +2113,17 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
+    if path == "rna-reads panel-screen" && flag == "--save" {
+        let mut tokens = split_shell_words(line).expect("split RNA draft smoke command");
+        if !tokens.iter().any(|token| token == "--request") {
+            tokens.insert(2, "--request".into());
+            *line = tokens
+                .iter()
+                .map(|token| quote_shell_arg(token))
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
+    }
     let companion = match (path, flag) {
         ("primers execute-gene-isoform-study-workflow-batch", "--reuse-proposal") => {
             Some(" --approve-reuse-sha256 demo")
@@ -2109,6 +2135,65 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
     };
     if let Some(companion) = companion {
         line.push_str(companion);
+    }
+}
+
+#[test]
+fn glossary_rna_flag_smokes_retain_typed_binding_and_draft_save_mode() {
+    let glossary = glossary_fixture();
+    let scratch = tempdir().unwrap();
+    for (path, flag) in [
+        ("rna-reads panel-show", "--binding"),
+        ("rna-reads panel-screen", "--save"),
+    ] {
+        let command = glossary
+            .commands
+            .iter()
+            .find(|row| row.path == path)
+            .unwrap();
+        let base = smoke_command_line_for_glossary_command(command, scratch.path());
+        let (_, value) = option_flags_from_usage(&command.usage)
+            .into_iter()
+            .find(|(name, _)| name == flag)
+            .unwrap();
+        let mut line = shell_command_line_with_option(&base, flag, value.as_deref()).unwrap();
+        add_required_glossary_flag_companion(path, flag, &mut line);
+        let parsed = parse_shell_line(&line).unwrap();
+        if flag == "--binding" {
+            assert!(!parsed.is_state_mutating());
+            let ShellCommand::Op { payload } = parsed else {
+                panic!("expected shared RNA inspection");
+            };
+            let Operation::InspectRnaReadPanel {
+                path,
+                expected_result: Some(binding),
+                rows,
+                ..
+            } = serde_json::from_str(&payload).unwrap()
+            else {
+                panic!("the binding flag must retain a typed result binding");
+            };
+            assert_eq!(path, "synthetic-report.json");
+            assert_eq!(binding.report_path, path);
+            assert_eq!(binding.schema, "gentle.rna_read_panel_result_binding.v1");
+            assert_eq!(rows, 4);
+            assert!(parse_shell_line("rna-reads panel-show report.json --binding demo").is_err());
+        } else {
+            assert!(parsed.is_state_mutating());
+            let ShellCommand::RnaReadPanelScreenDraft {
+                request,
+                output_path: Some(output),
+            } = parsed
+            else {
+                panic!("save must use the metadata-only draft route");
+            };
+            assert_eq!(request.schema, "gentle.rna_read_panel_screen_request.v1");
+            assert!(request.files.is_empty());
+            assert_eq!(output, value.unwrap());
+            let without_request =
+                shell_command_line_with_option(&base, flag, Some(&output)).unwrap();
+            assert!(parse_shell_line(&without_request).is_err());
+        }
     }
 }
 

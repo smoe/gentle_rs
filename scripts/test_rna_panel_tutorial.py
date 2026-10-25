@@ -16,6 +16,32 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_glossary_rna_flags_keep_typed_binding_and_required_draft_mode(self):
+        source = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            self.assertIn('"BINDING_JSON_OR_@FILE" => {', text)
+            self.assertIn('"schema": "gentle.rna_read_panel_result_binding.v1"', text)
+            self.assertIn('path == "rna-reads panel-screen" && flag == "--save"', text)
+            self.assertIn('tokens.insert(2, "--request".into())', text)
+            self.assertIn("fn glossary_rna_flag_smokes_retain_typed_binding_and_draft_save_mode()", text)
+            self.assertIn("assert!(parse_shell_line(&without_request).is_err())", text)
+
+    def test_rna_parity_fixtures_preserve_exact_path_and_request_hash_bindings(self):
+        mcp = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
+        summaries = (ROOT / "src/engine/analysis/rna_panel/summary_tests.rs").read_text(encoding="utf-8")
+        for text in (mcp, mcp.replace("\n", "\r\n")):
+            self.assertIn('"path":binding.report_path, "expected_result":binding', text)
+            self.assertIn('contains("panel_result_content_binding")', text)
+            self.assertIn("let mut expected_mcp_summary = expected_summary.clone()", text)
+            self.assertIn("canonical_hash(serde_json::to_value(&expected_mcp_summary).unwrap())", text)
+        for text in (summaries, summaries.replace("\n", "\r\n")):
+            self.assertIn("fn expected_summary_for_request(", text)
+            self.assertIn("Some(sha256_prefixed_bytes(&encode(request).unwrap()))", text)
+            self.assertIn("expected.content_sha256 = sha256_prefixed_bytes(&encode(&expected).unwrap())", text)
+            self.assertIn("rna_read_panel_summary_result_binding(&reversed, &repeated)", text)
+        binding = (ROOT / "src/engine/analysis/rna_panel/result_binding.rs").read_text(encoding="utf-8")
+        self.assertIn("binding.report_path != path", binding)
+
     def test_native_panel_module_paths_resolve_to_tracked_children(self):
         modules = (
             ("src/app.rs", "rna_panel_ui", "app/rna_panel_ui.rs"),

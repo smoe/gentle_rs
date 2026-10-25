@@ -63,6 +63,17 @@ fn save_report(path: &str, report: &mut RnaReadPanelScreenReport) {
     fs::write(path, serde_json::to_vec_pretty(report).unwrap()).unwrap();
 }
 
+fn expected_summary_for_request(
+    summary: &RnaReadPanelSummary,
+    request: &ExportRnaReadPanelSummaryRequest,
+) -> RnaReadPanelSummary {
+    let mut expected = summary.clone();
+    expected.submitted_request_sha256 = Some(sha256_prefixed_bytes(&encode(request).unwrap()));
+    expected.content_sha256.clear();
+    expected.content_sha256 = sha256_prefixed_bytes(&encode(&expected).unwrap());
+    expected
+}
+
 #[test]
 fn rna_panel_summary_counts_reads_without_resolving_ambiguous_isoforms_or_reopening_inputs() {
     let td = tempfile::tempdir().unwrap();
@@ -144,7 +155,13 @@ fn rna_panel_summary_counts_reads_without_resolving_ambiguous_isoforms_or_reopen
         let mut repeated = request.clone();
         repeated.output_dir = td.path().join(label).display().to_string();
         let same = engine.export_rna_read_panel_summary(&repeated).unwrap();
-        assert_eq!(encode(&same).unwrap(), encode(&summary).unwrap());
+        let expected = expected_summary_for_request(&summary, &repeated);
+        assert_eq!(encode(&same).unwrap(), encode(&expected).unwrap());
+        assert_ne!(
+            same.submitted_request_sha256,
+            summary.submitted_request_sha256
+        );
+        GentleEngine::rna_read_panel_summary_result_binding(&repeated, &same).unwrap();
     }
     let mut tampered = serde_json::to_value(&summary).unwrap();
     tampered["samples"][0]["reads"] = 999.into();
@@ -170,7 +187,13 @@ fn rna_panel_summary_combines_samples_deterministically_and_requires_identical_p
     reversed.report_paths.reverse();
     reversed.output_dir = td.path().join("reverse order").display().to_string();
     let repeated = engine.export_rna_read_panel_summary(&reversed).unwrap();
-    assert_eq!(encode(&summary).unwrap(), encode(&repeated).unwrap());
+    let expected = expected_summary_for_request(&summary, &reversed);
+    assert_eq!(encode(&expected).unwrap(), encode(&repeated).unwrap());
+    assert_ne!(
+        repeated.submitted_request_sha256,
+        summary.submitted_request_sha256
+    );
+    GentleEngine::rna_read_panel_summary_result_binding(&reversed, &repeated).unwrap();
     other.request.policy.min_chain_bases += 1;
     save_report(&second.report_paths[0], &mut other);
     request.output_dir = td.path().join("incompatible policy").display().to_string();

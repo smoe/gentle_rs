@@ -5428,7 +5428,7 @@ mod tests {
             "op",
             json!({
             "state_path":state_path, "confirm":true, "operation":{"InspectRnaReadPanel":{
-                "path":root.join("screen/report.json"), "expected_result":binding,
+                "path":binding.report_path, "expected_result":binding,
                 "file_id":"file_0000", "rows":4}} }),
         );
         assert_eq!(inspected["result"]["isError"], false, "{inspected}");
@@ -5443,11 +5443,12 @@ mod tests {
             DEFAULT_MCP_STATE_PATH,
             "op",
             json!({"state_path":state_path,
-            "confirm":true, "operation":{"InspectRnaReadPanel":{"path":root.join("screen/report.json"), "expected_result":wrong_binding}}}),
+            "confirm":true, "operation":{"InspectRnaReadPanel":{"path":binding.report_path, "expected_result":wrong_binding}}}),
         );
         assert_eq!(refused["result"]["isError"], true, "{refused}");
+        assert!(refused.to_string().contains("panel_result_content_binding"));
         let summary_request = json!({"schema":"gentle.rna_read_panel_summary_request.v1",
-            "report_paths":[root.join("screen/report.json")], "output_dir":root.join("MCP summary")});
+            "report_paths":[binding.report_path], "output_dir":root.join("MCP summary")});
         let exported = run_tool(
             DEFAULT_MCP_STATE_PATH,
             "op",
@@ -5457,16 +5458,38 @@ mod tests {
             }),
         );
         assert_eq!(exported["result"]["isError"], false, "{exported}");
-        let mut direct_summary: crate::engine::ExportRnaReadPanelSummaryRequest =
+        let submitted_summary: crate::engine::ExportRnaReadPanelSummaryRequest =
             serde_json::from_value(summary_request).unwrap();
+        let mut direct_summary = submitted_summary.clone();
         direct_summary.output_dir = root.join("direct summary").display().to_string();
         let expected_summary = direct
             .export_rna_read_panel_summary(&direct_summary)
             .unwrap();
+        let canonical_hash = |value: Value| {
+            crate::digest_utils::sha256_prefixed_bytes(&serde_json::to_vec(&value).unwrap())
+        };
+        let mut expected_mcp_summary = expected_summary.clone();
+        expected_mcp_summary.submitted_request_sha256 = Some(canonical_hash(
+            serde_json::to_value(&submitted_summary).unwrap(),
+        ));
+        expected_mcp_summary.content_sha256.clear();
+        expected_mcp_summary.content_sha256 =
+            canonical_hash(serde_json::to_value(&expected_mcp_summary).unwrap());
         assert_eq!(
             exported["result"]["structuredContent"]["result"]["rna_read_panel_summary"],
-            serde_json::to_value(&expected_summary).unwrap()
+            serde_json::to_value(&expected_mcp_summary).unwrap()
         );
+        assert_ne!(
+            expected_mcp_summary.submitted_request_sha256,
+            expected_summary.submitted_request_sha256
+        );
+        GentleEngine::rna_read_panel_summary_result_binding(
+            &submitted_summary,
+            &expected_mcp_summary,
+        )
+        .unwrap();
+        GentleEngine::rna_read_panel_summary_result_binding(&direct_summary, &expected_summary)
+            .unwrap();
         let reopened = run_tool(
             DEFAULT_MCP_STATE_PATH,
             "op",
@@ -5499,8 +5522,8 @@ mod tests {
         assert_eq!(verified["result"]["isError"], false, "{verified}");
         let expected_verification = direct
             .verify_rna_read_panel_summary_artifacts(
-                root.join("direct summary/report.json").to_str().unwrap(),
-                &expected_summary,
+                summary_path.to_str().unwrap(),
+                &expected_mcp_summary,
             )
             .unwrap();
         assert_eq!(

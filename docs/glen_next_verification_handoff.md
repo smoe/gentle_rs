@@ -1,5 +1,25 @@
 # Glen: Next Verification And Return
 
+## RNA Glossary And Bound-Rehearsal Fixtures, 2026-10-25
+
+The owner's four library failures expose stale fixtures after result binding:
+the glossary supplied untyped `demo` for `--binding` and omitted draft mode for
+`--save`; MCP used a macOS temporary-path alias instead of the receipt path;
+two summaries compared hashes across changed output/order request identities.
+Tests now retain strict parser/location checks, compute independent expected
+request/content hashes and compare every result field rather than masking hashes.
+MCP/direct table verification uses the same bound summary; forged content must
+fail on content binding. Production, historical digests and approvals are unchanged.
+
+At the next ordinary integrated run, include `glossary_`, `rna_panel_summary_`
+and `rna_panel_mcp_rehearsal_matches_direct_scientific_payload`, with locked
+single-job library tests and `--test-threads=1`. Retain the macOS path-bound case,
+LF/CRLF reopening, no-input-reread, tampering and incompatible-policy assertions.
+Do not repeat completed campaigns or freeze development; return tested source,
+platform/toolchain and primary failures through Steffen. Source-only checks do
+not establish Rust/runtime acceptance. Continue the native rehearsal below only
+with a verified source-matched binary.
+
 ## Native RNA Compile Repairs, 2026-10-25
 
 The owner's build exposed two primary integration defects: missing explicit
