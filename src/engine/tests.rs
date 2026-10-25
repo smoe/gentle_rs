@@ -32,7 +32,7 @@ use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use gentle_protocol::GeneLocusRegulatorySourceFactorBinding;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -51036,6 +51036,51 @@ fn test_interpret_rna_reads_multi_gene_sparse_adds_target_gene_templates() {
             .iter()
             .any(|warning| warning.contains("added 1 transcript lane(s)"))
     );
+}
+
+#[test]
+fn rna_sparse_target_gene_presence_obeys_strand_without_losing_existing_lanes() {
+    // Hand-crafted synthetic genes from the existing sparse-template fixture.
+    for reverse in [false, true] {
+        let mut dna = splicing_multi_gene_test_sequence();
+        if reverse {
+            let location = dna.features()[2].location.clone();
+            dna.features_mut()[2].location = gb_io::seq::Location::Complement(Box::new(location));
+        }
+        for already_present in [HashSet::new(), HashSet::from([2])] {
+            let (lanes, matched, missing) = GentleEngine::collect_sparse_target_transcript_lanes(
+                &dna,
+                0,
+                SplicingScopePreset::TargetGroupTargetStrand,
+                "+",
+                &["GENE2".into()],
+                &already_present,
+            )
+            .unwrap();
+            if reverse {
+                assert!(lanes.is_empty());
+                assert!(matched.is_empty());
+                assert_eq!(missing, vec!["GENE2"]);
+            } else {
+                assert_eq!(matched, vec!["GENE2"]);
+                assert!(missing.is_empty());
+                assert_eq!(lanes.len(), usize::from(!already_present.contains(&2)));
+            }
+        }
+        let (lanes, matched, missing) = GentleEngine::collect_sparse_target_transcript_lanes(
+            &dna,
+            0,
+            SplicingScopePreset::TargetGroupAnyStrand,
+            "+",
+            &["GENE2".into()],
+            &HashSet::new(),
+        )
+        .unwrap();
+        assert_eq!(lanes.len(), 1);
+        assert_eq!(lanes[0].strand, if reverse { "-" } else { "+" });
+        assert_eq!(matched, vec!["GENE2"]);
+        assert!(missing.is_empty());
+    }
 }
 
 #[test]

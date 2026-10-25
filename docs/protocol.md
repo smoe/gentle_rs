@@ -67,8 +67,14 @@ panel/report/row payloads are the same; no adapter-local classification is added
   or competing sources are errors, not zero biological targets.
 - `gentle.rna_read_panel.v1`: content SHA-256 (compact JSON with sorted object
   keys and cleared digest field), loci with source record hashes over the loaded
-  forward DNA plus ordered feature records, not raw source-file bytes or caches;
-  optional genome anchors and all annotated transcript labels; selected mature
+  forward DNA plus ordered feature records, not raw source-file bytes or caches.
+  New loci additionally include optional `source_sequence_sha256` over uppercase
+  forward DNA alone. Equal present DNA hashes flag potential duplicate sources
+  across distinct IDs/annotations without anchors. The check is conservative,
+  not biological identity. Historical absence stays omitted and unknown, never
+  reconstructed by label or changed during inspection; legacy panel digests
+  remain stable. A fresh explicit build supplies the additional evidence.
+  The panel retains optional genome anchors and all annotated transcript labels; selected mature
   templates with independent member IDs, sequence hashes, transcript-oriented
   junction offsets and source-local half-open exon intervals. Locus, gene,
   selected transcript and annotated transcript counts are separate. Potential
@@ -13796,6 +13802,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       report payload for deterministic follow-up runs
     - `multi_gene_sparse` expands local transcript-template indexing with
       transcripts matched from `target_gene_ids[]`
+    - requested-gene presence respects the selected strand scope; an opposite-
+      strand-only transcript stays missing, while an already-present eligible
+      lane counts as found without being duplicated
     - `roi_seed_capture_enabled=true` is currently a deterministic no-op with
       explicit warning in report `warnings[]` until the ROI capture layer is
       implemented

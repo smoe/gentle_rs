@@ -111,6 +111,180 @@ pub(super) fn request(
 }
 
 #[test]
+fn rna_panel_cross_source_identical_dna_without_anchors_is_flagged_before_streaming() {
+    let td = tempfile::tempdir().unwrap();
+    let (mut engine, mut build) = starter(2, td.path());
+    let sequence = engine.state().sequences["source_0"].get_forward_string();
+    let mut copied = DNAsequence::from_sequence(&sequence).unwrap();
+    copied
+        .features_mut()
+        .extend(engine.state().sequences["source_1"].features().clone());
+    engine
+        .state_mut()
+        .sequences
+        .insert("source_1".into(), copied);
+    // Deliberately distinct source/gene IDs and feature annotations, with no genome anchors.
+    build.sources[0].source = "synthetic_ensembl".into();
+    build.sources[0].gene_id = "SYN_ENSEMBL_ID".into();
+    build.sources[1].source = "synthetic_refseq".into();
+    build.sources[1].gene_id = "SYN_REFSEQ_ID".into();
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    assert!(panel.loci.iter().all(|l| l.genome_anchor.is_none()));
+    assert_ne!(
+        panel.loci[0].source_record_sha256,
+        panel.loci[1].source_record_sha256
+    );
+    assert_eq!(
+        panel.loci[0].source_sequence_sha256,
+        panel.loci[1].source_sequence_sha256
+    );
+    assert_eq!(
+        panel.overlapping_source_pairs,
+        vec![("locus_0".into(), "locus_1".into())]
+    );
+    let req = request(&panel, td.path(), &panel.templates[0].sequence);
+    let mut progress = 0;
+    let error = engine
+        .screen_rna_read_panel(req.clone(), &mut |_| {
+            progress += 1;
+            true
+        })
+        .unwrap_err();
+    assert!(error.message.starts_with("panel_overlapping_sources:"));
+    assert_eq!(progress, 0);
+    assert!(!Path::new(&req.output_dir).exists());
+}
+
+#[test]
+fn rna_panel_legacy_locus_sequence_hash_is_absent_not_fabricated_and_stays_digest_bound() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(2, td.path());
+    let mut panel = engine.build_rna_read_panel(&build).unwrap();
+    for locus in &mut panel.loci {
+        locus.source_sequence_sha256 = None;
+    }
+    seal_panel(&mut panel).unwrap();
+    let bytes = encode(&panel).unwrap();
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("source_sequence_sha256")
+    );
+    let legacy: RnaReadPanel = serde_json::from_slice(&bytes).unwrap();
+    validate_panel(&legacy).unwrap();
+    assert_eq!(encode(&legacy).unwrap(), bytes);
+    let mut tampered = legacy;
+    tampered.loci[0].source_sequence_sha256 = Some("sha256:invalid".into());
+    seal_panel(&mut tampered).unwrap();
+    assert!(validate_panel(&tampered).is_err());
+}
+
+#[test]
+fn rna_panel_restricted_selection_can_hide_shared_competitors_but_never_claims_resolution() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, mut build) = starter(1, td.path());
+    let full = engine.build_rna_read_panel(&build).unwrap();
+    let shared = &full.templates[0].sequence[..40];
+    let full_request = request(&full, td.path(), shared);
+    let full_report = engine
+        .screen_rna_read_panel(full_request, &mut |_| true)
+        .unwrap();
+    build.sources[0].selected_transcript_ids = vec!["reused_tx".into()];
+    build.output_path = td.path().join("restricted.json").display().to_string();
+    let restricted = engine.build_rna_read_panel(&build).unwrap();
+    let mut restricted_request = request(&restricted, td.path(), shared);
+    restricted_request.output_dir = td.path().join("restricted-run").display().to_string();
+    let report = engine
+        .screen_rna_read_panel(restricted_request, &mut |_| true)
+        .unwrap();
+    for (report, expected_members) in [(&full_report, 2), (&report, 1)] {
+        let key: Value = serde_json::from_str(
+            report.files_completed[0]
+                .equivalence_classes
+                .keys()
+                .next()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            key["member_ids"].as_array().unwrap().len(),
+            expected_members
+        );
+        assert!(!report.isoform_assignment_performed);
+        assert!(
+            report
+                .nonclaims
+                .iter()
+                .any(|s| s.contains("removes unselected competitors"))
+        );
+    }
+    assert_eq!(restricted.annotated_transcript_count, 2);
+    assert_eq!(restricted.selected_transcript_count, 1);
+}
+
+#[test]
+fn rna_panel_shared_isoforms_can_exceed_the_default_anchor_budget_without_publishing() {
+    let td = tempfile::tempdir().unwrap();
+    let (mut engine, build) = starter(1, td.path());
+    let sequence = bases(981, 4096);
+    let mut dna = DNAsequence::from_sequence(&sequence).unwrap();
+    for number in 0..64 {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(0, 3000 + number),
+            qualifiers: vec![
+                ("gene".into(), Some("SYN_0".into())),
+                ("transcript_id".into(), Some(format!("shared_{number}"))),
+            ],
+        });
+    }
+    engine.state_mut().sequences.insert("source_0".into(), dna);
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    assert_eq!(panel.selected_transcript_count, 64);
+    let mut req = request(&panel, td.path(), &sequence[..3000]);
+    req.policy = RnaReadPanelPolicy::default();
+    let error = engine
+        .screen_rna_read_panel(req.clone(), &mut |_| true)
+        .unwrap_err();
+    assert!(error.message.contains("panel_anchor_budget:"));
+    assert!(error.message.contains("limit 100000"));
+    assert!(error.message.contains("file_id=file_0000"));
+    assert!(!Path::new(&req.output_dir).exists());
+}
+
+#[test]
+fn rna_panel_key_byte_budget_is_run_cumulative_and_overflow_safe_without_large_allocations() {
+    // Synthetic debits represent new keys in four different files, not real read classifications.
+    let mut used = 0;
+    for _file in 0..4 {
+        used = admit_run_key_bytes(used, 4_000_000).unwrap();
+    }
+    assert_eq!(used, 16_000_000);
+    assert_eq!(admit_run_key_bytes(used, 1), None);
+    assert_eq!(admit_run_key_bytes(usize::MAX, 1), None);
+}
+
+#[test]
+fn rna_panel_whole_gzip_member_loss_is_caught_by_the_expected_transfer_digest() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let req_sequence = &panel.templates[0].sequence;
+    let mut req = request(&panel, td.path(), req_sequence);
+    let first = fs::read(&req.files[0].path).unwrap();
+    let mut complete = first.clone();
+    complete.extend(gzip(&fastq(req_sequence, b'I')));
+    req.files[0].expected_md5 = Some(input::hex(&Md5::digest(&complete)));
+    // A valid first gzip member remains; decompression itself cannot detect the lost second one.
+    fs::write(&req.files[0].path, &first).unwrap();
+    let error = engine
+        .screen_rna_read_panel(req.clone(), &mut |_| true)
+        .unwrap_err();
+    assert!(error.message.starts_with("panel_checksum_mismatch:"));
+    assert!(!Path::new(&req.output_dir).exists());
+}
+
+#[test]
 fn rna_panel_extension_matches_full_rebuild_and_rejects_stale_sources() {
     // Synthetic source records generated by starter; no private reads or biological claims.
     let td = tempfile::tempdir().unwrap();
@@ -526,6 +700,7 @@ fn rna_panel_fastq_validates_crlf_quality_markers_lengths_and_gzip_members() {
     assert_eq!(digest.sha256, sha256_prefixed_bytes(&members));
     for invalid in [
         b">fasta\nACGT\n".as_slice(),
+        b"@r\n\n+\n\n",
         b"@r\nACGT\n-\nIIII\n",
         b"@r\nACGT\n+\nIII\n",
         b"@r\nACGT\n+\n",
@@ -542,6 +717,33 @@ fn rna_panel_fastq_validates_crlf_quality_markers_lengths_and_gzip_members() {
     );
     fs::write(&path, &raw).unwrap();
     assert!(visit_fastq(&path, &mut |_| Ok(false)).unwrap().is_none());
+}
+
+#[test]
+fn rna_panel_same_locus_opposite_orientations_remain_candidates_not_a_fusion_call() {
+    let td = tempfile::tempdir().unwrap();
+    let (engine, build) = starter(1, td.path());
+    let panel = engine.build_rna_read_panel(&build).unwrap();
+    let template = &panel.templates[0];
+    let rc = GentleEngine::reverse_complement_bytes(template.sequence.as_bytes());
+    let read = [template.sequence.as_bytes(), rc.as_slice()].concat();
+    let policy = RnaReadPanelPolicy {
+        kmer_len: 8,
+        min_chain_bases: 16,
+        ..Default::default()
+    };
+    let (index, _) = build_index(&panel, &policy).unwrap();
+    let (class, candidates) = nominate(&panel, &index, &policy, &read, &mut || false).unwrap();
+    assert_eq!(class, "single_locus_candidate");
+    let orientations = candidates
+        .iter()
+        .filter(|c| c.member_id == template.member_id)
+        .map(|c| c.read_orientation.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        orientations,
+        BTreeSet::from(["as_read", "reverse_complement"])
+    );
 }
 
 #[test]

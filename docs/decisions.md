@@ -142,6 +142,17 @@ Stopping a model or replacing a project does not implicitly cancel an
 artifact-only screen; ordinary project-bound work retains its owner-change
 cancellation. Marker failures never trigger an implicit service-cancel fallback.
 
+Owner-authorized historical-review follow-up, 2026-10-25: new locus records
+add an optional uppercase-forward-DNA hash independently of the DNA-plus-feature
+record hash. Equal present hashes flag potential duplicate sources even with
+different source IDs and absent anchors, never biological identity. Historical
+absence remains unknown and omitted, preserving old digests. Keep all supported
+members/orientations and restricted-competitor warnings in reports. Resource
+failures remain hard failures, with no new over-budget biological class or
+implicit change to the competitor universe. A locus-position index requires
+measurement and per-template candidate-equivalence evidence before replacing
+current chaining; the best genomic chain cannot silently discard alternatives.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

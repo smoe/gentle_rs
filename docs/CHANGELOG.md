@@ -33,6 +33,30 @@
   reports four OK, two expected worktree/manual-plan warnings and no failures;
   the roadmap remains 400 lines. No current-source Rust/native pass is claimed.
 
+## 2026-10-25 - Close Historical RNA Source And Strand Gaps
+
+- Count a legacy sparse target as found only after its strand filter, while
+  retaining already-present eligible lanes. Add a synthetic both-strand/present-
+  lane regression; no winner-selection, posting cap or legacy default changes.
+- Bind new loci to optional uppercase-forward-DNA hashes and flag equal DNA
+  across independently annotated source IDs even without anchors. Historical
+  panels omit the field and retain their digests/unknown duplicate coverage.
+  Add restricted-competitor, repeat and legacy-source nonclaims to new reports.
+- Keep resource budgets and failure semantics; expose observed posting hits in
+  the anchor diagnostic and use checked run-wide key-byte admission. Author
+  default-budget/shared-isoform, restricted-selection, no-anchor duplicate,
+  legacy-byte, cumulative-key, whole-gzip-member loss and opposite-orientation
+  tests. Empty reads remain hard refusals. Tutorial 10.04 explains these limits
+  and keeps a position-index rewrite conditional on measurements/equivalence.
+- Rust/native verification and authorized real-library calibration stay with
+  Glen/CI. No private reads, forced isoform assignment, POD5, trimming, new
+  continuation policy or previous-goal resumption.
+- Verification: 111 Python RNA/tutorial/checkout/maturity checks, scoped
+  rustfmt, maturity freshness and whitespace pass. Session-close reports four
+  OK, two dirty-tree/manual-plan warnings, no failures and a 400-line roadmap.
+  The separate labware mesh attempt remains blocked by OpenSCAD/Qt's processor
+  requirement; no Rust/native acceptance is inferred.
+
 ## 2026-10-25 - Add A Derived Square-Cell Storage Box
 
 - Add `safe_lock_storage_box_derived` through the existing rack exports, shared

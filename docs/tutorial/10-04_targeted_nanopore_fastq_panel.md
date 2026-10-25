@@ -223,6 +223,13 @@ not the older single-locus RNA-read Mapping workspace.
    overlapping-source warning. Source records are not modified. Closing the
    editor does not cancel an already approved save; source changes during a save
    make the output an explicitly earlier snapshot, not an up-to-date panel.
+   New panels also bind `source_sequence_sha256` over uppercase forward DNA.
+   Identical DNA in two loaded records is flagged even when source/gene IDs
+   differ and neither has a genome anchor. This is a conservative duplicate
+   warning, not a claim that the records are biologically the same gene.
+   Older panels may omit this hash: their cross-source DNA-duplicate coverage
+   is unknown. Rebuild explicitly from reviewed loaded sources to add the check;
+   opening an old file does not silently update its evidence or hash.
 6. Inspect the main **Lineage Graph**: the target gene set leads to an **RNA
    panel** node with gene/transcript counts, also linked to loaded source DNA.
    These are reference definitions, not sequencing-support results. Right-click
@@ -490,6 +497,10 @@ engine operations; external writes require explicit approval. There is no
 separate job scheduler or automatic directory watcher. Standard four-line FASTQ
 records are supported (LF/CRLF, Phred+33, concatenated gzip members); wrapped
 sequence/quality records are refused, not silently repaired.
+Zero-length reads are also a hard refusal, not an unmatched read or biological
+absence; we have not established whether your basecaller emits them. A gzip
+file can end cleanly after losing an entire concatenated member: that is why
+the supplier digest is still required even when decompression reaches valid EOF.
 
 ### 3.1 When A Cancellation Marker Goes Wrong Mid-Run
 
@@ -747,6 +758,18 @@ Summary exports can combine compatible completed units afterward. Do not narrow
 the transcript selection merely to avoid a budget without acknowledging the
 removed competitors. No locus-index rewrite or resource-limited continuation
 is introduced by the control-error repair.
+New reports carry the restricted-competitor and unmasked-repeat nonclaims
+themselves, not just this lesson. The over-budget diagnostic includes observed
+posting hits and the configured limit. On Glen's first authorized completed
+chunk, retain the panel's selected/annotated counts, `indexed_postings`, budget
+diagnostics and cumulative class-key bytes. Peak anchors on successful reads
+still need profiling; they are not a new report metric. These measurements must
+precede changing the index or budgets. One chain per genomic locus is not a
+drop-in replacement for all per-template chains: it must preserve candidates
+on alternative exon paths, rather than discard a valid non-winning path.
+Sense and antisense segments from the same locus can both remain nominated
+under `single_locus_candidate`; that label does not exclude a concatemer,
+inversion or chimera, nor confirm one. Inspect alignments separately.
 
 ## 5. Inspect Alignments As A Separate Follow-Up
 

@@ -16,6 +16,38 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_historical_source_and_budget_review_repairs_have_scoped_contracts(self):
+        panel = (ROOT / "src/engine/analysis/rna_panel.rs").read_text(encoding="utf-8")
+        legacy = (ROOT / "src/engine/analysis/rna_reads.rs").read_text(encoding="utf-8")
+        types = (ROOT / "src/engine/protocol/rna_panel.rs").read_text(encoding="utf-8")
+        tests = (ROOT / "src/engine/analysis/rna_panel/tests.rs").read_text(encoding="utf-8")
+        for text in (panel, panel.replace("\n", "\r\n")):
+            self.assertIn("same_sequence", text)
+            self.assertTrue(re.search(r"a\s*\.source_sequence_sha256", text), "DNA comparison missing")
+            self.assertIn("removes unselected competitors", text)
+            self.assertIn("MAX_RUN_EQUIVALENCE_KEY_BYTES", text)
+            self.assertIn("used.checked_add(additional)", re.sub(r"\s+", " ", text))
+            screen = text.split("let mut equivalence_bytes = 0usize;", 1)[1]
+            self.assertIn("for (ordinal, source) in request.files.iter().enumerate()", screen)
+            self.assertIn("admit_run_key_bytes(equivalence_bytes, equivalence.len())", re.sub(r"\s+", " ", screen))
+        self.assertRegex(types, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub source_sequence_sha256: Option<String>')
+        for text in (legacy, legacy.replace("\n", "\r\n")):
+            collect = text.split("pub(super) fn collect_sparse_target_transcript_lanes", 1)[1].split(
+                "pub(super) fn build_isoform_support_accumulators", 1)[0]
+            self.assertLess(collect.index("if restrict_to_target_strand && is_reverse"),
+                            collect.index("matched_requested.insert"))
+            self.assertLess(collect.index("matched_requested.insert"), collect.index("already_present_feature_ids.contains"))
+        for name in ("rna_panel_cross_source_identical_dna_without_anchors_is_flagged_before_streaming",
+                     "rna_panel_legacy_locus_sequence_hash_is_absent_not_fabricated_and_stays_digest_bound",
+                     "rna_panel_shared_isoforms_can_exceed_the_default_anchor_budget_without_publishing",
+                     "rna_panel_whole_gzip_member_loss_is_caught_by_the_expected_transfer_digest"):
+            self.assertIn("fn " + name, tests)
+        for raw in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
+            text = re.sub(r"\s+", " ", raw.decode())
+            for phrase in ("source_sequence_sha256", "Peak anchors on successful reads still need profiling",
+                           "Zero-length reads", "alternative exon paths", "not a drop-in replacement"):
+                self.assertIn(phrase, text)
+
     def test_glossary_rna_flags_keep_typed_binding_and_required_draft_mode(self):
         source = (ROOT / "src/engine_shell/tests.rs").read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):

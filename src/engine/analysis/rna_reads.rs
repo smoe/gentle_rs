@@ -12257,12 +12257,12 @@ impl GentleEngine {
             if !requested_lower.contains(&group.to_ascii_lowercase()) {
                 continue;
             }
-            matched_requested.insert(group.to_ascii_lowercase());
-            if already_present_feature_ids.contains(&idx) {
-                continue;
-            }
             let is_reverse = feature_is_reverse(feature);
             if restrict_to_target_strand && is_reverse != target_is_reverse {
+                continue;
+            }
+            matched_requested.insert(group.to_ascii_lowercase());
+            if already_present_feature_ids.contains(&idx) {
                 continue;
             }
             let mut exon_ranges = vec![];

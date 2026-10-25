@@ -1,5 +1,37 @@
 # Glen: Next Verification And Return
 
+## Historical RNA Review Follow-Up, 2026-10-25
+
+Run focused `rna_panel_`, `rna_sparse_target_gene_presence_`, `rna_read` and
+`multi_gene_sparse` library tests with `--locked -j1 -- --test-threads=1`, then
+normal CI and `cargo check -q --locked --tests`. New tests cover exact source
+DNA duplicates despite distinct annotations/no anchors, optional-field legacy
+bytes, restricted competitors, default anchor exhaustion from 64 shared isoforms,
+checked cumulative key-byte accounting, complete gzip-member loss and same-locus
+opposite orientations. The key-budget unit test uses synthetic debits, not a
+thousand-file end-to-end run. Existing noisy-read and publication/control tests
+remain. Test aliases/current-source generator/parity and Windows handles too.
+
+The attached review at `b1bae75e` is historical: tutorial restriction/sharding
+guidance and several intake/error tests already existed. This follow-up does
+not replace the per-template index, relax caps, add a resource-limited read class
+or modify the legacy winner selector. Optional source-DNA hashes change newly
+built panel identities, not old omitted-field digests. Rebuild deliberately;
+missing historical duplicate coverage is unknown, not proof of uniqueness.
+
+Before changing indexing/budgets, use the owner's separately authorized first
+completed chunk with all annotated isoforms. Retain indexed postings, selected/
+annotated counts, actual peak posting work (profiling still needed on successful
+reads), key bytes, class counts, toolchain/SHA and memory/throughput evidence.
+The authored default-cap regression exercises a legitimate synthetic shared
+read exceeding the budget; it is unrun and establishes no real-library risk
+frequency or performance. Require
+per-template candidate equivalence before adopting a single-chain locus index.
+No private data or Rust/native command was run locally for this follow-up.
+Local source/checkout verification: 111 Python checks pass, as do scoped
+rustfmt, maturity freshness and whitespace. This is not execution of the new
+Rust tests. The earlier unrelated goal remains paused; `outputs/` is untouched.
+
 ## Derived Square-Cell Storage Box, 2026-10-25
 
 Run `cargo test --locked -p gentle-protocol labware_`,

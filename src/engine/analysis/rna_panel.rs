@@ -131,6 +131,11 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
             // Conservative admission: two seeds on the same loaded record can
             // expand to the same group even when their local feature IDs differ.
             let same_record = a.source.seq_id == b.source.seq_id;
+            let same_sequence = a
+                .source_sequence_sha256
+                .as_ref()
+                .zip(b.source_sequence_sha256.as_ref())
+                .is_some_and(|(x, y)| x == y);
             let same_declared_gene =
                 a.source.assembly == b.source.assembly && a.source.gene_id == b.source.gene_id;
             let overlap = match (&a.genome_anchor, &b.genome_anchor) {
@@ -143,7 +148,7 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
                 }
                 _ => false,
             };
-            if same_record || same_declared_gene || overlap {
+            if same_record || same_sequence || same_declared_gene || overlap {
                 pairs.push((a.source.locus_id.clone(), b.source.locus_id.clone()));
             }
         }
@@ -375,6 +380,9 @@ impl GentleEngine {
             panel.loci.push(RnaReadPanelLocus {
                 source: source.clone(),
                 source_record_sha256,
+                source_sequence_sha256: Some(sha256_prefixed_str(
+                    &dna.get_forward_string().to_ascii_uppercase(),
+                )),
                 genome_anchor: self.transcript_qpcr_panel_source_anchor(&source.seq_id, dna),
                 annotated_transcript_count: templates.len(),
                 annotated_transcript_ids: templates
@@ -474,6 +482,10 @@ fn validate_panel(panel: &RnaReadPanel) -> Result<(), EngineError> {
         || panel.loci.iter().any(|l| {
             !l.source_record_sha256.starts_with("sha256:")
                 || !valid_digest(l.source_record_sha256.trim_start_matches("sha256:"), 64)
+                || l.source_sequence_sha256.as_ref().is_some_and(|hash| {
+                    !hash.starts_with("sha256:")
+                        || !valid_digest(hash.trim_start_matches("sha256:"), 64)
+                })
                 || l.annotated_transcript_ids.len() != l.annotated_transcript_count
                 || panel
                     .templates
@@ -582,6 +594,13 @@ fn build_index(
     Ok((index, count))
 }
 
+const MAX_RUN_EQUIVALENCE_KEY_BYTES: usize = 16_000_000;
+
+fn admit_run_key_bytes(used: usize, additional: usize) -> Option<usize> {
+    used.checked_add(additional)
+        .filter(|sum| *sum <= MAX_RUN_EQUIVALENCE_KEY_BYTES)
+}
+
 fn nominate(
     panel: &RnaReadPanel,
     index: &Index,
@@ -606,9 +625,10 @@ fn nominate(
                 saw_seed = true;
                 anchors_used += postings.len();
                 if anchors_used > policy.max_anchors_per_read {
-                    return Err(bad(
-                        "panel_anchor_budget: read incomplete, never an exclusive nomination",
-                    ));
+                    return Err(bad(format!(
+                        "panel_anchor_budget: observed {anchors_used} posting hits exceeds limit {}; read incomplete, never an exclusive nomination",
+                        policy.max_anchors_per_read
+                    )));
                 }
                 for &(template, pos) in postings {
                     matches
@@ -921,6 +941,9 @@ fn screen_with_clock(
         isoform_assignment_performed: false, alignment_confirmation_performed: false,
         files_completed: vec![], files_not_completed: vec![], inputs_not_completed: Some(vec![]), control_error: None, nonclaims: vec![
             "Partial seed-chain support only co-nominates members; it does not establish compatibility with the entire read, exclusive isoform identification, full-length capture, calibrated probability, expression or transcriptome-wide specificity.".into(),
+            "A nonempty selected_transcript_ids removes unselected competitors from the index. Single-candidate support is relative to that restricted panel, not isoform resolution.".into(),
+            "Low-complexity/repeat words are not masked. Per-template posting work can grow with shared isoforms; resource-budget failure is not biological absence.".into(),
+            "Duplicate-source checks do not establish biological identity or completeness. Historical panels without source_sequence_sha256 cannot check identical forward DNA across independently loaded records.".into(),
             "A read spanning one isoform's distinguishing junction can still co-nominate an alternative through a shared exon. Junction confirmation remains separate; no conflicting isoform is eliminated by this screen.".into(),
             "Every supported template/orientation is retained. No primer trimming or oligo(dT) orientation flip is applied.".into(),
             "Lookup uppercases bases and converts U to T; quality characters are validated but do not filter or weight nominations. Raw input bytes remain digest-bound.".into(),
@@ -1102,13 +1125,11 @@ fn screen_with_clock(
                 )));
             }
             if !receipt.equivalence_classes.contains_key(&equivalence) {
-                equivalence_bytes += equivalence.len();
-                if equivalence_bytes > 16_000_000 {
-                    return Err(bad(format!(
+                equivalence_bytes = admit_run_key_bytes(equivalence_bytes, equivalence.len())
+                    .ok_or_else(|| bad(format!(
                         "panel_equivalence_byte_budget: all file-unit keys together exceed 16 MB; file_id={file_id}; record_index={}; read_id={}; no result directory published",
                         receipt.reads, record.read_id
-                    )));
-                }
+                    )))?;
             }
             *receipt.equivalence_classes.entry(equivalence).or_default() += 1;
             *receipt.classes.entry(class.clone()).or_default() += 1;

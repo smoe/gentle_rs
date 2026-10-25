@@ -109,6 +109,9 @@ pub struct RnaReadPanelLocus {
     pub source: RnaReadPanelSource,
     /// Semantic loaded DNA + ordered features, not raw source-file bytes or mutable caches.
     pub source_record_sha256: String,
+    /// Uppercase forward DNA alone; absent in historical panels, never inferred from labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sequence_sha256: Option<String>,
     pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
     pub annotated_transcript_count: usize,
     pub annotated_transcript_ids: Vec<String>,
