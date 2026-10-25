@@ -2,7 +2,7 @@
 
 ## Status: Implemented and Targeted-Verified; Release Acceptance Separate
 
-Updated 2026-10-21. Implemented in commit
+Updated 2026-10-25. Implemented in commit
 `5a8bd8cec472f68bc73b88448ed135b1131eb792`
 (`test(planning): pin cloning consultation ranking policy`). The brief below
 is historical design/review provenance, not a pending implementation request.
@@ -25,9 +25,17 @@ derived by hand offline and had never been executed.
 Claude ran the three documented commands on macOS at clean `main`
 `40aa261d647af83b1ed3b6d23e8d9deac72d67f3` ("Merge branch 'gentle_rs_2_main'")
 on 2026-10-21, and previously at `17f846eb` on 2026-10-20 with identical
-results. In both runs `src/` and `assets/` were free of local modifications —
+results. In every run `src/` and `assets/` were free of local modifications —
 only unrelated untracked `docs/*.md` and `output/` present. No source edit or
 workaround was needed, unlike the earlier `28d964e6` run below.
+
+`cargo test --locked --lib planning_wetlab_` was re-run on 2026-10-22 at
+`5ab0b02a` — after `bfe685ed`'s Windows portability work and its hand-edited
+`Cargo.lock` — and still reports 20 passed, 0 failed. That run also confirms
+`--locked` still accepts the lockfile on macOS/aarch64 (cargo validates it
+before compiling) and left `Cargo.lock` byte-unchanged. Revisions after
+`5ab0b02a`, including the current `1b817cb0`, are **not** verified here; the
+guards are cheap to re-run and the commands are above.
 
 ```bash
 cargo test --locked --lib planning_wetlab_                                    # 20 passed, 0 failed
@@ -57,40 +65,50 @@ import in `src/app/tests.rs`, so it was evidence for a modified tree.
 The text report still shows only the top five candidates; the guards inspect all
 eleven JSON rows.
 
-### Anchors re-verified at `40aa261d`
+### Anchors: locate by symbol, not by line
 
-Commits after `84ebede4` — `55ee3504`, `f672ccc1`, `78517c07`, `cc07e0ca`,
-`56ca54ad`, `f83e4eac`, `17f846eb`, then `144c6644` — shifted
-`src/engine_shell.rs`, `src/engine_shell/tests.rs` and the GUI. The brief below
-keeps its historical numbers; current positions are:
+The brief below cites line numbers from `8af42b97`. **Do not trust them, and do
+not trust any line number a future revision of this file states either.** They
+have already drifted four times — through `17f846eb`, `144c6644`, then the
+`gentle_rs_2_main`/`gentle_rs_3` merges up to `1b817cb0`. On the last re-check
+every one of the twelve `src/engine_shell.rs` anchors had moved, along with both
+`src/engine_shell/tests.rs` anchors, the `src/engine.rs` default and both GUI
+call sites. Only `src/engine_shell/planning_wetlab.rs` and
+`planning_wetlab_tests.rs` held. Pinning line numbers here only manufactures
+work.
 
-| anchor | brief | at `40aa261d` |
+Locate each anchor by grepping for its symbol or exact snippet. These are the
+durable identifiers; every one below was confirmed present at `1b817cb0`.
+
+| anchor | file | grep for |
 | --- | --- | --- |
-| `estimate_routine_planning` | 4691 | `src/engine_shell.rs:4696` |
-| `estimate_routine_planning_with_bench_catalog` | 4706 | `:4711` |
-| `policy_time_hours` capture | 4813 | `:4818` |
-| `bench_catalog.model` lookup | 4814 | `:4819` |
-| `max_time_hours` guardrail | 4887 | `:4892` |
-| `composite_meta_score` | 4902 | `:4907` |
-| `weight_time * policy_time_hours` | 4904 | `:4909` |
-| `time_policy` explanation block | 4911 | `:4917` |
-| text report `take(5)` | 34551 | `:34635` |
-| shared display lines call | 34560 | `:34644` |
-| within-family `replace` | 35349 | `:35433` |
-| `strategy_candidates.sort_by` | 35364 | `:35451` |
-| GUI display lines | 4838, 4924 | `src/app/routine_and_agent_assistant_ui.rs:4838`, `:4972` |
+| estimate entry point | `src/engine_shell.rs` | `fn estimate_routine_planning(` |
+| estimate with injectable catalog | `src/engine_shell.rs` | `fn estimate_routine_planning_with_bench_catalog(` |
+| policy-hours capture | `src/engine_shell.rs` | `let policy_time_hours = estimated_time_hours;` |
+| bench-model lookup, one line later | `src/engine_shell.rs` | `let model = bench_catalog.model(` |
+| `max_time_hours` guardrail | `src/engine_shell.rs` | `&& policy_time_hours > max_time_hours` |
+| the score | `src/engine_shell.rs` | `let composite_meta_score = ` |
+| the time term | `src/engine_shell.rs` | `objective.weight_time * policy_time_hours` |
+| explanation block | `src/engine_shell.rs` | `"time_policy": {` |
+| text report top-five limit | `src/engine_shell.rs` | `report.strategy_candidates.iter().take(5)` |
+| shared display lines call | `src/engine_shell.rs` | `planning_estimate_display_lines(&candidate.estimate)` |
+| within-family winner | `src/engine_shell.rs` | `let replace = best_by_family` |
+| rank sort and tiebreak | `src/engine_shell.rs` | `strategy_candidates.sort_by(` |
+| default time weight | `src/engine.rs` | `weight_time: 1.0` |
+| policy-hours reader | `src/engine_shell/planning_wetlab.rs` | `fn policy_time_hours(` |
+| proxy display line | `src/engine_shell/planning_wetlab.rs` | `Ranking/time-guardrail proxy` |
+| comparison axis | `src/engine_shell/planning_wetlab.rs` | `"axis":"time_policy_proxy_hours"` |
+| GUI display lines (two sites) | `src/app/routine_and_agent_assistant_ui.rs` | `planning_estimate_display_lines` |
+| order-blind family regression | `src/engine_shell/tests.rs` | `fn execute_planning_consult_cloning_returns_ranked_report` |
+| guard module wiring | `src/engine_shell/tests.rs` | `mod planning_wetlab_tests;` |
 
-Unchanged: `src/engine_shell/planning_wetlab.rs:333`, `:362`-`365`, `:404`-`411`,
-and `src/engine.rs:3016` (`weight_time: 1.0`). The three landed tests the brief
-cites moved within `src/engine_shell/planning_wetlab_tests.rs` as the seven new
-guards were prepended at `:147`-`:343`: `:103` → `:473`, `:194` → `:564`,
-`:553` → `:923`; `src/engine_shell/tests.rs:14742` → `:14974` and the module
-wiring `:14722` → `:14955`.
-
-`planning_wetlab_tests.rs` itself is byte-identical between `5a8bd8ce` and
-`40aa261d`; the seven guards sit at `:147`
-(`planning_wetlab_ranking_default_absolute_policy_snapshot`) through `:343`
-(`planning_wetlab_ranking_all_rows_declare_the_same_policy_basis`).
+The three landed tests the brief cites by line are
+`planning_wetlab_model_presence_and_duration_do_not_change_ranking_or_guardrails`
+(brief `:103`), `planning_wetlab_consultation_order_matches_the_no_model_counterfactual`
+(`:194`) and `planning_wetlab_all_bundled_routines_reconcile_and_only_one_has_a_model`
+(`:553`). The seven new guards run from
+`planning_wetlab_ranking_default_absolute_policy_snapshot` to
+`planning_wetlab_ranking_all_rows_declare_the_same_policy_basis`.
 
 ---
 
