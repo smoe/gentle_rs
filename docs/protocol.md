@@ -9328,6 +9328,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `safe_lock_tube_rack_collar_seated`
   - `safe_lock_tube_rack_floor_seated`
   - `pcr_tube_96_position_carrier`
+  - `safe_lock_storage_box_derived`
 - New Safe-Lock templates are `family=tube_rack`, format
   `eppendorf_safe_lock_1_5ml_or_2_0ml`, conservative 20-mm pitch. Optional
   `support_mode`, `tube_profiles`, `geometry_basis`, `nonclaims` and `assumptions`
@@ -9342,6 +9343,17 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   the page-4 PCR profile; tube-model export validates required dimensions and
   returns `InvalidInput` / `tube_model_dimension_unavailable` before writing
   for its unknown seating collar. No 96-well plate, holder or thermal claim.
+- The derived storage box is a separate `storage_box` family for variable grids,
+  reusing the existing rack centres and optional `storage_box` geometry record.
+  Cell width 10.15 mm, dividers 1.2 mm and pitch 11.35 mm are engineering design
+  assumptions; floor support, 22-mm dividers, 45-mm interior height and separate
+  lid do not establish fit/temperature/material suitability. Source dimensions
+  retain approximate closed-height provenance. The SCAD has square cells,
+  including blocked positions, and box/insert/lid modules; SVG markers remain
+  round with an explicit visible line. Legacy/carrier specs omit `storage_box`.
+  Compact-pitch overrides are refused before writes. No inventory or new
+  operation/approval route is introduced; all exports consume the shared spec.
+  See the [derivation and nonclaims](../data/labware/README.md#derived-storage-box).
 - The export consumes:
   - rack geometry (`rows`, `columns`, blocked coordinates)
   - saved rack occupancy and arrangement ids for visual planning markers

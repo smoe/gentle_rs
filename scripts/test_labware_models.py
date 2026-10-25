@@ -62,6 +62,8 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
     """Exercise actual SCAD format strings, not the unexecuted Rust derivation."""
     source = source.split("pub(super) fn export_rack_openscad(", 1)[1].split(
         "pub(super) fn export_rack_simulation_json(", 1)[0]
+    # Only the original bore generator; the new storage-box branch is separate.
+    source = source.split("let blocked = rack", 1)[1]
     fragments = re.findall(
         r'(?:let mut scad = format!|scad.push_str\(&format!)\(\s*("(?:\\.|[^"\\])*")', source)
     if len(fragments) != 3:
@@ -81,7 +83,69 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
     return result + json.loads(end.group(1))
 
 
+def storage_box_template(source, rows, columns):
+    """Actual box SCAD with hand-derived Safe-Lock engineering fixture values, not Rust execution."""
+    match = re.search(r'const STORAGE_BOX_SCAD: &str = r#"(.*?)"#;', source, re.S)
+    if not match:
+        raise ValueError("storage-box SCAD template missing")
+    width, depth = columns * 10.15 + (columns - 1) * 1.2, rows * 10.15 + (rows - 1) * 1.2
+    fields = dict(rows=rows, columns=columns, cell_width_mm=10.15, divider_thickness_mm=1.2,
+                  pitch_mm=11.35, divider_height_mm=22, wall_thickness_mm=2,
+                  interior_width_mm=width, interior_depth_mm=depth, interior_height_mm=45,
+                  exterior_width_mm=width + 4, exterior_depth_mm=depth + 4, exterior_height_mm=47,
+                  lid_inner_width_mm=width + 4.6, lid_inner_depth_mm=depth + 4.6,
+                  lid_exterior_width_mm=width + 8.6, lid_exterior_depth_mm=depth + 8.6,
+                  lid_exterior_height_mm=10, lid_skirt_height_mm=8)
+    return "".join(f"{key} = {value};\n" for key, value in fields.items()) + match.group(1)
+
+
 class LabwareTemplateTests(unittest.TestCase):
+    def test_storage_box_square_cells_and_shared_template_routes_in_lf_and_crlf(self):
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
+        for rows, columns in ((9, 9), (4, 12), (1, 1)):
+            lf = storage_box_template(source, rows, columns)
+            crlf = storage_box_template(source.replace("\n", "\r\n"), rows, columns)
+            self.assertEqual(lf, crlf.replace("\r\n", "\n"))
+            self.assertNotIn("cylinder(", lf)
+            self.assertIn("cube([cell_width_mm, cell_width_mm, divider_height_mm + 0.1])", lf)
+            self.assertIn("cell_count = rows * columns", lf)
+            self.assertIn("Blocked coordinates are still physical square cells", lf)
+            for module in ("gentle_storage_box", "gentle_storage_box_insert", "gentle_storage_box_lid"):
+                self.assertIn(f"module {module}()", lf)
+        for path in ("src/app/rack_workspace_ui.rs", "src/engine_shell.rs", "crates/gentle-protocol/src/lib.rs"):
+            self.assertIn("SafeLockStorageBoxDerived", (ROOT / path).read_text())
+        types = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text()
+        self.assertRegex(types, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub storage_box:')
+
+    def test_storage_box_meshes_have_finite_nonempty_geometry_and_expected_box_bounds(self):
+        binary = openscad_binary()
+        if not binary:
+            self.skipTest("OpenSCAD unavailable; Rust exporter/native/fit acceptance stays separate")
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
+        with tempfile.TemporaryDirectory(prefix="gentle derived storage boxes ") as directory:
+            for rows, columns, width, depth in ((9, 9, 104.95, 104.95), (4, 12, 139, 48.2), (1, 1, 14.15, 14.15)):
+                for part in ("all", "box", "lid"):
+                    scad = Path(directory) / f"{rows}x{columns}-{part}.scad"
+                    mesh = scad.with_suffix(".off")
+                    scad.write_text(storage_box_template(source, rows, columns), encoding="utf-8")
+                    result = subprocess.run([binary, "-D", f'part="{part}"', "-o", str(mesh), str(scad)],
+                                            capture_output=True, text=True, timeout=120)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("ERROR:", result.stderr)
+                    tokens = mesh.read_text(encoding="utf-8").split()
+                    self.assertEqual(tokens[0], "OFF")
+                    vertices, faces, _ = map(int, tokens[1:4])
+                    self.assertGreater(vertices, 0)
+                    self.assertGreater(faces, 0)
+                    points = [tuple(map(float, tokens[start:start + 3]))
+                              for start in range(4, 4 + 3 * vertices, 3)]
+                    self.assertTrue(all(math.isfinite(v) for point in points for v in point))
+                    if part != "all":
+                        expected = (width, depth, 47) if part == "box" else (width + 4.6, depth + 4.6, 10)
+                        for axis, bound in enumerate(expected):
+                            self.assertAlmostEqual(min(p[axis] for p in points), 0, places=4)
+                            self.assertAlmostEqual(max(p[axis] for p in points), bound, places=3)
+
     def test_pcr_strip_template_newlines_and_internal_bridges(self):
         source = (ROOT / "crates/gentle-render/src/labware.rs").read_text()
         for count in range(1, 9):

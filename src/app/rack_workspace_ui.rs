@@ -888,6 +888,9 @@ impl GENtleApp {
             RackPhysicalTemplateKind::PcrTube96PositionCarrier => {
                 "PCR 0.2 ml - 8x12 carrier (unverified)"
             }
+            RackPhysicalTemplateKind::SafeLockStorageBoxDerived => {
+                "Safe-Lock 1.5/2.0 ml - derived storage box (unverified)"
+            }
         }
     }
 
@@ -3366,6 +3369,7 @@ impl GENtleApp {
                             RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
                             RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
                             RackPhysicalTemplateKind::PcrTube96PositionCarrier,
+                            RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
                         ] {
                             ui.selectable_value(
                                 &mut self.rack_physical_template_kind,

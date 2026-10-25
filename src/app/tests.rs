@@ -9667,6 +9667,7 @@ fn labware_carrier_gui_labels_disclose_support_and_unverified_status() {
         (RackPhysicalTemplateKind::PipettingPcrTubeRack, false),
         (RackPhysicalTemplateKind::CellCulturePlate, false),
         (RackPhysicalTemplateKind::PcrTube96PositionCarrier, false),
+        (RackPhysicalTemplateKind::SafeLockStorageBoxDerived, false),
         (RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated, true),
         (RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated, true),
     ] {
@@ -9691,6 +9692,11 @@ fn labware_carrier_gui_labels_disclose_support_and_unverified_status() {
         GENtleApp::rack_physical_template_label(RackPhysicalTemplateKind::PcrTube96PositionCarrier);
     assert!(label.contains("PCR 0.2 ml"));
     assert!(label.contains("8x12"));
+    assert!(label.contains("unverified"));
+    let label = GENtleApp::rack_physical_template_label(
+        RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
+    );
+    assert!(label.contains("derived storage box"));
     assert!(label.contains("unverified"));
 }
 

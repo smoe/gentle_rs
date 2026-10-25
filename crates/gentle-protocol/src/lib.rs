@@ -1811,6 +1811,7 @@ pub enum RackPhysicalTemplateKind {
     SafeLockTubeRackFloorSeated,
     #[serde(rename = "pcr_tube_96_position_carrier")]
     PcrTube96PositionCarrier,
+    SafeLockStorageBoxDerived,
 }
 
 impl RackPhysicalTemplateKind {
@@ -1822,6 +1823,7 @@ impl RackPhysicalTemplateKind {
             Self::SafeLockTubeRackCollarSeated => "safe_lock_tube_rack_collar_seated",
             Self::SafeLockTubeRackFloorSeated => "safe_lock_tube_rack_floor_seated",
             Self::PcrTube96PositionCarrier => "pcr_tube_96_position_carrier",
+            Self::SafeLockStorageBoxDerived => "safe_lock_storage_box_derived",
         }
     }
 }
@@ -1834,6 +1836,7 @@ pub enum RackPhysicalTemplateFamily {
     Pipetting,
     CellCulture,
     TubeRack,
+    StorageBox,
 }
 
 impl RackPhysicalTemplateFamily {
@@ -1843,6 +1846,7 @@ impl RackPhysicalTemplateFamily {
             Self::Pipetting => "pipetting",
             Self::CellCulture => "cell_culture",
             Self::TubeRack => "tube_rack",
+            Self::StorageBox => "storage_box",
         }
     }
 }
@@ -1880,6 +1884,8 @@ pub struct RackPhysicalTemplateSpec {
     pub nonclaims: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assumptions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_box: Option<labware::StorageBoxGeometry>,
 }
 
 impl Default for RackPhysicalTemplateSpec {
@@ -1909,6 +1915,7 @@ impl Default for RackPhysicalTemplateSpec {
             geometry_basis: None,
             nonclaims: vec![],
             assumptions: vec![],
+            storage_box: None,
         }
     }
 }

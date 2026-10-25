@@ -158,6 +158,65 @@ stable prefixes. Cone-only regression validates a proposed 22-mm bore against
 a synthetic longer cone; derivation otherwise raises the bore when possible.
 Every new-template SVG/SCAD/JSON includes unverified geometry disclosures.
 
+## Derived Storage Box
+
+`safe_lock_storage_box_derived` uses the existing rack's admitted row/column
+grid (up to 1,536 positions), `family=storage_box`, floor support and both
+1.5/2.0 ml profiles. It is a **GENtle-derived design**, not a model of any
+commercial box. `geometry_basis=drawing_derived_unverified_storage_box` and
+the optional `storage_box` record preserve its dimensions/assumptions in the
+spec and simulation JSON. The field is absent from every older template.
+
+| Engineering assumption (mm) | Value |
+| --- | --- |
+| `RADIAL_CLEARANCE_SNUG` | 0.15 per side |
+| `BOX_DIVIDER_THICKNESS` | 1.2; chosen above the 1.15 collar-gap minimum |
+| `BOX_WALL_THICKNESS` | 2.0, walls and floor |
+| `BOX_LID_CLEARANCE` | 3.0 above approximate closed height |
+| `LID_FIT_CLEARANCE` | 0.3 per side |
+| `LID_TOP_THICKNESS` / `LID_SKIRT_HEIGHT` | 2.0 / 8.0 |
+
+| Derived dimension | Rule / result for both profiles |
+| --- | --- |
+| Square cell | max body diameter + 2 radial clearances = 10.15 mm |
+| Pitch | cell + divider = 11.35 mm; collar diameter + 0.5-mm gap is 11.3 mm |
+| Divider height | existing validated floor-seated bore depth = 22.0 mm |
+| Interior height | max approximate (`ca.`) closed height + 3 = 45 mm |
+| Interior width/depth | n cells + (n - 1) dividers |
+| Exterior width/depth | interior + two 2-mm walls |
+| Exterior height | 2-mm floor + interior height = 47 mm |
+| Lid inner width/depth | box exterior + twice 0.3-mm clearance |
+| Lid exterior width/depth | lid interior + two 2-mm walls |
+| Lid height | 8-mm skirt + 2-mm top = 10 mm |
+
+Worked 9x9 example: interior 100.95 x 100.95 mm, exterior 104.95 x 104.95 x
+47 mm; A1 centre (7.075, 7.075), I9 (97.875, 97.875) mm. A 4x12 grid instead
+has interior 135 x 44.2 mm and exterior 139 x 48.2 x 47 mm; 1x1 is also valid.
+These are derived design dimensions, not measured fits. A tube rests on the
+box floor and dividers end below the collar; snugness is a target, not evidence.
+Closed caps/hinges may collide at 11.35-mm pitch because the approximate closed
+side-view envelope is 20 mm. No cap clearance, freezer/ice/thermal, cardboard,
+material or lid-retention suitability is established.
+
+Use the same `racks ... --template safe_lock_storage_box_derived` export routes
+and GUI physical-template selector. Clear any saved compact-carrier pitch first;
+otherwise every export refuses `carrier_pitch_override_unsupported` before
+writing. Grid and source-geometry errors propagate; `box_collar_overlap` and
+`cap_height_unknown` are explicit refusal prefixes. Extremely long synthetic
+cones can make the reused carrier derivation refuse `collar_not_above_top`;
+do not rename that existing diagnostic as cone-only engagement.
+
+SCAD provides `gentle_storage_box`, `gentle_storage_box_insert` and
+`gentle_storage_box_lid`; the lid is displayed alongside the box, not fitted
+on it. All grid positions remain physical cells, including blocked positions.
+Optional OpenSCAD `part="box"`, `"insert"` or `"lid"` isolates a component;
+the default `"all"` includes all parts. The ten-mm display separation is not
+a fit dimension. SVG views retain round markers with the visible line
+**Square cells drawn as round markers**; use SCAD for the square-cell design.
+Source-matched Rust exports/native controls and measured fit remain Glen/CI
+or physical validation work. The Python harness checks the actual SCAD template
+with hand-derived dimensions, not execution of the Rust derivation.
+
 ## Verification boundary
 
 Rust unit tests check the table, portable JSON, parameterized SCAD and shared

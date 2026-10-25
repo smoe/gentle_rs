@@ -15,6 +15,39 @@
   reports four OK, two expected worktree/manual-plan warnings and no failures;
   the roadmap remains 400 lines. No current-source Rust/native pass is claimed.
 
+## 2026-10-25 - Add A Derived Square-Cell Storage Box
+
+- Add `safe_lock_storage_box_derived` through the existing rack exports, shared
+  parser/generic operations and native template dropdown. Reuse grid admission
+  and drawing profiles with explicit engineering assumptions for square cells,
+  dividers, floor and lid; no commercial-box or physical-fit model is claimed.
+- Include optional `storage_box` dimensions only for the new template; preserve
+  old template fields/geometry and the original bore generator. Box SCAD has
+  separate box/insert/lid modules, all grid cells including blocked positions,
+  and no cylindrical bores. SVGs visibly disclose their round position markers.
+  Refuse compact-pitch overrides and invalid source geometry before writes.
+- Author protocol/engine/shell/GUI regressions for variable grids, dimensions,
+  refusal diagnostics, metadata/legacy omission, disclosures and shared routes.
+  Add Python/OpenSCAD checks over the actual SCAD template with literal derived
+  parameters; these do not run the Rust exporter or qualify fit/temperature.
+  Rust/native and legacy byte-baseline verification remain Glen/CI work.
+- Verification: 19 focused Python source/maturity checks, scoped rustfmt and
+  unchanged SCAD source-template projections for three existing carriers pass.
+  Refresh only the four maturity projections required by updated glossary usage.
+  The full 11-test labware command cannot pass here: the installed OpenSCAD/Qt
+  aborts before reading old or new models (`Incompatible processor ... neon`).
+  Seven source tests pass; all four mesh-test methods remain unaccepted. No
+  exporter, physical-fit or Rust pass is inferred from those source checks.
+
+## 2026-10-25 - Build Compact Carrier Disclosures Explicitly
+
+- Construct conservative/compact nonclaims and assumptions directly instead
+  of overwriting vector positions. Preserve wording, order and geometry for
+  existing templates, including the conservative fields shared by compact ones.
+- Extend the existing compact-pitch export regression to compare the first two
+  nonclaims against the conservative spec. Rust/export-byte verification remains
+  Glen/CI work; no local Rust/native run or push.
+
 ## 2026-10-25 - Pin S1 Inspection Of Unreconciled Projects
 
 - Reconcile Claude's landed-S1 review against `09e62b3f`. Existing loaded

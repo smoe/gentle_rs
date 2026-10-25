@@ -11,6 +11,42 @@
 use super::*;
 use std::fs;
 
+const STORAGE_BOX_SCAD: &str = r#"
+// part=all places the lid beside the box; box/insert/lid isolate parts for inspection.
+part = "all";
+cell_count = rows * columns;
+module gentle_storage_box() {
+    difference() {
+        cube([exterior_width_mm, exterior_depth_mm, exterior_height_mm]);
+        translate([wall_thickness_mm, wall_thickness_mm, wall_thickness_mm])
+            cube([interior_width_mm, interior_depth_mm, interior_height_mm + 0.1]);
+    }
+}
+module gentle_storage_box_insert() {
+    translate([wall_thickness_mm, wall_thickness_mm, wall_thickness_mm])
+    difference() {
+        cube([interior_width_mm, interior_depth_mm, divider_height_mm]);
+        // Blocked coordinates are still physical square cells.
+        for (row = [0 : rows - 1])
+            for (column = [0 : columns - 1])
+                translate([column * pitch_mm, row * pitch_mm, -0.05])
+                    cube([cell_width_mm, cell_width_mm, divider_height_mm + 0.1]);
+    }
+}
+module gentle_storage_box_lid() {
+    difference() {
+        cube([lid_exterior_width_mm, lid_exterior_depth_mm, lid_exterior_height_mm]);
+        translate([wall_thickness_mm, wall_thickness_mm, -0.05])
+            cube([lid_inner_width_mm, lid_inner_depth_mm, lid_skirt_height_mm + 0.05]);
+    }
+}
+if (part == "all" || part == "box") gentle_storage_box();
+if (part == "all" || part == "insert") gentle_storage_box_insert();
+// Ten millimetres is display separation, not a fit dimension.
+if (part == "all") translate([exterior_width_mm + 10, 0, 0]) gentle_storage_box_lid();
+if (part == "lid") gentle_storage_box_lid();
+"#;
+
 impl GentleEngine {
     pub(super) fn normalize_serial_gel_ladders_from_iter<I>(iter: I) -> Vec<String>
     where
@@ -2376,6 +2412,9 @@ impl GentleEngine {
             RackPhysicalTemplateKind::PcrTube96PositionCarrier => {
                 return Self::pcr96_carrier_spec(profile);
             }
+            RackPhysicalTemplateKind::SafeLockStorageBoxDerived => {
+                return Self::storage_box_spec(profile);
+            }
             RackPhysicalTemplateKind::CellCulturePlate => {
                 let (pitch_x_mm, pitch_y_mm, opening_diameter_mm, edge_margin_mm) =
                     match profile.kind {
@@ -2426,7 +2465,9 @@ impl GentleEngine {
                 "pcr_tube_0_2ml"
             }
             RackPhysicalTemplateFamily::CellCulture => "cell_culture_plate_well",
-            RackPhysicalTemplateFamily::TubeRack => "eppendorf_safe_lock_1_5ml_or_2_0ml",
+            RackPhysicalTemplateFamily::TubeRack | RackPhysicalTemplateFamily::StorageBox => {
+                "eppendorf_safe_lock_1_5ml_or_2_0ml"
+            }
         };
         Ok(RackPhysicalTemplateSpec {
             kind: template,
@@ -2482,7 +2523,30 @@ impl GentleEngine {
         let opening = geometry.opening_diameter_mm as f32;
         let edge = geometry.edge_margin_mm as f32;
         let front = 10.0;
-        let mut spec = RackPhysicalTemplateSpec {
+        let compact_pitch = pitch_um.map(|value| f64::from(value) / 1000.0);
+        let nonclaims = vec![
+            "No verified physical fit or cap clearance; not a commercial rack replica".into(),
+            "No material, sterility, freezer, ice, thermal or autoclave suitability".into(),
+            match compact_pitch {
+                Some(pitch) => format!("Compact spacing {pitch} mm overrides the conservative 20 mm side-view envelope; closed caps and hinges may collide; clearance is not checked"),
+                None => "Conservative spacing from approximate side-view width, not a measured cap outline".into(),
+            },
+        ];
+        let mut assumptions = vec![
+            "RADIAL_CLEARANCE_COLLAR=0.15 mm; RADIAL_CLEARANCE_FLOOR=0.30 mm".into(),
+            "MIN_COLLAR_LEDGE=0.20 mm; TIP_CLEARANCE=2.0 mm".into(),
+            "CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
+            "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
+            match compact_pitch {
+                Some(pitch) => format!("compact pitch={pitch} mm; edge margin kept at the conservative value"),
+                None => "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
+            },
+            "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
+        ];
+        if compact_pitch.is_some() {
+            assumptions.push("MIN_WEB=0.8 mm; COLLAR_GAP=0.5 mm".into());
+        }
+        Ok(RackPhysicalTemplateSpec {
             kind,
             family: RackPhysicalTemplateFamily::TubeRack,
             container_format: "eppendorf_safe_lock_1_5ml_or_2_0ml".into(),
@@ -2504,33 +2568,64 @@ impl GentleEngine {
             overall_depth_mm: front + edge + opening + (profile.rows - 1) as f32 * pitch,
             support_mode: Some(mode),
             tube_profiles: ids,
-            geometry_basis: Some("drawing_derived_unverified".into()),
+            geometry_basis: Some(
+                if compact_pitch.is_some() {
+                    "drawing_derived_unverified_compact"
+                } else {
+                    "drawing_derived_unverified"
+                }
+                .into(),
+            ),
+            nonclaims,
+            assumptions,
+            storage_box: None,
+        })
+    }
+
+    fn storage_box_spec(
+        profile: &RackProfileSnapshot,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        use gentle_protocol::labware::{
+            RackTubeSupportMode, TubeProfileId, derive_storage_box_geometry, tube_profile,
+        };
+        let ids = vec![
+            TubeProfileId::EppendorfSafeLock15ml,
+            TubeProfileId::EppendorfSafeLock20ml,
+        ];
+        let profiles = ids.iter().copied().map(tube_profile).collect::<Vec<_>>();
+        let geometry = derive_storage_box_geometry(&profiles, profile.rows, profile.columns)
+            .map_err(EngineError::invalid_input)?;
+        let opening = geometry.cell_width_mm as f32;
+        let wall = geometry.wall_thickness_mm as f32;
+        let pitch = geometry.pitch_mm as f32;
+        Ok(RackPhysicalTemplateSpec {
+            kind: RackPhysicalTemplateKind::SafeLockStorageBoxDerived,
+            family: RackPhysicalTemplateFamily::StorageBox,
+            container_format: "eppendorf_safe_lock_1_5ml_or_2_0ml".into(),
+            rows: profile.rows, columns: profile.columns,
+            pitch_x_mm: pitch, pitch_y_mm: pitch, opening_diameter_mm: opening,
+            inner_wall_mm: geometry.divider_thickness_mm as f32, outer_wall_mm: wall,
+            floor_thickness_mm: wall, rack_height_mm: geometry.exterior_height_mm as f32,
+            edge_margin_mm: wall, front_top_clearance_mm: wall,
+            overall_width_mm: 2.0 * wall + opening + (profile.columns - 1) as f32 * pitch,
+            overall_depth_mm: 2.0 * wall + opening + (profile.rows - 1) as f32 * pitch,
+            support_mode: Some(RackTubeSupportMode::FloorSeated), tube_profiles: ids,
+            geometry_basis: Some("drawing_derived_unverified_storage_box".into()),
             nonclaims: vec![
-                "No verified physical fit or cap clearance; not a commercial rack replica".into(),
-                "No material, sterility, freezer, ice, thermal or autoclave suitability".into(),
-                "Conservative spacing from approximate side-view width, not a measured cap outline".into(),
+                "GENtle-derived geometry, not a model of any commercial box".into(),
+                "No freezer, ice, thermal, cardboard, material or lid-retention suitability".into(),
+                "Closed caps and hinges at 11.35 mm pitch may collide: approximate closed side-view width is 20 mm; cap clearance is not checked".into(),
+                "Snug fit is a design target, not a measured fit".into(),
             ],
             assumptions: vec![
-                "RADIAL_CLEARANCE_COLLAR=0.15 mm; RADIAL_CLEARANCE_FLOOR=0.30 mm".into(),
-                "MIN_COLLAR_LEDGE=0.20 mm; TIP_CLEARANCE=2.0 mm".into(),
-                "CYLINDER_ENGAGEMENT=3.0 mm; COLLAR_TOP_MARGIN=5.0 mm".into(),
-                "Floor-seated depth rounded strictly upward to a whole mm; floor=2.0 mm".into(),
-                "pitch=20.0 mm conservative approximate side-view envelope; cap outline unmeasured".into(),
-                "front_top_clearance=10.0 mm; label strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
+                "RADIAL_CLEARANCE_SNUG=0.15 mm per side; BOX_DIVIDER_THICKNESS=1.2 mm (engineering choice above 1.15 mm collar-gap minimum)".into(),
+                "BOX_WALL_THICKNESS=2.0 mm for outer walls and floor; BOX_LID_CLEARANCE=3.0 mm".into(),
+                "LID_FIT_CLEARANCE=0.3 mm per side; LID_TOP_THICKNESS=2.0 mm; LID_SKIRT_HEIGHT=8.0 mm".into(),
+                "closed_height is ApproximateDrawing (ca.), not a measured closed-cap envelope".into(),
+                "Divider height reuses validated floor-seated bore depth; dividers end below the collar".into(),
             ],
-        };
-        if let Some(pitch_um) = pitch_um {
-            let pitch = f64::from(pitch_um) / 1000.0;
-            spec.geometry_basis = Some("drawing_derived_unverified_compact".into());
-            spec.nonclaims[2] = format!(
-                "Compact spacing {pitch} mm overrides the conservative 20 mm side-view envelope; closed caps and hinges may collide; clearance is not checked"
-            );
-            spec.assumptions[4] =
-                format!("compact pitch={pitch} mm; edge margin kept at the conservative value");
-            spec.assumptions
-                .push("MIN_WEB=0.8 mm; COLLAR_GAP=0.5 mm".into());
-        }
-        Ok(spec)
+            storage_box: Some(geometry), ..Default::default()
+        })
     }
 
     fn pcr96_carrier_spec(
@@ -2574,6 +2669,7 @@ impl GentleEngine {
                 "Nominal ANSI/SLAS 1-2004 footprint and 4-2004 well positions only, not full standard compliance".into(),
                 "front clearance=7.94 mm; strip depth=6.0 mm; recess=0.8 mm; corner radius=2.0 mm".into(),
             ],
+            storage_box: None,
         })
     }
 
@@ -2591,6 +2687,11 @@ impl GentleEngine {
         );
         let escaped = Self::xml_escape(&text);
         svg.push_str(&format!("<desc>{escaped}</desc><text x=\"2\" y=\"3\" font-size=\"2\">Drawing-derived; unverified fit/material/temperature</text>"));
+        if spec.storage_box.is_some() {
+            svg.push_str(
+                "<text x=\"2\" y=\"6\" font-size=\"2\">Square cells drawn as round markers</text>",
+            );
+        }
     }
 
     fn rack_arrangement_color(arrangement_id: &str) -> &'static str {
@@ -3177,7 +3278,7 @@ impl GentleEngine {
 
         let (top_fill, front_fill, side_fill, strip_fill, strip_text_fill, edge_stroke) =
             match spec.family {
-                RackPhysicalTemplateFamily::Storage => (
+                RackPhysicalTemplateFamily::Storage | RackPhysicalTemplateFamily::StorageBox => (
                     "#f8fafc", "#e2e8f0", "#cbd5e1", "#dbeafe", "#173042", "#475569",
                 ),
                 RackPhysicalTemplateFamily::Pipetting => (
@@ -3346,7 +3447,7 @@ impl GentleEngine {
         let hole_rx = spec.opening_diameter_mm * 0.42;
         let hole_ry = spec.opening_diameter_mm * 0.24;
         let cap_height = match spec.family {
-            RackPhysicalTemplateFamily::Storage => 3.0,
+            RackPhysicalTemplateFamily::Storage | RackPhysicalTemplateFamily::StorageBox => 3.0,
             RackPhysicalTemplateFamily::Pipetting => 4.0,
             RackPhysicalTemplateFamily::CellCulture => 1.6,
             RackPhysicalTemplateFamily::TubeRack => 3.0,
@@ -3690,6 +3791,39 @@ impl GentleEngine {
             &rack.profile,
             rack.carrier_pitch_override_um,
         )?;
+        if spec.family == RackPhysicalTemplateFamily::StorageBox {
+            let geometry = spec
+                .storage_box
+                .as_ref()
+                .ok_or_else(|| EngineError::invalid_input("box_geometry_unavailable"))?;
+            let mut scad = format!(
+                "// GENtle-derived storage box\n// rack_id={}\n// template={}\n// support_mode=floor_seated\n// geometry_basis=drawing_derived_unverified_storage_box\n",
+                serde_json::to_string(rack_id)
+                    .map_err(|e| EngineError::invalid_input(e.to_string()))?,
+                spec.kind.as_str()
+            );
+            for text in &spec.nonclaims {
+                scad.push_str(&format!("// nonclaim: {text}\n"));
+            }
+            for text in &spec.assumptions {
+                scad.push_str(&format!("// assumption: {text}\n"));
+            }
+            let fields = serde_json::to_value(geometry)
+                .map_err(|e| EngineError::invalid_input(e.to_string()))?;
+            for (name, value) in fields
+                .as_object()
+                .ok_or_else(|| EngineError::invalid_input("box_geometry_invalid"))?
+            {
+                scad.push_str(&format!("{name} = {value};\n"));
+            }
+            scad.push_str(STORAGE_BOX_SCAD);
+            fs::write(path, scad).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write storage box OpenSCAD '{path}': {e}"),
+                cause_chain: vec![],
+            })?;
+            return Ok(spec);
+        }
         let blocked = rack
             .profile
             .blocked_coordinates
