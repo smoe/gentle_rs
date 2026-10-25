@@ -52209,12 +52209,21 @@ impl GentleEngine {
                 }
                 Operation::InspectRnaReadPanel {
                     path,
+                    expected_result,
                     verify_artifacts,
                     file_id,
                     rows,
                 } => {
                     let (panel, report, inspection, summary) =
                         self.inspect_rna_read_panel(&path, file_id.as_deref(), rows)?;
+                    if let Some(binding) = &expected_result {
+                        Self::validate_rna_read_panel_result_binding(
+                            binding,
+                            &path,
+                            report.as_ref(),
+                            summary.as_ref(),
+                        )?;
+                    }
                     if verify_artifacts {
                         result.rna_read_panel_verification =
                             Some(Box::new(self.verify_rna_read_panel_summary_artifacts(

@@ -14,6 +14,11 @@ mod control;
 mod input;
 #[path = "rna_panel/project.rs"]
 mod project;
+#[path = "rna_panel/result_binding.rs"]
+mod result_binding;
+#[cfg(test)]
+#[path = "rna_panel/result_binding_tests.rs"]
+mod result_binding_tests;
 #[path = "rna_panel/summary.rs"]
 mod summary;
 #[path = "rna_panel/tools.rs"]
@@ -73,6 +78,18 @@ fn validate_screen_report_binding(report: &RnaReadPanelScreenReport) -> Result<(
     ) || report.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?)
         || report.isoform_assignment_performed
         || report.alignment_confirmation_performed
+        || report
+            .request
+            .expected_panel_sha256
+            .as_ref()
+            .is_some_and(|hash| hash != &report.panel_sha256)
+        || report
+            .submitted_request_sha256
+            .as_ref()
+            .is_some_and(|hash| {
+                !hash.starts_with("sha256:")
+                    || !valid_digest(hash.trim_start_matches("sha256:"), 64)
+            })
     {
         return Err(bad("panel_report_binding"));
     }
@@ -775,6 +792,15 @@ fn valid_digest(value: &str, n: usize) -> bool {
     value.len() == n && value.bytes().all(|c| c.is_ascii_hexdigit())
 }
 fn validate_request(request: &mut ScreenRnaReadPanelRequest) -> Result<(), EngineError> {
+    if request
+        .expected_panel_sha256
+        .as_deref()
+        .is_some_and(|hash| {
+            !hash.starts_with("sha256:") || !valid_digest(hash.trim_start_matches("sha256:"), 64)
+        })
+    {
+        return Err(bad("panel_expected_digest_invalid"));
+    }
     let p = &request.policy;
     if request.schema != RNA_PANEL_SCREEN_REQUEST_SCHEMA
         || request.files.is_empty()
@@ -864,6 +890,15 @@ fn screen_with_clock(
     control::marker_requested(request.cancel_path.as_deref(), &cancel_ids)?;
     let panel: RnaReadPanel = load(&request.panel_path)?;
     validate_panel(&panel)?;
+    if request
+        .expected_panel_sha256
+        .as_ref()
+        .is_some_and(|expected| expected != &panel.content_sha256)
+    {
+        return Err(bad(
+            "panel_expected_digest_mismatch: reviewed panel was replaced",
+        ));
+    }
     if !panel.overlapping_source_pairs.is_empty() {
         return Err(bad(
             "panel_overlapping_sources: choose one annotation source per physical locus or curate disjoint targets; source views must not be counted twice",
@@ -881,6 +916,7 @@ fn screen_with_clock(
         .map_err(|e| bad(format!("panel_staging: {e}")))?;
     write_json(&staging.path().join("panel.json"), &panel)?;
     let mut report = RnaReadPanelScreenReport { schema: RNA_PANEL_SCREEN_SCHEMA.into(), content_sha256: String::new(),
+        submitted_request_sha256: Some(cancel_ids[0].clone()),
         status: "completed".into(), request: request.clone(), panel_sha256: panel.content_sha256.clone(), indexed_postings: count,
         isoform_assignment_performed: false, alignment_confirmation_performed: false,
         files_completed: vec![], files_not_completed: vec![], inputs_not_completed: Some(vec![]), control_error: None, nonclaims: vec![

@@ -16,6 +16,57 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_full_native_rehearsal_and_prominence_have_actual_shared_handlers(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
+        evidence = (ROOT / "src/app/rna_panel_ui/processing/evidence.rs").read_text()
+        native = (ROOT / "src/app/window_registry.rs").read_text()
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text())["commands"]
+        operations = {"demo": "PrepareRnaReadPanelDemo", "screen": "ScreenRnaReadPanel",
+                      "show": "InspectRnaReadPanel", "cancel": "CancelRnaReadPanel",
+                      "export-summary": "ExportRnaReadPanelSummary"}
+        for suffix, operation in operations.items():
+            route = "rna-reads panel-" + suffix
+            entry, = [row for row in glossary if row["path"] == route]
+            self.assertIn("gui-menu", entry["interfaces"])
+            self.assertIn('glossary_path: "' + route + '"', native)
+            self.assertIn("Operation::" + operation, source + evidence)
+        self.assertIn("rna_native_screen_monitor_bound_reopen_and_summary_work_without_the_live_project_lock", evidence)
+        guide = re.sub(r"\s+", " ", GUIDE.read_text())
+        for phrase in ("GUI-Only Rehearsal", "Typed Checkpoints And Capture Targets",
+                       "DEMO_1", "DEMO_2", "harness_gap", "no capture", "verified_tables_only"):
+            self.assertIn(phrase, guide)
+
+    def test_native_inspector_and_export_use_shared_records_and_preserve_ambiguity(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing/evidence.rs").read_text()
+        for phrase in ("Operation::InspectRnaReadPanel", "Operation::ExportRnaReadPanelSummary",
+                       "expected_result:", "expected_content", "co_nomination_sets", "member_ids",
+                       "legacy_class_unresolved", "artifact_content_verified", "sample_coverage",
+                       "control_error", "export_request", "show_rows", "RnaReadPanelSummary"):
+            self.assertIn(phrase, source)
+        for forbidden in ("File::open", "visit_fastq", "GzDecoder"):
+            self.assertNotIn(forbidden, source)
+        guide = re.sub(r"\s+", " ", GUIDE.read_text())
+        for phrase in ("Open bound result", "Inspect nomination prefix", "Add screen to summary",
+                       "Export reviewed summary (writes files)", "Verify summary tables"):
+            self.assertIn(phrase, guide)
+
+    def test_native_screen_uses_shared_service_and_explicit_review_without_fastq_io(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
+        for phrase in ("agent_command_service.submit_parsed", "Operation::ScreenRnaReadPanel",
+                       "Operation::CancelRnaReadPanel", "Operation::InspectRnaReadPanel",
+                       "expected_panel_sha256", "reviewed_request", "declared_complete: false",
+                       "decoder read-ahead", "rna_screen_window_close_does_not_cancel"):
+            self.assertIn(phrase, source)
+        for forbidden in ("visit_fastq", "GzDecoder", "read_to_end", "File::open"):
+            self.assertNotIn(forbidden, source)
+        parser = (ROOT / "src/engine_shell/command_parsers.rs").read_text()
+        self.assertIn('"--request"', parser)
+        self.assertIn("ShellCommand::RnaReadPanelScreenDraft", parser)
+        guide = GUIDE.read_text()
+        for phrase in ("Native Setup And Monitoring", "Run reviewed screen (writes files)",
+                       "File copy finished", "Copy report binding", "--save NEW_FILE"):
+            self.assertIn(phrase, guide)
+
     def test_table_verifier_uses_the_declared_streaming_hash_backend(self):
         dependencies = tomllib.loads((ROOT / "Cargo.toml").read_text())["dependencies"]
         self.assertIn("ring", dependencies)
@@ -44,7 +95,9 @@ class RnaPanelTutorialTests(unittest.TestCase):
     def test_demo_saves_reconciled_state_before_the_mcp_unchanged_state_check(self):
         source = (ROOT / "src/engine/analysis/rna_panel/tools.rs").read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            self.assertRegex(text, r"GentleEngine::from_state\(state\)\s*\.state\(\)\s*\.save_to_path\(")
+            self.assertIn("let mut demo_engine = GentleEngine::from_state(state)", text)
+            self.assertRegex(text, r"demo_engine\s*\.state\(\)\s*\.save_to_path\(")
+            self.assertIn("upsert_gene_set_resolution_artifact", text)
         mcp = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
         self.assertIn("the synthetic starter must already contain reconciled lineage and containers", mcp)
 
@@ -52,11 +105,27 @@ class RnaPanelTutorialTests(unittest.TestCase):
         source_path = ROOT / "src/engine/analysis/rna_panel.rs"
         source = source_path.read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
-            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests", "project"):
+            for child in ("input", "control", "verification", "tools", "tests", "summary", "summary_tests", "project", "result_binding", "result_binding_tests"):
                 match = re.search(r'#\[path = "([^"]+)"\]\s*mod ' + child + r';', text)
                 self.assertIsNotNone(match, f"path-loaded panel needs an explicit {child} path")
                 self.assertEqual(match.group(1), f"rna_panel/{child}.rs")
                 self.assertTrue((source_path.parent / match.group(1)).is_file())
+
+    def test_artifact_only_policy_and_request_bindings_are_not_inferred_from_flags(self):
+        policy = (ROOT / "src/command_execution/rna_artifacts.rs").read_text(encoding="utf-8")
+        for operation in ("ScreenRnaReadPanel", "ExportRnaReadPanelSummary", "InspectRnaReadPanel", "CancelRnaReadPanel"):
+            self.assertIn("Operation::" + operation, policy)
+        self.assertIn("_ => Policy::Project", policy)
+        self.assertNotIn("state_changed", policy)
+        types = (ROOT / "src/engine/protocol/rna_panel.rs").read_text(encoding="utf-8")
+        for field in ("expected_panel_sha256", "submitted_request_sha256"):
+            self.assertRegex(types, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub ' + field)
+        tests = (ROOT / "src/command_execution/rna_tests.rs").read_text(encoding="utf-8")
+        for name in ("rna_panel_service_late_cancel_and_live_edit_keep_published_completion",
+                     "rna_panel_service_retention_does_not_stale_another_detached_job",
+                     "rna_panel_control_and_metadata_do_not_compete_with_execution_slots_or_project_lock",
+                     "rna_panel_registered_build_keeps_project_commit_and_mutation_feedback"):
+            self.assertIn(name, tests)
 
     def test_native_preparation_reuses_gene_sets_and_shared_routes(self):
         guide = GUIDE.read_text(encoding="utf-8")
@@ -89,6 +158,8 @@ class RnaPanelTutorialTests(unittest.TestCase):
         self.assertEqual(entry["title"], source["title"])
         self.assertEqual(entry["notes"], source["catalog"]["notes"])
         self.assertEqual(entry["produces"], source["catalog"]["produces"])
+        for field in ("interfaces", "starting_state", "estimated_minutes"):
+            self.assertEqual(entry[field], source["catalog"][field], field)
         self.assertEqual(entry["decimal_id"], "10.04")
         self.assertEqual(entry["review_status"], "unreviewed")
         for path in SOURCE.parent.glob("*.json"):

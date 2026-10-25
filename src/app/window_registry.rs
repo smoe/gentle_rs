@@ -16,6 +16,36 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-demo",
+        menu_path: "Genome > RNA Read Panel... > Prepare synthetic rehearsal...",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-screen",
+        menu_path: "Genome > RNA Read Panel... > Screen > Run reviewed screen",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-show",
+        menu_path: "Genome > RNA Read Panel... > Inspect",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-cancel",
+        menu_path: "Genome > RNA Read Panel... > Runs > Request cancellation",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "rna-reads panel-export-summary",
+        menu_path: "Genome > RNA Read Panel... > Export > Export reviewed summary",
+        palette_title: "RNA Read Panel",
+        ui_intent_target: Some(UiIntentTarget::RnaReadPanel),
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "rna-reads panel-build",
         menu_path: "Genome > RNA Read Panel...",
         palette_title: "RNA Read Panel",

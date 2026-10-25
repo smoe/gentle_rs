@@ -441,6 +441,7 @@ impl GentleEngine {
             }
         }
         let mut summary = RnaReadPanelSummary {
+            submitted_request_sha256: Some(sha256_prefixed_bytes(&encode(request)?)),
             schema: RNA_PANEL_SUMMARY_SCHEMA.into(), content_sha256: String::new(), panel_sha256: panel.unwrap().content_sha256,
             policy, completeness: completeness.into(), source_runs: runs, source_files: files,
             samples: samples.into_values().collect(), transcripts: transcripts.into_values().collect(),

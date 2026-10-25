@@ -6,6 +6,53 @@ use serde_json::Value;
 use std::io::Read;
 
 impl GentleEngine {
+    /// Inspect or atomically save draft JSON without opening a reference, manifest or reads.
+    pub fn rna_read_panel_screen_draft(
+        &self,
+        request: &ScreenRnaReadPanelRequest,
+        output_path: Option<&str>,
+    ) -> Result<RnaReadPanelScreenDraft, EngineError> {
+        if request.schema != RNA_PANEL_SCREEN_REQUEST_SCHEMA {
+            return Err(bad("panel_draft_schema"));
+        }
+        let artifact = if let Some(path) = output_path {
+            let destination = Path::new(path);
+            if path.trim().is_empty()
+                || destination.exists()
+                || destination.file_name().is_none()
+                || destination.components().any(|c| c.as_os_str() == "..")
+            {
+                return Err(bad(
+                    "panel_draft_output: choose a new file without parent traversal",
+                ));
+            }
+            let parent = destination
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let bytes = serde_json::to_vec_pretty(request).map_err(|e| bad(e.to_string()))?;
+            let mut file =
+                tempfile::NamedTempFile::new_in(parent).map_err(|e| bad(e.to_string()))?;
+            file.write_all(&bytes).map_err(|e| bad(e.to_string()))?;
+            file.as_file().sync_all().map_err(|e| bad(e.to_string()))?;
+            file.persist_noclobber(destination)
+                .map_err(|e| bad(format!("panel_draft_output: {e}")))?;
+            Some(RnaReadPanelArtifact {
+                path: path.into(),
+                sha256: sha256_prefixed_bytes(&bytes),
+                bytes: bytes.len() as u64,
+                locus_id: None,
+            })
+        } else {
+            None
+        };
+        Ok(RnaReadPanelScreenDraft {
+            schema: "gentle.rna_read_panel_screen_draft.v1".into(),
+            request: request.clone(),
+            artifact,
+        })
+    }
+
     /// Create only synthetic files in a fresh directory; never replace the live project.
     pub fn prepare_rna_read_panel_demo(
         &self,
@@ -51,6 +98,7 @@ impl GentleEngine {
                     ]),
                     qualifiers: vec![
                         ("gene".into(), Some(format!("SYN_{i}"))),
+                        ("gene_id".into(), Some(format!("SYN_{i}"))),
                         ("transcript_id".into(), Some(id.into())),
                     ],
                 });
@@ -70,11 +118,31 @@ impl GentleEngine {
             });
             sequences.push(sequence);
         }
-        GentleEngine::from_state(state)
+        let mut demo_engine = GentleEngine::from_state(state);
+        // Resolved synthetic IDs enable the same native gene-set preparation as real loci.
+        demo_engine.upsert_gene_set_resolution_artifact(GeneSetResolutionReport {
+            schema: "gentle.gene_set_resolution.v1".into(),
+            op_id: Some("rna_demo_genes".into()),
+            request: GeneSetRequest::ExplicitMembers {
+                members: (0..5).map(|i| format!("SYN_{i}")).collect(),
+            },
+            requested_member_count: 5,
+            resolved_member_count: 5,
+            resolved_members: (0..5)
+                .map(|i| GeneSetResolvedMember {
+                    dedup_key: format!("SYN_{i}"),
+                    symbol: format!("SYN_{i}"),
+                    gene_id: Some(format!("SYN_{i}")),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        })?;
+        demo_engine
             .state()
             .save_to_path(&stage.path().join("starter.json").display().to_string())?;
         let build = BuildRnaReadPanelRequest {
-            gene_set: None,
+            gene_set: Some(demo_engine.rna_read_panel_gene_sets()?.remove(0).binding),
             register_in_project: None,
             base_panel_path: None,
             schema: RNA_PANEL_BUILD_SCHEMA.into(),
@@ -121,6 +189,7 @@ impl GentleEngine {
         fs::write(stage.path().join("md5_checksums.txt"), manifest)
             .map_err(|e| bad(e.to_string()))?;
         let screen = ScreenRnaReadPanelRequest {
+            expected_panel_sha256: None,
             schema: RNA_PANEL_SCREEN_REQUEST_SCHEMA.into(),
             panel_path: build.output_path.clone(),
             files,

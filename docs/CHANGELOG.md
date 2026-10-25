@@ -1,5 +1,77 @@
 # GENtle Changelog
 
+## 2026-10-24 - Complete The Native RNA Tutorial Rehearsal
+
+- Reuse shared synthetic-demo preparation in the native workspace. Its starter
+  now has exact toy gene IDs and a stored resolved gene set, enabling the same
+  native binding/build path as real references without private reads or a shell.
+- Extend tutorial 10.04 from preparation through request review, nonmodal runs,
+  bound prefix inspection and summary/table export. Add semantic outcome/hash
+  bindings, typed manual checkpoints, capture requirements and a Glen/CI handoff.
+  Catalog/readme and actual menu/palette oracle expose the five added native
+  command paths; scientific routes and approvals remain unchanged. Refresh
+  maturity source hashes. Raw-operation surfacing stays separately classified.
+- Author an app-route regression holding the live project write lock through
+  screen, poll, bound reopen and summary; retain classes/unknowns with no journal
+  mutation. Add metadata/projection checks. Rust/native/live-agent checks and
+  screenshots remain Glen/CI work, not an asserted GUI acceptance pass. No
+  private input, queued scheduler, result graph attachment or push.
+- Verification: 104 Python source/checkout/maturity tests, scoped rustfmt,
+  maturity freshness and whitespace pass. Canonical Rust generator, compilation,
+  native/platform scheduling and live-model acceptance remain unrun locally.
+
+## 2026-10-24 - Native RNA Evidence Inspection And Summary Export
+
+- Add Inspect/Export pages over the existing shared operations, with automatic
+  bound reopening of published runs/summaries and explicit saved-file reopening.
+  Preserve submitted/effective identities, verified/missing inputs, failed-control
+  diagnostics, sample coverage and every class/member set; do not assign isoforms.
+- Keep nomination prefix inspection bounded/unverified and summary-table checks
+  explicit, background and separate from original-read verification. Subsequent
+  inspection retains the viewed hash; changed metadata cannot silently replace
+  the prior snapshot. Virtualized count tables avoid dropping stored rows.
+- Review explicit summary sources/output before file writing; core compatibility,
+  duplicate checks and immutable publication remain shared. No graph attachment.
+  Authored shared-report projection/export-review tests await Glen/CI Rust/native
+  execution. Tutorial 10.04 now explains these native controls.
+
+## 2026-10-24 - Native RNA Screen Setup And Monitor
+
+- Add native Screen/Runs pages over the same app command service: explicit file,
+  sample/checksum/policy binding, inspected panel pin, immutable reviewed Run,
+  fresh paths and request-bound cancellation. Closing keeps work alive; cached
+  read-ahead/reads are not completion or checksum acceptance. File-only outcomes
+  remain separate from live project edits and graph attachment.
+- Add shared metadata-only draft load/save under `panel-screen --request`, with
+  fresh atomic saving, agent write confirmation and no FASTQ admission/IO.
+- Author synthetic review/edit, close, semantic-target, draft LF/CRLF/quoted-path
+  and approval tests. Rust/native checks remain Glen/CI; inspector/export and
+  complete tutorial acceptance continue in the active plan.
+
+## 2026-10-24 - Retain Bound File-Only RNA Results
+
+- Classify only standalone screen and summary export as artifact-only managed
+  work. Retain validated published results without merging their private journals
+  into the live project; ordinary mutation/stale-owner safeguards remain intact.
+- Preserve engine-published outcomes across late host cancellation, retaining
+  cancelled/control-error reports as evidence with distinct lifecycle states.
+  Bound small envelopes retain oversized file-only results without truncating
+  the scientific report. Independent bounded observation/control lanes remain
+  available when execution slots or the live project lock are occupied.
+- Add optional reviewed-panel digest admission, submitted/effective request
+  identities and bound report reopening on shared inspection routes. Omitted
+  optional fields preserve legacy request/cancel/report bytes. Plain metadata
+  inspection never reruns admission or rereads a changed manifest/FASTQ.
+- Correct the existing registered-panel build's shared-shell mutation feedback;
+  it remains a normal guarded project commit, not part of the file-only allowlist.
+- Author synthetic channel-controlled concurrency, late/partial cancellation,
+  control-error, capacity, provenance/tampering and LF/CRLF legacy regressions.
+  Rust/native execution remains Glen/CI work; the subsequent native form,
+  monitor, inspector/export and full 10.04 rehearsal remain in progress.
+- Verification: 89 Python source/tutorial/checkout tests, scoped rustfmt,
+  capability-maturity freshness and whitespace pass. This is not Rust/native
+  acceptance and does not establish live-agent responsiveness or throughput.
+
 ## 2026-10-24 - Native And Shared RNA-Panel Preparation
 
 - Add Genome > RNA Read Panel, command-palette and shared UI-intent access for

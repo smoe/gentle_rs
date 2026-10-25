@@ -5396,8 +5396,11 @@ mod tests {
             built["result"]["structuredContent"]["result"]["rna_read_panel"]["content_sha256"],
             direct_panel.content_sha256
         );
-        let request: Value =
+        let mut request: Value =
             serde_json::from_slice(&fs::read(root.join("artifacts/screen.json")).unwrap()).unwrap();
+        request["expected_panel_sha256"] = json!(direct_panel.content_sha256);
+        let submitted: crate::engine::ScreenRnaReadPanelRequest =
+            serde_json::from_value(request.clone()).unwrap();
         let screened = run_tool(
             DEFAULT_MCP_STATE_PATH,
             "op",
@@ -5412,6 +5415,9 @@ mod tests {
             .screen_rna_read_panel(direct_request, &mut |_| true)
             .unwrap();
         let actual = &screened["result"]["structuredContent"]["result"]["rna_read_panel_screen"];
+        let bound_report = serde_json::from_value(actual.clone()).unwrap();
+        let binding =
+            GentleEngine::rna_read_panel_screen_result_binding(&submitted, &bound_report).unwrap();
         assert_eq!(actual["status"], "completed");
         assert_eq!(
             actual["files_completed"],
@@ -5422,7 +5428,8 @@ mod tests {
             "op",
             json!({
             "state_path":state_path, "confirm":true, "operation":{"InspectRnaReadPanel":{
-                "path":root.join("screen/report.json"), "file_id":"file_0000", "rows":4}} }),
+                "path":root.join("screen/report.json"), "expected_result":binding,
+                "file_id":"file_0000", "rows":4}} }),
         );
         assert_eq!(inspected["result"]["isError"], false, "{inspected}");
         assert_eq!(
@@ -5430,6 +5437,15 @@ mod tests {
                 [3]["class"],
             "unmatched"
         );
+        let mut wrong_binding = binding.clone();
+        wrong_binding.report_content_sha256 = "sha256:foreign".into();
+        let refused = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":state_path,
+            "confirm":true, "operation":{"InspectRnaReadPanel":{"path":root.join("screen/report.json"), "expected_result":wrong_binding}}}),
+        );
+        assert_eq!(refused["result"]["isError"], true, "{refused}");
         let summary_request = json!({"schema":"gentle.rna_read_panel_summary_request.v1",
             "report_paths":[root.join("screen/report.json")], "output_dir":root.join("MCP summary")});
         let exported = run_tool(

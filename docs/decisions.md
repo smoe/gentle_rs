@@ -106,6 +106,34 @@ parent relationships for the GUI graph and shared SVG projection. Registration
 is undoable project state; the external panel file is not. Graph nodes describe
 reference definitions, never read counts or proof of isoform discrimination.
 
+Owner-authorized 2026-10-24 follow-up: managed standalone `ScreenRnaReadPanel`
+and `ExportRnaReadPanelSummary` are a named artifact-only allowlist, not an
+inference from checkpoint kind, `state_changed=false`, or arbitrary output JSON.
+They retain bound published results without merging their detached journals into
+the live project. Other operations, workflows and registered panel builds keep
+their normal optimistic mutation commit/history rules. The synchronous engine
+API still returns its ordinary operation receipt; this does not authorize a
+host to append an artifact worker's private journal to a concurrently edited
+project. Later graph attachment is a separate short explicit undoable operation.
+
+Submitted and effective requests are independently digest-bound: manifest MD5
+resolution/normalization is not tampering. A retained artifact receipt also binds
+panel identity, report content, location and scientific outcome. Optional reviewed
+panel digests are checked before indexing/streaming/publication. New optional
+request/report fields are omitted when absent so legacy semantic hashes and
+cancel identities do not change. Hashes bind content, not authenticated origin.
+Never reopen a presumed result solely because a report filename exists.
+
+After engine publication, host cancellation cannot relabel completed/cancelled/
+control-error evidence. Engine cancellation before publication is unchanged.
+Cancellation requests and actual scientific outcomes remain distinct. A control
+error is failed screening with verified units retained, not authorized cancel.
+Metadata observation and cancellation use independent bounded host lanes, never
+ordinary execution slots or a live project lock; expensive table verification
+still consumes bounded execution capacity. Process-local receipts/job IDs are
+not cross-process worker handles or restart recovery. Reopening published bound
+evidence and request-bound marker cancellation remain shared headless operations.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

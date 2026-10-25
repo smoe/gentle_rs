@@ -3283,6 +3283,8 @@ pub enum Operation {
     },
     InspectRnaReadPanel {
         path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_result: Option<Box<RnaReadPanelResultBinding>>,
         #[serde(default)]
         verify_artifacts: bool,
         #[serde(default)]

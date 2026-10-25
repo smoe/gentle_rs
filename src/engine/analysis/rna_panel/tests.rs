@@ -87,6 +87,7 @@ pub(super) fn request(
     ScreenRnaReadPanelRequest {
         schema: RNA_PANEL_SCREEN_REQUEST_SCHEMA.into(),
         panel_path: directory.join("panel-input.json").display().to_string(),
+        expected_panel_sha256: None,
         files: vec![RnaReadPanelInput {
             sample_id: "sample_a".into(),
             barcode: "barcode01".into(),

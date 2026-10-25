@@ -3054,8 +3054,9 @@ impl GENtleApp {
             progress_callback: None,
         };
         if crate::command_execution::CommandExecutionService::manages(&command) {
-            match self.agent_command_service.submit(
+            match self.agent_command_service.submit_parsed(
                 self.engine.clone(),
+                command.clone(),
                 trimmed.to_string(),
                 options,
             ) {
@@ -3201,7 +3202,8 @@ impl GENtleApp {
                 .status(id)
                 .expect("retained command receipt");
             if task.session_id != self.agent_execution_session_id
-                || receipt.result_instance.unwrap_or(receipt.owner_instance) != instance
+                || (receipt.requires_project_commit
+                    && receipt.result_instance.or(receipt.owner_instance) != Some(instance))
             {
                 // The host retains the receipt; never attribute it to a new project/turn.
                 continue;
@@ -3268,7 +3270,13 @@ impl GENtleApp {
 
     pub(super) fn cancel_agent_commands_for_project_change(&self) {
         for task in &self.agent_pending_commands {
-            self.agent_command_service.cancel(task.job_id);
+            if self
+                .agent_command_service
+                .status(task.job_id)
+                .is_some_and(|receipt| receipt.requires_project_commit)
+            {
+                self.agent_command_service.cancel(task.job_id);
+            }
         }
     }
 

@@ -13299,6 +13299,22 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "panel-screen" if tokens.get(2).is_some_and(|s| s == "--request") => {
+            if tokens.len() != 4 && !(tokens.len() == 6 && tokens[4] == "--save") {
+                return Err(
+                    "Use rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]"
+                        .into(),
+                );
+            }
+            let request = parse_required_json_payload::<crate::engine::ScreenRnaReadPanelRequest>(
+                &tokens[3],
+                "RNA screen request",
+            )?;
+            Ok(ShellCommand::RnaReadPanelScreenDraft {
+                request: Box::new(request),
+                output_path: tokens.get(5).cloned(),
+            })
+        }
         "panel-build" if (3..=4).contains(&tokens.len()) && tokens[2] == "--list-sources" => {
             Ok(ShellCommand::RnaReadPanelSources {
                 gene_set_id: tokens.get(3).cloned(),
@@ -13340,6 +13356,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut rows = 0;
             let mut rows_seen = false;
             let mut verify_artifacts = false;
+            let mut expected_result = None;
             let mut i = 3;
             while i < tokens.len() {
                 if tokens[i] == "--verify-artifacts" && !verify_artifacts {
@@ -13351,6 +13368,13 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                     .get(i + 1)
                     .ok_or_else(|| "Missing panel-show option value".to_string())?;
                 match tokens[i].as_str() {
+                    "--binding" if expected_result.is_none() => {
+                        expected_result = Some(Box::new(parse_required_json_payload::<
+                            crate::engine::RnaReadPanelResultBinding,
+                        >(
+                            value, "RNA result binding"
+                        )?));
+                    }
                     "--file-id" if file_id.is_none() => file_id = Some(value.clone()),
                     "--rows" if !rows_seen => {
                         rows_seen = true;
@@ -13365,6 +13389,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&Operation::InspectRnaReadPanel {
                     path: tokens[2].clone(),
+                    expected_result,
                     verify_artifacts,
                     file_id,
                     rows,

@@ -20,6 +20,26 @@ Workers use history-free project snapshots; other windows remain usable. If the
 project changes during a successful save, the file is disclosed as an earlier
 snapshot, not promoted as the current panel. Closing the editor is not cancellation
 of an approved file write. These controls do not launch FASTQ screening.
+Shared-agent screens/summary exports retain their bound external reports
+without merging a private journal into the active project. Unrelated edits do
+not invalidate published file-only evidence. A cancelled/control-error report
+remains inspectable, not successful screening; late host cancellation does not
+rewrite an engine-published outcome. Metadata inspection and marker cancellation
+have independent bounded capacity.
+
+The **Screen** page accepts explicit completed FASTQ/gzip files, per-file
+sample/barcode/priming and checksum bindings, an inspected panel, policy and
+fresh output/control paths. Selecting files does not process them. Review the
+captured JSON before **Run reviewed screen (writes files)**; later edits require
+new review. Load/save typed requests and copy the matching CLI command without
+screening. The **Runs** page shows cached shared-service receipts, file ordinal,
+current-file reads and compressed decoder read-ahead, not a checksum verdict or
+ETA. **Request cancellation** writes the shared request-bound marker; request
+failure is distinct from worker cancellation. Closing the window does not cancel
+approved work; project edits/replacement do not discard file-only outcomes.
+Session-local receipts are not restart recovery. Reopen saved reports explicitly
+after restarting. Native acceptance remains with Glen/CI; see the
+[active implementation plan](rna_panel_gui_processing_plan.md).
 
 **Keep panel in project graph** retains a validated snapshot through the same
 build operation. The main lineage graph and its SVG export show the target gene
@@ -32,8 +52,26 @@ Undo removes project registration, not the external panel file. Clearing the
 checkbox makes a file-only build; CLI/agents control the same choice with
 `register_in_project`.
 
-Targeted FASTQ screening/summary inspection remains a shared **Shell / Agent Assistant**
-workflow, not a new RNA Mapping tab. [Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
+The native **Inspect** page projects the shared panel, screen or summary record.
+Published runs reopen with their exact result binding; saved-file inspection
+after restart is explicit and does not invent a submitted-service receipt.
+The view retains verified/missing file units, control diagnostics, sample
+coverage, all class/member associations and non-claims. Nomination prefixes are
+bounded and explicitly unverified; **Verify summary tables** is separate bounded
+background work, not a FASTQ reread. Long count tables use virtualized rows.
+**Add screen to summary** or **Export > Add screen reports...** selects explicit
+inputs. Review the summary request before **Export reviewed summary (writes
+files)**; compatibility/deduplication remains engine-owned. Reopen the bound
+summary and review its retained source hashes and partial coverage. Nothing is
+automatically attached to the project graph.
+
+**Prepare synthetic rehearsal... (writes files)** creates only a fresh synthetic
+directory through the existing shared demo operation; it does not load a project
+or run reads. The starter includes a resolved toy gene set for native preparation.
+Use File > Open Project explicitly and follow the complete no-shell rehearsal
+in tutorial 10.04. Capture/runtime/scientific acceptance remains Glen/CI work.
+
+[Tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md)
 provides `panel-demo`, `panel-build`, `panel-screen`, `panel-show` and
 `panel-cancel` routes for every stage. Export read-support summaries with
 `rna-reads panel-export-summary REQUEST_JSON_OR_@FILE`, then reopen them using
