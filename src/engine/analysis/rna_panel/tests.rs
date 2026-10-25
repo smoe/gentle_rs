@@ -192,7 +192,9 @@ fn rna_panel_restricted_selection_can_hide_shared_competitors_but_never_claims_r
     build.sources[0].selected_transcript_ids = vec!["reused_tx".into()];
     build.output_path = td.path().join("restricted.json").display().to_string();
     let restricted = engine.build_rna_read_panel(&build).unwrap();
-    let mut restricted_request = request(&restricted, td.path(), shared);
+    let restricted_inputs = td.path().join("restricted-inputs");
+    fs::create_dir(&restricted_inputs).unwrap();
+    let mut restricted_request = request(&restricted, &restricted_inputs, shared);
     restricted_request.output_dir = td.path().join("restricted-run").display().to_string();
     let report = engine
         .screen_rna_read_panel(restricted_request, &mut |_| true)

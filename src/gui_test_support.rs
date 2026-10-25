@@ -18,22 +18,29 @@ use serde::{Deserialize, Serialize};
 pub const SNAPSHOT_SCHEMA: &str = "gentle.gui_semantic_snapshot.v2";
 pub const SNAPSHOT_PATH_ENV: &str = "GENTLE_GUI_TEST_SNAPSHOT";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GuiTestId(&'static str);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GuiTestId(String);
 
 impl GuiTestId {
-    pub fn new(value: &'static str) -> Self {
-        assert_semantic_token(value);
+    pub fn new(value: impl Into<String>) -> Self {
+        let value = value.into();
+        assert_semantic_token(&value);
         Self(value)
     }
 
-    pub fn as_str(self) -> &'static str {
-        self.0
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
-impl From<&'static str> for GuiTestId {
-    fn from(value: &'static str) -> Self {
+impl From<&str> for GuiTestId {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for GuiTestId {
+    fn from(value: String) -> Self {
         Self::new(value)
     }
 }

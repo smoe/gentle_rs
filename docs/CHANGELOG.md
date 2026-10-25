@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-25 - Accept Owned Semantic GUI Test IDs
+
+- Let the GUI-test metadata wrapper own validated semantic IDs so dynamic RNA
+  panel control IDs compile under `gui-test-support`; static IDs retain the
+  same validation and serialized values.
+
+## 2026-10-25 - Isolate Restricted RNA-Panel Test Artifacts
+
+- Fixed the restricted-transcript-selection regression to write its second
+  synthetic panel/input pair under a fresh subdirectory. The prior fixture
+  reused the first panel path and therefore correctly triggered GENtle's
+  no-overwrite guard before testing the intended competitor-selection rule.
+- Production screening, publication and no-overwrite behavior are unchanged.
+
 ## 2026-10-25 - Record Permission For Cross-Ladder Gel Residuals
 
 - Record the owner's decision that residuals across different ladders are
