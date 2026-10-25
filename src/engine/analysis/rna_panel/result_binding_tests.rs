@@ -40,6 +40,12 @@ fn rna_panel_screen_draft_roundtrips_without_opening_inputs_or_overwriting_files
         serde_json::to_string_pretty(&request)
             .unwrap()
             .replace('\n', "\r\n"),
+        format!(
+            "#!/usr/bin/env gentle\r\n{}",
+            serde_json::to_string_pretty(&request)
+                .unwrap()
+                .replace('\n', "\r\n")
+        ),
     ] {
         fs::write(&path, text).unwrap();
         let load = format!(
@@ -66,6 +72,61 @@ fn rna_panel_screen_draft_roundtrips_without_opening_inputs_or_overwriting_files
             )
             .is_err()
     );
+}
+
+#[test]
+fn rna_panel_screen_draft_file_is_lazy_bounded_and_does_not_open_referenced_inputs() {
+    // Synthetic metadata, including a sparse oversized file: no biological reads or large allocation.
+    let td = tempfile::tempdir().unwrap();
+    let path = td.path().join("lazy 'draft' \u{00fc}.json");
+    let line = format!(
+        "rna-reads panel-screen --request {}",
+        crate::engine_shell::quote_shell_arg(&format!("@{}", path.display()))
+    );
+    let command = crate::engine_shell::parse_shell_line(&line).unwrap();
+    assert!(matches!(
+        command,
+        crate::engine_shell::ShellCommand::RnaReadPanelLoadDraft { .. }
+    ));
+    assert!(!command.is_state_mutating());
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    assert!(
+        crate::engine_shell::execute_shell_command(&mut engine, &command)
+            .unwrap_err()
+            .contains("panel_draft_open")
+    );
+    let request = serde_json::json!({
+        "schema": RNA_PANEL_SCREEN_REQUEST_SCHEMA, "panel_path": "absent-panel.json",
+        "files": [], "md5_manifest_path": "absent-manifest", "output_dir": "absent-output"
+    });
+    fs::write(&path, serde_json::to_vec(&request).unwrap()).unwrap();
+    let captured = crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+    assert_eq!(
+        captured.output["request"]["panel_path"],
+        request["panel_path"]
+    );
+    assert!(captured.output["artifact"].is_null());
+    fs::write(&path, b"{\"unknown_field\":true}").unwrap();
+    assert!(
+        crate::engine_shell::execute_shell_command(&mut engine, &command)
+            .unwrap_err()
+            .contains("panel_draft_json")
+    );
+    let file = fs::File::create(&path).unwrap();
+    file.set_len(128_000_001).unwrap();
+    drop(file);
+    assert!(
+        crate::engine_shell::execute_shell_command(&mut engine, &command)
+            .unwrap_err()
+            .contains("panel_draft_json_budget")
+    );
+    assert_eq!(
+        captured.output["request"]["panel_path"],
+        request["panel_path"]
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.journal_len(), 0);
 }
 
 #[test]

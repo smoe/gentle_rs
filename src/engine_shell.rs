@@ -695,6 +695,9 @@ pub enum ShellCommand {
         request: Box<crate::engine::ScreenRnaReadPanelRequest>,
         output_path: Option<String>,
     },
+    RnaReadPanelLoadDraft {
+        path: String,
+    },
     InspectSplicingAttract {
         seq_id: String,
         feature_id: usize,
@@ -7493,6 +7496,9 @@ impl ShellCommand {
             Self::RnaReadPanelScreenDraft { .. } => {
                 "inspect or save RNA screen-request metadata without processing inputs".into()
             }
+            Self::RnaReadPanelLoadDraft { .. } => {
+                "load RNA screen-request metadata without processing inputs".into()
+            }
             Self::InspectFeatureExpert { seq_id, target } => {
                 format!(
                     "inspect feature expert view for '{seq_id}' target={}",
@@ -14249,6 +14255,9 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        if matches!(self, Self::RnaReadPanelLoadDraft { .. }) {
+            return false;
+        }
         if let Self::RnaReadPanelScreenDraft { output_path, .. } = self {
             return output_path.is_some();
         }
@@ -63044,6 +63053,15 @@ fn execute_feature_expert_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::RnaReadPanelLoadDraft { path } => {
+            let draft = engine
+                .load_rna_read_panel_screen_draft(path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(draft).map_err(|e| e.to_string())?,
+            })
+        }
         ShellCommand::RnaReadPanelScreenDraft {
             request,
             output_path,
@@ -68951,7 +68969,8 @@ fn execute_shell_command_with_options_dispatch_inner(
     }
     if matches!(
         command,
-        ShellCommand::RnaReadPanelScreenDraft { .. }
+        ShellCommand::RnaReadPanelLoadDraft { .. }
+            | ShellCommand::RnaReadPanelScreenDraft { .. }
             | ShellCommand::RnaReadPanelSources { .. }
             | ShellCommand::InspectFeatureExpert { .. }
             | ShellCommand::InspectSplicingAttract { .. }
@@ -69304,7 +69323,8 @@ fn execute_shell_command_with_options_inner(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::RnaReadPanelScreenDraft { .. }
+        ShellCommand::RnaReadPanelLoadDraft { .. }
+        | ShellCommand::RnaReadPanelScreenDraft { .. }
         | ShellCommand::RnaReadPanelSources { .. }
         | ShellCommand::InspectFeatureExpert { .. }
         | ShellCommand::GenomicRegions { .. }

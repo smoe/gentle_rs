@@ -720,18 +720,7 @@ impl GENtleApp {
         } else if let Some((op, task)) = operation {
             self.submit_rna_operation(op, task).map(|_| ())
         } else if let Some(path) = load {
-            let text = format!(
-                "rna-reads panel-screen --request {}",
-                quote_shell_arg(&format!("@{}", path.display()))
-            );
-            self.agent_command_service
-                .submit(self.engine.clone(), text, ShellExecutionOptions::default())
-                .map(|id| {
-                    self.rna_panel_ui.processing.pending.push(PendingTask {
-                        id,
-                        task: Task::Draft { load: true },
-                    });
-                })
+            self.start_rna_draft_load(path).map(|_| ())
         } else if let Some(path) = save {
             let request = self.rna_panel_ui.processing.draft.clone();
             let output_path = path.display().to_string();
@@ -755,6 +744,20 @@ impl GENtleApp {
         if let Err(error) = result {
             self.rna_panel_ui.processing.error = Some(error);
         }
+    }
+
+    fn start_rna_draft_load(&mut self, path: std::path::PathBuf) -> Result<u64, String> {
+        let text = format!(
+            "rna-reads panel-screen --request {}",
+            quote_shell_arg(&format!("@{}", path.display()))
+        );
+        self.submit_rna_processing(
+            ShellCommand::RnaReadPanelLoadDraft {
+                path: path.display().to_string(),
+            },
+            text,
+            Task::Draft { load: true },
+        )
     }
 
     pub(super) fn render_rna_rehearsal_controls(&mut self, ui: &mut egui::Ui) {
@@ -899,6 +902,96 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rna_screen_draft_load_uses_observation_with_busy_execution_and_locked_project() {
+        // Synthetic CRLF metadata only; its referenced panel, manifest and reads do not exist.
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("draft with 'quotes' and \u{00fc}.json");
+        let mut app = GENtleApp::default();
+        let mut request = app.rna_panel_ui.processing.draft.clone();
+        request.panel_path = td.path().join("absent-panel.json").display().to_string();
+        request.output_dir = td.path().join("unopened-output").display().to_string();
+        request.expected_panel_sha256 = Some("untrusted-serialized-review".into());
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&request)
+                .unwrap()
+                .replace('\n', "\r\n"),
+        )
+        .unwrap();
+        let mut held = vec![];
+        for _ in 0..4 {
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let id = app
+                .agent_command_service
+                .submit_work(app.engine.clone(), "held-execution".into(), move |_, _| {
+                    ready_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(20)).unwrap();
+                    Ok(crate::engine_shell::ShellRunResult {
+                        state_changed: false,
+                        output: serde_json::json!({}),
+                    })
+                })
+                .unwrap();
+            ready_rx.recv_timeout(Duration::from_secs(20)).unwrap();
+            held.push((id, release_tx));
+        }
+        let engine = app.engine.clone();
+        let guard = engine.write().unwrap();
+        let before = serde_json::to_value(guard.state()).unwrap();
+        let id = app.start_rna_draft_load(path).unwrap();
+        assert!(
+            !app.agent_command_service
+                .status(id)
+                .unwrap()
+                .requires_project_commit
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.rna_panel_ui.processing.pending() {
+            app.poll_rna_panel_action();
+            assert!(
+                Instant::now() < deadline,
+                "metadata load waited for project/execution capacity"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let receipt = app.agent_command_service.status(id).unwrap();
+        assert_eq!(
+            receipt.state,
+            crate::runtime_status::RuntimeStatusFrameState::Completed
+        );
+        assert_eq!(receipt.publication, "observation_control");
+        assert_eq!(receipt.committed_operations, 0);
+        assert!(app.rna_panel_ui.processing.error.is_none());
+        assert_eq!(
+            app.rna_panel_ui.processing.draft.panel_path,
+            request.panel_path
+        );
+        assert!(
+            app.rna_panel_ui
+                .processing
+                .draft
+                .expected_panel_sha256
+                .is_none()
+        );
+        assert!(app.rna_panel_ui.processing.review.is_none());
+        assert!(!std::path::Path::new(&request.output_dir).exists());
+        assert_eq!(serde_json::to_value(guard.state()).unwrap(), before);
+        assert_eq!(guard.journal_len(), 0);
+        drop(guard);
+        for (_, release) in &held {
+            release.send(()).unwrap();
+        }
+        for (id, _) in held {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.agent_command_service.take_result(id).is_none() {
+                assert!(Instant::now() < deadline);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+    }
 
     #[test]
     fn rna_screen_review_is_explicit_immutable_and_edit_sensitive() {

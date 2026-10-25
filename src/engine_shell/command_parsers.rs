@@ -13306,6 +13306,13 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                         .into(),
                 );
             }
+            if tokens.len() == 4
+                && let Some(path) = tokens[3].trim().strip_prefix('@')
+            {
+                return Ok(ShellCommand::RnaReadPanelLoadDraft {
+                    path: path.trim().into(),
+                });
+            }
             let request = parse_required_json_payload::<crate::engine::ScreenRnaReadPanelRequest>(
                 &tokens[3],
                 "RNA screen request",

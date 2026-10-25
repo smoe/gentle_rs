@@ -31,8 +31,11 @@ The **Screen** page accepts explicit completed FASTQ/gzip files, per-file
 sample/barcode/priming and checksum bindings, an inspected panel, policy and
 fresh output/control paths. Selecting files does not process them. Review the
 captured JSON before **Run reviewed screen (writes files)**; later edits require
-new review. Load/save typed requests and copy the matching CLI command without
-screening. The **Runs** page shows cached shared-service receipts, file ordinal,
+new review. **Load request...** admits a metadata worker through independent
+observation capacity without reading the file on the GUI thread or locking the
+live project. It does not consume an execution slot or open referenced reads;
+loaded panel pins require fresh inspection. Save typed requests and copy the
+matching CLI command without screening. The **Runs** page shows cached shared-service receipts, file ordinal,
 current-file reads and compressed decoder read-ahead, not a checksum verdict or
 ETA. **Request cancellation** writes the shared request-bound marker; request
 failure is distinct from worker cancellation. Closing the window does not cancel
@@ -40,6 +43,14 @@ approved work; project edits/replacement do not discard file-only outcomes.
 Session-local receipts are not restart recovery. Reopen saved reports explicitly
 after restarting. Native acceptance remains with Glen/CI; see the
 [active implementation plan](rna_panel_gui_processing_plan.md).
+
+Agent Assistant **Stop** stops model generation, not a submitted screen.
+Its pending-command **Cancel** requests same-process cooperative cancellation,
+even for a raw request without `cancel_path`. RNA **Request cancellation** and
+`panel-cancel` use the declared marker instead (required by native reviewed
+runs); marker-write failures stay visible, with no silent service-cancel fallback.
+Neither stopping the model nor replacing a project implicitly cancels an
+artifact-only screen. A terminal published outcome cannot be relabelled later.
 
 **Keep panel in project graph** retains a validated snapshot through the same
 build operation. The main lineage graph and its SVG export show the target gene

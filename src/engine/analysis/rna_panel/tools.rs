@@ -5,7 +5,39 @@ use md5::{Digest, Md5};
 use serde_json::Value;
 use std::io::Read;
 
+const DRAFT_JSON_BYTES: u64 = 128_000_000;
+
 impl GentleEngine {
+    /// Read only bounded draft metadata, without opening its panel, manifest or FASTQ paths.
+    /// Hosts must invoke this on a worker; source bytes are captured once, not at admission.
+    pub fn load_rna_read_panel_screen_draft(
+        &self,
+        path: &str,
+    ) -> Result<RnaReadPanelScreenDraft, EngineError> {
+        let file = fs::File::open(path).map_err(|e| bad(format!("panel_draft_open: {e}")))?;
+        if file.metadata().map_err(|e| bad(e.to_string()))?.len() > DRAFT_JSON_BYTES {
+            return Err(bad(
+                "panel_draft_json_budget: at most 128 MB of request metadata",
+            ));
+        }
+        let mut text = String::new();
+        file.take(DRAFT_JSON_BYTES + 1)
+            .read_to_string(&mut text)
+            .map_err(|e| bad(format!("panel_draft_read: {e}")))?;
+        if text.len() as u64 > DRAFT_JSON_BYTES {
+            return Err(bad("panel_draft_json_budget"));
+        }
+        // Preserve the shared JSON-file parser's existing shebang allowance.
+        let payload = if text.starts_with("#!") {
+            text.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+        } else {
+            &text
+        };
+        let request = serde_json::from_str(payload.trim())
+            .map_err(|e| bad(format!("panel_draft_json: {e}")))?;
+        self.rna_read_panel_screen_draft(&request, None)
+    }
+
     /// Inspect or atomically save draft JSON without opening a reference, manifest or reads.
     pub fn rna_read_panel_screen_draft(
         &self,

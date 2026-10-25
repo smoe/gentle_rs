@@ -44,6 +44,44 @@ platform/toolchain and primary failures through Steffen. Source-only checks do
 not establish Rust/runtime acceptance. Continue the native rehearsal below only
 with a verified source-matched binary.
 
+## RNA Draft Admission And Cancellation Boundaries, 2026-10-25
+
+At ordinary integrated main, verify deferred metadata-only `panel-screen
+--request @FILE` loading. Native **Load request...** now uses parsed independent
+observation admission, without execution capacity or a live-project baseline.
+Read the file once on the worker (128 MB source cap; interactive result budget
+still 16 MiB). Keep draft saving approval-bound. No private inputs, local Rust,
+native/model execution or push was performed for this follow-up.
+
+Run these authored regressions, then the normal RNA/command-service/agent
+approval/parity suites and `cargo check -q --locked --tests`:
+
+```sh
+cargo test --locked --lib -j1 rna_screen_draft_load_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_screen_draft_ -- --test-threads=1
+cargo test --locked --lib -j1 agent_rna_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_service_late_cancel_ -- --test-threads=1
+cargo test --locked --lib -j1 replacing_gui_project_cancels_ -- --test-threads=1
+```
+
+The draft test fills all four execution slots and holds the live write lock
+while invoking the real native Load handler; require loaded metadata, zero live
+journal changes and no opening of referenced inputs. Test lazy missing/invalid/
+oversized files, LF/CRLF/shebang JSON and quoted Unicode paths on Windows too.
+The agent tests hold a synthetic screen after its first verified file. Explicit
+pending-command Cancel must retain exactly that unit with a bound cancelled
+report, both with and without a marker path. Model Stop and project replacement
+must leave artifact-only work running, while the existing project-bound-work
+test still cancels its retired owner. Preserve the held publication-to-retention
+late-cancel test: an already published outcome cannot be relabelled.
+
+Follow tutorial 10.04's **Which Stop Or Cancel Do I Use?** in native and inner-
+agent acceptance. Runs marker-control failure stays visible with no implicit
+service-cancel fallback; engine pre-publication cancellation remains valid.
+No numeric cross-process job ID, worker restart recovery, queueing, automatic
+result attachment or biological verdict is implied. Report actual SHA/platform,
+commands and evidence via the main-maintaining thread, not a new source freeze.
+
 ## Native RNA Compile Repairs, 2026-10-25
 
 The owner's build exposed two primary integration defects: missing explicit

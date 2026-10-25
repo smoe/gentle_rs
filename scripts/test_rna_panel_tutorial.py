@@ -69,6 +69,52 @@ class RnaPanelTutorialTests(unittest.TestCase):
             self.assertIn("Some(detached.engine().instance_id()) != owner", worker)
             self.assertNotRegex(worker, r"let\s+baseline\s*=")
 
+    def test_draft_file_loading_is_lazy_metadata_observation_in_every_checkout(self):
+        sources = {path: (ROOT / path).read_text(encoding="utf-8") for path in (
+            "src/engine_shell/command_parsers.rs", "src/command_execution/rna_artifacts.rs",
+            "src/engine/analysis/rna_panel/tools.rs", "src/app/rna_panel_ui/processing.rs",
+            "src/engine/analysis/rna_panel/result_binding_tests.rs")}
+        for crlf in (False, True):
+            with self.subTest(crlf=crlf):
+                parser, policy, tools, native, tests = (
+                    text.replace("\n", "\r\n") if crlf else text for text in sources.values())
+                branch = parser.split('"panel-screen" if tokens.get(2)', 1)[1].split(
+                    '"panel-build" if', 1)[0]
+                self.assertLess(branch.index("ShellCommand::RnaReadPanelLoadDraft"),
+                                branch.index("parse_required_json_payload"))
+                self.assertRegex(policy, r"RnaReadPanelLoadDraft\s*\{\s*\.\.\s*\}\s*=> Policy::Observe\s*\{\s*expensive: false")
+                loader = tools.split("pub fn load_rna_read_panel_screen_draft", 1)[1].split(
+                    "pub fn rna_read_panel_screen_draft", 1)[0]
+                self.assertIn("file.take(DRAFT_JSON_BYTES + 1)", loader)
+                self.assertIn("panel_draft_json_budget", loader)
+                self.assertIn('text.starts_with("#!")', loader)
+                self.assertIn("self.rna_read_panel_screen_draft(&request, None)", loader)
+                native_load = native.split("fn start_rna_draft_load", 1)[1].split(
+                    "pub(super) fn render_rna_rehearsal_controls", 1)[0]
+                self.assertIn("self.submit_rna_processing(", native_load)
+                self.assertIn("ShellCommand::RnaReadPanelLoadDraft", native_load)
+                self.assertNotIn(".submit(", native_load)
+                self.assertIn("rna_screen_draft_load_uses_observation_with_busy_execution_and_locked_project", native)
+                self.assertIn("rna_panel_screen_draft_file_is_lazy_bounded_and_does_not_open_referenced_inputs", tests)
+
+    def test_model_stop_command_cancel_and_project_change_have_distinct_contracts(self):
+        source = (ROOT / "src/app/routine_and_agent_assistant_ui.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            guard = text.split("pub(super) fn cancel_agent_commands_for_project_change", 1)[1].split(
+                "pub(super) fn finish_agent_shell_run", 1)[0]
+            self.assertIn("receipt.requires_project_commit", guard)
+            self.assertIn("self.agent_command_service.cancel(task.job_id)", guard)
+            self.assertIn("self.request_agent_command_cancel(task.job_id)", text)
+            for name in ("agent_rna_command_cancel_retains_partial_report_with_or_without_marker",
+                         "agent_rna_screen_survives_model_stop_and_project_replacement"):
+                self.assertIn("fn " + name, text)
+        for raw in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
+            text = re.sub(r"\s+", " ", raw.decode())
+            for phrase in ("Which Stop Or Cancel Do I Use?", "independent observation lane",
+                           "128 MB", "16 MiB", "same-process", "without a marker path",
+                           "must not silently fall back", "after publication cannot relabel it"):
+                self.assertIn(phrase, text)
+
     def test_full_native_rehearsal_and_prominence_have_actual_shared_handlers(self):
         source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text()
         evidence = (ROOT / "src/app/rna_panel_ui/processing/evidence.rs").read_text()

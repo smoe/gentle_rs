@@ -134,6 +134,14 @@ still consumes bounded execution capacity. Process-local receipts/job IDs are
 not cross-process worker handles or restart recovery. Reopening published bound
 evidence and request-bound marker cancellation remain shared headless operations.
 
+Owner-authorized 2026-10-25 clarification: draft `--request @FILE` loading is
+bounded observation work; admission captures a path, not file bytes or a live
+project snapshot. Keep source I/O off the GUI thread. Model Stop, explicit
+same-process command Cancel and request-bound marker control are distinct.
+Stopping a model or replacing a project does not implicitly cancel an
+artifact-only screen; ordinary project-bound work retains its owner-change
+cancellation. Marker failures never trigger an implicit service-cancel fallback.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

@@ -97,6 +97,10 @@ rehearsal directory separate from your sequencing downloads.
    Inspect the reference graph if desired; it is not sequencing evidence.
 4. In **Screen**, **Load request...** from `artifacts/screen.json`, then
    **Inspect panel** (or **Use prepared panel**). Inspect the actual content hash.
+   Loading reads only bounded request metadata on a worker in the independent
+   observation lane. It must not wait for an execution slot or the live project
+   lock, and never opens the draft's panel, checksum manifest or FASTQ files.
+   Loading is not approval: serialized panel pins are cleared for fresh review.
    The two generated files already have completed-copy assertions, synthetic
    sample/barcode bindings, k=12, minimum chain=24, junction flank=4 and FASTA
    export enabled. Keep `DEMO_1`/`DEMO_2`, not the real-library presets. Review
@@ -239,8 +243,8 @@ not the older single-locus RNA-read Mapping workspace.
 panel and any old screens/counts must remain unchanged. Extending the panel
 requires a new screen: new competitors can change candidate sets. Do not merge
 old/new-panel summaries or call earlier single-candidate counts isoform-resolved.
-Continue at step 3 only after reviewing one completed input file. Native FASTQ
-file selection/screening is not added by this preparation editor.
+Continue at step 3 only after reviewing one completed input file. The **Prepare**
+page changes the reference; the separate **Screen** page selects and runs reads.
 
 ### 2.1 Equivalent CLI And Inner-Agent Preparation
 
@@ -375,6 +379,40 @@ The agent and CLI can round-trip that same draft without processing inputs:
 `rna-reads panel-screen --request REQUEST_JSON_OR_@FILE [--save NEW_FILE]`.
 Saving requires write approval; executing the scientific request remains the
 separate `panel-screen REQUEST_JSON_OR_@FILE` command below.
+For read-only `--request @FILE`, parsing/admission does not open the file:
+the worker reads it once, with a 128 MB metadata-source limit. The interactive
+service's existing 16 MiB result limit still applies; an oversized draft is an
+explicit failure, not truncated JSON or a launched screen. LF/CRLF request files
+work equally. The saved draft is not a resumed run or proof of source integrity.
+
+### Which Stop Or Cancel Do I Use?
+
+| Control | What it stops or requests |
+| --- | --- |
+| Agent Assistant **Stop** for the model reply | Stops waiting for model generation. It does not cancel an already submitted screen command. |
+| Agent Assistant **Cancel** beside a pending command | Requests cooperative cancellation of that command through the same-process job service. It works with or without a `cancel_path`; it does not write a marker. |
+| RNA **Runs > Request cancellation**, or `rna-reads panel-cancel` | Writes the exact request-bound marker. This also works from another process, but requires the screen's declared `cancel_path`. Native reviewed runs require one. |
+
+Closing the RNA window, editing the project or replacing it does not silently
+cancel a file-only screen. Its external result remains bound to the original
+request/panel, not automatically attached to the new project. Process-local
+pending-command controls disappear on restart; use the declared marker for
+cross-process cancellation, or inspect an already published report.
+
+**Practice on synthetic data only:** request command cancellation before
+publication, wait for a terminal receipt, then inspect `status` and the
+verified/missing-file ledger. Only complete, checksum-verified file units survive.
+An older/raw request without a marker path can still be cancelled through its
+active same-process command, but cannot use `panel-cancel` from another process.
+The tiny demo may already have finished: a late cancel must not rewrite its
+published `completed` outcome. No claim about cancel timing follows from seeing
+a spinner or clicking the button.
+
+If writing the marker fails, the request failed; do not assume termination.
+GENtle must not silently fall back to service cancellation, overwrite the marker
+or retry. A marker error observed by the worker after startup is the different
+`control_error` outcome in section 3.1. Cancellation before engine publication
+may still change the report; cancellation after publication cannot relabel it.
 
 ### Equivalent Terminal Run
 
@@ -445,12 +483,11 @@ Do not create markers
 with `touch` or reuse an old marker for changed inputs/settings.
 Use a fresh cancel path for a new run. A command returning with a
 cancelled report is not a completed analysis. New runs always need a fresh
-output directory; no report or input is overwritten. Start with the terminal
-CLI so this long job does not occupy an interactive GENtle window. GUI Shell,
+output directory; no report or input is overwritten. The terminal CLI is an
+alternative to the native nonmodal Screen/Runs workflow. GUI Shell,
 MCP `op` (`confirm=true`), Python `op`, JS/Lua and the inner agent reach the same
-engine operations; external writes require explicit approval. No dedicated
-screening GUI or separate job scheduler is added here. The native editor only
-prepares/extends references. Standard four-line FASTQ
+engine operations; external writes require explicit approval. There is no
+separate job scheduler or automatic directory watcher. Standard four-line FASTQ
 records are supported (LF/CRLF, Phred+33, concatenated gzip members); wrapped
 sequence/quality records are refused, not silently repaired.
 

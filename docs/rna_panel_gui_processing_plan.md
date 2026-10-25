@@ -89,6 +89,24 @@ Final local checks: 104 Python source/checkout/maturity tests passed; scoped
 rustfmt, maturity freshness and whitespace checks passed. Rust generator,
 compilation, native capture and live-model acceptance remain unrun here.
 
+### Draft Admission And Cancellation Follow-Up, 2026-10-25
+
+Owner-authorized repair: shared parsing captures a read-only draft `@FILE` path
+without opening it. Native Load uses typed observation admission; bounded
+metadata reads stay on the worker without a live-project baseline or execution
+slot. Keep save approvals, source/result budgets and fresh panel review.
+Author channel-controlled tests for explicit command cancellation with/without
+a marker, model Stop and project replacement, plus busy-slot/locked-project
+draft loading and lazy/LF/CRLF/invalid/oversized metadata. Preserve existing
+late-after-publication and ordinary mutator-owner cancellation safeguards.
+Tutorial 10.04 distinguishes those controls and removes obsolete CLI-only
+screening wording. Implementation is not executed Rust/native acceptance;
+see the [scoped Glen/CI checks](glen_next_verification_handoff.md#rna-draft-admission-and-cancellation-boundaries-2026-10-25).
+Local follow-up checks: 108 Python tutorial/source/checkout/maturity tests,
+scoped rustfmt, maturity freshness and whitespace pass. Session-close: four OK,
+two dirty-tree/manual-plan warnings, no failures; roadmap remains 400 lines.
+No scope expansion into scheduling, scientific classification or result attachment.
+
 Commit each completed step and rebase on local `main`, preserving unrelated
 changes. Record actual verification and exact commits here; never promote
 authored-but-unrun Rust tests into acceptance evidence. No interim source freeze.

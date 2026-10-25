@@ -56,6 +56,191 @@ mod command_tests {
         }
     }
 
+    fn held_rna_screen(
+        app: &mut GENtleApp,
+        root: &std::path::Path,
+        marker: bool,
+    ) -> (
+        u64,
+        crate::engine::ScreenRnaReadPanelRequest,
+        std::sync::mpsc::Sender<()>,
+    ) {
+        // Public hand-crafted demo only; hold after a verified file, not a timing-dependent read.
+        let directory = root.join("demo");
+        GentleEngine::new()
+            .prepare_rna_read_panel_demo(&directory.display().to_string())
+            .unwrap();
+        let state: crate::engine::ProjectState = serde_json::from_slice(
+            &std::fs::read(directory.join("artifacts/starter.json")).unwrap(),
+        )
+        .unwrap();
+        let engine = GentleEngine::from_state(state);
+        let build =
+            serde_json::from_slice(&std::fs::read(directory.join("artifacts/build.json")).unwrap())
+                .unwrap();
+        let panel = engine.build_rna_read_panel(&build).unwrap();
+        let mut request: crate::engine::ScreenRnaReadPanelRequest = serde_json::from_slice(
+            &std::fs::read(directory.join("artifacts/screen.json")).unwrap(),
+        )
+        .unwrap();
+        request.expected_panel_sha256 = Some(panel.content_sha256);
+        if !marker {
+            request.cancel_path = None;
+        }
+        app.engine = Arc::new(RwLock::new(engine));
+        let command = ShellCommand::Op {
+            payload: serde_json::to_string(&Operation::ScreenRnaReadPanel {
+                request: Box::new(request.clone()),
+            })
+            .unwrap(),
+        };
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let options = crate::engine_shell::ShellExecutionOptions {
+            progress_callback: Some(Arc::new(Mutex::new(Box::new(move |event| {
+                if matches!(event, OperationProgress::RnaReadPanel(ref p)
+                    if p.phase == "file_checksum_verified" && p.file_ordinal == 1)
+                {
+                    ready_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(20)).unwrap();
+                }
+                true
+            })))),
+            ..Default::default()
+        };
+        let id = app
+            .agent_command_service
+            .submit_parsed(
+                app.engine.clone(),
+                command.clone(),
+                "synthetic-screen".into(),
+                options,
+            )
+            .unwrap();
+        app.agent_pending_commands.push(PendingAgentCommand {
+            job_id: id,
+            feedback_id: "synthetic-rna-feedback".into(),
+            session_id: app.agent_execution_session_id.clone(),
+            turn_id: None,
+            before: None,
+            index: 1,
+            source: "Synthetic RNA test".into(),
+            text: "synthetic-screen".into(),
+            trigger: "manual".into(),
+            command,
+            suppress_auto_open: true,
+            started: Instant::now(),
+        });
+        ready_rx.recv_timeout(Duration::from_secs(20)).unwrap();
+        (id, request, release_tx)
+    }
+
+    #[test]
+    fn agent_rna_command_cancel_retains_partial_report_with_or_without_marker() {
+        for marker in [true, false] {
+            let td = tempfile::tempdir().unwrap();
+            let mut app = GENtleApp::default();
+            let (id, request, release) = held_rna_screen(&mut app, td.path(), marker);
+            assert!(app.request_agent_command_cancel(id));
+            release.send(()).unwrap();
+            drain(&mut app);
+            let receipt = app.agent_command_service.status(id).unwrap();
+            assert_eq!(
+                receipt.state,
+                crate::runtime_status::RuntimeStatusFrameState::Cancelled
+            );
+            assert!(receipt.cancel_requested);
+            assert!(!receipt.requires_project_commit);
+            let binding = receipt.artifact_result.unwrap();
+            assert_eq!(binding.outcome, "cancelled");
+            let report: crate::engine::RnaReadPanelScreenReport =
+                serde_json::from_slice(&std::fs::read(&binding.report_path).unwrap()).unwrap();
+            assert_eq!(report.files_completed.len(), 1);
+            assert_eq!(report.request.files.len(), 2);
+            GentleEngine::validate_rna_read_panel_result_binding(
+                &binding,
+                &binding.report_path,
+                Some(&report),
+                None,
+            )
+            .unwrap();
+            if let Some(path) = &request.cancel_path {
+                assert!(
+                    !std::path::Path::new(path).exists(),
+                    "service cancel needs no marker write"
+                );
+            }
+            assert_eq!(app.engine.read().unwrap().journal_len(), 0);
+            assert!(
+                !app.request_agent_command_cancel(id),
+                "published outcome stays terminal"
+            );
+        }
+    }
+
+    #[test]
+    fn agent_rna_screen_survives_model_stop_and_project_replacement() {
+        let td = tempfile::tempdir().unwrap();
+        let mut app = GENtleApp::default();
+        let (id, _, release) = held_rna_screen(&mut app, td.path(), true);
+        let old_engine = app.engine.clone();
+        let (_sender, receiver) = std::sync::mpsc::channel::<AgentAskTaskMessage>();
+        app.agent_task = Some(AgentAskTask {
+            job_id: 44,
+            prompt: "synthetic model request".into(),
+            attachment_summaries: vec![],
+            _attachment_files: vec![],
+            started: Instant::now(),
+            receiver,
+            runtime_frame: crate::runtime_status::runtime_status_registry().push_with_detail(
+                crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,
+                "synthetic model stop",
+                None,
+            ),
+        });
+        app.request_agent_task_cancel("synthetic model stop");
+        assert!(app.agent_task.is_none());
+        assert!(
+            !app.agent_command_service
+                .status(id)
+                .unwrap()
+                .cancel_requested
+        );
+        app.reset_to_empty_project();
+        assert!(!Arc::ptr_eq(&old_engine, &app.engine));
+        assert!(
+            !app.agent_command_service
+                .status(id)
+                .unwrap()
+                .cancel_requested
+        );
+        release.send(()).unwrap();
+        drain(&mut app);
+        let receipt = app.agent_command_service.status(id).unwrap();
+        assert_eq!(
+            receipt.state,
+            crate::runtime_status::RuntimeStatusFrameState::Completed
+        );
+        assert_eq!(receipt.committed_operations, 0);
+        let binding = receipt.artifact_result.unwrap();
+        assert_eq!(binding.outcome, "completed");
+        let bytes = std::fs::read(&binding.report_path).unwrap();
+        let report: crate::engine::RnaReadPanelScreenReport =
+            serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(report.files_completed.len(), 2);
+        GentleEngine::validate_rna_read_panel_result_binding(
+            &binding,
+            &binding.report_path,
+            Some(&report),
+            None,
+        )
+        .unwrap();
+        assert!(!app.request_agent_command_cancel(id));
+        assert_eq!(std::fs::read(&binding.report_path).unwrap(), bytes);
+        assert_eq!(old_engine.read().unwrap().journal_len(), 0);
+        assert_eq!(app.engine.read().unwrap().journal_len(), 0);
+    }
+
     #[test]
     fn run_and_prompt_submit_exact_command_without_changing_draft() {
         for prompt in [false, true] {
@@ -232,6 +417,10 @@ mod command_tests {
 }
 
 impl GENtleApp {
+    fn request_agent_command_cancel(&self, job_id: u64) -> bool {
+        self.agent_command_service.cancel(job_id)
+    }
+
     fn agent_submission_available(
         running: bool,
         capture_pending: bool,
@@ -7099,7 +7288,7 @@ impl GENtleApp {
                         )
                         .clicked()
                     {
-                        self.agent_command_service.cancel(task.job_id);
+                        self.request_agent_command_cancel(task.job_id);
                     }
                 });
             }

@@ -100,6 +100,13 @@ panel/report/row payloads are the same; no adapter-local classification is added
   approval, fresh-path atomic publication and retains a raw-byte hash receipt.
   No project journal or source mutation. The native editor drops serialized
   panel pins on load and requires a fresh panel inspection/review before Run.
+  Read-only `--request @FILE` captures only the path at shared parsing/admission;
+  the metadata worker reads the source once (128 MB limit, LF/CRLF and the
+  existing JSON-file shebang allowance). It does not open referenced inputs.
+  Managed execution uses independent bounded observation capacity without a
+  live-project baseline/lock. The existing 16 MiB interactive result limit
+  remains an explicit refusal, not truncation. Inline drafts and approved
+  `--save` retain their existing contracts; no new scientific operation is added.
 - `gentle.rna_read_panel_screen.v2`: effective request with resolved expected
   digests, panel SHA-256, posting count, `completed|cancelled|control_error` status, verified
   `files_completed`, `files_not_completed`, named `inputs_not_completed`, nonclaims and explicit false
@@ -131,6 +138,12 @@ completed/cancelled/control_error; summary outcomes describe complete/partial
 source coverage, not export failure. New summaries also carry the optional
 submitted-request hash; summary requests are not normalized. All absent new
 report fields remain omitted for historical semantic-digest compatibility.
+Same-process command cancellation uses the cooperative progress callback and
+does not require or write `cancel_path`; cross-process `panel-cancel` requires
+the declared request-bound marker. Stopping model generation is separate from
+cancelling submitted commands. Native runs require a marker path; marker-control
+failure must not silently switch to service cancellation. Before engine
+publication cancellation may still alter the outcome; after publication it may not.
 `InspectRnaReadPanel.expected_result` or shared-shell
 `panel-show PATH --binding BINDING_JSON_OR_@FILE` verifies those bindings after
 ordinary metadata inspection. It does not reread manifests/reads, rerun fresh-

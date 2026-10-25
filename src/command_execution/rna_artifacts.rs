@@ -42,6 +42,7 @@ fn classify(op: Operation) -> Policy {
 /// Native/agent callers pass the frozen shared-parser result through submit_parsed.
 pub(super) fn admission(command: &ShellCommand) -> Policy {
     match command {
+        ShellCommand::RnaReadPanelLoadDraft { .. } => Policy::Observe { expensive: false },
         ShellCommand::RnaReadPanelScreenDraft {
             output_path: None, ..
         } => Policy::Observe { expensive: false },
@@ -56,10 +57,11 @@ pub(super) fn admission(command: &ShellCommand) -> Policy {
 pub(super) fn freeze(command: &mut ShellCommand) -> Result<Policy, String> {
     if matches!(
         command,
-        ShellCommand::RnaReadPanelScreenDraft {
-            output_path: None,
-            ..
-        }
+        ShellCommand::RnaReadPanelLoadDraft { .. }
+            | ShellCommand::RnaReadPanelScreenDraft {
+                output_path: None,
+                ..
+            }
     ) {
         return Ok(Policy::Observe { expensive: false });
     }

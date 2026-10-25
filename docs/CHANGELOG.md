@@ -40,6 +40,27 @@
   Session-close: four OK, two expected dirty-tree/manual-plan warnings and no
   failures; roadmap remains 400 lines. No current-source Rust pass is claimed.
 
+## 2026-10-25 - Admit RNA Draft Loads Independently And Clarify Cancellation
+
+- Defer read-only screen-draft `@FILE` I/O to a bounded shared metadata loader;
+  native Load uses parsed observation admission without an execution slot or
+  live-project baseline. Keep JSON-file shebang/LF/CRLF support, the 128 MB
+  source budget, the existing 16 MiB service-result limit and save approvals.
+- Author held-worker regressions for busy-slot/locked-project native loading,
+  lazy missing/invalid/oversized metadata and explicit agent-command cancellation
+  with/without a marker. Test artifact-screen survival across model Stop/project
+  replacement, retained partial bindings and unchanged live history. Existing
+  post-publication cancel and project-bound owner-change guards remain intact.
+- Tutorial 10.04 distinguishes model Stop, pending-command Cancel and marker
+  control, removes obsolete CLI-only claims and keeps marker failures visible
+  without a silent fallback. Record the same boundaries and Glen/CI checks in
+  the interface docs and implementation ledger. Rust/native verification remains
+  unrun locally; no private reads, previous-goal resumption or push.
+- Local verification: 108 Python tutorial/source/checkout/maturity tests pass,
+  as do scoped rustfmt, maturity freshness and whitespace. Session-close reports
+  four OK, two dirty-tree/manual-plan warnings and no failures; roadmap remains
+  400 lines. Unrelated `outputs/` is preserved.
+
 ## 2026-10-25 - Repair Native RNA Module Paths And Command Baseline Types
 
 - Fix the owner's E0583 by explicitly binding the path-loaded native RNA
