@@ -94,6 +94,11 @@ and teaching-content checks; PNGs also provide offline Help illustrations.
 The combined condition is closer to manufacturer-only by both reported
 descriptive shape distances in each cell. This is conditional on this extraction,
 coverage and display processing; it does not establish additive chemistry or
-gene-specific enrichment. Background/marker policy, cross-ladder acceptance,
+gene-specific enrichment. Coefficients, background/marker policy,
 numerical detector comparisons and native GUI/platform/scientific acceptance
 remain open. No human scientific sign-off is implied by retaining the figures.
+
+Owner decision, 2026-10-25: [cross-ladder residuals are permitted](../../decisions.md#cross-ladder-residual-policy).
+This later permission does not select coefficients or masks, change these
+historical reports, or convert their no-subtraction comparison into a residual.
+Both ladder calibrations and their uncertainties remain explicit.

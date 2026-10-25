@@ -695,7 +695,10 @@ At the next consolidated native run, also check the later density UI explicitly:
   explicit density in the CLI for GUI/PDF comparison; omission remains legacy.
 - Preserve saved integrals/statistics, zero versus gaps and the common-axis
   acquisition caveat. The separate unscaled custom-only reference is not an
-  algebra coefficient or normalization. Real-data subtraction remains undecided.
+  algebra coefficient or normalization. The [owner permits cross-ladder residuals](decisions.md#cross-ladder-residual-policy)
+  as of 2026-10-25; do not ask again whether different ladder IDs alone forbid
+  them. Retain both calibrations. Coefficients and background/marker masks
+  remain undecided; no new real-data subtraction or rerun is requested here.
 
 Retain honest platform/X11/Xvfb versus physical-host scope and original captures;
 green automated guards do not close these paths. Do not repeat completed gel

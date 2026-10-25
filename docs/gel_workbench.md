@@ -290,9 +290,14 @@ gentle_cli --state gels.json gel-image workbench '{"action":"inspect_algebra","p
 gentle_cli --state gels.json gel-image workbench '{"action":"export","path":"new-reference.pdf","title":"Unscaled reference; no enrichment claim","analysis_ids":[],"algebra_ids":["saved-residual"],"algebra_reference_profile_id":"saved-custom-only"}'
 ```
 
-Real-data subtraction coefficients, background/marker policies and cross-ladder
-registration remain undecided. Fitted/manual display factors remain deferred. Ordinary
-comparisons now offer the separate, explicit display mode below; the signed
+The [owner's cross-ladder decision](decisions.md#cross-ladder-residual-policy),
+2026-10-25, permits residuals whose operands use different ladders. Keep each
+profile's own size calibration, sources, gaps and warnings; subtraction does
+not align uncertain axes or establish matched amplitudes. Real-data subtraction
+coefficients and background/marker masks remain undecided; `1/-1` from the
+synthetic lesson is not approved for those data. Fitted/manual display factors
+remain deferred. Ordinary comparisons now offer the separate, explicit display
+mode below; the signed
 algebra v1 replay and its probability-summary prohibition are unchanged.
 
 ### Comparison Density Display
@@ -384,9 +389,10 @@ the native PDF/JSON reports supply all statistics. The
 the existing `40aa261d` macOS CLI and matching canonical gel sources, not a new
 Rust build or native/scientific acceptance at later HEAD. Both combined profiles
 are closer to manufacturer-only by these descriptive shape distances. This
-neither identifies custom targets nor chooses subtraction/background/marker or
-cross-ladder policy for quantitative interpretation. Original sizing and
-before/after exports remain separate and unchanged.
+neither identifies custom targets nor chooses subtraction coefficients or
+background/marker masks. The later [cross-ladder permission](decisions.md#cross-ladder-residual-policy)
+does not turn this no-subtraction replay into a quantitative enrichment result.
+Original sizing and before/after exports remain separate and unchanged.
 
 Deterministic Rust regressions cover synthetic band proposals, conservation of
 integrated weights, explicit gaps, identity/shifted QQ, analytically known

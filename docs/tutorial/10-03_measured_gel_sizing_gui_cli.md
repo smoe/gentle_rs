@@ -255,6 +255,15 @@ coefficients; this lesson's region summaries do not supply those inputs. Preserv
 unknown scale factors and unavailable values rather than forcing a positive
 "custom contribution".
 
+**Owner decision, 2026-10-25:** residuals across different ladders are acceptable;
+the two lanes need not use the same ladder. Each still uses its own recorded
+size calibration, and both calibrations, sources and gaps must remain visible.
+This [permission](../decisions.md#cross-ladder-residual-policy) does not choose
+subtraction coefficients, background or marker masks, which remain undecided.
+It does not approve `1/-1` for the cell-line data or make their amplitudes
+quantitatively comparable. The real-data comparison below therefore remains
+**without subtraction**; the later algebra exercise remains synthetic.
+
 ### 5. Compare All Three Priming Conditions Without Subtraction
 
 Allow another 15 minutes. Here the question is simply: **does the combined

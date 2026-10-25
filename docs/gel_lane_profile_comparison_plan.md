@@ -209,7 +209,10 @@ path and frozen algebra v1 remain unchanged.
 Tutorial 10.03 demonstrates native-bin density using synthetic data and selects
 comparison density explicitly in GUI and CLI, without changing legacy CLI
 defaults. Real C1/D1 reference pairing, subtraction coefficients, background and
-marker masks, and cross-ladder registration remain undecided. Scaled/fitted
+marker masks remain undecided. The [owner's 2026-10-25 decision](decisions.md#cross-ladder-residual-policy)
+permits residuals across different ladders while retaining both calibrations
+and existing compatibility/source checks; it does not choose coefficients,
+align uncertain axes or approve normalization. Scaled/fitted
 reference views remain deferred. Rust/native acceptance of this panel must be
 reported separately from authored regressions and fast documentation tests.
 

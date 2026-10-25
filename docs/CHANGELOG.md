@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-25 - Record Permission For Cross-Ladder Gel Residuals
+
+- Record the owner's decision that residuals across different ladders are
+  acceptable. Update the active gel contract, comparison plan, tutorial 10.03,
+  figure interpretation limits, roadmap and consolidated Glen checklist so
+  this settled question is not presented as awaiting approval again.
+- Retain each calibration/source, compatibility checks, gaps and warnings.
+  Coefficients, background/marker masks and quantitative interpretation remain
+  undecided; no implicit alignment, fitting or approval of synthetic `1/-1` for
+  real samples follows. Existing public comparisons still perform no subtraction.
+- Add a source-only policy/discovery regression. No engine arithmetic, frozen
+  receipts, scientific figures, generated metadata or saved results change;
+  native/platform/scientific acceptance remains separate. No local Rust, new
+  real-data analysis, lifecycle implementation, capture, push or dispatch.
+- Verification: all 55 source/fixture Python tests, documentation status and
+  whitespace checks pass. Original scientific assets/receipts remain unchanged;
+  roadmap stays 400 lines. These are not executed Rust or native acceptance.
+
 ## 2026-10-25 - Propose Request-Aware Preview Lifecycle Policy
 
 - Inspect local main `81b67504` and prepare a design-only proposal beginning

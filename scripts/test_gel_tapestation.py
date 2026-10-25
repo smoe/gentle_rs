@@ -21,6 +21,25 @@ from scripts import check_tutorial_checkouts as checkout
 
 
 class TapeStationFixtureTests(unittest.TestCase):
+    def test_cross_ladder_permission_does_not_approve_real_subtraction_parameters(self):
+        decisions = (audit.ROOT / "docs/decisions.md").read_text(encoding="utf-8")
+        policy = decisions.split("### Cross-Ladder Residual Policy\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("2026-10-25", policy)
+        self.assertIn("residuals across different ladders are permitted", policy)
+        self.assertIn("coefficients, background and marker masks remain undecided", policy)
+        self.assertIn("does not approve", policy)
+        for relative in (
+            "docs/gel_workbench.md",
+            "docs/gel_lane_profile_comparison_plan.md",
+            "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md",
+            "docs/figures/tapestation_priming/README.md",
+            "docs/glen_next_verification_handoff.md",
+            "docs/roadmap.md",
+        ):
+            with self.subTest(path=relative):
+                text = (audit.ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn("decisions.md#cross-ladder-residual-policy", text)
+
     def test_priming_plan_keeps_both_cells_roles_ladders_and_no_subtraction(self):
         plan = audit.priming_requests(audit.load_fixture())
         self.assertEqual([g["cell_line"] for g in plan], ["cell_1", "cell_2"])

@@ -1879,8 +1879,26 @@ It is not an operand or proven priming identity. Size kind/range and retained
 sources must validate; no units conversion, rebinning, amplitude matching or
 display multiplier is implicit. Pair export with exactly one selected residual;
 reference selection participates in worker/cache identity. Real-data subtraction
-coefficients, background/marker policy and cross-ladder acceptance remain
-undecided. Fitted/manual display multipliers still require separate approval.
+coefficients and background/marker policy remain undecided. Fitted/manual
+display multipliers still require separate approval.
+
+### Cross-Ladder Residual Policy
+
+Owner decision, 2026-10-25: residuals across different ladders are permitted.
+Operands may retain distinct ladder calibrations; matching ladder IDs are not
+required. Use each profile's recorded size axis and retain both calibrations,
+source identities, coverage gaps and warnings. Existing size/evidence/unit/
+integration-measure compatibility and source-verification rules still apply.
+This permits cross-ladder residuals; it does not assert calibration equivalence,
+align uncertain axes, choose a scale factor or validate a biological mixture.
+Existing calibration/registration warnings remain applicable, not a prohibition
+on different ladder IDs.
+
+Real-data coefficients, background and marker masks remain undecided. In
+particular, this decision does not approve the synthetic lesson's `1/-1` for
+the cell-line data. Native/platform and scientific acceptance remain separate;
+the retained public priming comparisons still perform no subtraction. No
+automatic fitting, new quantitative yield claim or reprocessing is authorized.
 
 ## Advisory Cloning Time And Cost Boundaries
 
