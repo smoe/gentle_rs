@@ -542,7 +542,7 @@ mod tests {
             .prepare_rna_read_panel_demo(&root.display().to_string())
             .unwrap();
         let read = |file: &str| std::fs::read(root.join("artifacts").join(file)).unwrap();
-        let mut engine = GentleEngine::from_state(
+        let engine = GentleEngine::from_state(
             serde_json::from_slice::<crate::engine::ProjectState>(&read("starter.json")).unwrap(),
         );
         let build =
