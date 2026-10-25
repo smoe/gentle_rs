@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-25 - Propose Request-Aware Preview Lifecycle Policy
+
+- Inspect local main `81b67504` and prepare a design-only proposal beginning
+  with `PlanDnaSequenceDesign` with/without its report path. Separate project,
+  artifact, reconciliation, undo/history, implicit autosave and conversation
+  approval; preserve independent MCP gates and conservative legacy fallback.
+- Record current constructor repair, with-path shell exemption, direct-op
+  autosave and metadata contradictions instead of calling the future policy
+  implemented. Identify output/project aliasing, cancellation, mixed workflows
+  and source-bound report/approval tests as explicit review boundaries.
+- Prepare the owner's forwardable read-only Claude prompt and link the draft
+  from the existing pre-S2 prerequisite. No Claude invocation/review, runtime,
+  metadata/generated artifact, durable policy, tutorial, solver, dependency,
+  biological or release change; no Rust execution, push, capture or dispatch.
+- Verification: 48 source/tutorial Python checks, documentation status and
+  tracked/new-document whitespace checks pass. These are planning checks,
+  not execution of the proposed lifecycle or source-matched Rust acceptance.
+
 ## 2026-10-25 - Clear Stale RNA Draft Errors After Successful Retry
 
 - Clear an earlier draft load/save error only when a later draft operation

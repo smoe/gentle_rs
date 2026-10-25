@@ -105,6 +105,9 @@ The new named regression and strengthened case-normalization assertions require
 Glen/CI execution under the standing no-local-Rust restriction. They are not a
 new acceptance pass or authority to begin S2. No registry, permission, mutation,
 serialization or biology contract is broadened.
+The owner requested a [request-aware lifecycle proposal](operation_lifecycle_policy_proposal.md)
+and [forwardable Claude review prompt](operation_lifecycle_claude_review_prompt_20261025.md)
+on 2026-10-25. Both remain design-only and unreviewed; no runtime policy is adopted.
 
 ### Software Review Reconciliation (2026-10-22)
 
