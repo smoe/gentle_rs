@@ -180,65 +180,68 @@ mod command_tests {
 
     #[test]
     fn agent_rna_screen_survives_model_stop_and_project_replacement() {
-        let td = tempfile::tempdir().unwrap();
-        let mut app = GENtleApp::default();
-        let (id, _, release) = held_rna_screen(&mut app, td.path(), true);
-        let old_engine = app.engine.clone();
-        let (_sender, receiver) = std::sync::mpsc::channel::<AgentAskTaskMessage>();
-        app.agent_task = Some(AgentAskTask {
-            job_id: 44,
-            prompt: "synthetic model request".into(),
-            attachment_summaries: vec![],
-            _attachment_files: vec![],
-            started: Instant::now(),
-            receiver,
-            runtime_frame: crate::runtime_status::runtime_status_registry().push_with_detail(
-                crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,
-                "synthetic model stop",
+        for marker in [true, false] {
+            let td = tempfile::tempdir().unwrap();
+            let mut app = GENtleApp::default();
+            let (id, request, release) = held_rna_screen(&mut app, td.path(), marker);
+            assert_eq!(request.cancel_path.is_some(), marker);
+            let old_engine = app.engine.clone();
+            let (_sender, receiver) = std::sync::mpsc::channel::<AgentAskTaskMessage>();
+            app.agent_task = Some(AgentAskTask {
+                job_id: 44,
+                prompt: "synthetic model request".into(),
+                attachment_summaries: vec![],
+                _attachment_files: vec![],
+                started: Instant::now(),
+                receiver,
+                runtime_frame: crate::runtime_status::runtime_status_registry().push_with_detail(
+                    crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,
+                    "synthetic model stop",
+                    None,
+                ),
+            });
+            app.request_agent_task_cancel("synthetic model stop");
+            assert!(app.agent_task.is_none());
+            assert!(
+                !app.agent_command_service
+                    .status(id)
+                    .unwrap()
+                    .cancel_requested
+            );
+            app.reset_to_empty_project();
+            assert!(!Arc::ptr_eq(&old_engine, &app.engine));
+            assert!(
+                !app.agent_command_service
+                    .status(id)
+                    .unwrap()
+                    .cancel_requested
+            );
+            release.send(()).unwrap();
+            drain(&mut app);
+            let receipt = app.agent_command_service.status(id).unwrap();
+            assert_eq!(
+                receipt.state,
+                crate::runtime_status::RuntimeStatusFrameState::Completed
+            );
+            assert_eq!(receipt.committed_operations, 0);
+            let binding = receipt.artifact_result.unwrap();
+            assert_eq!(binding.outcome, "completed");
+            let bytes = std::fs::read(&binding.report_path).unwrap();
+            let report: crate::engine::RnaReadPanelScreenReport =
+                serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(report.files_completed.len(), 2);
+            GentleEngine::validate_rna_read_panel_result_binding(
+                &binding,
+                &binding.report_path,
+                Some(&report),
                 None,
-            ),
-        });
-        app.request_agent_task_cancel("synthetic model stop");
-        assert!(app.agent_task.is_none());
-        assert!(
-            !app.agent_command_service
-                .status(id)
-                .unwrap()
-                .cancel_requested
-        );
-        app.reset_to_empty_project();
-        assert!(!Arc::ptr_eq(&old_engine, &app.engine));
-        assert!(
-            !app.agent_command_service
-                .status(id)
-                .unwrap()
-                .cancel_requested
-        );
-        release.send(()).unwrap();
-        drain(&mut app);
-        let receipt = app.agent_command_service.status(id).unwrap();
-        assert_eq!(
-            receipt.state,
-            crate::runtime_status::RuntimeStatusFrameState::Completed
-        );
-        assert_eq!(receipt.committed_operations, 0);
-        let binding = receipt.artifact_result.unwrap();
-        assert_eq!(binding.outcome, "completed");
-        let bytes = std::fs::read(&binding.report_path).unwrap();
-        let report: crate::engine::RnaReadPanelScreenReport =
-            serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(report.files_completed.len(), 2);
-        GentleEngine::validate_rna_read_panel_result_binding(
-            &binding,
-            &binding.report_path,
-            Some(&report),
-            None,
-        )
-        .unwrap();
-        assert!(!app.request_agent_command_cancel(id));
-        assert_eq!(std::fs::read(&binding.report_path).unwrap(), bytes);
-        assert_eq!(old_engine.read().unwrap().journal_len(), 0);
-        assert_eq!(app.engine.read().unwrap().journal_len(), 0);
+            )
+            .unwrap();
+            assert!(!app.request_agent_command_cancel(id));
+            assert_eq!(std::fs::read(&binding.report_path).unwrap(), bytes);
+            assert_eq!(old_engine.read().unwrap().journal_len(), 0);
+            assert_eq!(app.engine.read().unwrap().journal_len(), 0);
+        }
     }
 
     #[test]

@@ -68,12 +68,16 @@ The draft test fills all four execution slots and holds the live write lock
 while invoking the real native Load handler; require loaded metadata, zero live
 journal changes and no opening of referenced inputs. Test lazy missing/invalid/
 oversized files, LF/CRLF/shebang JSON and quoted Unicode paths on Windows too.
+The retry regression must preserve the current draft/review after missing or
+invalid input, then clear the old error after a valid load without changing the
+source file, live state/history or outputs. Loaded pins still require fresh review.
 The agent tests hold a synthetic screen after its first verified file. Explicit
 pending-command Cancel must retain exactly that unit with a bound cancelled
 report, both with and without a marker path. Model Stop and project replacement
-must leave artifact-only work running, while the existing project-bound-work
-test still cancels its retired owner. Preserve the held publication-to-retention
-late-cancel test: an already published outcome cannot be relabelled.
+must leave both marker-backed and markerless artifact-only work running, while
+the existing project-bound-work test still cancels its retired owner. Preserve
+the held publication-to-retention late-cancel test: an already published
+outcome cannot be relabelled.
 
 Follow tutorial 10.04's **Which Stop Or Cancel Do I Use?** in native and inner-
 agent acceptance. Runs marker-control failure stays visible with no implicit

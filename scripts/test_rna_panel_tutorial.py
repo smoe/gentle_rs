@@ -97,6 +97,18 @@ class RnaPanelTutorialTests(unittest.TestCase):
                 self.assertIn("rna_screen_draft_load_uses_observation_with_busy_execution_and_locked_project", native)
                 self.assertIn("rna_panel_screen_draft_file_is_lazy_bounded_and_does_not_open_referenced_inputs", tests)
 
+    def test_native_draft_retry_clears_only_a_successful_operations_old_error(self):
+        source = (ROOT / "src/app/rna_panel_ui/processing.rs").read_text(encoding="utf-8")
+        for text in (source, source.replace("\n", "\r\n")):
+            draft = text.split("Task::Draft { load } => match", 1)[1].split("Task::Inspect(", 1)[0]
+            self.assertIn("Ok(draft) => {", draft)
+            self.assertIn("state.error = None", draft)
+            self.assertLess(draft.index("state.error = None"), draft.index("if load {"))
+            self.assertIn("Err(error) => state.error = Some(error)", draft)
+            self.assertIn("fn rna_screen_draft_load_retry_preserves_review_on_failure_and_clears_stale_error()", text)
+            self.assertIn("state.reviewed_request().unwrap()", text)
+            self.assertIn('"successful retry must clear the old failure"', text)
+
     def test_model_stop_command_cancel_and_project_change_have_distinct_contracts(self):
         source = (ROOT / "src/app/routine_and_agent_assistant_ui.rs").read_text(encoding="utf-8")
         for text in (source, source.replace("\n", "\r\n")):
@@ -108,6 +120,10 @@ class RnaPanelTutorialTests(unittest.TestCase):
             for name in ("agent_rna_command_cancel_retains_partial_report_with_or_without_marker",
                          "agent_rna_screen_survives_model_stop_and_project_replacement"):
                 self.assertIn("fn " + name, text)
+            replacement = text.split("fn agent_rna_screen_survives_model_stop_and_project_replacement()", 1)[1].split(
+                "fn run_and_prompt_submit_exact_command", 1)[0]
+            self.assertIn("for marker in [true, false]", replacement)
+            self.assertIn("held_rna_screen(&mut app, td.path(), marker)", replacement)
         for raw in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
             text = re.sub(r"\s+", " ", raw.decode())
             for phrase in ("Which Stop Or Cancel Do I Use?", "independent observation lane",

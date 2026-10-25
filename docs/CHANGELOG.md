@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-25 - Clear Stale RNA Draft Errors After Successful Retry
+
+- Clear an earlier draft load/save error only when a later draft operation
+  succeeds. Failed loads keep the current request and its review intact;
+  successful loading still clears serialized panel pins and requires fresh review.
+- Author native-path missing/invalid-file/retry coverage with CRLF/shebang JSON,
+  quoted Unicode paths, unchanged source bytes and no project/history/output
+  mutation. Extend held-screen model-Stop/project-replacement coverage to both
+  marker-backed and markerless requests. Rust/native execution remains with
+  Glen/CI; no local Rust build, private inputs or push.
+- Verification: 111 Python source/maturity/LF-CRLF checks pass, plus scoped
+  rustfmt, documentation status, maturity freshness and whitespace. Session-close
+  reports four OK, two expected worktree/manual-plan warnings and no failures;
+  the roadmap remains 400 lines. No current-source Rust/native pass is claimed.
+
 ## 2026-10-25 - Pin S1 Inspection Of Unreconciled Projects
 
 - Reconcile Claude's landed-S1 review against `09e62b3f`. Existing loaded

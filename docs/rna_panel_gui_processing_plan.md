@@ -107,6 +107,12 @@ scoped rustfmt, maturity freshness and whitespace pass. Session-close: four OK,
 two dirty-tree/manual-plan warnings, no failures; roadmap remains 400 lines.
 No scope expansion into scheduling, scientific classification or result attachment.
 
+Continued review found a stale-error display after a successful draft retry.
+Clear it only on success; failed loading preserves the current draft/review.
+Add native-path missing/invalid/retry coverage and exercise model Stop/project
+replacement for both marker-backed and markerless screens. These regressions
+are authored, not executed Rust/native acceptance.
+
 Commit each completed step and rebase on local `main`, preserving unrelated
 changes. Record actual verification and exact commits here; never promote
 authored-but-unrun Rust tests into acceptance evidence. No interim source freeze.

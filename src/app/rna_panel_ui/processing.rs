@@ -320,6 +320,7 @@ impl GENtleApp {
                         .map_err(|e| e.to_string())
                 }) {
                     Ok(draft) => {
+                        state.error = None;
                         if load {
                             state.draft = draft.request;
                             // A serialized digest is a binding, not evidence that this session inspected the panel.
@@ -991,6 +992,97 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(2));
             }
         }
+    }
+
+    #[test]
+    fn rna_screen_draft_load_retry_preserves_review_on_failure_and_clears_stale_error() {
+        // Hand-crafted metadata only; neither the old nor new referenced inputs exists.
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("retry 'draft' \u{00fc}.json");
+        let mut app = GENtleApp::default();
+        let state = &mut app.rna_panel_ui.processing;
+        state.draft.panel_path = td.path().join("old-panel.json").display().to_string();
+        state.draft.expected_panel_sha256 = Some("sha256:previous-session-review".into());
+        state.draft.output_dir = td.path().join("unopened-output").display().to_string();
+        state.draft.cancel_path = Some(td.path().join("unopened-control").display().to_string());
+        state.draft.files.push(RnaReadPanelInput {
+            sample_id: "synthetic".into(),
+            barcode: "toy-barcode".into(),
+            priming: "custom_only".into(),
+            path: td.path().join("unopened.fastq.gz").display().to_string(),
+            declared_complete: true,
+            expected_md5: None,
+            expected_sha256: None,
+            checksum_manifest_key: None,
+        });
+        state.review().unwrap();
+        let original = state.draft.clone();
+        let reviewed_json = state.review.as_ref().unwrap().json.clone();
+        let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+        let journal = app.engine.read().unwrap().journal_len();
+        let drain = |app: &mut GENtleApp| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.rna_panel_ui.processing.pending() {
+                app.poll_rna_panel_action();
+                assert!(Instant::now() < deadline, "draft load did not finish");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        for (invalid, expected_error) in
+            [(None, "panel_draft_open"), (Some("{"), "panel_draft_json")]
+        {
+            if let Some(text) = invalid {
+                std::fs::write(&path, text).unwrap();
+            }
+            let id = app.start_rna_draft_load(path.clone()).unwrap();
+            drain(&mut app);
+            assert_eq!(
+                app.agent_command_service.status(id).unwrap().state,
+                RuntimeStatusFrameState::Failed
+            );
+            let state = &app.rna_panel_ui.processing;
+            assert!(state.error.as_deref().unwrap().contains(expected_error));
+            assert_eq!(
+                serde_json::to_value(state.reviewed_request().unwrap()).unwrap(),
+                serde_json::to_value(&original).unwrap()
+            );
+            assert_eq!(state.review.as_ref().unwrap().json, reviewed_json);
+        }
+        let mut replacement = original.clone();
+        replacement.panel_path = td.path().join("new-panel.json").display().to_string();
+        replacement.expected_panel_sha256 = Some("sha256:untrusted-serialized-pin".into());
+        replacement.files.clear();
+        let bytes = format!(
+            "#!/usr/bin/env gentle\r\n{}",
+            serde_json::to_string_pretty(&replacement)
+                .unwrap()
+                .replace('\n', "\r\n")
+        );
+        std::fs::write(&path, &bytes).unwrap();
+        let id = app.start_rna_draft_load(path.clone()).unwrap();
+        drain(&mut app);
+        let receipt = app.agent_command_service.status(id).unwrap();
+        assert_eq!(receipt.state, RuntimeStatusFrameState::Completed);
+        assert_eq!(receipt.publication, "observation_control");
+        assert_eq!(receipt.committed_operations, 0);
+        let state = &app.rna_panel_ui.processing;
+        assert!(
+            state.error.is_none(),
+            "successful retry must clear the old failure"
+        );
+        assert!(state.status.starts_with("Draft loaded;"));
+        replacement.expected_panel_sha256 = None;
+        assert_eq!(
+            serde_json::to_value(&state.draft).unwrap(),
+            serde_json::to_value(&replacement).unwrap()
+        );
+        assert!(state.review.is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes.as_bytes());
+        assert!(!std::path::Path::new(&original.output_dir).exists());
+        assert!(!std::path::Path::new(original.cancel_path.as_ref().unwrap()).exists());
+        let engine = app.engine.read().unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(engine.journal_len(), journal);
     }
 
     #[test]
