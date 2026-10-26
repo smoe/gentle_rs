@@ -12,6 +12,156 @@
 use super::*;
 
 #[test]
+fn primer_trace_introspection_templates_are_typed_but_require_reviewed_inputs() {
+    use crate::engine::{RnaPrimerPanelBinding, RnaPrimerTraceBudgets, RnaPrimerTracePolicy};
+
+    let mut engine = GentleEngine::new();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal = engine.journal_len();
+    let discovery = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities --kind operation").unwrap(),
+    )
+    .unwrap();
+    assert!(!discovery.state_changed);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(engine.journal_len(), journal);
+    let descriptors = discovery.output["capabilities"].as_array().unwrap();
+    for id in [
+        "ValidateRnaPrimerPanel",
+        "rna-reads primer-panel-validate",
+        "TracePrimerReads",
+        "rna-reads primer-trace",
+        "CancelPrimerTrace",
+        "InspectPrimerTrace",
+        "rna-reads primer-trace-show",
+    ] {
+        let descriptor = descriptors.iter().find(|d| d["id"] == id).unwrap();
+        assert_eq!(
+            descriptor["request_template_is_example_not_resolved_input"],
+            true
+        );
+        assert!(
+            descriptor["template_contract"]
+                .as_str()
+                .unwrap()
+                .contains("not executable evidence")
+        );
+        let operation: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        let parsed = parse_shell_line(&format!(
+            "op {}",
+            quote_shell_arg(&serde_json::to_string(&operation).unwrap())
+        ))
+        .unwrap();
+        let writes = matches!(
+            &operation,
+            Operation::TracePrimerReads { .. } | Operation::CancelPrimerTrace { .. }
+        );
+        assert_eq!(descriptor["requires_confirmation"], writes);
+        assert_eq!(parsed.is_state_mutating(), writes);
+        let payload = quote_shell_arg(&descriptor["request_template"].to_string());
+        let named_line = match &operation {
+            Operation::ValidateRnaPrimerPanel { .. } => {
+                format!("rna-reads primer-panel-validate {payload}")
+            }
+            Operation::TracePrimerReads { .. } => format!("rna-reads primer-trace {payload}"),
+            Operation::CancelPrimerTrace { .. } => {
+                format!("rna-reads primer-trace {payload} --cancel")
+            }
+            Operation::InspectPrimerTrace { path, .. } => {
+                format!("rna-reads primer-trace-show {}", quote_shell_arg(path))
+            }
+            _ => unreachable!(),
+        };
+        let named = parse_shell_line(&named_line).unwrap();
+        assert_eq!(named.is_state_mutating(), writes);
+        let ShellCommand::Op { payload } = named else {
+            panic!("named route did not reuse the shared operation: {id}");
+        };
+        assert_eq!(
+            serde_json::from_str::<Value>(&payload).unwrap(),
+            descriptor["operation_template"]
+        );
+        match operation {
+            Operation::ValidateRnaPrimerPanel { panel, seal } => {
+                assert!(!seal, "discovery does not request automatic sealing");
+                assert_eq!(
+                    serde_json::to_value(&panel).unwrap(),
+                    descriptor["request_template"]
+                );
+                let RnaPrimerPanelBinding::Inline { panel: draft } = panel.as_ref() else {
+                    panic!("validation example should expose an inline draft");
+                };
+                assert!(draft.content_sha256.is_empty());
+                assert!(
+                    draft.primers[0].sequence.is_empty(),
+                    "never supply guessed ordered oligos"
+                );
+                assert_eq!(draft.primers[0].components[0].end, 0);
+                assert_eq!(
+                    serde_json::to_value(&draft.policy).unwrap(),
+                    serde_json::to_value(RnaPrimerTracePolicy::default()).unwrap()
+                );
+                assert!(GentleEngine::validate_rna_primer_panel(&panel, false).is_err());
+                assert!(
+                    GentleEngine::validate_rna_primer_panel(&panel, true).is_err(),
+                    "explicit sealing must not turn incomplete discovery metadata into a valid panel"
+                );
+            }
+            Operation::TracePrimerReads { request } | Operation::CancelPrimerTrace { request } => {
+                assert_eq!(
+                    serde_json::to_value(&request).unwrap(),
+                    descriptor["request_template"]
+                );
+                assert!(!request.files[0].declared_complete);
+                assert!(request.files[0].expected_md5.is_none());
+                assert!(request.files[0].expected_sha256.is_none());
+                assert!(!request.export_payload_fasta);
+                assert!(request.reference_panel.is_none());
+                assert!(request.md5_manifest_path.is_none());
+                assert!(
+                    request.cancel_path.is_none(),
+                    "discovery cannot manufacture a marker target"
+                );
+                if id == "CancelPrimerTrace" {
+                    assert!(
+                        GentleEngine::cancel_primer_trace(&request).is_err(),
+                        "the cancellation example must not write a placeholder marker"
+                    );
+                }
+                assert_eq!(
+                    serde_json::to_value(&request.budgets).unwrap(),
+                    serde_json::to_value(RnaPrimerTraceBudgets::default()).unwrap()
+                );
+                let RnaPrimerPanelBinding::File {
+                    expected_sha256, ..
+                } = &request.primer_panel
+                else {
+                    panic!("trace example must require a separately reviewed sealed panel");
+                };
+                assert!(expected_sha256.is_empty());
+            }
+            Operation::InspectPrimerTrace {
+                expected_result,
+                file_id,
+                rows,
+                ..
+            } => {
+                assert!(descriptor["request_template"].is_null());
+                assert!(expected_result.is_none());
+                assert!(file_id.is_none());
+                assert_eq!(
+                    rows, 0,
+                    "inspection must not opt into read-level rows by default"
+                );
+            }
+            _ => panic!("descriptor selected an unrelated operation: {id}"),
+        }
+    }
+}
+
+#[test]
 fn primer_trace_shell_contract_keeps_observation_read_only_and_writes_confirmed() {
     let hash = format!("sha256:{}", "0".repeat(64));
     let panel = json!({"kind":"file","path":"synthetic panel's path.json","expected_sha256":hash});

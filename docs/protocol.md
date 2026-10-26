@@ -200,6 +200,19 @@ Generic MCP `op` still requires confirmation, but these named operations do
 not rewrite its state file. Shared shell, CLI, MCP and agent plans reuse the
 same operations and external-write approval classification. No new GUI.
 
+Capability descriptors expose `request_template` and `operation_template` with
+`request_template_is_example_not_resolved_input=true`. They show the existing
+typed shapes, not another request model or an admitted run. The inline panel
+example has an empty sequence, zero-width core and empty digest; trace examples
+have no checksum/cancel path and `declared_complete=false`. These must fail
+admission until reviewed owner inputs replace the placeholders. Even explicit sealing cannot
+make an incomplete panel valid. The orientation and current policy/budget
+defaults are examples, not inferred kit roles or acceptance. Inspection has
+only an operation template, not an additional request schema. Generic MCP
+confirmation and external-write/cancellation approval are unchanged.
+Cancel must reuse the actual captured request and its reviewed marker path;
+an unset path prevents even the cancellation example from writing a marker.
+
 Show accepts at most 1000 rows and 4 MB of prefix bytes; it validates report
 content/optional result binding and refuses symlinked artifact paths. It does
 not rehash original FASTQ or full TSVs: `artifact_content_verified=false`.

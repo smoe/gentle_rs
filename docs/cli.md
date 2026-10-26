@@ -33,6 +33,16 @@ files or kit identities are discovered automatically. Payload FASTA is off by
 default. Show is metadata plus an explicitly unverified bounded TSV prefix,
 not a revalidation of original reads or a second analysis.
 
+`introspect capabilities --kind operation` exposes the corresponding
+`request_template` and `operation_template`. They deliberately contain empty
+oligos/digests, unset checksums/cancel paths and `declared_complete=false`;
+they are typed examples, not ready-to-run requests. Replace them from the reviewed order,
+reference and completed-transfer evidence. The example orientation is not
+inferred from a gene or kit. Inspect uses the operation template directly.
+Defaults are uncalibrated, and `--seal` cannot repair an incomplete panel.
+Cancellation reuses the captured run request and its reviewed marker path;
+the example's unset path cannot create a placeholder marker.
+
 The inner agent can explain the report and draft these same shell commands.
 It must obtain explicit approval for trace artifact writes and cancellation,
 even if a suggested plan labels itself read-only. Generic MCP `op` takes

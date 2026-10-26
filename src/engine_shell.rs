@@ -19870,15 +19870,58 @@ fn rna_panel_descriptor(id: &str) -> Value {
 }
 
 fn primer_trace_descriptor(id: &str) -> Value {
+    let validate = matches!(
+        id,
+        "ValidateRnaPrimerPanel" | "rna-reads primer-panel-validate"
+    );
+    let inspect = matches!(id, "InspectPrimerTrace" | "rna-reads primer-trace-show");
+    let cancel = id == "CancelPrimerTrace";
     let writes = matches!(
         id,
         "TracePrimerReads" | "CancelPrimerTrace" | "rna-reads primer-trace"
     );
+    let template = if validate {
+        json!({"kind":"inline","panel":{
+            "schema":crate::engine::RNA_PRIMER_PANEL_SCHEMA,"content_sha256":"",
+            "primers":[{"primer_id":"REPLACE_PRIMER_ID","assay_label":"REPLACE_ASSAY_LABEL",
+                "sequence":"","components":[{"component_id":"REPLACE_CORE_ID",
+                    "role":"target_core","start":0,"end":0}],
+                "core_orientation":"sense_5prime","expected_targets":[],"variant":"REPLACE_VARIANT",
+                "source":"REPLACE_ORDERED_OLIGO_SOURCE","source_sha256":null}],
+            "policy":crate::engine::RnaPrimerTracePolicy::default()}})
+    } else if inspect {
+        Value::Null
+    } else {
+        json!({"schema":crate::engine::RNA_PRIMER_TRACE_REQUEST_SCHEMA,
+            "primer_panel":{"kind":"file","path":"REPLACE_SEALED_PRIMER_PANEL_PATH","expected_sha256":""},
+            "reference_panel":null,
+            "files":[{"sample_id":"REPLACE_SAMPLE","barcode":"REPLACE_BARCODE","priming":"REPLACE_PRIMING",
+                "path":"REPLACE_COMPLETED_FASTQ_PATH","declared_complete":false,
+                "expected_md5":null,"expected_sha256":null,"checksum_manifest_key":null}],
+            "md5_manifest_path":null,"output_dir":"REPLACE_FRESH_OUTPUT_DIRECTORY",
+            "export_payload_fasta":false,"budgets":crate::engine::RnaPrimerTraceBudgets::default(),
+            "cancel_path":null})
+    };
+    let operation = if validate {
+        json!({"ValidateRnaPrimerPanel":{"panel":template,"seal":false}})
+    } else if inspect {
+        json!({"InspectPrimerTrace":{"path":"REPLACE_REPORT_PATH","expected_result":null,
+            "file_id":null,"rows":0}})
+    } else if cancel {
+        json!({"CancelPrimerTrace":{"request":template}})
+    } else {
+        json!({"TracePrimerReads":{"request":template}})
+    };
     json!({"id":id,"kind":"operation","mutating":if writes {"external"} else {"false"},
         "requires_confirmation":writes,"args":[{"name":"REQUEST_OR_PATH","required":true,
         "detail":"primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]; primer-trace REQUEST_JSON_OR_@FILE [--cancel]; primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]. --seal is read-only, inline draft with empty digest only. Explicit reviewed oligos; file panels require semantic SHA-256; no input discovery."}],
         "reads":[],"effects":[],"precondition_expr":{"all":[]},
         "description":"Separate, bounded primer observation and contiguous local core/payload trace. All template alternatives retained; handles and seed matches alone never identify targets. No trimming, whole-read/isoform or mechanism inference. Payload FASTA is opt-in. Writes/cancellation require approval; show is bounded and does not reverify original FASTQ or sidecar bytes.",
+        "request_template":template,"operation_template":operation,
+        "request_template_is_example_not_resolved_input":true,
+        "template_contract":"Placeholders are not executable evidence. The empty oligo, zero-width core and empty digest must be replaced from reviewed ordered definitions; sense_5prime is only an example, not inferred orientation. Add any actual preceding handles and expected target bindings explicitly. Trace files retain declared_complete=false and no checksum until the caller supplies transfer evidence. Defaults are uncalibrated examples, not approval. Inspect uses an operation template directly; it has no separate request schema.",
+        "draft_sealing_contract":"After reviewing exact oligos, component intervals, orientation, provenance and every policy value, use ValidateRnaPrimerPanel with seal=true (primer-panel-validate BINDING --seal) only for an inline draft with an empty digest. This returns the actual sealed panel without file writes. It never fills missing oligos, repairs a nonempty digest or accepts this incomplete example. Cancellation needs the exact captured request and its explicitly reviewed cancel_path; the example leaves that path null and cannot write a marker. Trace writes and marker cancellation still require explicit approval; generic MCP op always retains its confirmation gate.",
+        "result_contract":"Retain the actual typed report/result binding, not a guessed filename. Completed, cancelled and control_error are distinct; missing/unknown outcomes never establish completion. Successful inspection of a retained cancelled report does not change that run's status. No original-read or full-sidecar revalidation is implied.",
         "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
 }
 

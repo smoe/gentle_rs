@@ -83,13 +83,24 @@ cargo run --locked --bin gentle_examples_docs -- tutorial-manifest-check
 python3 -m unittest scripts.test_primer_trace_contract scripts.test_rna_panel_tutorial scripts.test_tutorial_checkouts -q
 ```
 
-The primer-trace implementation is rebased onto local main `4acee734`, including
-its separate RNA work-profile and summary-evidence changes. Verify the integrated
-source, not the pre-rebase `adacb2bc` baseline. The `primer_trace` Rust filter now
-includes managed-worker and agent-feedback regressions (24 new tests total,
-authored but not locally executed). Full and compact results must preserve
+The primer-trace implementation is rebased onto local main `11a6cd9b`, including
+`4acee734`'s separate RNA work-profile and summary-evidence changes. Verify the
+integrated source, not the pre-rebase `adacb2bc` baseline. The `primer_trace`
+Rust filter now includes typed-discovery, managed-worker and agent-feedback
+regressions (25 new tests total, authored but not locally executed).
+Full and compact results must preserve
 cancelled/control-error outcomes in agent feedback; inspecting an old cancelled
 report must still be a successfully completed inspection.
+
+The typed-discovery regression remains unrun: all seven operation/shell
+descriptor examples from the actual shared-shell introspection result must
+deserialize through the canonical types/parser, preserve approval classification,
+and leave sequence/digest/checksums/cancel path and completion unset. Inline
+examples must be refused even by explicit sealing. Check the actual inner-agent capability
+projection without treating example orientation/defaults as reviewed inputs;
+generic MCP confirmation remains required. No model call, private-read use or
+new GUI is necessary for the deterministic discovery regression. The cancellation
+example must refuse marker publication, not merely fail after writing a dummy path.
 
 Check the actual shell/MCP/managed-host boundaries, not just the matching
 helper: writes and `--cancel` require approval, forged plan metadata cannot

@@ -138,3 +138,31 @@ also parse through rustfmt without rewriting existing formatting. Documentation
 status, maturity freshness, whitespace and the 400-line roadmap check pass;
 `Cargo.lock` remains unchanged. Canonical Rust generator, compiler, platform,
 private-library and scientific checks remain in the single Glen/CI handoff.
+
+## Typed Discovery Follow-Up
+
+Starting at `d17103f9` on local main `11a6cd9b`, source review found that the
+primer-trace descriptors exposed only generic argument prose, unlike the
+existing RNA-panel typed request examples. Add placeholder-only request and
+operation templates using canonical schemas and current policy/budget defaults.
+Do not supply an oligo, digest, checksum, reference, cancel path or
+transfer-completion attestation. The example orientation is explicitly not
+owner-reviewed. Add a
+Rust regression across the seven operation/shell IDs from the actual shared-shell
+introspection result for typed parser parity,
+unchanged approval and refusal of incomplete inline examples, including `--seal`.
+The cancellation example must refuse an unset marker target before any write.
+Extend the existing fast source check and explain this preparation path in the
+protocol, CLI and tutorial; no new command/model, matching, lifecycle or
+biological behavior is introduced. There are now 25 authored Rust regressions,
+still awaiting Glen/CI under the no-local-Rust instruction. A read-only Claude
+consultation was offered; this bounded follow-up is not separately Claude-reviewed.
+
+Verification on macOS: the combined Python command above discovers 169 tests,
+164 passed and five optional binary-dependent checks skipped. The focused
+45-test source/tutorial/maturity suite also passes. Scoped rustfmt formats only
+the changed descriptor/test function and parses both containing modules without
+rewriting unrelated code. Documentation status, maturity freshness, whitespace
+and the 400-line roadmap check pass; the lockfile and all maturity projections
+remain unchanged. These checks do not execute the new Rust regression, an inner
+agent or private FASTQ, and do not confer scientific/platform acceptance.

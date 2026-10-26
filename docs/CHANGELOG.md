@@ -14,6 +14,24 @@
   binary checks skip; scoped rustfmt, documentation/maturity freshness and
   whitespace pass. Session-close: four OK, two expected warnings, no failures.
 
+## 2026-10-26 - Expose Typed Primer Trace Discovery Examples
+
+- Add request/operation examples to the existing seven primer-trace capability
+  descriptors, reusing canonical types and policy/budget defaults. Keep oligos,
+  digests/checksums/cancel path and completion unset; label every example as
+  unresolved input and make orientation/default caveats explicit. No new command, model,
+  matching policy, kit assumption, approval bypass or scientific claim.
+- Author one shared-type/parser/approval regression, including refusal of the
+  incomplete inline panel even with explicit sealing and refusal of cancellation
+  without a reviewed marker target; extend the existing
+  fast source guard. Explain preparation in protocol/CLI/tutorial 10.04 and
+  Glen's consolidated checklist. All 25 primer-trace Rust regressions remain
+  unrun under the standing no-local-Rust restriction; private data untouched.
+- Verification: 164 Python tests pass, five optional binary checks skip; the
+  focused 45-test source suite, scoped formatting/syntax parsing, documentation
+  status, maturity freshness and whitespace pass. No lockfile, maturity
+  projection, native, model-execution or scientific acceptance change.
+
 ## 2026-10-26 - Preserve Primer Trace Outcomes In Agent Feedback
 
 - Rebase primer tracing onto `4acee734`, retaining RNA-screen work profiles,

@@ -983,6 +983,17 @@ and is a request, not proof that a worker has stopped. Generic MCP uses the
 same `TracePrimerReads` / `InspectPrimerTrace` operations; no model call is
 needed to check the synthetic workflow.
 
+For preparing a different reviewed panel, `introspect capabilities --kind operation`
+includes typed primer-trace request/operation examples. These intentionally
+leave the oligo, component extent and digest empty and file completion false.
+They teach the shape of the command, not what was ordered or transferred.
+The inner agent must ask for the missing facts rather than copying these
+placeholders into a run. An incomplete panel is refused even with `--seal`.
+The cancellation path is also unset: cancel the actual captured run request,
+not a discovery example with a newly invented marker destination.
+Select orientation and review the policy explicitly; neither an example nor
+successful sealing proves kit identity, target enrichment or assay suitability.
+
 ## Notes For Our First Joint Review
 
 Please retain the source/binary version, panel, request, supplier manifest and

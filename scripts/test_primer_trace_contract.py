@@ -81,6 +81,19 @@ class PrimerTraceContractTests(unittest.TestCase):
         tests = (ROOT / "src/mcp_server.rs").read_text()
         self.assertIn("fn primer_trace_mcp_and_agent_cannot_bypass_artifact_confirmation", tests)
         self.assertIn("fn primer_trace_shell_contract_keeps_observation_read_only_and_writes_confirmed", (ROOT / "src/engine_shell/tests.rs").read_text())
+        descriptor = shell.split("fn primer_trace_descriptor(", 1)[1].split("fn primer_design_operation_descriptor(", 1)[0]
+        for field in (
+            "request_template", "operation_template", "request_template_is_example_not_resolved_input",
+            "template_contract", "draft_sealing_contract", "result_contract",
+        ):
+            self.assertIn(f'"{field}"', descriptor)
+        self.assertIn('"sequence":""', descriptor)
+        self.assertIn('"declared_complete":false', descriptor)
+        self.assertIn('"cancel_path":null', descriptor)
+        self.assertIn("RnaPrimerTracePolicy::default()", descriptor)
+        self.assertIn("RnaPrimerTraceBudgets::default()", descriptor)
+        self.assertIn("fn primer_trace_introspection_templates_are_typed_but_require_reviewed_inputs",
+                      (ROOT / "src/engine_shell/tests.rs").read_text())
 
     def test_quality_extension_does_not_filter_existing_nominations(self):
         source = (ROOT / "src/engine/analysis/rna_panel/input.rs").read_text()
