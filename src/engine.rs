@@ -3269,6 +3269,22 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    ValidateRnaPrimerPanel {
+        panel: Box<RnaPrimerPanelBinding>,
+        #[serde(default)]
+        seal: bool,
+    },
+    TracePrimerReads { request: Box<TracePrimerReadsRequest> },
+    InspectPrimerTrace {
+        path: String,
+        #[serde(default)]
+        expected_result: Option<Box<RnaPrimerTraceResultBinding>>,
+        #[serde(default)]
+        file_id: Option<String>,
+        #[serde(default)]
+        rows: usize,
+    },
+    CancelPrimerTrace { request: Box<TracePrimerReadsRequest> },
     BuildRnaReadPanel {
         request: Box<BuildRnaReadPanelRequest>,
     },
@@ -10218,6 +10234,10 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::ValidateRnaPrimerPanel { .. }
+                | Operation::TracePrimerReads { .. }
+                | Operation::InspectPrimerTrace { .. }
+                | Operation::CancelPrimerTrace { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportRnaReadPanelSummary { .. }
                 | Operation::PrepareRnaReadPanelDemo { .. }

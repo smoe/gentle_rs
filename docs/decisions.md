@@ -17,6 +17,48 @@ with the committed attributes, source text, binaries and verbatim records.
 Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
+## Primer-Anchored Read Trace
+
+Proposed 2026-10-26, pending owner confirmation of biological axis/default policy.
+The owner authorized implementation of the revised technical Phase 0/1, not
+kit identity, assay validation or calibrated thresholds. See the
+[revised plan](primer_trace_phase01_plan_20261026.md).
+
+A separate `TracePrimerReads` operation observes explicitly supplied oligos
+and optionally checks core plus boundary-adjacent payload on the same mature
+template interval. It does not alter RNA-panel nomination, legacy classes,
+original reads or their orientation. Oligos are component-defined, not assumed
+44-mers. Declared primer direction is independent of chromosome/read strand
+and does not establish whether the oligo acted in RT or PCR.
+
+Keep independent primer, position, multiplicity, locus-relation and artifact
+axes; reserve junction/segment axes without emitting placeholders. Handle
+alone never attributes a target. A seed only nominates a candidate; retain
+all validated template alternatives. Boundary mismatch is an observation,
+not a mechanism assertion, and missing/short/ambiguous evidence is unresolved.
+Internal primers are segmentation candidates for a later phase, not inferred
+junctions. A candidate payload containing another anchor remains unsegmented
+and unresolved in Phase 1. Do not emit mechanism-confirmation labels including
+"trans-splicing", "fusion" or "chimera confirmed" as result classes.
+
+Policy/budgets, exact references and input bytes are content-bound. Independent
+file effects require approval. Standalone managed trace publication is a
+named artifact-only exception with its own result binding, never a generic
+ReadOnly/lifecycle inference. Validation/show have bounded non-project work;
+marker control is request-bound. Generic MCP `op` retains confirmation but
+does not rewrite its state file for these named operations. No general lifecycle
+proposal is implemented by this exception.
+
+Reuse the existing strict FASTQ/hash/control primitives. Quality is retained
+for this consumer without changing existing nomination calculations or output
+schemas. Only EOF-verified completed units contribute; cancelled/control-error
+outcomes keep missing inputs explicit and data/resource failures fail closed.
+No private-data fixtures, new GUI, segmentation graph, aligner adapter, molecule
+count, expression inference or scientific acceptance follows. The configurable
+handle/poly(T) observation does not authenticate an ONT kit. Payload FASTA
+remains explicitly opt-in. Real protocol roles and numerical defaults require
+owner/Glen review before this decision becomes biologically accepted.
+
 ## Independent-Locus FASTQ Panel Nominations
 
 Owner-authorized 2026-10-22: a portable RNA panel binds independent loaded

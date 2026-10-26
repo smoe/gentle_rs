@@ -26,6 +26,10 @@ pub use transcript_capture::*;
 mod rna_panel;
 pub use rna_panel::*;
 
+#[path = "protocol/primer_trace.rs"]
+mod primer_trace;
+pub use primer_trace::*;
+
 #[path = "protocol/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
 pub use primer_specificity_multi::*;
@@ -5504,6 +5508,12 @@ pub struct Workflow {
 /// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_primer_panel: Option<Box<RnaPrimerPanel>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_primer_trace: Option<Box<RnaPrimerTraceReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_primer_trace_inspection: Option<Box<RnaPrimerTraceInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_panel: Option<Box<RnaReadPanel>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -12,6 +12,27 @@
 use super::*;
 
 #[test]
+fn primer_trace_shell_contract_keeps_observation_read_only_and_writes_confirmed() {
+    let hash = format!("sha256:{}", "0".repeat(64));
+    let panel = json!({"kind":"file","path":"synthetic panel's path.json","expected_sha256":hash});
+    let request = json!({"schema":"gentle.rna_primer_trace_request.v1","primer_panel":panel,"files":[],"output_dir":"synthetic output"});
+    for (route,payload,mutating) in [("primer-panel-validate",panel,false),("primer-trace",request.clone(),true)] {
+        let command=parse_shell_line(&format!("rna-reads {route} {}",quote_shell_arg(&payload.to_string()))).unwrap();
+        assert_eq!(command.is_state_mutating(),mutating);
+    }
+    let line=format!("rna-reads primer-trace {} --cancel",quote_shell_arg(&request.to_string()));
+    assert!(parse_shell_line(&line).unwrap().is_state_mutating());
+    assert!(parse_shell_line("rna-reads primer-trace-show 'a report.json' --file-id file_0000 --rows 2").is_ok());
+    assert!(!parse_shell_line("rna-reads primer-trace-show report.json").unwrap().is_state_mutating());
+    for bad in ["rna-reads primer-trace '{}'", "rna-reads primer-trace-show r --rows 1",
+        "rna-reads primer-trace-show r --file-id file_0000 --rows 1001", "rna-reads primer-trace-show r --file-id a --file-id b"] {
+        assert!(parse_shell_line(bad).is_err(),"{bad}");
+    }
+    for id in ["TracePrimerReads","CancelPrimerTrace"] {assert_eq!(primer_trace_descriptor(id)["requires_confirmation"],true);}
+    for id in ["ValidateRnaPrimerPanel","InspectPrimerTrace"] {assert_eq!(primer_trace_descriptor(id)["requires_confirmation"],false);}
+}
+
+#[test]
 fn rna_panel_introspection_exposes_typed_requests_without_granting_completion() {
     let build = rna_panel_descriptor("rna-reads panel-build");
     let request: crate::engine::BuildRnaReadPanelRequest =
@@ -1679,6 +1700,14 @@ fn smoke_command_line_for_glossary_command(
     command: &GlossaryCommandFixture,
     scratch: &Path,
 ) -> String {
+    if matches!(command.path.as_str(), "rna-reads primer-panel-validate" | "rna-reads primer-trace") {
+        // Parser-only synthetic bindings; these intentionally cannot pass scientific admission.
+        let panel = json!({"kind":"file","path":"synthetic-primer-panel.json","expected_sha256":format!("sha256:{}","0".repeat(64))});
+        let request = if command.path.ends_with("primer-panel-validate") { panel } else {
+            json!({"schema":"gentle.rna_primer_trace_request.v1","primer_panel":panel,"files":[],"output_dir":"synthetic-trace"})
+        };
+        return format!("{} {}", command.path, quote_shell_arg(&request.to_string()));
+    }
     if matches!(
         command.path.as_str(),
         "rna-reads panel-build"
@@ -2115,6 +2144,19 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
+    if path == "rna-reads primer-trace-show" {
+        if flag == "--rows" { line.push_str(" --file-id file_0000"); }
+        if flag == "--binding" {
+            let hash = format!("sha256:{}", "0".repeat(64));
+            let binding = json!({"schema":"gentle.rna_primer_trace_result_binding.v1",
+                "submitted_request_sha256":hash,"effective_request_sha256":hash,"primer_panel_sha256":hash,
+                "reference_panel_sha256":null,"report_content_sha256":hash,"report_path":"synthetic-report.json","outcome":"completed"});
+            // The generic JSON placeholder is replaced only for this new typed binding.
+            let mut tokens = split_shell_words(line).unwrap();
+            if let Some(i) = tokens.iter().position(|t|t=="--binding") { tokens[i+1]=binding.to_string(); }
+            *line = tokens.iter().map(|t|quote_shell_arg(t)).collect::<Vec<_>>().join(" ");
+        }
+    }
     if path == "rna-reads panel-screen" && flag == "--save" {
         let mut tokens = split_shell_words(line).expect("split RNA draft smoke command");
         if !tokens.iter().any(|token| token == "--request") {

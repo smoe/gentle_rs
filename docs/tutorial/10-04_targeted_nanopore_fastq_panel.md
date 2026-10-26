@@ -877,6 +877,112 @@ silently count a completed file twice when combining run summaries.
 The summary exporter enforces distinct compressed-input hashes; retain the
 partial flag and missing-file ledger when including a cancelled source.
 
+## Primer Trace Addendum: Synthetic Only
+
+This new **CLI/shared-shell** experiment asks a narrower question than the panel
+screen: "Does a read carry one of the exact oligos I supplied, and what sequence
+follows its 3' end?" It leaves the original screen and FASTQ unchanged. There
+is no new native primer-trace page. Rust/MCP/platform execution and real-library
+calibration remain pending Glen/CI; this is a reproducible teaching example,
+not a recorded acceptance run.
+
+A visible handle is not proof of target capture. The complete ordered oligo
+matters: the September review contains some proposed **cores without handles**,
+so do not turn all its entries into assumed 44-mers. Confirm the actual oligos
+and whether they were present in RT, PCR or both. The handle/poly(T) flag is
+only a configurable sequence observation; the ONT kit identity is unconfirmed.
+
+### Prepare Two Artificial Reads
+
+Use the same source-matched `GENTLE` executable and disposable `STATE` as above.
+This preparation needs Python, but no real order sheet or sequencing input.
+Choose a temporary path without spaces for these literal shared-shell strings;
+for arbitrary paths use the existing shared-shell quoting helper.
+
+```sh
+PRIMER_WORK=$(mktemp -d /tmp/gentle-primer-trace-XXXXXX)
+python3 - "$PRIMER_WORK" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+work = Path(sys.argv[1])
+handle = "TCAGAGCTGACA"
+core = "ACGTCAGTACCGTTAGCCTAGG"
+payload = "GATCCATGAGCTAGTCGACATCGTAGCTACGATGCTAGCATCG"
+oligo = handle + core
+panel = {
+    "schema": "gentle.rna_primer_panel.v1", "content_sha256": "",
+    "primers": [{"primer_id": "synthetic_a", "assay_label": "Artificial trace",
+        "sequence": oligo, "components": [
+            {"component_id": "handle", "role": "common_handle", "start": 0, "end": len(handle)},
+            {"component_id": "core", "role": "target_core", "start": len(handle), "end": len(oligo)}],
+        "core_orientation": "sense_5prime", "expected_targets": [],
+        "variant": "synthetic", "source": "Hand-written artificial tutorial; not a physical oligo", "source_sha256": None}],
+    "policy": {"max_full_edits": 2, "max_core_edits_for_attribution": 1,
+        "end_window_nt": 256, "check_handle_followed_by_poly_t": True,
+        "poly_t_min_run": 12, "poly_t_max_mismatches": 1, "min_payload_nt": 40,
+        "concordance_probe_nt": 30, "max_probe_edits": 2, "concordance_seed_nt": 8}}
+compact = json.dumps(panel, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+panel["content_sha256"] = "sha256:" + hashlib.sha256(compact).hexdigest()
+def save(name, value):
+    (work / name).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+save("panel.json", panel)
+binding = {"kind": "file", "path": str(work / "panel.json"), "expected_sha256": panel["content_sha256"]}
+save("binding.json", binding)
+forward = "GGGTTA" + oligo + payload
+reverse = ("GGGTTACCAA" + oligo + payload).translate(str.maketrans("ACGT", "TGCA"))[::-1]
+fastq = "".join(f"@synthetic_{i}\n{seq}\n+\n{'I' * len(seq)}\n" for i, seq in enumerate([forward, reverse])).encode()
+(work / "reads.fastq").write_bytes(fastq)
+save("trace.json", {"schema": "gentle.rna_primer_trace_request.v1", "primer_panel": binding,
+    "files": [{"sample_id": "artificial", "barcode": "synthetic_barcode", "priming": "synthetic",
+        "path": str(work / "reads.fastq"), "declared_complete": True,
+        "expected_sha256": "sha256:" + hashlib.sha256(fastq).hexdigest()}],
+    "output_dir": str(work / "trace"), "export_payload_fasta": False})
+print("Artificial oligo:", len(oligo), "nt; payload:", len(payload), "nt")
+PY
+"$GENTLE" --state "$STATE" shell "rna-reads primer-panel-validate @$PRIMER_WORK/binding.json"
+"$GENTLE" --state "$STATE" shell "rna-reads primer-trace @$PRIMER_WORK/trace.json"
+"$GENTLE" --state "$STATE" shell "rna-reads primer-trace-show $PRIMER_WORK/trace/report.json --file-id file_0000 --rows 2"
+```
+
+### Read The Result Without Overinterpreting It
+
+Expect one completed file, two reads and two retained `full_exact` hits, one
+per read strand. The forward primer starts at base 6; the reversed read leaves
+10 bases after its primer. Both candidate payloads have the printed payload
+length and are the same sequence when oriented into primer extension direction.
+The raw intervals differ because coordinates always refer to the basecalled
+read. Quality is Q40 throughout, so mean Phred is 40 and fraction below Q10 is
+zero. These are constructed geometry checks, not estimates from your library.
+
+There is no bound transcript panel in this example, so `locus_relation` is
+`not_evaluated`, not "on-target". Nothing in two visible synthetic primers
+demonstrates enrichment. No payload FASTA is written unless a new request
+explicitly enables it. The TSV retains no read sequence. The summary's full-hit
+histograms count occurrences, whereas its class counts count reads; repeats
+can make those denominators differ.
+
+To investigate actual targets later, bind the saved RNA panel with
+`reference_panel:{path,expected_sha256}` in a new reviewed request and choose
+a new output directory. A contiguous result requires the observed core and
+the first declared payload probe at the **same adjacent template site**.
+All alternatives remain visible; a matching short probe is not a complete
+transcript or an exclusive isoform. Payload-only other-template matches have
+`core_and_probe_contiguous=false`. Missing/short/ambiguous sequence is unresolved,
+not proof of a boundary error. A boundary difference does not identify its
+cause. Multiple anchors remain unsegmented in this phase.
+
+An agent may validate these supplied bindings, explain results and draft the
+same trace/show commands; it may not invent order sequences, digests or
+completion declarations. Given an explicitly supplied inline panel draft with
+`content_sha256:""`, it can use `primer-panel-validate BINDING --seal` to obtain
+the engine-computed sealed panel without OS tools or file writes. Trace itself
+never auto-seals a draft or repairs a mismatched hash.
+Trace writes and `primer-trace REQUEST --cancel`
+need explicit approval. Cancellation uses the request's declared marker path
+and is a request, not proof that a worker has stopped. Generic MCP uses the
+same `TracePrimerReads` / `InspectPrimerTrace` operations; no model call is
+needed to check the synthetic workflow.
+
 ## Notes For Our First Joint Review
 
 Please retain the source/binary version, panel, request, supplier manifest and

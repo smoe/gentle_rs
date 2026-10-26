@@ -20,6 +20,33 @@
   Session-close reports four OK, two expected working-tree/manual-plan warnings
   and no failures. The 19 new Rust regressions remain authored, not executed.
 
+## 2026-10-26 - Add Separate Primer-Anchored Read Trace Phase 0/1
+
+- Add sealed explicit-oligo panels, digest-bound requests, local matching,
+  independent evidence axes, file/read receipts, per-primer hit histograms and
+  opt-in payload FASTA. Exact scans cover the read; bounded Myers approximate
+  scans recover indel-aware boundaries. Contiguous core/probe evidence retains
+  all templates; handles and payload-only matches never become target proof.
+- Reuse strict FASTQ/EOF hashing and cancellation/publication primitives,
+  retaining quality only for the new consumer. Existing RNA-screen and legacy
+  interpretation calculations/schemas are unchanged. Missing/ambiguous inputs
+  are not boundary divergence; multiple-anchor payloads remain unsegmented.
+- Add shared shell/CLI and generic MCP/agent operations with explicit artifact
+  approval, a named managed artifact-only binding, bounded inspection and
+  project-file preservation. No new GUI or generic lifecycle-policy migration.
+- Revise the forwarded prompt's unsupported all-44-mer assumption, define
+  orientation/probe tolerances, and add a synthetic tutorial 10.04 addendum and
+  consolidated Glen checks. Biological defaults/axis policy remain proposed;
+  no kit identity, real-data, scientific or performance acceptance is claimed.
+- Rust regressions are authored but unrun under the task's no-local-Rust
+  instruction. Verification results are recorded in the revised plan/handoff;
+  no private sequencing input, original order workbook, push or publication.
+- Local verification: 162 Python checks passed, five optional binary-dependent
+  skips; documentation/maturity freshness, scoped rustfmt and whitespace pass.
+  Twenty-one new Rust tests remain unrun. Session-close: four OK, two expected
+  dirty-tree/plan reminders, zero failures. Local main's later `4acee734` is not
+  accepted by these baseline-`adacb2bc` results; integrate before Glen's run.
+
 ## 2026-10-25 - Separate Shared RNA Sequences From Source Identity
 
 - Add optional digest-bound cross-locus mature-sequence groups to new panels,

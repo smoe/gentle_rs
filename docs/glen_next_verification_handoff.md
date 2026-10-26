@@ -59,6 +59,80 @@ Nineteen new Rust tests in `profile_tests`, `error_tests` and `sharing_tests`
 are authored but unrun. Preserve their synthetic provenance and retain the
 8% characterization output without converting it into a sensitivity verdict.
 
+## Primer Trace Phase 0/1, 2026-10-26
+
+Integrate this into the pushing thread's **single** candidate-bound request;
+do not start a separate per-branch acceptance campaign. Implementation started
+at `adacb2bc`; use the final integrated source/binary/lock/toolchain/profile in
+your return. The original untracked primary-checkout Claude prompt is not
+acceptance. Its [revisions](primer_trace_phase01_plan_20261026.md) and
+[contract](protocol.md#primer-anchored-read-trace-phase-01) govern this slice.
+
+No local Rust execution or private-read analysis was performed by Codex.
+Execute, recording exact filters, discovered counts, failures and skips:
+
+```sh
+cargo check --locked --all-features --tests
+cargo test --locked --lib -j1 primer_trace -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel -- --test-threads=1
+cargo test --locked --lib -j1 rna_legacy_ -- --test-threads=1
+cargo test --locked --lib -j1 glossary_cli_usage -- --test-threads=1
+cargo run --locked --bin gentle_examples_docs -- parity-matrix-check
+cargo run --locked --bin gentle_examples_docs -- tutorial-catalog-check
+cargo run --locked --bin gentle_examples_docs -- tutorial-manifest-check
+python3 -m unittest scripts.test_primer_trace_contract scripts.test_rna_panel_tutorial scripts.test_tutorial_checkouts -q
+```
+
+Check the actual shell/MCP/managed-host boundaries, not just the matching
+helper: writes and `--cancel` require approval, forged plan metadata cannot
+remove that gate, validation/show leave state/journal alone, and the MCP
+project file is byte-unchanged. Managed standalone trace keeps a typed
+`primer_trace_result` without merging a live project journal. Test project
+replacement, close, source-file changes, late host Cancel, explicit marker
+Cancel, publication failure and reopening the bound report. Preserve completed,
+cancelled and control-error outcomes; late host cancellation is not a new
+scientific verdict. No GUI acceptance is claimed or needed for this slice.
+
+Synthetic regressions cover four exact orientation geometries, substitutions/
+indels, core limits, quality/nulls, shared handles, multiple anchors, template
+ambiguity, EOF digests, artifacts, inspection binding and LF/CRLF intake.
+Keep all retained alternatives and distinguish a payload-only template match
+from contiguous core/probe evidence. The new TSV has no read sequence.
+Confirm existing RNA-screen/report bytes and legacy nomination regressions
+remain unchanged; the intake's added quality field is not serialized there.
+Canonical matrix rows/counts were reconciled from registry rules without
+running the Rust generator; its exact-byte check remains required. Generated
+maturity hashes carry no new maturity attestations.
+
+Only after separate authorization, select exact retained completed inputs
+and caller-reviewed **complete ordered oligos**, not reconstructed September
+core proposals. Confirm which oligos were present at RT/PCR and whether the
+kit supplied a shared-handle oligo(dT) primer. Kit identity was not verified.
+The `handle_followed_by_poly_t` flag remains a configurable sequence observation.
+
+For authorized barcode13/14 analysis retain:
+
+- exact full-hit counts separately by primer and read strand, with both read
+  and hit denominators; do not equate the two or interpret them as enrichment;
+- per-position start bins around 81..83 and remaining-tail bins around 25..29,
+  without calibrating thresholds just to reproduce those observations;
+- every expected/other/unresolved relation, all template alternatives, core
+  terminal mismatch counts, and the earlier short off-locus nominations;
+- cancellation/checksum/resource failures separately from observed zero hits;
+- barcode15/16 controls when actually available, never invented local controls.
+
+Report whether defaults are useful, not merely whether execution completes.
+Return exact source/binary SHA-256, effective request and panel digests,
+commands, platform/profile, typed outcome, denominator interpretation and
+separate technical/scientific verdicts. Share private read-level evidence only
+through the approved channel; no automatic publication is authorized.
+
+Owner decisions remain: actual ordered oligos and RT/PCR/kit roles; acceptance
+of uncalibrated defaults/axis model. FASTA stays off unless explicitly requested.
+Phases 2--5 (segmentation, breakpoints, wider partners and later interpretation)
+remain pending separate contracts; no precise unseen phase specification is
+inferred from the external discussion draft.
+
 ## Shared-Sequence Ambiguity And Legacy Output Regressions, 2026-10-25
 
 At ordinary integrated source, run:

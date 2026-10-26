@@ -13299,6 +13299,37 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         );
     }
     match tokens[1].as_str() {
+        "primer-panel-validate" => {
+            if tokens.len() != 3 && !(tokens.len() == 4 && tokens[3] == "--seal") { return Err("Use rna-reads primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]".into()); }
+            let panel = parse_required_json_payload::<crate::engine::RnaPrimerPanelBinding>(&tokens[2], "primer panel binding")?;
+            Ok(ShellCommand::Op { payload: serde_json::to_string(&Operation::ValidateRnaPrimerPanel { panel: Box::new(panel), seal: tokens.len() == 4 }).map_err(|e| e.to_string())? })
+        }
+        "primer-trace" => {
+            if tokens.len() != 3 && !(tokens.len() == 4 && tokens[3] == "--cancel") {
+                return Err("Use rna-reads primer-trace REQUEST_JSON_OR_@FILE [--cancel]".into());
+            }
+            let request = Box::new(parse_required_json_payload::<crate::engine::TracePrimerReadsRequest>(&tokens[2], "primer trace request")?);
+            let operation = if tokens.len() == 4 { Operation::CancelPrimerTrace { request } } else { Operation::TracePrimerReads { request } };
+            Ok(ShellCommand::Op { payload: serde_json::to_string(&operation).map_err(|e| e.to_string())? })
+        }
+        "primer-trace-show" => {
+            if tokens.len() < 3 { return Err("Use rna-reads primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]".into()); }
+            let (mut file_id, mut rows, mut expected_result) = (None, None, None);
+            let mut i = 3;
+            while i < tokens.len() {
+                let value = tokens.get(i+1).ok_or("Missing primer-trace-show option value")?;
+                match tokens[i].as_str() {
+                    "--file-id" if file_id.is_none() => file_id = Some(value.clone()),
+                    "--rows" if rows.is_none() => rows = Some(value.parse::<usize>().map_err(|_| "Invalid row count")?),
+                    "--binding" if expected_result.is_none() => expected_result = Some(Box::new(parse_required_json_payload::<crate::engine::RnaPrimerTraceResultBinding>(value, "primer trace result binding")?)),
+                    _ => return Err("Unknown or duplicate primer-trace-show option".into()),
+                }
+                i += 2;
+            }
+            let rows = rows.unwrap_or(0);
+            if rows > 1000 || (rows > 0 && file_id.is_none()) { return Err("Rows require --file-id and must be 0..1000".into()); }
+            Ok(ShellCommand::Op { payload: serde_json::to_string(&Operation::InspectPrimerTrace { path: tokens[2].clone(), expected_result, file_id, rows }).map_err(|e| e.to_string())? })
+        }
         "panel-screen" if tokens.get(2).is_some_and(|s| s == "--request") => {
             if tokens.len() != 4 && !(tokens.len() == 6 && tokens[4] == "--save") {
                 return Err(

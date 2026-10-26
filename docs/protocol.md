@@ -1,5 +1,206 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Primer-Anchored Read Trace (Phase 0/1)
+
+`TracePrimerReads {request}`, `ValidateRnaPrimerPanel {panel, seal=false}`,
+`InspectPrimerTrace {path, expected_result?, file_id?, rows=0}` and
+`CancelPrimerTrace {request}` are a separate file-only contract. They do not
+change `ScreenRnaReadPanel` or the legacy interpretation classes/bytes.
+The policy is experimental and uncalibrated, not an approved assay model.
+
+### Explicit Oligos And Policy
+
+`gentle.rna_primer_panel.v1` contains `schema`, `content_sha256`, `primers[]`
+and `policy`. Compute the semantic SHA-256 as for RNA panels: compact JSON,
+sorted object keys, `content_sha256` empty during hashing, `sha256:` prefix.
+All policy fields participate. Array order remains part of content identity.
+Reordering primers changes that identity, not scientific tie-breaking.
+Validation's explicit `seal=true` preview accepts only an inline draft with an
+empty digest and returns the sealed panel without writing files. This lets an
+inner agent obtain the real engine-computed digest rather than guess one.
+Trace execution and ordinary validation remain strict; file bindings and
+nonempty/mismatched digests cannot be silently re-sealed.
+
+Each primer declares its `primer_id`, `assay_label`, exact canonical uppercase
+ACGT `sequence` (10..64 nt), `components`, `core_orientation`,
+`expected_targets`, `variant`, `source` and optional `source_sha256`.
+Components have `component_id`, `role`, `start`, `end`; they tile the oligo in
+half-open coordinates. Exactly one `target_core` of at least 10 nt must end
+at the oligo's 3' end. Optional preceding `common_handle` components are not
+target evidence. Core-only oligos are allowed: full means the supplied whole
+oligo, not necessarily a handle-bearing library primer. Do not manufacture
+44-mers from a document that records only proposed annealing cores.
+IDs are unique; duplicate full/core sequences, including reverse complements,
+are refused. Shared handles are disclosed and searched once, not attributed
+to all their primers. Each expected target names `locus_id` and optional
+`transcript_feature_id`; unknown bound-panel members fail admission.
+
+`core_orientation` is `sense_5prime` or `antisense_3prime`. It describes
+the declared oligo relative to mature transcript sequence, never chromosome
+strand, gene-name inference or proof of which oligo acted in RT versus PCR.
+
+Default policy: `max_full_edits=2` (hard cap 3),
+`max_core_edits_for_attribution=1` (cap 3), `end_window_nt=256` (64..4096),
+`check_handle_followed_by_poly_t=true`, `poly_t_min_run=12` (4..64),
+`poly_t_max_mismatches=1` (cap 2), `min_payload_nt=40` (probe length..4096),
+`concordance_probe_nt=30` (10..64), `max_probe_edits=2` (cap 3),
+`concordance_seed_nt=8` (2..16, additionally at most
+`(probe_nt-max_probe_edits)/(max_probe_edits+1)`, integer floor). This constraint
+ensures an allowed unit-edit probe alignment has an exact canonical seed;
+changing to very short probes requires explicitly reducing the seed length.
+The poly(T) switch records a sequence observation, not ONT kit authentication
+or a gene-specific priming event. Confirm the actual kit/protocol separately.
+
+### Request And Coordinates
+
+`gentle.rna_primer_trace_request.v1` contains `primer_panel` (either
+`{"kind":"inline","panel":PANEL}` or
+`{"kind":"file","path":PATH,"expected_sha256":SEMANTIC_SHA}`), optional
+`reference_panel:{path,expected_sha256}`, explicit RNA-panel-shaped `files`,
+optional `md5_manifest_path`, fresh `output_dir`, `export_payload_fasta=false`,
+`budgets` and optional fresh `cancel_path`. Input completion declarations,
+sample/barcode/priming identity, duplicate paths and EOF MD5/SHA-256 checks
+reuse the existing RNA intake. No private-file discovery or implicit panel
+construction takes place.
+
+Read coordinates remain original-basecalled, 0-based half-open. A forward
+hit `[s,e)` has leader `[0,s)` and candidate payload `[e,L)`; a reverse-
+complement hit has leader `[e,L)` and candidate payload `[0,s)`. The latter
+payload is reverse-complemented only for comparison/optional export. Choose
+the boundary-adjacent probe **after orienting into primer extension direction**,
+not the first bases of the entire transcript-sense payload after flipping it.
+
+For an exact 34-nt oligo in a 120-nt read, and template core `[100,122)`:
+
+| Declared core | Read hit | Candidate payload | First 30 extension bases compared with |
+| --- | --- | --- | --- |
+| sense | forward `[10,44)` | `[44,120)`, 76 nt | template `[122,152)` |
+| sense | reverse-complement `[76,110)` | `[0,76)`, 76 nt, reverse-complemented | template `[122,152)` |
+| antisense | forward `[10,44)` | `[44,120)`, 76 nt | reverse complement of template `[70,100)` |
+| antisense | reverse-complement `[76,110)` | `[0,76)`, 76 nt, reverse-complemented | reverse complement of template `[70,100)` |
+
+`payload_transcript_sense` reflects the declared core orientation. Intentional
+antisense extension is not an artifact. Approximate spans and core boundaries
+come from alignment traceback, not nominal oligo length. Substitutions,
+insertions and deletions have unit cost. Myers end indices are converted to
+half-open intervals; exact scanning covers the whole read, approximate
+scanning only both end windows. Terminal means `s<=end_window_nt` forward,
+or `L-e<=end_window_nt` reverse-complement.
+
+### Observation And Concordance
+
+Retain all exact occurrences. Collapse overlapping approximate representations
+for the same primer/component/strand by fewer edits, then lowest start/end;
+do not collapse different primers. A full hit suppresses only its contained
+core/handle observations. Primary-anchor order is terminal before internal,
+full before core before handle, fewer edits, lowest start, primer ID, strand,
+end. This is a deterministic presentation policy, not biological adjudication.
+Approximate read matches use one canonical Myers traceback per end, not an
+exhaustive enumeration of all optimal alignments. Reference-core site lookup
+retains overlapping returned intervals instead of applying read-event collapse.
+
+Independent row axes: `anchor_class` (`full_exact`, `full_approximate`,
+`core_exact`, `core_approximate`, `handle_only`, `no_primer`), optional
+`anchor_position` (`terminal|internal`), optional `primer_multiplicity`
+(`single|repeated_same_primer|multiple_primers|conflicting_strands`) and
+`locus_relation` (`not_evaluated|expected_target_contiguous|other_panel_template|
+boundary_divergent|unresolved`). No-anchor position/multiplicity/quality are
+null. A handle has no primer ID or inferred core/payload boundary.
+Position and locus relation describe the primary anchor. Multiplicity/internal
+flags consider all retained primer observations; they do not prove distinct
+physical molecules. Multiple primer IDs carry an explicit primary-only reason;
+secondary anchors are retained, not silently independently target-assigned.
+
+`evidence_tier` is `no_anchor`, `handle_observation`, `primer_observation` or
+`local_template_concordance`; these are not calibrated confidence levels.
+Flags include `internal_primer`, `multiple_primers`,
+`handle_followed_by_poly_t`, `short_payload`, `primer_boundary_divergence`.
+Junction/segment axes are reserved and absent. A second anchor in the proposed
+payload yields `multiple_anchor_payload_not_segmented`; Phase 1 does not cut
+molecules at inferred junctions.
+
+Precompute all expected core sites on bound mature templates. Require both
+the observed core and its immediately adjacent payload probe to match that
+same contiguous site, within separate declared core/probe edit budgets.
+Probe matching is global over a bounded window of length `probe +/- edits`;
+there is no local clipping to an easier subfragment. All qualifying templates
+and sites survive. `concordant_nt` is the exact equal-base prefix before the
+first unequal base, not whole-read alignment coverage. Expected matches set
+`core_and_probe_contiguous=true`.
+Here the search scope is the declared expected targets. A successful expected
+match does not trigger the general other-template search and cannot exclude
+panel competitors. The core itself can be oligo-supplied sequence, not an
+independent biological observation of target origin.
+
+If that fails, reuse the packed-word posting-index primitive over all panel
+templates, built once per request. Exact probe seeds in both directions nominate
+bounded candidate starts with the declared indel drift. Global verification
+then checks the **whole** probe, not a seed alone. These payload-only matches set
+`core_and_probe_contiguous=false` and retain whether the template was an
+expected target. A different panel member can yield `other_panel_template`;
+this does not assert core concordance or off-panel uniqueness.
+`core_3prime_mismatches` is a raw Hamming count against ten adjacent template
+bases, null when unavailable; it is not a probability of mispriming.
+
+Short/ambiguous payloads, missing core sites and insufficient canonical flanks
+remain unresolved with reasons. Boundary divergence is reported only if all
+assessable expected flanks disagree within the first three probe bases by more
+than the declared probe edit allowance, and none passes full concordance.
+It does not determine the mechanism. Missing expected sites are warnings;
+invalid reference hashes/identities are hard errors. No inference that a
+boundary difference proves or excludes a splice mechanism is authorized.
+
+### Artifacts, Budgets And Lifecycle
+
+Publish `gentle.rna_primer_trace_report.v1` at `report.json` only after artifact
+handles close. `artifacts/primer_panel.json`, optional `reference_panel.json`,
+`summary.json`, per-file `reads.tsv` and optional `payload.fasta` retain inputs
+and results. TSV rows contain no read sequences; hit, interval, match, flag
+and reason lists are JSON cells with stable column order. Quality is arithmetic
+mean Phred+33 and fraction below Q10 on the raw candidate interval, null when
+empty. Original FASTQ bytes are never modified. FASTA uses normalized DNA in
+primer direction, never claims resolved segmentation and is off by default.
+
+File receipts hash written TSV/FASTA bytes. Per-file counts and summary
+`by_sample_barcode` retain sample/barcode/priming keys. Each row increments
+its primary class/relation once. Separate per-primer/class/strand counts and
+start/remaining-tail histograms count **all retained full hits**, possibly more
+than reads. Histogram buckets are exact at 0..256, then right-closed doubling
+buckets from 257..512 through 2,000,000. Thus positions 81..83 and tails 25..29
+remain separately inspectable, without baking those observations into scoring.
+
+Hard panel limit 128 primers. Default budgets: read 200,000 nt (cap 2,000,000),
+256 hits/read (cap 1024), 4096 reference sites/candidate intervals/matches (cap 8192),
+2,000,000 reference index postings (cap 4,000,000),
+100,000,000 conservatively charged scan cells per preparation/read (cap
+500,000,000), and 1 GB combined TSV/FASTA bytes (cap 4 GB). Candidate generation
+also fails at the hit cap before deduplication. Approximate template work uses
+4096-nt overlapping windows. Metadata intake is capped at 128 MB; final report
+is capped at 64 MB; at most 128 summary sample/barcode/priming units. No hit is
+silently truncated and no throughput claim follows from these bounds.
+
+Completed, cancelled and control-error outcomes retain only checksum-verified
+completed file units. Unfinished inputs remain named, not numerical zeros.
+Preflight/data/hash/resource/publication failures are hard errors with no final
+report; leftover artifacts without `report.json` are not published evidence.
+Use a fresh output directory; never overwrite. Marker identity binds the exact
+submitted/effective request. Explicit cancellation is not termination proof.
+
+Managed standalone trace execution is a named artifact-only policy with a
+separate `gentle.rna_primer_trace_result_binding.v1` receipt (request, panel,
+reference, report, location and outcome). No live project journal is merged;
+late host cancellation cannot relabel published evidence. Validation/show are
+bounded observation work; cancellation has the control lane. These exceptions
+do not implement or generalize the proposed lifecycle-policy framework.
+Generic MCP `op` still requires confirmation, but these named operations do
+not rewrite its state file. Shared shell, CLI, MCP and agent plans reuse the
+same operations and external-write approval classification. No new GUI.
+
+Show accepts at most 1000 rows and 4 MB of prefix bytes; it validates report
+content/optional result binding and refuses symlinked artifact paths. It does
+not rehash original FASTQ or full TSVs: `artifact_content_verified=false`.
+Content hashes are internal consistency evidence, not authentication.
+
 ## Multi-Locus FASTQ Screening
 
 The native RNA Read Panel workspace now projects preparation, reviewed request

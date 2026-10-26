@@ -14274,6 +14274,8 @@ impl ShellCommand {
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectRnaReadPanel { .. }
+                | Operation::ValidateRnaPrimerPanel { .. }
+                | Operation::InspectPrimerTrace { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
                     request.as_ref(),
@@ -19867,6 +19869,16 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
 
+fn primer_trace_descriptor(id: &str) -> Value {
+    let writes = matches!(id, "TracePrimerReads" | "CancelPrimerTrace" | "rna-reads primer-trace");
+    json!({"id":id,"kind":"operation","mutating":if writes {"external"} else {"false"},
+        "requires_confirmation":writes,"args":[{"name":"REQUEST_OR_PATH","required":true,
+        "detail":"primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]; primer-trace REQUEST_JSON_OR_@FILE [--cancel]; primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]. --seal is read-only, inline draft with empty digest only. Explicit reviewed oligos; file panels require semantic SHA-256; no input discovery."}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},
+        "description":"Separate, bounded primer observation and contiguous local core/payload trace. All template alternatives retained; handles and seed matches alone never identify targets. No trimming, whole-read/isoform or mechanism inference. Payload FASTA is opt-in. Writes/cancellation require approval; show is bounded and does not reverify original FASTQ or sidecar bytes.",
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
 fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -21937,6 +21949,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tss_workspace_capability_descriptor("InspectTssInventory", false, false),
         sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
         rna_panel_descriptor("BuildRnaReadPanel"),
+        primer_trace_descriptor("ValidateRnaPrimerPanel"),
+        primer_trace_descriptor("TracePrimerReads"),
+        primer_trace_descriptor("InspectPrimerTrace"),
+        primer_trace_descriptor("CancelPrimerTrace"),
+        primer_trace_descriptor("rna-reads primer-panel-validate"),
+        primer_trace_descriptor("rna-reads primer-trace"),
+        primer_trace_descriptor("rna-reads primer-trace-show"),
         rna_panel_descriptor("ScreenRnaReadPanel"),
         rna_panel_descriptor("rna-reads panel-build"),
         rna_panel_descriptor("rna-reads panel-screen"),
@@ -66314,6 +66333,22 @@ fn execute_op_command(
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let op = resolve_operation_payload(payload)?;
+    // These file-only observation/control routes never append a project journal.
+    match &op {
+        Operation::ValidateRnaPrimerPanel { panel, seal } => {
+            let panel = GentleEngine::validate_rna_primer_panel(panel, *seal).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"rna_primer_panel":panel}}) });
+        }
+        Operation::InspectPrimerTrace { path, expected_result, file_id, rows } => {
+            let inspection = GentleEngine::inspect_primer_trace(path, expected_result.as_deref(), file_id.as_deref(), *rows).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"rna_primer_trace_inspection":inspection}}) });
+        }
+        Operation::CancelPrimerTrace { request } => {
+            let message = GentleEngine::cancel_primer_trace(request).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult { state_changed:false, output:json!({"cancel_requested":true,"termination_confirmed":false,"message":message}) });
+        }
+        _ => {}
+    }
     // Observation/control must not append history and invalidate the detached
     // screen being inspected or cancelled. The engine still owns all behavior.
     if let Operation::CancelRnaReadPanel { request } = &op {
@@ -66374,6 +66409,7 @@ fn execute_op_command(
     if matches!(
         &op,
         Operation::ImportGelImage { .. }
+            | Operation::TracePrimerReads { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
             | Operation::ExportRnaReadPanelSummary { .. }
@@ -66404,6 +66440,7 @@ fn execute_op_command(
         let result = if matches!(
             &op,
             Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::TracePrimerReads { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::PlanDnaSequenceDesign { .. }

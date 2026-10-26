@@ -10,6 +10,39 @@ need to start with raw operation JSON.
 
 ## Start Here
 
+For a separate primer carry-through investigation, use the experimental
+[primer-trace contract](protocol.md#primer-anchored-read-trace-phase-01) and
+[tutorial 10.04 addendum](tutorial/10-04_targeted_nanopore_fastq_panel.md#primer-trace-addendum-synthetic-only).
+These commands work through `gentle_cli shell` (and the direct command router):
+
+```text
+rna-reads primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]
+rna-reads primer-trace REQUEST_JSON_OR_@FILE
+rna-reads primer-trace REQUEST_JSON_OR_@FILE --cancel
+rna-reads primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]
+```
+
+Validation takes an inline/file **binding**, not a guessed primer name. File
+bindings require the expected semantic SHA-256. An explicit `--seal` preview returns a digest
+for an inline draft with an empty digest, without writing files or accepting a
+mismatched pre-existing hash. It is the shared inner-agent route for computing
+panel identity, not permission to invent oligos. Trace requests select exact
+completed FASTQ files/checksums, reviewed oligos/policy and a fresh output
+directory; optionally bind a saved RNA reference panel by digest. No library
+files or kit identities are discovered automatically. Payload FASTA is off by
+default. Show is metadata plus an explicitly unverified bounded TSV prefix,
+not a revalidation of original reads or a second analysis.
+
+The inner agent can explain the report and draft these same shell commands.
+It must obtain explicit approval for trace artifact writes and cancellation,
+even if a suggested plan labels itself read-only. Generic MCP `op` takes
+`TracePrimerReads`, `ValidateRnaPrimerPanel`, `InspectPrimerTrace` or
+`CancelPrimerTrace` with the same typed payloads and retains its confirmation
+gate. These named routes preserve the MCP project file. No GUI is added and
+the existing RNA-panel screen/interpretation remains unchanged. Primer
+carry-through, local template concordance and unresolved evidence are distinct;
+none establishes target enrichment, an exclusive isoform or a mechanism.
+
 For targeted multi-gene cDNA FASTQ, use [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md):
 `rna-reads panel-build --list-sources [GENE_SET_ID]` discovers loaded groups and stored gene-set bindings without writes,
 using the same inventory as the native editor. Review blank provenance; do not

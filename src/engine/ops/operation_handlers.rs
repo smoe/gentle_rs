@@ -40543,6 +40543,9 @@ impl GentleEngine {
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
+            rna_primer_panel: None,
+            rna_primer_trace: None,
+            rna_primer_trace_inspection: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,
             rna_read_panel_inspection: None,
@@ -52186,6 +52189,22 @@ impl GentleEngine {
                     }
                     result.messages.push(format!("Synthetic motif-removal preview: {:?}; {} candidate(s) evaluated; source unchanged", report.status, report.evaluated_candidates));
                     result.dna_sequence_design = Some(Box::new(report));
+                }
+                Operation::ValidateRnaPrimerPanel { panel, seal } => {
+                    result.rna_primer_panel = Some(Box::new(Self::validate_rna_primer_panel(&panel, seal)?));
+                    result.messages.push("Validated explicit primer definitions; assay and kit identity not approved".into());
+                }
+                Operation::TracePrimerReads { request } => {
+                    let report = self.trace_primer_reads(*request, on_progress)?;
+                    result.messages.push(format!("Primer trace {}; {} checksum-verified file units; local observations, not transcript assignment", report.status, report.files_completed.len()));
+                    if let Some(error) = &report.control_error { result.warnings.push(format!("{}: {}", error.code, error.message)); }
+                    result.rna_primer_trace = Some(Box::new(report));
+                }
+                Operation::InspectPrimerTrace { path, expected_result, file_id, rows } => {
+                    result.rna_primer_trace_inspection = Some(Box::new(Self::inspect_primer_trace(&path, expected_result.as_deref(), file_id.as_deref(), rows)?));
+                }
+                Operation::CancelPrimerTrace { request } => {
+                    result.messages.push(Self::cancel_primer_trace(&request)?);
                 }
                 Operation::BuildRnaReadPanel { request } => {
                     if request.register_in_project.unwrap_or(false) {

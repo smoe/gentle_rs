@@ -12485,6 +12485,9 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                rna_primer_panel: None,
+                rna_primer_trace: None,
+                rna_primer_trace_inspection: None,
                 genome_edit_intent: None,
                 tube_profiles: None,
                 rna_read_panel: None,

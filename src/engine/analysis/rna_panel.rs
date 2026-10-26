@@ -13,6 +13,8 @@ mod control;
 #[cfg(test)]
 #[path = "rna_panel/error_tests.rs"]
 mod error_tests;
+#[path = "rna_panel/primer_trace.rs"]
+mod primer_trace;
 #[path = "rna_panel/input.rs"]
 mod input;
 #[cfg(test)]

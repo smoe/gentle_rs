@@ -2687,6 +2687,17 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::ValidateRnaPrimerPanel { panel, .. } => {
+                if let RnaPrimerPanelBinding::File { path, .. } = panel.as_ref() { Self::push_unique_token(&mut summary.file_paths, path); }
+            }
+            Operation::TracePrimerReads { request } | Operation::CancelPrimerTrace { request } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.output_dir);
+                for file in &request.files { Self::push_unique_token(&mut summary.file_paths, &file.path); }
+                if let RnaPrimerPanelBinding::File { path, .. } = &request.primer_panel { Self::push_unique_token(&mut summary.file_paths, path); }
+                if let Some(panel) = &request.reference_panel { Self::push_unique_token(&mut summary.file_paths, &panel.path); }
+                if let Some(path) = &request.cancel_path { Self::push_unique_token(&mut summary.file_paths, path); }
+            }
+            Operation::InspectPrimerTrace { path, .. } => { Self::push_unique_token(&mut summary.file_paths, path); }
             Operation::BuildRnaReadPanel { request } => {
                 for source in &request.sources {
                     Self::push_unique_token(&mut summary.sequence_ids, &source.seq_id);

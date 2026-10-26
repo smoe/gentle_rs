@@ -14515,6 +14515,9 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            rna_primer_panel: None,
+            rna_primer_trace: None,
+            rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,
             rna_read_panel: None,
@@ -14698,6 +14701,9 @@ impl GentleEngine {
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
         let mut result = OpResult {
+            rna_primer_panel: None,
+            rna_primer_trace: None,
+            rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,
             rna_read_panel: None,

@@ -1,6 +1,27 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["ValidateRnaPrimerPanel"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-panel-validate",
+         "summary": "Validate explicitly supplied, digest-bound primer components and uncalibrated policies without writing artifacts. --seal returns a canonical digest for an inline draft with an empty digest, without inventing oligos or reblessing changed bindings.",
+         "usage": "rna-reads primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]"
+      },
+      {
+         "aliases": [], "engine_operations": ["TracePrimerReads", "CancelPrimerTrace"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-trace",
+         "summary": "Trace exact/terminal approximate library primers in explicit FASTQ inputs and check local contiguous core/payload evidence against an optional bound RNA panel. Writes require approval; --cancel requests exact-request marker cancellation, not proof of termination. No trimming, isoform assignment or mechanism claim.",
+         "usage": "rna-reads primer-trace REQUEST_JSON_OR_@FILE [--cancel]"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectPrimerTrace"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-trace-show",
+         "summary": "Inspect a content-bound primer trace report and optional bounded, unverified read-table prefix. Does not reread private FASTQ or reverify sidecar bytes.",
+         "usage": "rna-reads primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]"
+      },
+      {
          "aliases": [], "engine_operations": ["PrepareRnaReadPanelDemo"],
          "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "rna-reads panel-demo",

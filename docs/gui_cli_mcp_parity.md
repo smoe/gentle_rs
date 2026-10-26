@@ -19,17 +19,20 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 65 | 773 | 0 |
-| gentle_cli | 494 | 368 | 0 |
-| MCP | 190 | 536 | 49 |
-| JS | 78 | 603 | 69 |
-| Lua | 77 | 604 | 69 |
+| GUI | 65 | 780 | 0 |
+| gentle_cli | 497 | 372 | 0 |
+| MCP | 193 | 540 | 49 |
+| JS | 78 | 610 | 69 |
+| Lua | 77 | 611 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
 
 | Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |
 |---|---|---|---|---|---|---|---|---|
+| rna-reads primer-panel-validate | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads primer-trace | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads primer-trace-show | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads panel-demo | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads panel-show | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads panel-cancel | glossary-command | prominent | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -635,6 +638,10 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |
 |---|---|---|---|---|---|---|---|---|
+| ValidateRnaPrimerPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| TracePrimerReads | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| InspectPrimerTrace | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| CancelPrimerTrace | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | BuildRnaReadPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ScreenRnaReadPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PrepareRnaReadPanelDemo | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
