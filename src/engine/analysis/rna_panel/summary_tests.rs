@@ -393,6 +393,9 @@ fn rna_panel_summary_legacy_json_keeps_digest_and_never_acquires_new_claims() {
     old.as_object_mut()
         .unwrap()
         .remove("shared_transcript_sequences");
+    old.as_object_mut()
+        .unwrap()
+        .remove("source_overlap_assessment");
     for name in ["sample_coverage", "class_member_counts_complete"] {
         old.as_object_mut().unwrap().remove(name);
     }

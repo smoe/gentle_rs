@@ -219,6 +219,22 @@ negative. Synthetic substitution/indel tests are software characterizations,
 not calibrated Nanopore sensitivity. Zero-length FASTQ remains a hard error;
 any future different intake class requires a separate owner decision.
 
+RNA source-overlap correction, 2026-10-26: new panels explicitly bind
+`source_overlap_assessment.rule=genomic_exons_v1`. Decide coordinate duplication
+from selected exons mapped into the same declared assembly/chromosome and the
+composition of record-anchor and template strands, not record orientation or
+flanking/intronic extents. Same-strand exonic overlap remains a conservative
+refusal. Opposite-strand overlap is retained annotated antisense evidence,
+never read orientation, a gene-identity verdict or a reason to collapse counts.
+Unknown/unmappable orientation or geometry retains disclosed conservative
+whole-record admission; invalid bounds cannot prove disjointness. Same loaded
+record, equal present forward-DNA hashes and repeated declared assembly/gene
+identity remain independent safeguards. Historical absent assessments retain
+the exact former rule and hash. Rebuilding/upgrading evidence is explicit and
+changes panel identity. Keep diagnostics engine-owned in panels and summary
+JSON for every adapter; summary inspection does not authenticate or freshly
+re-map the source geometry. No nomination, budget or intake-policy change follows.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

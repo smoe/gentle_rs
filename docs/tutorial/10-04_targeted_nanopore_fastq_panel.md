@@ -230,6 +230,22 @@ not the older single-locus RNA-read Mapping workspace.
    Older panels may omit this hash: their cross-source DNA-duplicate coverage
    is unknown. Rebuild explicitly from reviewed loaded sources to add the check;
    opening an old file does not silently update its evidence or hash.
+   New panels record `source_overlap_assessment.rule: genomic_exons_v1`.
+   GENtle compares **selected transcript exons and their genomic strands**, not
+   the orientation in which you imported a record or its generous flanking DNA.
+   Two views of overlapping exons on the same genomic strand remain potential
+   duplicates, even if one record was reverse-complemented. Neighbouring genes
+   with disjoint exons are not duplicates merely because their extracts overlap.
+   An overlapping **antisense gene is a different annotated gene**, not another
+   copy to discard automatically: review `antisense_overlapping_loci` inside the
+   assessment for locus/member IDs and exact genomic overlaps. With unknown
+   library orientation, reads may co-nominate both; the annotation does not
+   determine a read's origin. Unknown record orientation or unmappable geometry
+   instead gives a conservative refusal with reasons in `conservative_source_pairs`.
+   The same-record, DNA-hash and declared assembly/gene safeguards still apply.
+   Historical panels without the assessment keep their previous whole-record
+   rule and digest. Rebuild explicitly to use the new rule, review the new hash
+   and use it in a fresh screen request; do not combine different-panel reports.
    Also review `shared_transcript_sequences` in **Inspect** or `panel-show`.
    It lists exact mature sequences shared by selected members of different
    loci, even when their source DNA has different flanks or extraction extents.
@@ -701,6 +717,13 @@ remains ambiguous. A historical panel without these diagnostics gives
 `status: unknown`, no group citations and a null flag, not false. Older
 summaries lacking the new fields retain their original digests and table
 receipts; missing annotations must not be reconstructed as negative evidence.
+
+Summary `report.json` also retains the panel's `source_overlap_assessment`.
+Open it in **Inspect** or with `panel-show` to review annotated antisense
+overlaps without inventing exclusive transcript counts. This is retained source
+geometry, not a fresh genome check, proof of read orientation or a causal
+explanation of co-nomination. Existing TSV count columns and meanings stay
+unchanged. Historical missing assessments remain unrecorded.
 
 For example, **hypothetical, not a demo or biological result**: 12 reads support
 only A, 7 only B, 30 co-nominate A and B through partial seeds and 5 nominate

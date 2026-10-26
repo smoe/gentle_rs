@@ -49,6 +49,29 @@
   skip; scoped rustfmt, documentation/maturity freshness and whitespace pass.
   `Cargo.lock` is unchanged. These checks are not Rust/native acceptance.
 
+## 2026-10-26 - Bind RNA Source Overlap To Genomic Exons And Transcript Strands
+
+- New panels bind an explicit exon-based admission rule, composing record-anchor
+  orientation and template strand rather than comparing extraction directions
+  or whole-record flanks. Same-strand exon overlap remains a refusal; annotated
+  antisense overlap becomes a digest-bound diagnostic. Unknown/unmappable
+  geometry retains a disclosed conservative fallback. Existing source-record,
+  forward-DNA and declared-gene checks stay independent and unchanged.
+- Retain the assessment in summary JSON, shared inspection/capability discovery
+  and thin native projections. Update tutorial 10.04 with coordinate/orientation,
+  antisense and explicit-rebuild guidance. Historical absent fields retain the
+  former rule and exact hashes; no automatic upgrade, nomination, count, budget
+  or intake-policy change is introduced.
+- Author eleven inline synthetic Rust regressions for reflected extracts,
+  antisense invariance, disjoint/adjacent exons, fallback/identity checks,
+  historical wire compatibility, honestly rehashed tampering and summary access
+  with/without verified units. Rust/native/CI verification remains with Glen/CI;
+  no private sequencing data, push or paused-goal resumption.
+- Offline verification: 115 Python tutorial/source/LF-CRLF checkout/maturity
+  checks pass, plus scoped rustfmt, documentation status, maturity freshness
+  and whitespace. Session-close has four OK, two expected warnings and no
+  failures. No Rust/native or release-acceptance claim follows.
+
 ## 2026-10-26 - Observe RNA Work And Preserve Summary Sequence Evidence
 
 - Add optional deterministic index and verified-file work profiles without

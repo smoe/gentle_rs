@@ -298,9 +298,37 @@ panel/report/row payloads are the same; no adapter-local classification is added
   selected transcript and annotated transcript counts are separate. Potential
   source overlaps are disclosed; screening refuses them pending curation.
   Admission is conservative: a repeated loaded sequence, repeated declared
-  assembly/gene ID or same-strand overlapping genome anchors is flagged. Use
+  assembly/gene ID or equal present forward-DNA hashes is flagged. Use
   independently extracted records for disjoint genes on one larger sequence;
   no source reconciliation or biological consensus is inferred.
+  New panels additionally bind optional `source_overlap_assessment` with
+  `rule: genomic_exons_v1`. Map each selected template's record-local half-open
+  `source_exons` through its anchor into 1-based inclusive genomic intervals;
+  a minus anchor reflects the coordinates. Compose anchor orientation with
+  template strand to obtain the annotated genomic transcript strand. Only
+  exact declared assembly/chromosome matches are compared; no alias/liftover
+  inference is added. Same-strand exonic overlap flags a potential duplicate,
+  independent of extraction orientation. Shared record flanks or introns alone
+  do not flag otherwise disjoint selected exons.
+  Opposite-strand exonic overlap is retained as
+  `source_overlap_assessment.antisense_overlapping_loci`, not a refusal. Each
+  record binds sorted locus IDs, assembly/chromosome, genomic strands, contributing
+  member IDs on each side and disjoint intersections of their exon unions.
+  Member lists indicate some overlap, not that every member overlaps every
+  listed interval. This describes annotation, not library/read orientation,
+  biological identity or an isoform assignment. The three independent identity
+  checks above still apply even to an antisense pair.
+  Unknown anchor orientation or unmappable exons fall back to whole-record
+  overlap without an orientation test, with reasons in `conservative_source_pairs`.
+  Invalid bounds cannot establish disjointness and are conservatively flagged
+  within the same assembly/chromosome. Missing anchors establish no coordinate
+  relation; the independent source-identity checks still apply.
+  The entire new assessment is recomputed during panel validation, including
+  after an honestly recomputed content hash. Historical absence is omitted and
+  retains the previous record-extent/equal-anchor-strand rule and exact hashes;
+  it is never silently upgraded. Explicit rebuild/extension records the new
+  rule and changes panel identity; old and new reports are not pooled across
+  that changed panel digest.
   New panels also record optional `shared_transcript_sequences`: exact selected
   mature-sequence hashes with sorted `locus_ids` and `member_ids` spanning more
   than one locus. This is a digest-bound diagnostic, not a source-overlap rule.
@@ -499,6 +527,14 @@ and published as `report.json` after closed/synced LF TSV files under `artifacts
   panel evidence yields `status=unknown`, empty citations and a null flag,
   not false. Earlier summaries omit both additions and keep their old digests
   and table receipts. Inspection/verification checks new flags for consistency.
+
+New summary JSON also retains the validated panel's optional
+`source_overlap_assessment`, including antisense/fallback diagnostics. Native
+inspection and shared `panel-show` expose the same engine-owned record;
+summary TSV counts do not change. Summary inspection validates the portable
+structure, not a fresh genome/exon comparison or source authentication. Old
+summaries omit it and keep their content hashes. A cancelled run with zero
+verified units may still carry panel geometry without inventing numerical rows.
 
 The JSON retains these rows, exact source report/file digests, the common
 panel/policy, table hashes and nonclaims. Ordering is deterministic by report

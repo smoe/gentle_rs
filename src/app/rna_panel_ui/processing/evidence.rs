@@ -4,8 +4,40 @@ use super::*;
 use crate::engine::{
     ExportRnaReadPanelSummaryRequest, RNA_PANEL_SUMMARY_REQUEST_SCHEMA,
     RnaReadPanelArtifactVerification, RnaReadPanelInspection, RnaReadPanelResultBinding,
-    RnaReadPanelScreenReport, RnaReadPanelSummary,
+    RnaReadPanelScreenReport, RnaReadPanelSourceOverlapAssessment, RnaReadPanelSummary,
 };
+
+fn source_overlap_view(
+    ui: &mut egui::Ui,
+    assessment: Option<&RnaReadPanelSourceOverlapAssessment>,
+) {
+    if let Some(assessment) = assessment {
+        ui.label(format!("Source-overlap rule: {:?}", assessment.rule));
+        table(
+            ui,
+            "rna_antisense_overlaps",
+            assessment.antisense_overlapping_loci.len(),
+            |ui, i| {
+                let record = &assessment.antisense_overlapping_loci[i];
+                ui.label(format!("Annotated antisense overlap: {:?} | {} {} | strands {:?} | members {:?} / {:?} | genomic intervals {:?}", record.locus_ids, record.assembly, record.chromosome, record.genomic_strands, record.member_ids_a, record.member_ids_b, record.overlapping_intervals_1based));
+            },
+        );
+        table(
+            ui,
+            "rna_overlap_fallbacks",
+            assessment.conservative_source_pairs.len(),
+            |ui, i| {
+                let record = &assessment.conservative_source_pairs[i];
+                ui.label(format!(
+                    "Conservative source overlap: {:?} | {:?}",
+                    record.locus_ids, record.reasons
+                ));
+            },
+        );
+    } else {
+        ui.label("Source-overlap rule: historical record-extent check; no exon-based assessment recorded.");
+    }
+}
 
 #[derive(Default, serde::Deserialize)]
 struct Content {
@@ -318,6 +350,7 @@ impl GENtleApp {
             if let Some(panel) = &loaded.content.rna_read_panel {
                 ui.heading(format!("{} genes / {} loci / {} selected of {} transcripts", panel.gene_count, panel.locus_count, panel.selected_transcript_count, panel.annotated_transcript_count));
                 if !panel.overlapping_source_pairs.is_empty() { ui.label(format!("Overlapping source pairs: {:?}", panel.overlapping_source_pairs)); }
+                source_overlap_view(ui, panel.source_overlap_assessment.as_ref());
                 if let Some(shared) = &panel.shared_transcript_sequences {
                     ui.label("Shared mature sequences: review source provenance; sequence equality does not establish one gene.");
                     table(ui, "rna_shared_transcript_sequences", shared.len(), |ui, i| { let group = &shared[i]; ui.label(format!("{} | loci {:?} | members {:?}", group.sequence_sha256, group.locus_ids, group.member_ids)); });
@@ -364,6 +397,7 @@ impl GENtleApp {
                 for nonclaim in &report.nonclaims { ui.label(nonclaim); }
             }
             if let Some(summary) = &loaded.content.rna_read_panel_summary {
+                source_overlap_view(ui, summary.source_overlap_assessment.as_ref());
                 let outcome = ui.heading(format!("Summary coverage: {}", summary.completeness));
                 capture_status(&outcome, "rna_panel.inspect.outcome", Some(&summary.content_sha256), &summary.completeness);
                 ui.label(format!("Panel: {}", summary.panel_sha256));

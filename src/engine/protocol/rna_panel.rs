@@ -142,6 +142,55 @@ pub struct RnaReadPanelSharedTranscriptSequence {
     pub member_ids: Vec<String>,
 }
 
+/// Explicit admission semantics; absence on old panels retains the legacy record-extent rule.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadPanelSourceOverlapRule {
+    GenomicExonsV1,
+}
+
+/// Annotated opposite-strand exonic overlap, not read orientation or biological identity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelAntisenseOverlap {
+    pub locus_ids: (String, String),
+    pub assembly: String,
+    pub chromosome: String,
+    pub genomic_strands: (char, char),
+    /// Members with at least one exon overlapping the opposite group's exon union.
+    pub member_ids_a: Vec<String>,
+    pub member_ids_b: Vec<String>,
+    /// Sorted disjoint intersections of the two exon unions, 1-based inclusive.
+    pub overlapping_intervals_1based: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadPanelOverlapFallbackReason {
+    InvalidAnchorGeometry,
+    UnknownAnchorStrand,
+    UnmappableExons,
+}
+
+/// Whole-record overlap retained conservatively because exonic mapping was unavailable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelConservativeOverlap {
+    pub locus_ids: (String, String),
+    pub assembly: String,
+    pub chromosome: String,
+    pub reasons: Vec<RnaReadPanelOverlapFallbackReason>,
+}
+
+/// Recomputed from panel anchors/templates, retained in summaries without new source probes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSourceOverlapAssessment {
+    pub rule: RnaReadPanelSourceOverlapRule,
+    pub antisense_overlapping_loci: Vec<RnaReadPanelAntisenseOverlap>,
+    pub conservative_source_pairs: Vec<RnaReadPanelConservativeOverlap>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 /// Independent source namespaces and mature templates, bound by a canonical content digest.
@@ -156,6 +205,8 @@ pub struct RnaReadPanel {
     pub annotated_transcript_count: usize,
     /// Potential duplicate source views are disclosed, never silently counted as independent loci.
     pub overlapping_source_pairs: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_overlap_assessment: Option<RnaReadPanelSourceOverlapAssessment>,
     /// Selected-template diagnostic only; absent on historical panels, never an identity verdict.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared_transcript_sequences: Option<Vec<RnaReadPanelSharedTranscriptSequence>>,
@@ -541,6 +592,9 @@ pub struct RnaReadPanelSummary {
     /// Copied from the validated source panel, never reconstructed for historical absence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared_transcript_sequences: Option<Vec<RnaReadPanelSharedTranscriptSequence>>,
+    /// Source-panel assessment, not a fresh genomic or library-orientation analysis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_overlap_assessment: Option<RnaReadPanelSourceOverlapAssessment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sample_coverage: Option<Vec<RnaReadPanelSampleCoverage>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

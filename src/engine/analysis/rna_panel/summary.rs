@@ -76,6 +76,7 @@ fn sequence_sharing(
 }
 
 pub(super) fn validate_sequence_sharing(summary: &RnaReadPanelSummary) -> Result<(), EngineError> {
+    overlap::validate_summary(summary)?;
     let member_loci = summary
         .transcripts
         .iter()
@@ -594,6 +595,7 @@ impl GentleEngine {
             ambiguous_sets: None,
             co_nomination_sets: Some(co_nomination_sets),
             shared_transcript_sequences: reference.shared_transcript_sequences.clone(),
+            source_overlap_assessment: reference.source_overlap_assessment.clone(),
             sample_coverage: Some(coverage.into_values().collect()), class_member_counts_complete: Some(class_member_counts_complete),
             original_inputs_reverified: false, nomination_sidecars_reverified: false, artifacts: vec![], nonclaims: vec![
                 "Counts are supporting reads, not original molecule copy numbers, expression or exclusive isoform identification; no alignment confirmation is added.".into(),
@@ -604,6 +606,7 @@ impl GentleEngine {
                 "Only stored report/panel content bindings and count consistency are checked. Original FASTQ and nomination sidecars are not reopened or reverified; content hashes are not authenticated provenance.".into(),
                 "Duplicate compressed-input hashes are refused. Distinct files can still contain duplicate reads; no read-level or PCR/UMI deduplication is performed.".into(),
                 "Sequence-sharing flags compare selected mature sequences, not gene identity or the cause of read ambiguity. All-members-sharing is not whole-read compatibility or an exclusive assignment; historical panel evidence remains unknown.".into(),
+                "Retained antisense overlaps describe annotated genomic strands, not a read's origin or library orientation. Source geometry is not freshly reverified by summary inspection.".into(),
             ],
         };
         let parent = output
