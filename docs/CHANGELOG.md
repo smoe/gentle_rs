@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-26 - Consolidate Glen's Payload Verification Handoff
+
+- Combine preparation, interpretation, mask/exclusion repairs and the CLI-doc
+  repair into one incremental run-once checklist after the owner's normal push.
+  Preserve existing linked anchors, completed source-bound evidence and separate
+  native/live-agent/scientific gates; do not restart completed audit campaigns.
+- Name the remaining Rust/freshness groups, previously skipped real-CLI class,
+  synthetic tutorial and approved shell/MCP replays, platform/fault boundaries
+  and manifest-backed return through Steffen. Documentation only; no new
+  acceptance result, local Rust execution, push or dispatch.
+
 ## 2026-10-26 - Spell Out Primer Payload CLI Routes
 
 - Replace the abbreviated `primer-payload-prepare|summarize|show|cancel` list

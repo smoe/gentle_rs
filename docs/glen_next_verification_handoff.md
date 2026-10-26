@@ -1,146 +1,167 @@
 # Glen: Next Verification And Return
 
-## CLI Documentation Coverage, 2026-10-26
-
-The reported library run had 4535 passes, one failure and 16 ignored tests;
-its tested source/platform were not supplied. The failure was documentation-only:
-the payload-route abbreviation omitted three full glossary paths. The manual
-now lists all four usages explicitly; the Rust coverage check is unchanged.
-On the next normally integrated source, rerun only this focused guard alongside
-the separately open checks below:
-
-```sh
-cargo test --locked --lib -j1 cli_docs_mention_all_cli_glossary_paths -- --test-threads=1
-```
-
-The fast Python equivalent checks every CLI glossary path under LF/CRLF, but
-does not replace the external Rust result. No local Rust execution or push.
-
-
-## Primer Payload Exclusion Bindings, 2026-10-26
-
-Continue with the next normal integrated source, not an interim freeze. The
-reader now derives each selected anchor's query/exclusion from its bound source
-row and captured policy; an anchor-ID set alone was insufficient. Shared
-selection/identity/reason helpers preserve the existing hash encoding. Record
-budgets also apply across units. Valid exclusions, no-anchor rows and reordered
-lists must still work. No new approval or scientific verdict follows.
-
-Nine additional Rust regressions are authored; execute the existing full
-`primer_payload_` filter, or focus the new boundary first:
-
-```sh
-cargo test --locked --lib -j1 primer_payload_rehashed_ -- --test-threads=1
-cargo test --locked --lib -j1 primer_payload_bound_ -- --test-threads=1
-cargo test --locked --lib -j1 primer_payload_anchor_identity_ -- --test-threads=1
-```
-
-Require genuine acceptance of eligible, masked, short, wholly unassessed and
-unattributed source cases before testing refusals. Rehash the deliberately
-tampered query manifest/FASTA, not the original Phase 1 evidence: hiding an
-eligible anchor, changing policy without recomputing observations, swapping
-exclusion IDs across repeated read names, wrong primer groups/reasons and
-missing/duplicate/foreign observations must fail. Out-of-range anchors return
-errors, not panic. Two one-record units must exceed an import record cap of one.
-
-The public summary-import regression must first succeed on the genuine fixture,
-then refuse the rehashed false exclusion without creating a final output or
-changing any source bytes. The opt-in actual-CLI LF/CRLF replay below now includes
-the same refusal through the shared command. It must execute, not skip. Capture
-Windows file/path handling and source/binary hashes separately. Local Python
-pins/source checks are not Rust, CLI, native or scientific acceptance.
-
-
-## Primer Payload Mask Geometry, 2026-10-26
-
-Incremental source repair after the initial Phase 2 commits: preparation and
-manifest verification now share clipped mask geometry. An eager `then_some`
-could previously evaluate an underflow for a hit wholly outside the payload;
-the guarded expected fraction also used an eager division expression. Neither
-finding is a locally executed Rust failure; both follow directly from source.
-
-Five additional Rust tests are authored. On the next normally pushed integrated
-source, run the existing `primer_payload_` filter below, especially:
-
-```sh
-cargo test --locked --lib -j1 primer_payload_masks_ -- --test-threads=1
-cargo test --locked --lib -j1 primer_payload_masked_queries_round_trip -- --test-threads=1
-cargo test --locked --lib -j1 primer_payload_fraction_zero -- --test-threads=1
-```
-
-Require 12,168 abstract interval/orientation cases, structured refusals rather
-than panic/wrap, empty/full masks, coordinate extremes and four all-anchor query
-copies across two opposite read orientations. Their normalized masks/sequence
-hashes must agree, and a bound import must work after original FASTQ removal
-without changing the earlier trace. The original all-anchor regression remains.
-Run with ordinary overflow checks; no profile-specific workaround. Python's
-independent oracle/source check is not a Rust verdict. No new aligner, private
-read, native GUI, model, package or scientific acceptance is authorized.
-
-
 ## Primer Payload Phase 2, 2026-10-26
 
-New incremental scope only: generic primer-free query preparation, external PAF
-interpretation, partner profiles and separate edge clusters. Use the next normal
-integrated source after Steffen's push; no new interim freeze/bundle cycle.
-Do not repeat completed gel/labware/old six-gate audits merely for this slice.
-Existing independent open gates below remain separately attributed.
+**Forward to Glen after Steffen's normal push.** Verify the integrated source
+containing query preparation `72885fbf`, interpretation `07389910`, mask repair
+`e622f12c`, source/exclusion binding repair `f1a60ae4` and CLI documentation
+repair `320d5803`. Record the fetched full SHA once; no interim freeze, recurring
+bundle or synchronization campaign. These are generic, input-driven contracts,
+not a special case for the current panel. Existing open gates below stay separate.
+
+**Do not repeat completed work.** Retain historical gel/labware/six-gate and
+earlier tutorial acceptance at their actual source. The exclusion continuation
+already passed 130 Python/source checks with one actual-CLI skip; the CLI-doc
+repair passed 16 with one actual-CLI skip. Those are not Rust/runtime passes.
+Use existing same-source CI logs for any command below that already passed with
+the required feature/platform scope; run only the missing groups, not overlapping
+narrow filters as well as the full `primer_payload_` filter.
 
 Read [the contract/claim matrix](primer_payload_evidence.md),
 [implementation boundary](primer_payload_partner_phase2_plan_20261026.md#implementation-boundary-2026-10-26)
-and the Phase 2 addendum to tutorial 10.04. Work on invented fixtures only;
-no authorization for private FASTQ, downloads, aligners or provider/model contact.
-Use an explicitly isolated Cargo target, not an inherited shared target.
+and [tutorial 10.04's synthetic Phase 2 recipe](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only).
+Use a clean isolated checkout and explicitly run-owned `CARGO_TARGET_DIR`, never
+an inherited shared target. Use invented fixtures only. No private FASTQ,
+downloads, aligner execution, provider/model calls, packages or publication.
+
+### Rust And Freshness: Run Missing Groups Once
 
 ```sh
 cargo check --locked --all-features --tests -j1
 cargo check --locked --no-default-features --lib --bin gentle_cli --bin gentle_examples_docs -j1
 cargo test --locked --lib -j1 primer_payload_ -- --test-threads=1
 cargo test --locked --lib -j1 primer_trace_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_ -- --test-threads=1
 cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+cargo test --locked --lib -j1 cli_docs_mention_all_cli_glossary_paths -- --test-threads=1
 cargo test --locked --test capability_registry_parity --test parity_matrix_freshness -j1
 ```
 
-Then execute the canonical tutorial/catalog/parity generators and freshness
-checks using same-source binaries. The eight parity rows/counts were projected
-from registry changes without running the Rust generator locally; source-table
-counts are not a byte-freshness verdict. The initial 20 Rust regressions and the
-follow-ups above are authored, not locally compiled/run. Local source/Python
-checks do not close acceptance.
+The payload filter includes the initial 20 authored regressions plus five mask
+and nine exclusion/budget regressions, including MCP confirmation refusal,
+named lifecycle and agent-outcome tests. Require nonzero selected counts and
+retain test names/results. Rust compilation/execution remains pending for this
+payload slice; the owner-reported 4535/1/16 run has no supplied source/platform.
 
-Replay [the Phase 2 synthetic recipe](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only),
-then run the actual-process companion with an explicitly source-matched binary:
+Build source-matched binaries once if not already available from that source:
 
 ```sh
-GENTLE_PAYLOAD_CLI=/absolute/path/to/same-source/gentle_cli python3 -m unittest scripts.test_primer_payload_contract
+cargo build --locked --no-default-features -j1 --bin gentle_cli --bin gentle_examples_docs --bin gentle_mcp
 ```
 
-Require the real CLI case to execute, not skip. Verify expected versus foreign
-payload, two primer lengths/orientations, repeated read names, actual Phase 1
-bindings, explicit accounting, unknown/malformed/hash/annotation refusals,
-MAPQ 0/255, cg/cs indels/skips/contradictions and coarse-mode unavailable claims.
-Inspect masks/all-anchor opt-in, distinct read versus anchor counts, equivalent
-partners and non-transitive edge clusters. Primer plus one foreign payload must
-not become cross-locus; two qualified ordered payload loci may be candidates,
-never confirmed mechanism. Keep original source/project bytes unchanged.
+Set `GENTLE_DOCS` to that run's absolute `gentle_examples_docs` binary path
+(`.exe` on Windows). Check the canonical generators without accepting drift:
 
-Extend the mandatory matrix in the plan where needed: every cap, rehashed
-structural tampering, ID renaming/permutation, repeated/competing anchors,
-partial source coverage, marker faults/cancellation at streaming and batch
-boundaries, verified-unit retention, fresh-output races, nonregular/symlink
-refusals and Windows closed handles with LF/CRLF/spaced/apostrophe paths.
+```sh
+"$GENTLE_DOCS" parity-matrix-check
+"$GENTLE_DOCS" tutorial-catalog-check
+"$GENTLE_DOCS" tutorial-manifest-check
+"$GENTLE_DOCS" tutorial-check
+```
+
+Eight payload parity rows/counts were initially source-projected, not verified
+by the Rust generator. Do not overwrite projections just to pass: retain any
+generator diff as a primary failure. Reuse same-source LF/CRLF checkout receipts;
+if missing, run the existing `scripts.test_tutorial_checkouts` gate once.
+
+### Real CLI And Approved Adapter Replay
+
+Set `GENTLE_PAYLOAD_CLI` to the absolute source-matched `gentle_cli` binary path.
+Execute only the previously skipped process-test class, not completed Python
+source checks:
+
+```sh
+GENTLE_PAYLOAD_CLI=/absolute/path/to/same-source/gentle_cli python3 -m unittest -v scripts.test_primer_payload_contract.PrimerPayloadCliAcceptance
+```
+
+Require its one actual-process test to execute both LF and CRLF cases, with no
+skip. It seals a synthetic panel, traces, prepares, summarizes and verifies
+outputs; it tests spaced/apostrophe paths, rehashed false-exclusion refusal,
+source-byte preservation, absent state creation and report rename/reopen.
+Retain a separate tutorial 10.04 Phase 2 replay's reports/sidecars and command
+streams; helper PAF is invented teaching input, not an aligner result.
+
+Also exercise the same synthetic requests through shared shell and approved MCP
+`op`: prepare, summarize, inspect and request-bound cancel. Compare scientific
+payloads after accounting for run-specific paths/bindings. The existing MCP
+test proves refusal without confirmation, **not** a successful approved replay.
+Require `confirm:true` even for generic MCP inspection; confirm missing approval
+causes no files, project/history/state bytes stay unchanged, and inspection does
+not implicitly reopen original FASTQ. Cancel uses the exact submitted request,
+not a reconstructed or edited one. Use fresh destinations for every replay.
+
+### Contract And Failure Boundaries
+
+Verify expected versus foreign payload, differing primer lengths/orientations,
+repeated read names and competing anchors without gene/barcode/name shortcuts.
+Check actual Phase 1 bindings and full query accounting, explicit unmapped versus
+unassessed rows, hashes/annotation refusals, MAPQ 0/255, cg/cs indels/skips/
+contradictions and coarse-mode unavailable claims. Require masked all-anchor
+opt-in, distinct read versus anchor counts, union rather than overlapping-HSP
+sums, equivalent partners and non-transitive edge clusters. Primer plus one
+foreign payload is not cross-locus; two qualified ordered payload loci may be
+candidates, never a confirmed mechanism. Keep original source bytes unchanged.
+
+The mask and exclusion details below are acceptance criteria for the same
+payload filter/replay, not additional repeat runs. Cover the plan's remaining
+matrix where not already exercised: every cap, rehashed structural tampering,
+ID renaming/permutation, partial coverage, marker faults/cancellation at streaming
+and batch boundaries, verified-unit retention, fresh-output races and Unix
+nonregular/symlink refusals. Native Windows must exercise LF/CRLF, spaced/
+apostrophe paths and closed handles before rename/publication/cleanup; a Unix
+run or headless check is not Windows acceptance. Mark missing cases not_run,
+not inferred pass from a narrower test.
+
+### CLI Documentation Coverage, 2026-10-26
+
+The reported 4535-pass run's sole failure was missing full glossary paths in
+`docs/cli.md`. `320d5803` replaces the abbreviation with all four complete
+usages; the Rust coverage guard is unchanged. Its focused command above must
+pass. The LF/CRLF-aware Python equivalent already passed and need not be rerun
+as a substitute for Rust. No parser/confirmation/freshness guard was relaxed.
+
+### Primer Payload Mask Geometry, 2026-10-26
+
+`e622f12c` shares clipped mask geometry between preparation and verification,
+avoiding eager out-of-range subtraction and empty-denominator division. Require
+12,168 abstract interval/orientation cases, empty/full masks, coordinate extremes
+and structured refusals rather than panic/wrap. Four all-anchor query copies in
+opposite read orientations must have agreeing normalized masks/sequence hashes;
+bound import must work after original FASTQ removal without altering Phase 1.
+Run with ordinary overflow checks, not a profile workaround. The original
+all-anchor regression remains; the independent Python oracle is not Rust proof.
+
+### Primer Payload Exclusion Bindings, 2026-10-26
+
+`f1a60ae4` derives each selected anchor's disposition from the bound source row
+and captured policy, not just an anchor-ID set. First accept genuine eligible,
+masked, short, wholly unassessed and unattributed cases, including valid list
+permutations. Then rehash only deliberate copies of the query manifest/FASTA:
+hiding eligible anchors, changing policy, swapping exclusions between repeated
+read records, wrong primer groups/reasons and missing/duplicate/foreign
+observations must fail. Out-of-range anchors return errors, not panic. Two
+one-record units must exceed an import record cap of one. Preserve the anchor
+identity encoding. Public summary import must accept the genuine fixture before
+refusing its tampered copy, with no final output or changed source bytes; the
+actual-CLI companion includes this refusal.
+
+### Separate Gates And Return
 
 Separately authorize any live inner-agent exercise: discover prepare/summarize/
 show/cancel, draft reviewed requests, require write approval, inspect/cancel
 while execution slots are busy, preserve completed/cancelled/control-error
 outcomes and refuse recursive agent execution. Deterministic tests are not a
-native or live-model responsiveness verdict. No GUI was added by Phase 2.
+native or live-model responsiveness verdict. Phase 2 adds no GUI; older native
+RNA/tutorial checks remain open independently, not a reason to repeat completed
+CLI checks. No private-data, throughput or scientific acceptance follows.
 
-Return exact tested source/lockfile/binary/input hashes, platform/toolchain/profile,
-commands/results/skips, primary failures versus cascades and retained artifact
-locations/manifests. Keep source consistency, producer claims, actual runtime,
-native/live-agent, performance and scientific verdicts separate. No release,
-publication, molecule/isoform assignment or scientific acceptance is implied.
+Return one compact report with per-group pass/fail/not_run/blocked, full tested
+SHA/tree, lockfile/binary/input hashes, platform/toolchain/features/profile,
+commands/exit codes/test counts/skips, primary failures versus cascades and
+retained artifact paths plus a SHA-256 manifest. Identify reused CI receipts and
+their exact source/scope. Return through Steffen to this main-maintaining chat;
+do not push, dispatch CI or modify sealed historical evidence. No release,
+molecule/isoform assignment or scientific approval is implied.
 
 ## Sequence-Design Approval Facet, 2026-10-26
 
