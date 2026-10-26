@@ -40,7 +40,9 @@ TP53-focused operation. TP53 is only an existing audit/replay example; there
 must be no implicit TP53, P53-family, human, assembly, chromosome or strand default.
 Keep primer tracing and payload evidence unchanged; no new aligner or automatic
 fusion/protein claims. The roadmap owns release scope, and existing lifecycle
-Slice 3 is separately proposed, not a safety guarantee we may assume.
+Slice 3 has since landed independently at `f0b8371f` for
+`PlanDnaSequenceDesign`, `EvaluateGenomeEditIntent` and covered workflows.
+It is not automatic coverage for future observed-transcript S1 operations.
 
 Read `AGENTS.md`, then:
 
@@ -57,7 +59,8 @@ Read `AGENTS.md`, then:
   types and `src/engine/analysis/feature_expert_ops.rs` (`build_splicing_expert_view`).
 - Relevant RNA sections of `docs/architecture.md`, `docs/decisions.md`,
   `docs/biological_extension_guide.md`, `docs/protocol.md` and `docs/roadmap.md`.
-- `docs/operation_lifecycle_slice3_plan.md` for pending construction/autosave scope.
+- `docs/operation_lifecycle_slice3_plan.md` for migrated construction/autosave scope
+  and its remaining verification boundaries.
 
 ## Archive Evidence And Inspection Limits
 
@@ -162,7 +165,8 @@ The revised minimal plan to assess now is:
    total work. Test geometry, masks, DAG byte equivalence, multiple anchors,
    partial chains, deletions, incomplete ends and off-target/source ambiguity.
    Include CLI/MCP write approval and unchanged project/journal, without claiming
-   pending Slice 3 constructor/state-out guarantees. Synthetic fixtures include
+   generic coverage from Slice 3's limited constructor/state-out migration.
+   Synthetic fixtures include
    sense/antisense overlap, shared labels across source IDs, multi-gene transcripts,
    an absent expected-target crosswalk and an intron-nested read. Glen receives
    one consolidated implementation request through the GitHub-pushing thread.
@@ -192,7 +196,8 @@ The revised minimal plan to assess now is:
    a third model without losing provider/FASTA/assembly scope? Can later render
    primitives consume saved observations without project/symbol grouping?
 7. Are budget, cancellation, external-write approval, source verification and
-   state/autosave boundaries explicit enough while lifecycle Slice 3 is pending?
+   state/autosave boundaries explicit enough without treating main's limited
+   lifecycle migration as automatic coverage for this new operation family?
 8. Is `reference_gene` truly variable throughout the request, source comparison,
    report/TSVs, adapter surfaces and later figures, without hidden TP53/HGNC or
    canonical-transcript assumptions? Do the added overlapping/multi-gene/source-ID

@@ -54,7 +54,7 @@ pub(crate) fn live_with_redo() -> GentleEngine {
     let op = plan(None, true);
     let mut engine = GentleEngine::from_state_for(state(), LifecycleRequest::Operation(&op));
     engine.apply(create()).unwrap();
-    engine.undo().unwrap();
+    engine.undo_last_operation().unwrap();
     // Ordinary undo repairs its restored checkpoint. Deliberately inject the
     // synthetic legacy state to test inspection with an existing redo stack.
     engine.state = state();
@@ -226,7 +226,7 @@ fn lifecycle_slice3_apply_success_refusal_bad_path_and_cancel_preserve_state_and
             engine.journal_len(),
             baseline.journal_len() + usize::from(case != 1 && case != 2)
         );
-        engine.redo().unwrap();
+        engine.redo_last_operation().unwrap();
         assert!(engine.state().sequences.contains_key("synthetic_temporary"));
     }
 }

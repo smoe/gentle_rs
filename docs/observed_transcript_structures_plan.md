@@ -168,7 +168,7 @@ implementation; this does not authorize S1 or biological calibration.
   Locked/offline headless Cargo check, workspace formatting, 11 LF/CRLF-aware
   documentation-status tests, local links and whitespace pass. Session-close
   has four OK, two expected working-tree/manual-plan warnings and no failures.
-- Executed source is the S0 working diff over `c10bbd3e`, not bare main. Its
+- Pre-rebase executed source was the S0 working diff over `c10bbd3e`, not bare main. Its
   11 Rust-path manifest SHA-256 is
   `373aa8731630bf32170086e7dcd2aba89ae2934085b10d0a57f258184b9515cc`.
   Recreate by hashing each file, then SHA-256 the sorted UTF-8 concatenation
@@ -182,8 +182,10 @@ implementation; this does not authorize S1 or biological calibration.
   unoptimized test profile with debuginfo and no default features. `Cargo.lock`
   is unchanged, SHA-256
   `97671e924a77d61de6dad2e6c6fe3afbee440b8606d79ca0ad2b494fd32d66ad`.
-  Test binary `target/debug/build/GENtle/901e473ba9ebfd83/out/gentle-901e473ba9ebfd83`
-  has SHA-256 `4ef2004ab7f4cc3a8e0d3d8a968af5714ee54895e377a045f38ab6e9ef53896a`.
+  The pre-rebase test binary at
+  `target/debug/build/GENtle/901e473ba9ebfd83/out/gentle-901e473ba9ebfd83`
+  had SHA-256 `4ef2004ab7f4cc3a8e0d3d8a968af5714ee54895e377a045f38ab6e9ef53896a`;
+  that historical receipt does not identify a later rebuilt binary at that path.
   Final measured target size is about 14 GiB after tests and Cargo check. Existing
   headless dead-code warnings and the large `__eh_frame` linker warning remain;
   no warnings were suppressed. No desktop/default-feature, full-suite,
@@ -201,6 +203,42 @@ python3 -m unittest scripts.test_tutorial_checkouts.DocumentationStatusTests -q
 git diff --check
 python3 scripts/maintenance_chore.py session-close --plan docs/observed_transcript_structures_plan.md
 ```
+
+### Commit And Rebase Integration (2026-10-27)
+
+S0 was committed as `eaed85ff` and rebased onto local main
+`f0b8371f4a99a455c60fc71a7769f3ea0380e7f3`; its new SHA is `490014c6` and
+the plan commit became `b739a8a5`. Both changelog additions were retained.
+The S0/Phase 2 Rust fingerprint above is unchanged, but main changed the wider
+engine/adapter code, so the pre-rebase runtime verdict is not inherited.
+
+The first post-rebase test build fails with three `E0599` errors, before any
+test runs. Main's new `src/engine/lifecycle_slice3_tests.rs` and
+`src/command_execution/lifecycle_tests.rs` call nonexistent `undo()`/`redo()`.
+The integration repair substitutes `undo_last_operation()` once and
+`redo_last_operation()` twice, with no assertion or runtime-code change.
+Post-repair macOS/aarch64 verification passes 23/23 S0 tests, 35/35 primer-payload
+tests and 11/11 `lifecycle_slice3` tests, with no failed or ignored cases. The
+first two Rust commands above were rerun, followed by the additional filter
+below. Locked/offline headless library Cargo check, formatting, documentation
+status, 11 LF/CRLF-aware documentation tests and whitespace pass. Existing
+headless/linker warnings remain. Lifecycle source/runtime/VM/platform acceptance
+outside those filters is not inferred from these passes.
+
+```bash
+CARGO_BUILD_JOBS=1 cargo test --locked --offline --no-default-features --lib lifecycle_slice3 -- --test-threads=1
+```
+
+The executed source is `490014c6` plus the three documented test-call repairs,
+not bare `f0b8371f`. The repaired source SHA-256 values are
+`c391dd40e79802f3494445ac140fc0af8239428e0f8b28500ed6a516cc70da4c`
+for `src/engine/lifecycle_slice3_tests.rs` and
+`655b940a733b8ecf1efa3c3354a2b1b5a6140662132e746bddfef2a9560d5ac7`
+for `src/command_execution/lifecycle_tests.rs`. The S0 11-path fingerprint and
+lockfile hash above are unchanged. The rebuilt test binary at the same path has
+SHA-256 `3cb229254da0c4fcfbd418484e2e298fc2477d3afd650fa7e1debbc834335ba7`.
+No production Rust source changed after the S0 commit; these test repairs and
+the documentation reconciliation are a separate integration follow-up.
 
 ## Proposed Contract
 
@@ -438,7 +476,11 @@ authorization even when project state is unchanged. Test constructor/workflow/
 autosave behavior, including MCP `confirm:true` and named no-save handling:
 assert project bytes and journal unchanged for both CLI/MCP and preserve the
 documented constructor/state-out scope. [Lifecycle Slice 3](operation_lifecycle_slice3_plan.md)
-is a separate proposal, not an available global guarantee.
+landed independently on main at `f0b8371f`: its covered operations are
+`PlanDnaSequenceDesign`, `EvaluateGenomeEditIntent` and qualifying workflows,
+not a generic read-only guarantee. Future observed-transcript S1 operations
+are not automatically covered and still need their own lifecycle/publication
+decision and state/journal tests. S0's pure kernel adds no such operation.
 
 ## Slice Boundaries And Remaining Work
 

@@ -48,9 +48,10 @@ retention mechanism, fusion, expression or protein identity.
 The exported Rust API is experimental, with no new registered operation or
 frozen report-file schema. It checks declared hashes/geometry in memory, not
 the corresponding files or aligner search. S1 needs its own verified ingress,
-write approval, no-save and state/journal tests; lifecycle Slice 3 is not thereby
-implemented. Runtime verification, native/platform replay and scientific
-acceptance remain separately source-bound. No assay thresholds are approved.
+write approval, no-save and state/journal tests; main's independent lifecycle
+Slice 3 migration does not automatically cover this new family. Native/platform
+replay and scientific acceptance remain separately source-bound. No assay
+thresholds are approved.
 
 ## Primer-Anchored Read Trace
 

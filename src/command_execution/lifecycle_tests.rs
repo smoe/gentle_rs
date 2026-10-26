@@ -79,7 +79,7 @@ fn lifecycle_slice3_managed_op_and_workflow_publish_journals_not_project_changes
             history.operation_log_count + receipt.committed_operations
         );
         drop(after);
-        engine.write().unwrap().redo().unwrap();
+        engine.write().unwrap().redo_last_operation().unwrap();
         assert!(
             engine
                 .read()

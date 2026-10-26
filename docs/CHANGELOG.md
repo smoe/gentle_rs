@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-27 - Rebase S0 And Repair Lifecycle Test API Calls
+
+- Commit S0 as `eaed85ff`, then rebase onto local main `f0b8371f`, producing
+  plan `b739a8a5` and kernel `490014c6`. Resolve only changelog conflicts by
+  retaining both histories; the 11 S0/Phase 2 Rust-path fingerprint is unchanged.
+- The first post-rebase library-test build fails before execution on three
+  `E0599` calls introduced by main's lifecycle tests: `undo()`/`redo()` do not
+  exist. Replace them with the existing `undo_last_operation()` and
+  `redo_last_operation()` methods in the two test files; keep assertions,
+  fixtures, production behavior and scientific data unchanged. This bounded
+  compile repair is required to execute the rebased S0/Phase 2 checks.
+- Reconcile S0's notes with the independently landed lifecycle migration:
+  covered Plan/editing inspections and workflows do not automatically cover
+  future observed-transcript operations. Keep pre-rebase evidence historical
+  and record post-rebase checks separately in the S0 ledger. No push or new
+  implementation slice is authorized by this integration work.
+- Post-repair macOS/aarch64 headless execution passes S0 23/23, primer payload
+  35/35 and the affected lifecycle filter 11/11, all with no ignored cases.
+  Locked/offline library Cargo check, format, documentation status, 11 LF/CRLF
+  documentation tests and whitespace pass. Keep existing headless/linker
+  warnings and separate the initial compile failure from the passing rerun;
+  no full-suite, actual-process, VM, native or cross-platform acceptance.
+
 ## 2026-10-27 - Preserve Covered Inspection Construction And Persistence
 
 - Implement the owner-authorized, Claude-revised Lifecycle Slice 3 without a
