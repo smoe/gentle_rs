@@ -14738,6 +14738,9 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
         result: Ok(OpResult {
             rna_primer_panel: None,
             rna_primer_trace: None,
+            primer_payload_queries: None,
+            primer_payload_alignments: None,
+            primer_payload_inspection: None,
             rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,
@@ -15039,6 +15042,9 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             rna_primer_panel: None,
             rna_primer_trace: None,
+            primer_payload_queries: None,
+            primer_payload_alignments: None,
+            primer_payload_inspection: None,
             rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,
@@ -15224,6 +15230,9 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             rna_primer_panel: None,
             rna_primer_trace: None,
+            primer_payload_queries: None,
+            primer_payload_alignments: None,
+            primer_payload_inspection: None,
             rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,
@@ -15631,6 +15640,9 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
         rna_primer_panel: None,
         rna_primer_trace: None,
+        primer_payload_queries: None,
+        primer_payload_alignments: None,
+        primer_payload_inspection: None,
         rna_primer_trace_inspection: None,
         genome_edit_intent: None,
         tube_profiles: None,

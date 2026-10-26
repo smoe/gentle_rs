@@ -261,6 +261,8 @@ pub struct PrimerPayloadSegment {
     pub reported_identity_per_mille: usize,
     pub edits: Option<usize>,
     pub alignment_detail_verified: bool,
+    /// Validated operation lengths in increasing reference order, not a reproduced search.
+    pub alignment_operations: Vec<(char, usize)>,
     pub aligned_query_intervals: Vec<(usize, usize)>,
     pub gene_ids: Vec<String>,
     pub transcript_ids: Vec<String>,

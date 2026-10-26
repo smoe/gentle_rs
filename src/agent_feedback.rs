@@ -65,6 +65,44 @@ impl AgentExecutionStatus {
     /// Interpret only engine-owned job envelopes, never free-text messages.
     pub fn from_shell_output(output: &Value) -> Self {
         if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.command_primer_payload_result.v1")
+        {
+            return match (
+                output
+                    .pointer("/primer_payload_result/schema")
+                    .and_then(Value::as_str),
+                output
+                    .pointer("/primer_payload_result/outcome")
+                    .and_then(Value::as_str),
+            ) {
+                (Some("gentle.primer_payload_result_binding.v1"), Some("completed")) => {
+                    Self::Completed
+                }
+                (Some("gentle.primer_payload_result_binding.v1"), Some("cancelled")) => {
+                    Self::Cancelled
+                }
+                _ => Self::Failed,
+            };
+        }
+        for (field, schema) in [
+            ("primer_payload_queries", "gentle.primer_payload_queries.v1"),
+            (
+                "primer_payload_alignments",
+                "gentle.primer_payload_alignment_report.v1",
+            ),
+        ] {
+            if let Some(report) = output.pointer(&format!("/result/{field}")) {
+                return match (
+                    report.get("schema").and_then(Value::as_str),
+                    report.get("status").and_then(Value::as_str),
+                ) {
+                    (Some(s), Some("completed")) if s == schema => Self::Completed,
+                    (Some(s), Some("cancelled")) if s == schema => Self::Cancelled,
+                    _ => Self::Failed,
+                };
+            }
+        }
+        if output.get("schema").and_then(Value::as_str)
             == Some("gentle.command_primer_trace_result.v1")
         {
             return match (
@@ -352,6 +390,30 @@ impl AgentExecutionFeedback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn primer_payload_feedback_preserves_partial_and_control_error_outcomes() {
+        for (outcome, expected) in [
+            ("completed", AgentExecutionStatus::Completed),
+            ("cancelled", AgentExecutionStatus::Cancelled),
+            ("control_error", AgentExecutionStatus::Failed),
+            ("unknown", AgentExecutionStatus::Failed),
+        ] {
+            for (field, schema) in [
+                ("primer_payload_queries", "gentle.primer_payload_queries.v1"),
+                (
+                    "primer_payload_alignments",
+                    "gentle.primer_payload_alignment_report.v1",
+                ),
+            ] {
+                let value =
+                    serde_json::json!({"result":{(field):{"schema":schema,"status":outcome}}});
+                assert_eq!(AgentExecutionStatus::from_shell_output(&value), expected);
+            }
+            let compact = serde_json::json!({"schema":"gentle.command_primer_payload_result.v1","primer_payload_result":{"schema":"gentle.primer_payload_result_binding.v1","outcome":outcome}});
+            assert_eq!(AgentExecutionStatus::from_shell_output(&compact), expected);
+        }
+    }
 
     #[test]
     fn primer_trace_feedback_keeps_full_and_compact_publication_outcomes() {

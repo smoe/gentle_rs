@@ -9,7 +9,9 @@ pub(super) fn admit(
     if request.schema != PRIMER_PAYLOAD_PREPARE_SCHEMA
         || !safe_id(&request.cohort.cohort_id)
         || request.cohort.label.trim().is_empty()
+        || request.cohort.label.len() > 512
         || request.cohort.selection_provenance.trim().is_empty()
+        || request.cohort.selection_provenance.len() > 4096
         || request.file_ids.is_empty()
         || request.file_ids.len() > 4096
         || request.min_payload_bases == 0
@@ -31,6 +33,16 @@ pub(super) fn trace_source(
     }
     let report =
         *GentleEngine::inspect_primer_trace(&binding.report_path, Some(binding), None, 0)?.report;
+    if report
+        .artifacts
+        .iter()
+        .try_fold(regular(Path::new(&binding.report_path))?.len(), |n, a| {
+            n.checked_add(a.bytes)
+        })
+        .is_none_or(|n| n > b.max_input_bytes)
+    {
+        return Err(bad("primer_payload_trace_metadata_budget"));
+    }
     let parent = Path::new(&binding.report_path)
         .parent()
         .unwrap_or(Path::new("."));

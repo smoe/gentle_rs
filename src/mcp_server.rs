@@ -1417,6 +1417,10 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "op" => &[
             "rna-reads primer-panel-validate",
             "rna-reads primer-trace",
+            "rna-reads primer-payload-prepare",
+            "rna-reads primer-payload-summarize",
+            "rna-reads primer-payload-show",
+            "rna-reads primer-payload-cancel",
             "rna-reads primer-trace-show",
             "op",
             "sequence-design plan",
@@ -3584,6 +3588,10 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         Operation::EvaluateGenomeEditIntent { .. }
             | Operation::ValidateRnaPrimerPanel { .. }
             | Operation::TracePrimerReads { .. }
+            | Operation::PreparePrimerPayloadAlignmentQueries { .. }
+            | Operation::SummarizePrimerPayloadAlignments { .. }
+            | Operation::InspectPrimerPayload { .. }
+            | Operation::CancelPrimerPayload { .. }
             | Operation::InspectPrimerTrace { .. }
             | Operation::CancelPrimerTrace { .. }
     );
@@ -3608,6 +3616,26 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         if let Err(err) = engine.state().save_to_path(&state_path) {
             return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
         }
+    }
+    // Transport only: large populations remain in the engine-owned report, not the model response.
+    let payload_binding = if let Some(report) = result.primer_payload_queries.as_deref() {
+        Some(GentleEngine::primer_payload_query_result_binding(
+            &report.request,
+            report,
+        ))
+    } else {
+        result.primer_payload_alignments.as_deref().map(|report| {
+            GentleEngine::primer_payload_alignment_result_binding(&report.request, report)
+        })
+    };
+    if let Some(binding) = payload_binding {
+        return match binding {
+            Ok(binding) => tool_result_json(
+                json!({"schema":"gentle.command_primer_payload_result.v1","state_path":state_path,"primer_payload_result":binding,"full_output_retained_in_report":true}),
+                false,
+            ),
+            Err(error) => tool_result_json(json!({"state_path":state_path,"error":error}), true),
+        };
     }
     tool_result_json(
         json!({
@@ -5296,6 +5324,26 @@ mod tests {
             for global in [false, true] {
                 assert_sequence_design_mcp_parity(conflict, global, true);
             }
+        }
+    }
+
+    #[test]
+    fn primer_payload_mcp_routes_keep_generic_confirmation_and_state_file_boundary() {
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("not a real project.json");
+        // Confirmation is checked before payload parsing, files or scientific admission.
+        for name in [
+            "PreparePrimerPayloadAlignmentQueries",
+            "SummarizePrimerPayloadAlignments",
+            "InspectPrimerPayload",
+            "CancelPrimerPayload",
+        ] {
+            let result = op_tool_result(
+                &path.display().to_string(),
+                &json!({"operation":{(name):{}}}),
+            );
+            assert_eq!(result["isError"], true);
+            assert!(!path.exists());
         }
     }
 

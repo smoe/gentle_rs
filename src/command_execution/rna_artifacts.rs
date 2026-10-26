@@ -8,6 +8,8 @@ pub(super) enum Policy {
     Screen(Box<crate::engine::ScreenRnaReadPanelRequest>),
     Summary(Box<crate::engine::ExportRnaReadPanelSummaryRequest>),
     PrimerTrace(Box<crate::engine::TracePrimerReadsRequest>),
+    PayloadQueries(Box<crate::engine::PreparePrimerPayloadAlignmentQueriesRequest>),
+    PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
     Observe { expensive: bool },
     Control,
 }
@@ -27,6 +29,18 @@ impl Policy {
 
 fn classify(op: Operation) -> Policy {
     match op {
+        Operation::PreparePrimerPayloadAlignmentQueries { request } => {
+            Policy::PayloadQueries(request)
+        }
+        Operation::SummarizePrimerPayloadAlignments { request } => {
+            Policy::PayloadAlignments(request)
+        }
+        Operation::InspectPrimerPayload {
+            verify_artifacts, ..
+        } => Policy::Observe {
+            expensive: verify_artifacts,
+        },
+        Operation::CancelPrimerPayload { .. } => Policy::Control,
         Operation::TracePrimerReads { request } => Policy::PrimerTrace(request),
         Operation::ValidateRnaPrimerPanel { .. } | Operation::InspectPrimerTrace { .. } => {
             Policy::Observe { expensive: true }
@@ -47,6 +61,47 @@ fn classify(op: Operation) -> Policy {
 #[cfg(test)]
 mod primer_trace_tests {
     use super::*;
+
+    #[test]
+    fn primer_payload_named_lifecycle_does_not_require_the_live_project() {
+        let mut engine = GentleEngine::new();
+        let parsed =
+            crate::engine_shell::parse_shell_line("introspect capabilities --kind operation")
+                .unwrap();
+        let discovery = crate::engine_shell::execute_shell_command(&mut engine, &parsed).unwrap();
+        for id in [
+            "PreparePrimerPayloadAlignmentQueries",
+            "SummarizePrimerPayloadAlignments",
+            "InspectPrimerPayload",
+            "CancelPrimerPayload",
+        ] {
+            let descriptor = discovery.output["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["id"] == id)
+                .unwrap();
+            let op: Operation =
+                serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+            let policy = classify(op);
+            assert!(!policy.needs_project());
+            match id {
+                "InspectPrimerPayload" => assert!(matches!(policy.lane(), Lane::Observation)),
+                "CancelPrimerPayload" => assert!(matches!(policy.lane(), Lane::Control)),
+                _ => assert!(matches!(policy.lane(), Lane::Execution)),
+            }
+        }
+        assert!(matches!(
+            classify(Operation::InspectPrimerPayload {
+                path: "missing".into(),
+                expected_result: None,
+                rows: 0,
+                verify_artifacts: true
+            })
+            .lane(),
+            Lane::Execution
+        ));
+    }
 
     #[test]
     fn primer_trace_lifecycle_is_explicit_not_inferred_from_read_only() {
@@ -114,6 +169,33 @@ pub(super) fn publication(
     policy: Policy,
     output: &serde_json::Value,
 ) -> Result<Publication, String> {
+    match &policy {
+        Policy::PayloadQueries(request) => {
+            let report = serde_json::from_value(
+                output
+                    .pointer("/result/primer_payload_queries")
+                    .ok_or("Payload preparation returned no typed report")?
+                    .clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let binding = GentleEngine::primer_payload_query_result_binding(request, &report)
+                .map_err(|e| e.to_string())?;
+            return Ok(Publication::PrimerPayload(binding));
+        }
+        Policy::PayloadAlignments(request) => {
+            let report = serde_json::from_value(
+                output
+                    .pointer("/result/primer_payload_alignments")
+                    .ok_or("Payload summary returned no typed report")?
+                    .clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let binding = GentleEngine::primer_payload_alignment_result_binding(request, &report)
+                .map_err(|e| e.to_string())?;
+            return Ok(Publication::PrimerPayload(binding));
+        }
+        _ => {}
+    }
     if let Policy::PrimerTrace(request) = &policy {
         let report = serde_json::from_value(
             output
@@ -129,7 +211,9 @@ pub(super) fn publication(
     let binding: RnaReadPanelResultBinding = match policy {
         Policy::Project => return Ok(Publication::Project),
         Policy::Observe { .. } | Policy::Control => return Ok(Publication::Observation),
-        Policy::PrimerTrace(_) => unreachable!("handled above"),
+        Policy::PrimerTrace(_) | Policy::PayloadQueries(_) | Policy::PayloadAlignments(_) => {
+            unreachable!("handled above")
+        }
         Policy::Screen(request) => {
             let report = serde_json::from_value(
                 output

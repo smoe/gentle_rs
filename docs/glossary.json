@@ -1,6 +1,34 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["PreparePrimerPayloadAlignmentQueries"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-payload-prepare",
+         "summary": "Prepare separately hashed primer-free query copies from verified Phase 1 units. Primary retained FASTA or explicitly approved original-FASTQ replay; preserve competing primer IDs and mask other observed primers. No aligner or input discovery. Writes require approval.",
+         "usage": "rna-reads primer-payload-prepare REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["SummarizePrimerPayloadAlignments"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-payload-summarize",
+         "summary": "Interpret explicit query-grouped PAF batches against hash-bound reference FASTA and annotations. Separate scopes, alternatives, primer edges and internal boundaries; no molecule, fusion or exhaustive search claim. Writes require approval.",
+         "usage": "rna-reads primer-payload-summarize REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectPrimerPayload"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-payload-show",
+         "summary": "Bounded payload metadata and row inspection without original FASTQ replay. --verify-artifacts explicitly hashes declared output sidecars; content consistency is not authenticated alignment provenance.",
+         "usage": "rna-reads primer-payload-show REPORT [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]"
+      },
+      {
+         "aliases": [], "engine_operations": ["CancelPrimerPayload"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads primer-payload-cancel",
+         "summary": "Request cancellation with the exact captured preparation/alignment request and its explicit marker path. Approval required; termination is not confirmed by writing a marker.",
+         "usage": "rna-reads primer-payload-cancel REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["ValidateRnaPrimerPanel"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads primer-panel-validate",

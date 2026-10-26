@@ -19,6 +19,16 @@ they still reproduce the original unprotected CRLF boundary.
 
 ## Primer-Anchored Read Trace
 
+Phase 2 technical implementation authorized 2026-10-26: keep a separate
+[primer-free payload evidence contract](primer_payload_evidence.md). Source/query,
+reference/annotation, producer accounting and expected-target mappings are
+explicit inputs, never current-panel rules. Preserve primer ambiguity, mask
+other observed primers in new query copies, separate partner/edge counts and
+retain only verified complete units on cancellation. Named managed artifact
+publication does not commit project history. No implicit original FASTQ replay,
+aligner, biological calibration or mechanism approval. Runtime acceptance is
+still external; this does not upgrade Phase 1 scientific status below.
+
 Proposed 2026-10-26, pending owner confirmation of biological axis/default policy.
 The owner authorized implementation of the revised technical Phase 0/1, not
 kit identity, assay validation or calibrated thresholds. See the

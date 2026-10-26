@@ -5,6 +5,20 @@ use ring::digest::{Context, SHA256};
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader};
 
+#[cfg(test)]
+#[path = "primer_payload/alignment_tests.rs"]
+mod alignment_tests;
+#[path = "primer_payload/evidence.rs"]
+mod evidence;
+#[path = "primer_payload/inspect.rs"]
+mod inspect;
+#[path = "primer_payload/paf.rs"]
+mod paf;
+#[path = "primer_payload/reference.rs"]
+mod reference;
+#[path = "primer_payload/summarize.rs"]
+mod summarize;
+
 #[path = "primer_payload/binding.rs"]
 mod binding;
 #[path = "primer_payload/prepare.rs"]
@@ -122,10 +136,13 @@ fn read_json<T: serde::de::DeserializeOwned>(
     file: &PrimerPayloadFile,
     b: &PrimerPayloadBudgets,
 ) -> Result<T, EngineError> {
-    let mut reader = VerifiedReader::open(file, b.max_input_bytes.min(128_000_000))?;
+    let mut reader = BufReader::new(VerifiedReader::open(
+        file,
+        b.max_input_bytes.min(128_000_000),
+    )?);
     let value = serde_json::from_reader(&mut reader)
         .map_err(|e| bad(format!("primer_payload_json: {e}")))?;
-    reader.finish()?;
+    reader.into_inner().finish()?;
     Ok(value)
 }
 

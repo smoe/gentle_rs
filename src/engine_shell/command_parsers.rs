@@ -13318,6 +13318,85 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 .map_err(|e| e.to_string())?,
             })
         }
+        "primer-payload-prepare" | "primer-payload-summarize" | "primer-payload-cancel" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads primer-payload-prepare|primer-payload-summarize|primer-payload-cancel REQUEST_JSON_OR_@FILE".into());
+            }
+            let operation = match tokens[1].as_str() {
+                "primer-payload-prepare" => Operation::PreparePrimerPayloadAlignmentQueries {
+                    request: Box::new(parse_required_json_payload::<
+                        crate::engine::PreparePrimerPayloadAlignmentQueriesRequest,
+                    >(
+                        &tokens[2], "primer payload preparation"
+                    )?),
+                },
+                "primer-payload-summarize" => Operation::SummarizePrimerPayloadAlignments {
+                    request: Box::new(parse_required_json_payload::<
+                        crate::engine::SummarizePrimerPayloadAlignmentsRequest,
+                    >(
+                        &tokens[2], "primer payload alignment request"
+                    )?),
+                },
+                _ => Operation::CancelPrimerPayload {
+                    request: Box::new(parse_required_json_payload::<
+                        crate::engine::PrimerPayloadControlRequest,
+                    >(
+                        &tokens[2], "primer payload control request"
+                    )?),
+                },
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
+        "primer-payload-show" => {
+            if tokens.len() < 3 {
+                return Err("Use rna-reads primer-payload-show REPORT [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]".into());
+            }
+            let (mut rows, mut expected_result, mut verify_artifacts) = (None, None, false);
+            let mut i = 3;
+            while i < tokens.len() {
+                match tokens[i].as_str() {
+                    "--verify-artifacts" if !verify_artifacts => {
+                        verify_artifacts = true;
+                        i += 1;
+                        continue;
+                    }
+                    "--rows" if rows.is_none() => {
+                        rows = Some(
+                            tokens
+                                .get(i + 1)
+                                .ok_or("Missing row count")?
+                                .parse::<usize>()
+                                .map_err(|_| "Invalid row count")?,
+                        );
+                    }
+                    "--binding" if expected_result.is_none() => {
+                        expected_result = Some(Box::new(parse_required_json_payload::<
+                            crate::engine::PrimerPayloadResultBinding,
+                        >(
+                            tokens.get(i + 1).ok_or("Missing binding")?,
+                            "primer payload result binding",
+                        )?));
+                    }
+                    _ => return Err("Unknown or duplicate primer-payload-show option".into()),
+                }
+                i += 2;
+            }
+            let rows = rows.unwrap_or(0);
+            if rows > 1000 {
+                return Err("Rows must be 0..1000".into());
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::InspectPrimerPayload {
+                    path: tokens[2].clone(),
+                    expected_result,
+                    rows,
+                    verify_artifacts,
+                })
+                .map_err(|e| e.to_string())?,
+            })
+        }
         "primer-trace" => {
             if tokens.len() != 3 && !(tokens.len() == 4 && tokens[3] == "--cancel") {
                 return Err("Use rna-reads primer-trace REQUEST_JSON_OR_@FILE [--cancel]".into());

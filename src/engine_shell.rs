@@ -14276,6 +14276,7 @@ impl ShellCommand {
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
+                | Operation::InspectPrimerPayload { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
                     request.as_ref(),
@@ -19870,6 +19871,49 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
 
+fn primer_payload_descriptor(id: &str) -> Value {
+    let inspect = matches!(id, "InspectPrimerPayload" | "rna-reads primer-payload-show");
+    let prepare = matches!(
+        id,
+        "PreparePrimerPayloadAlignmentQueries" | "rna-reads primer-payload-prepare"
+    );
+    let cancel = matches!(
+        id,
+        "CancelPrimerPayload" | "rna-reads primer-payload-cancel"
+    );
+    let trace = json!({"schema":"gentle.rna_primer_trace_result_binding.v1","submitted_request_sha256":"","effective_request_sha256":"","primer_panel_sha256":"","reference_panel_sha256":null,"report_content_sha256":"","report_path":"REPLACE_TRACE_REPORT","outcome":"REPLACE_ACTUAL_OUTCOME"});
+    let budgets = json!({"max_input_bytes":0,"max_output_bytes":0,"max_records":0,"max_queries":0,"max_query_bases":0,"max_line_bytes":0,"max_alignments_per_query":0,"max_cigar_operations":0,"max_annotation_rows":0,"max_reference_context_bases":0,"max_chain_comparisons":0});
+    let preparation = json!({"schema":crate::engine::PRIMER_PAYLOAD_PREPARE_SCHEMA,"trace":trace,"file_ids":[],"cohort":{"cohort_id":"REPLACE_COHORT_ID","label":"REPLACE_LABEL","all_verified_units":false,"selection_provenance":"REPLACE_SELECTION_EVIDENCE"},"source_mode":"retained_primary_fasta","anchor_selection":"primary","internal_primer_policy":"unassessed","min_payload_bases":0,"budgets":budgets,"output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null});
+    let request = if prepare {
+        preparation.clone()
+    } else if cancel {
+        json!({"kind":"queries","request":preparation})
+    } else if inspect {
+        Value::Null
+    } else {
+        json!({"schema":crate::engine::PRIMER_PAYLOAD_REQUEST_SCHEMA,"trace":trace,"queries":{"path":"REPLACE_QUERY_MANIFEST","sha256":"","bytes":0},"query_manifest_sha256":"","references":[],"expected_targets":[],"batches":[],"policy":{"strict_alignment_detail":true,"min_segment_bases":0,"min_identity_per_mille":0,"min_mapq":0,"dominant_fraction_per_mille":0,"min_cross_locus_segment_bases":0,"breakpoint_tolerance_bases":0,"terminal_seed_lengths":[]},"budgets":budgets,"output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null})
+    };
+    let operation = if inspect {
+        json!({"InspectPrimerPayload":{"path":"REPLACE_REPORT","expected_result":null,"rows":0,"verify_artifacts":false}})
+    } else {
+        let name = if prepare {
+            "PreparePrimerPayloadAlignmentQueries"
+        } else if cancel {
+            "CancelPrimerPayload"
+        } else {
+            "SummarizePrimerPayloadAlignments"
+        };
+        json!({(name):{"request":request}})
+    };
+    json!({"id":id,"kind":"operation","mutating":if inspect {"false"} else {"external"},"requires_confirmation":!inspect,
+        "args":[{"name":"REQUEST_OR_PATH","required":true,"detail":"prepare/summarize/cancel REQUEST_JSON_OR_@FILE; show REPORT [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]. All writes need approval."}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},"description":"Experimental separate primer-free payload evidence. Explicit Phase 1 binding, cohort, query population, reference FASTA/annotations, expected-target crosswalk and PAF producer/accounting. No aligner execution, hidden input discovery, isoform or molecule assignment. One query-grouped batch per reference. Preserve ambiguous/partial outcomes.",
+        "request_template":request,"operation_template":operation,"request_template_is_example_not_resolved_input":true,
+        "template_contract":"Placeholders and zero budgets are not executable evidence. Supply reviewed bounded requests; do not replace missing references, checksums, accounting or expected mappings with guessed values. Retained FASTA is primary-only; reopening FASTQ requires explicit replay_verified_fastq approval. Generic MCP op confirmation remains mandatory.",
+        "result_contract":"Retain typed result binding and completed/cancelled/control_error outcome. A cancel request does not confirm termination; inspection never reopens original FASTQ. Sidecar hashes establish content consistency, not authenticated producer/search provenance.",
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
 fn primer_trace_descriptor(id: &str) -> Value {
     let validate = matches!(
         id,
@@ -21996,6 +22040,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tss_workspace_capability_descriptor("InspectTssInventory", false, false),
         sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
         rna_panel_descriptor("BuildRnaReadPanel"),
+        primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
+        primer_payload_descriptor("SummarizePrimerPayloadAlignments"),
+        primer_payload_descriptor("InspectPrimerPayload"),
+        primer_payload_descriptor("CancelPrimerPayload"),
+        primer_payload_descriptor("rna-reads primer-payload-prepare"),
+        primer_payload_descriptor("rna-reads primer-payload-summarize"),
+        primer_payload_descriptor("rna-reads primer-payload-show"),
+        primer_payload_descriptor("rna-reads primer-payload-cancel"),
         primer_trace_descriptor("ValidateRnaPrimerPanel"),
         primer_trace_descriptor("TracePrimerReads"),
         primer_trace_descriptor("InspectPrimerTrace"),
@@ -66382,6 +66434,32 @@ fn execute_op_command(
     let op = resolve_operation_payload(payload)?;
     // These file-only observation/control routes never append a project journal.
     match &op {
+        Operation::InspectPrimerPayload {
+            path,
+            expected_result,
+            rows,
+            verify_artifacts,
+        } => {
+            let inspection = GentleEngine::inspect_primer_payload(
+                path,
+                expected_result.as_deref(),
+                *rows,
+                *verify_artifacts,
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"primer_payload_inspection":inspection}}),
+            });
+        }
+        Operation::CancelPrimerPayload { request } => {
+            let message =
+                GentleEngine::cancel_primer_payload(request).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
         Operation::ValidateRnaPrimerPanel { panel, seal } => {
             let panel =
                 GentleEngine::validate_rna_primer_panel(panel, *seal).map_err(|e| e.to_string())?;
@@ -66478,6 +66556,8 @@ fn execute_op_command(
         &op,
         Operation::ImportGelImage { .. }
             | Operation::TracePrimerReads { .. }
+            | Operation::PreparePrimerPayloadAlignmentQueries { .. }
+            | Operation::SummarizePrimerPayloadAlignments { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
             | Operation::ExportRnaReadPanelSummary { .. }
@@ -66509,6 +66589,8 @@ fn execute_op_command(
             &op,
             Operation::ComputeTssTfbsProfiles { .. }
                 | Operation::TracePrimerReads { .. }
+                | Operation::PreparePrimerPayloadAlignmentQueries { .. }
+                | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::PlanDnaSequenceDesign { .. }

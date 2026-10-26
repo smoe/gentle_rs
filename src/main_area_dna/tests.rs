@@ -1210,6 +1210,9 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
     area.handle_imported_sequencing_trace_result(&OpResult {
         rna_primer_panel: None,
         rna_primer_trace: None,
+        primer_payload_queries: None,
+        primer_payload_alignments: None,
+        primer_payload_inspection: None,
         rna_primer_trace_inspection: None,
         genome_edit_intent: None,
         tube_profiles: None,
@@ -5382,6 +5385,9 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
         super::OpResult {
             rna_primer_panel: None,
             rna_primer_trace: None,
+            primer_payload_queries: None,
+            primer_payload_alignments: None,
+            primer_payload_inspection: None,
             rna_primer_trace_inspection: None,
             genome_edit_intent: None,
             tube_profiles: None,

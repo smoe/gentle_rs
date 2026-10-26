@@ -40545,6 +40545,9 @@ impl GentleEngine {
         let mut result = OpResult {
             rna_primer_panel: None,
             rna_primer_trace: None,
+            primer_payload_queries: None,
+            primer_payload_alignments: None,
+            primer_payload_inspection: None,
             rna_primer_trace_inspection: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,
@@ -52194,6 +52197,33 @@ impl GentleEngine {
                     result.rna_primer_panel =
                         Some(Box::new(Self::validate_rna_primer_panel(&panel, seal)?));
                     result.messages.push("Validated explicit primer definitions; assay and kit identity not approved".into());
+                }
+                Operation::PreparePrimerPayloadAlignmentQueries { request } => {
+                    result.primer_payload_queries = Some(Box::new(
+                        self.prepare_primer_payload_alignment_queries(*request, on_progress)?,
+                    ));
+                }
+                Operation::SummarizePrimerPayloadAlignments { request } => {
+                    result.primer_payload_alignments = Some(Box::new(
+                        self.summarize_primer_payload_alignments(*request, on_progress)?,
+                    ));
+                }
+                Operation::InspectPrimerPayload {
+                    path,
+                    expected_result,
+                    rows,
+                    verify_artifacts,
+                } => {
+                    result.primer_payload_inspection =
+                        Some(Box::new(Self::inspect_primer_payload(
+                            &path,
+                            expected_result.as_deref(),
+                            rows,
+                            verify_artifacts,
+                        )?));
+                }
+                Operation::CancelPrimerPayload { request } => {
+                    result.messages.push(Self::cancel_primer_payload(&request)?);
                 }
                 Operation::TracePrimerReads { request } => {
                     let report = self.trace_primer_reads(*request, on_progress)?;

@@ -1063,3 +1063,62 @@ cross-platform paths/gzip, canonical parity/catalog freshness and native checks.
 The demo uses literal fixed-LCG DNA and generated gzip/checksum files; no private
 sequencing reads are committed. Python source/metadata checks do not establish Rust
 acceptance, real-library sensitivity/specificity, throughput or scientific validity.
+
+## Phase 2: Primer-Free Payload Evidence (Synthetic Only)
+
+Phase 1 observes primer carry-through. It does not establish where the remaining
+read came from. The experimental Phase 2 route consumes **explicit external PAF
+alignments** of primer-free query copies, preserving competing partners. It
+never starts an aligner or discovers private reads. First rehearse with the
+invented two-primer/two-read fixture below, not your current panel. See the
+[claim prerequisite matrix](../primer_payload_evidence.md#claim-prerequisites)
+and [fixture provenance](../../test_files/primer_payload/README.md).
+
+Use your already built, source-matched `$GENTLE`. Choose a new directory; these
+commands intentionally refuse existing outputs. This addendum is authored but
+not locally Rust/CLI-verified. The helper uses only Python's standard library.
+
+```bash
+PAYLOAD_WORK="/tmp/gentle-payload-teaching"
+python3 scripts/primer_payload_rehearsal.py inputs "$PAYLOAD_WORK"
+"$GENTLE" --state "$STATE" rna-reads primer-panel-validate "@$PAYLOAD_WORK/panel-draft-binding.json" --seal > "$PAYLOAD_WORK/seal-result.json"
+python3 scripts/primer_payload_rehearsal.py seal "$PAYLOAD_WORK" "$PAYLOAD_WORK/seal-result.json"
+"$GENTLE" --state "$STATE" rna-reads primer-trace "@$PAYLOAD_WORK/sealed-trace.json"
+python3 scripts/primer_payload_rehearsal.py prepare "$PAYLOAD_WORK" "$PAYLOAD_WORK/phase-one/report.json"
+"$GENTLE" --state "$STATE" rna-reads primer-payload-prepare "@$PAYLOAD_WORK/prepare.json"
+python3 scripts/primer_payload_rehearsal.py alignments "$PAYLOAD_WORK" "$PAYLOAD_WORK/queries/report.json"
+"$GENTLE" --state "$STATE" rna-reads primer-payload-summarize "@$PAYLOAD_WORK/summarize.json"
+"$GENTLE" --state "$STATE" rna-reads primer-payload-show "$PAYLOAD_WORK/alignment-evidence/report.json" --rows 2 --verify-artifacts
+```
+
+The helper's PAF is **literal teaching data**, not an independently reproduced
+alignment search. Expect two queries with distinct file/record/anchor identities
+despite repeated read names. One original read is reversed, but both query
+copies run into primer extension direction. The two primers differ in length;
+both explicitly expect the same invented gene. One query maps to that target,
+the other to a foreign gene. Expect separate primer-specific partner profiles,
+one supporting read each, not a pooled two-read gene score. The foreign-only
+payload is not cross-locus evidence: there is no second mapped payload segment.
+
+Inspect `queries/report.json` for exact source mode, masks, exclusions and
+coverage. This rehearsal uses primary retained FASTA and **does not reopen the
+original FASTQ** during Phase 2. All-anchor work needs a separately reviewed
+`replay_verified_fastq` request; do not switch it automatically. Another observed
+primer inside a candidate query is excluded or masked, not counted as payload.
+
+For real externally produced PAF, replace the entire reviewed reference,
+annotation, crosswalk, producer, query-accounting and scope bindings. Do not edit
+just a gene label or submit the synthetic thresholds as calibrated policy.
+Every query is mapped, producer-unmapped or unassessed; missing rows alone do
+not mean unmapped. Input is query-grouped. An unaligned prefix/boundary indel
+cannot become an exact primer edge. Seed agreements are observations, not
+mispriming probabilities, and partner recurrence is not fusion/trans-splicing.
+
+For the inner agent, request discovery of `primer-payload-*`, draft/review the
+same explicit requests, approve only synthetic writes and inspect the returned
+bindings. MCP `op` still needs `confirm:true`. Test progress, independent inspect
+and explicit cancellation on a sufficiently long synthetic run; a tiny completed
+fixture does not demonstrate responsiveness. Cancellation uses the exact inner
+request under `{"kind":"queries|alignments","request":{...}}` and its explicit
+fresh marker path. Requested cancellation is not confirmed termination. Preserve
+cancelled/control-error reports and their missing verified units; no silent retry.

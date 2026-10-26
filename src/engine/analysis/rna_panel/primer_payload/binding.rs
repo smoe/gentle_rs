@@ -45,10 +45,15 @@ pub(super) fn validate_queries(report: &PrimerPayloadQueries) -> Result<(), Engi
 pub(super) fn queries(
     file: &PrimerPayloadFile,
     trace: &RnaPrimerTraceReport,
+    expected_trace: &RnaPrimerTraceResultBinding,
     b: &PrimerPayloadBudgets,
-) -> Result<(PrimerPayloadQueries, BTreeMap<String, Vec<u8>>), EngineError> {
+    additional_input_bytes: u64,
+) -> Result<PrimerPayloadQueries, EngineError> {
     let report: PrimerPayloadQueries = read_json(file, b)?;
     validate_queries(&report)?;
+    if encode(&report.request.trace)? != encode(expected_trace)? {
+        return Err(bad("primer_payload_query_manifest_source_binding"));
+    }
     let requested = report.request.file_ids.iter().collect::<BTreeSet<_>>();
     let available = trace
         .files_completed
@@ -59,6 +64,32 @@ pub(super) fn queries(
         || (report.request.cohort.all_verified_units && requested != available)
     {
         return Err(bad("primer_payload_source_selection"));
+    }
+    let report_bytes = regular(Path::new(&report.request.trace.report_path))?.len();
+    let mut bytes = additional_input_bytes
+        .checked_add(file.bytes)
+        .and_then(|n| n.checked_add(report_bytes))
+        .ok_or_else(|| bad("primer_payload_input_budget"))?;
+    for n in report
+        .artifacts
+        .iter()
+        .map(|a| a.bytes)
+        .chain(trace.artifacts.iter().map(|a| a.bytes))
+        .chain(
+            trace
+                .files_completed
+                .iter()
+                .filter(|u| report.files_completed.contains(&u.file_id))
+                .flat_map(|u| u.artifacts.iter().map(|a| a.bytes)),
+        )
+    {
+        bytes = bytes
+            .checked_add(n)
+            .filter(|n| *n <= b.max_input_bytes)
+            .ok_or_else(|| bad("primer_payload_input_budget"))?;
+    }
+    if bytes > b.max_input_bytes {
+        return Err(bad("primer_payload_input_budget"));
     }
     if report.request.trace.report_content_sha256 != trace.content_sha256
         || report.source_trace_status != trace.status
@@ -308,7 +339,7 @@ pub(super) fn queries(
     if accounted != wanted || no_anchor != missing_no_anchor {
         return Err(bad("primer_payload_anchor_accounting_coverage"));
     }
-    Ok((report, seqs))
+    Ok(report)
 }
 
 impl GentleEngine {

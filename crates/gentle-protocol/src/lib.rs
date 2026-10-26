@@ -5720,6 +5720,10 @@ struct ParityMatrixOverride {
 const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ValidateRnaPrimerPanel",
     "TracePrimerReads",
+    "PreparePrimerPayloadAlignmentQueries",
+    "SummarizePrimerPayloadAlignments",
+    "InspectPrimerPayload",
+    "CancelPrimerPayload",
     "InspectPrimerTrace",
     "CancelPrimerTrace",
     "BuildRnaReadPanel",
@@ -6328,6 +6332,10 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 ];
 
 const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "rna-reads primer-payload-prepare",
+    "rna-reads primer-payload-summarize",
+    "rna-reads primer-payload-show",
+    "rna-reads primer-payload-cancel",
     "rna-reads primer-panel-validate",
     "rna-reads primer-trace",
     "rna-reads primer-trace-show",
@@ -7764,6 +7772,9 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         operation,
         "ComputeTssTfbsProfiles"
             | "TracePrimerReads"
+            | "PreparePrimerPayloadAlignmentQueries"
+            | "SummarizePrimerPayloadAlignments"
+            | "CancelPrimerPayload"
             | "CancelPrimerTrace"
             | "ExportTssTfbsProfiles"
             | "GelWorkbench"

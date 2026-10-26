@@ -12487,6 +12487,9 @@ Error: `{err}`"
             .map(|report| OpResult {
                 rna_primer_panel: None,
                 rna_primer_trace: None,
+                primer_payload_queries: None,
+                primer_payload_alignments: None,
+                primer_payload_inspection: None,
                 rna_primer_trace_inspection: None,
                 genome_edit_intent: None,
                 tube_profiles: None,

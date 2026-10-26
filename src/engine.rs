@@ -3269,6 +3269,24 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    PreparePrimerPayloadAlignmentQueries {
+        request: Box<PreparePrimerPayloadAlignmentQueriesRequest>,
+    },
+    SummarizePrimerPayloadAlignments {
+        request: Box<SummarizePrimerPayloadAlignmentsRequest>,
+    },
+    InspectPrimerPayload {
+        path: String,
+        #[serde(default)]
+        expected_result: Option<Box<PrimerPayloadResultBinding>>,
+        #[serde(default)]
+        rows: usize,
+        #[serde(default)]
+        verify_artifacts: bool,
+    },
+    CancelPrimerPayload {
+        request: Box<PrimerPayloadControlRequest>,
+    },
     ValidateRnaPrimerPanel {
         panel: Box<RnaPrimerPanelBinding>,
         #[serde(default)]
@@ -10240,6 +10258,10 @@ impl GentleEngine {
             Operation::SaveFile { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }
+                | Operation::PreparePrimerPayloadAlignmentQueries { .. }
+                | Operation::SummarizePrimerPayloadAlignments { .. }
+                | Operation::InspectPrimerPayload { .. }
+                | Operation::CancelPrimerPayload { .. }
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::CancelPrimerTrace { .. }
                 | Operation::ScreenRnaReadPanel { .. }

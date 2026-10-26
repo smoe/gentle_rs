@@ -1,5 +1,14 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Primer Payload Evidence (Phase 2, Experimental)
+
+Separate `PreparePrimerPayloadAlignmentQueries`, `SummarizePrimerPayloadAlignments`,
+`InspectPrimerPayload` and `CancelPrimerPayload` operations retain explicit
+query/anchor, cohort, reference/annotation, producer/accounting and result bindings.
+See [schemas, claim prerequisites and counting rules](primer_payload_evidence.md).
+These do not change Phase 1/RNA wire records, start an aligner or authorize a
+private-data replay. Rust/runtime acceptance remains pending.
+
 ## Primer-Anchored Read Trace (Phase 0/1)
 
 `TracePrimerReads {request}`, `ValidateRnaPrimerPanel {panel, seal=false}`,

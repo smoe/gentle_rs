@@ -5516,6 +5516,12 @@ pub struct OpResult {
     pub rna_primer_panel: Option<Box<RnaPrimerPanel>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_trace: Option<Box<RnaPrimerTraceReport>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primer_payload_queries: Option<Box<PrimerPayloadQueries>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primer_payload_alignments: Option<Box<PrimerPayloadAlignmentReport>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primer_payload_inspection: Option<Box<PrimerPayloadInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_trace_inspection: Option<Box<RnaPrimerTraceInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

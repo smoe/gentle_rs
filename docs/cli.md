@@ -4,6 +4,12 @@ Inspect a sequence project, repeat an analysis, or connect GENtle to a script
 or agent. The CLI uses the same engine as the desktop application; you do not
 need to start with raw operation JSON.
 
+For experimental external primer-free payload alignments, see the
+[Phase 2 command/claim reference](primer_payload_evidence.md) and the synthetic
+[tutorial 10.04 rehearsal](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only).
+The `rna-reads primer-payload-prepare|summarize|show|cancel` routes share the
+engine; they do not invoke an aligner or implicitly reopen FASTQ.
+
 **Quick navigation:** [Start here](#start-here) |
 [Find a command or workflow](#commands) | [Interfaces](#overview) |
 [Build from source](#build-and-run) | [Agent integration](agent_interface.md).

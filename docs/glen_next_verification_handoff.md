@@ -1,5 +1,68 @@
 # Glen: Next Verification And Return
 
+## Primer Payload Phase 2, 2026-10-26
+
+New incremental scope only: generic primer-free query preparation, external PAF
+interpretation, partner profiles and separate edge clusters. Use the next normal
+integrated source after Steffen's push; no new interim freeze/bundle cycle.
+Do not repeat completed gel/labware/old six-gate audits merely for this slice.
+Existing independent open gates below remain separately attributed.
+
+Read [the contract/claim matrix](primer_payload_evidence.md),
+[implementation boundary](primer_payload_partner_phase2_plan_20261026.md#implementation-boundary-2026-10-26)
+and the Phase 2 addendum to tutorial 10.04. Work on invented fixtures only;
+no authorization for private FASTQ, downloads, aligners or provider/model contact.
+Use an explicitly isolated Cargo target, not an inherited shared target.
+
+```sh
+cargo check --locked --all-features --tests -j1
+cargo check --locked --no-default-features --lib --bin gentle_cli --bin gentle_examples_docs -j1
+cargo test --locked --lib -j1 primer_payload_ -- --test-threads=1
+cargo test --locked --lib -j1 primer_trace_ -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+cargo test --locked --test capability_registry_parity --test parity_matrix_freshness -j1
+```
+
+Then execute the canonical tutorial/catalog/parity generators and freshness
+checks using same-source binaries. The eight parity rows/counts were projected
+from registry changes without running the Rust generator locally; source-table
+counts are not a byte-freshness verdict. Twenty Rust regressions are authored,
+not locally compiled/run. Local source/Python checks do not close acceptance.
+
+Replay [the Phase 2 synthetic recipe](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only),
+then run the actual-process companion with an explicitly source-matched binary:
+
+```sh
+GENTLE_PAYLOAD_CLI=/absolute/path/to/same-source/gentle_cli python3 -m unittest scripts.test_primer_payload_contract
+```
+
+Require the real CLI case to execute, not skip. Verify expected versus foreign
+payload, two primer lengths/orientations, repeated read names, actual Phase 1
+bindings, explicit accounting, unknown/malformed/hash/annotation refusals,
+MAPQ 0/255, cg/cs indels/skips/contradictions and coarse-mode unavailable claims.
+Inspect masks/all-anchor opt-in, distinct read versus anchor counts, equivalent
+partners and non-transitive edge clusters. Primer plus one foreign payload must
+not become cross-locus; two qualified ordered payload loci may be candidates,
+never confirmed mechanism. Keep original source/project bytes unchanged.
+
+Extend the mandatory matrix in the plan where needed: every cap, rehashed
+structural tampering, ID renaming/permutation, repeated/competing anchors,
+partial source coverage, marker faults/cancellation at streaming and batch
+boundaries, verified-unit retention, fresh-output races, nonregular/symlink
+refusals and Windows closed handles with LF/CRLF/spaced/apostrophe paths.
+
+Separately authorize any live inner-agent exercise: discover prepare/summarize/
+show/cancel, draft reviewed requests, require write approval, inspect/cancel
+while execution slots are busy, preserve completed/cancelled/control-error
+outcomes and refuse recursive agent execution. Deterministic tests are not a
+native or live-model responsiveness verdict. No GUI was added by Phase 2.
+
+Return exact tested source/lockfile/binary/input hashes, platform/toolchain/profile,
+commands/results/skips, primary failures versus cascades and retained artifact
+locations/manifests. Keep source consistency, producer claims, actual runtime,
+native/live-agent, performance and scientific verdicts separate. No release,
+publication, molecule/isoform assignment or scientific acceptance is implied.
+
 ## Five RNA Fixture Repairs, 2026-10-26
 
 The owner-reported full library run had 4504 passes, five failures and 16

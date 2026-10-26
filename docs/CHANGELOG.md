@@ -1,5 +1,43 @@
 # GENtle Changelog
 
+## 2026-10-26 - Add Generic Primer-Free Payload Evidence (Experimental)
+
+- Add strict Phase 2 schemas and separate verified query preparation: retained
+  primary FASTA never reopens FASTQ; all-anchor replay requires explicit source
+  mode and verifies complete source units. Opaque source/record/anchor IDs,
+  competing primer groups and observed-primer masks prevent accidental pooling.
+- Interpret explicit query-grouped PAF against content-bound annotations/FASTA,
+  checking cg/cs spans, accounting and resource budgets. Retain best-equivalent
+  segment alternatives, unavailable evidence, oriented seed observations and
+  annotated splice compatibility without an aligner or mechanism inference.
+- Export distinct-read partner profiles and separate primer/internal edge
+  clusters with denominators, coverage deficits and maximum-span tolerance.
+  Fresh staged artifacts, bounded inspection and request-bound cancellation use
+  named non-project execution; generic MCP approval gates remain unchanged.
+- Keep all panel/reference/cohort/policy choices data-driven. Phase 1 wire
+  definitions and emitted TSV columns remain unchanged; its row decoder/header
+  are reused. Initialize new optional result fields at existing constructor
+  sites only; no GUI behavior is added. Refresh required registry projections.
+- Author 20 Rust regressions, a synthetic tutorial 10.04 companion and optional
+  actual-CLI replay; no private reads were processed. Local Rust execution,
+  external canonical parity generation, native/live-agent and scientific
+  acceptance remain pending. See the focused Glen handoff; no push or goal resume.
+- Available verification: 127 Python/source checks pass, one actual-binary case
+  explicitly skips. Scoped rustfmt, documentation status, maturity freshness and
+  whitespace pass. Session-close: four OK, two intentional dirty-worktree/manual
+  plan-fidelity warnings, no failures. This is not Rust or platform acceptance.
+
+## 2026-10-26 - Plan Generic Primer Payload Partner Evidence
+
+- Record the proposed seven-slice Phase 2 plan from Glen's supplied prompt,
+  including verified query/anchor manifests, explicit reference/annotation and
+  cohort bindings, PAF admission, ambiguity-preserving evidence, separate partner
+  and edge counts, lifecycle/adapters and synthetic/external acceptance.
+- Keep current panel names out of runtime policy, Phase 1 bytes unchanged and
+  private data untouched. Identify primary-only FASTA and unverified inspector
+  limitations before implementation. This is planning only, not a capability,
+  acceptance result, release change or resumption of the paused goal.
+
 ## 2026-10-26 - Prepare Verified Primer-Free Query Copies
 
 - Add strict Phase 2 data contracts and engine query preparation with explicit

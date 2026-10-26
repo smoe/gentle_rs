@@ -12,6 +12,50 @@
 use super::*;
 
 #[test]
+fn primer_payload_discovery_templates_preserve_typed_routes_and_confirmation() {
+    for (path, operation) in [
+        (
+            "rna-reads primer-payload-prepare",
+            "PreparePrimerPayloadAlignmentQueries",
+        ),
+        (
+            "rna-reads primer-payload-summarize",
+            "SummarizePrimerPayloadAlignments",
+        ),
+        ("rna-reads primer-payload-cancel", "CancelPrimerPayload"),
+    ] {
+        let descriptor = primer_payload_descriptor(path);
+        let request = quote_shell_arg(&descriptor["request_template"].to_string());
+        let parsed = parse_shell_line(&format!("{path} {request}")).unwrap();
+        assert!(parsed.is_state_mutating());
+        assert_eq!(descriptor["requires_confirmation"], true);
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("shared operation required")
+        };
+        let op: Operation = serde_json::from_str(&payload).unwrap();
+        assert!(serde_json::to_value(op).unwrap().get(operation).is_some());
+        assert_eq!(
+            serde_json::from_str::<Value>(&payload).unwrap(),
+            descriptor["operation_template"]
+        );
+        assert!(parse_shell_line(&format!("{path} '{{}}'")).is_err());
+    }
+    let line = format!(
+        "rna-reads primer-payload-show {} --rows 2 --verify-artifacts",
+        quote_shell_arg("a path's report.json")
+    );
+    assert!(!parse_shell_line(&line).unwrap().is_state_mutating());
+    for suffix in [
+        "--rows 1001",
+        "--rows 0..1000",
+        "--rows 1 --rows 2",
+        "--verify-artifacts --verify-artifacts",
+    ] {
+        assert!(parse_shell_line(&format!("rna-reads primer-payload-show x {suffix}")).is_err());
+    }
+}
+
+#[test]
 fn primer_trace_introspection_templates_are_typed_but_require_reviewed_inputs() {
     use crate::engine::{RnaPrimerPanelBinding, RnaPrimerTraceBudgets, RnaPrimerTracePolicy};
 
@@ -1877,6 +1921,14 @@ fn smoke_command_line_for_glossary_command(
     command: &GlossaryCommandFixture,
     scratch: &Path,
 ) -> String {
+    if command.path.starts_with("rna-reads primer-payload-") && !command.path.ends_with("-show") {
+        let descriptor = primer_payload_descriptor(&command.path);
+        return format!(
+            "{} {}",
+            command.path,
+            quote_shell_arg(&descriptor["request_template"].to_string())
+        );
+    }
     if matches!(
         command.path.as_str(),
         "rna-reads primer-panel-validate" | "rna-reads primer-trace"
@@ -2326,6 +2378,17 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
+    if path == "rna-reads primer-payload-show" && flag == "--binding" {
+        let binding = json!({"schema":"gentle.primer_payload_result_binding.v1","kind":"queries","request_sha256":"","report_content_sha256":"","report_path":"synthetic-report.json","outcome":"completed"});
+        let mut tokens = split_shell_words(line).unwrap();
+        let i = tokens.iter().position(|t| t == "--binding").unwrap();
+        tokens[i + 1] = binding.to_string();
+        *line = tokens
+            .iter()
+            .map(|t| quote_shell_arg(t))
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
     if path == "rna-reads primer-trace-show" {
         if flag == "--rows" {
             let mut tokens = split_shell_words(line).unwrap();

@@ -65,6 +65,7 @@ enum Publication {
     Project,
     Artifact(crate::engine::RnaReadPanelResultBinding),
     PrimerTrace(crate::engine::RnaPrimerTraceResultBinding),
+    PrimerPayload(crate::engine::PrimerPayloadResultBinding),
     Observation,
 }
 
@@ -129,6 +130,8 @@ pub struct CommandReceipt {
     pub artifact_result: Option<crate::engine::RnaReadPanelResultBinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primer_trace_result: Option<crate::engine::RnaPrimerTraceResultBinding>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primer_payload_result: Option<crate::engine::PrimerPayloadResultBinding>,
     pub requires_project_commit: bool,
     pub rna_progress: Option<crate::engine::RnaReadPanelProgress>,
 }
@@ -405,6 +408,7 @@ impl CommandExecutionService {
                     publication: "pending",
                     artifact_result: None,
                     primer_trace_result: None,
+                    primer_payload_result: None,
                     requires_project_commit: needs_project,
                     rna_progress: None,
                 },
@@ -491,6 +495,11 @@ impl CommandExecutionService {
                             "primer_trace_result":binding,"full_output_retained_in_report":true});
                         bytes = bounded_output(&run.output);
                     }
+                    if let Publication::PrimerPayload(binding) = &publication {
+                        run.output = serde_json::json!({"schema":"gentle.command_primer_payload_result.v1",
+                            "primer_payload_result":binding,"full_output_retained_in_report":true});
+                        bytes = bounded_output(&run.output);
+                    }
                 }
                 let bytes = bytes.map_err(|_| "Command result exceeds the 16 MiB interactive retention limit; use a file-export operation")?;
                 let digest = sha256_prefixed_bytes(&bytes);
@@ -511,6 +520,10 @@ impl CommandExecutionService {
                         Publication::PrimerTrace(binding) => {
                             job.receipt.publication = "artifact_only";
                             job.receipt.primer_trace_result = Some(binding);
+                        }
+                        Publication::PrimerPayload(binding) => {
+                            job.receipt.publication = "artifact_only";
+                            job.receipt.primer_payload_result = Some(binding);
                         }
                         Publication::Observation => job.receipt.publication = "observation_control",
                         Publication::Project => unreachable!(),
@@ -548,7 +561,8 @@ impl CommandExecutionService {
                 if cancelled { frame.cancel(error); } else { frame.fail(error); }
             } else {
                 let outcome = job.receipt.artifact_result.as_ref().filter(|b| b.kind == crate::engine::RnaReadPanelResultKind::Screen)
-                    .map(|b| b.outcome.clone()).or_else(|| job.receipt.primer_trace_result.as_ref().map(|b| b.outcome.clone()));
+                    .map(|b| b.outcome.clone()).or_else(|| job.receipt.primer_trace_result.as_ref().map(|b| b.outcome.clone()))
+                    .or_else(||job.receipt.primer_payload_result.as_ref().map(|b|b.outcome.clone()));
                 job.receipt.state = match outcome.as_deref() {
                     Some("cancelled") => RuntimeStatusFrameState::Cancelled,
                     Some("control_error") => RuntimeStatusFrameState::Failed,
