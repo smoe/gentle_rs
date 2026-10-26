@@ -123,6 +123,10 @@ class SequenceDesignTutorialSourceTests(unittest.TestCase):
         for case in source["agent_parity"]["cases"]:
             self.assertEqual(case["execution"], "ask")
             self.assertIn(case["command"], text)
+        preview, = [case for case in source["agent_parity"]["cases"]
+                    if case["id"] == "preview_joint_constraints"]
+        self.assertEqual(preview["command"], "sequence-design plan @request.json --path preview.json")
+        self.assertFalse(preview["mutating"], "Report-write approval is not project mutation")
         for required in ("ACTUAL_REVIEWED_DIGEST", "session", "not a digest to submit",
                          "search_claims_verified=false", "unverified_portable_preview",
                          "Do not pipe a digest automatically", "no applicable",

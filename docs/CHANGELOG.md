@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-26 - Align Tutorial Agent Approval Count
+
+- Correct the stale tutorial parser-classification expectation from 15 to 16:
+  the `98c9331a` approval repair makes 06.07's explicit report-write preview
+  require review. Keep five tutorials, 27 cases and eight author-declared
+  project mutations unchanged; no runtime approval or tutorial contract changes.
+- Extend the existing Rust regression with an auto-execution negative control
+  for the real source-bound preview, and pin its reviewed/non-project-mutating
+  declaration in the Python companion. Rust execution remains external; the
+  focused rerun is recorded in Glen's handoff. No push or local Rust build.
+
 ## 2026-10-26 - Prepare Lifecycle Slice 3 For Review
 
 - Inspect `320d5803` and prepare the constructor/workflow/autosave plan plus a

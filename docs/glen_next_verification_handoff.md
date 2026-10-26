@@ -1,5 +1,27 @@
 # Glen: Next Verification And Return
 
+## Tutorial Agent-Parity Approval Count, 2026-10-26
+
+The owner reports 4549 library passes, one failure and 16 ignored tests; tested
+source/platform were not supplied. The remaining assertion expected 15 parser
+review gates, before `98c9331a` made tutorial 06.07's `sequence-design plan
+@request.json --path preview.json` require report-write approval. The count is
+now 16; five tutorials, 27 cases and eight author-declared project mutations
+remain unchanged. The production gate and tutorial's `execution: ask` stay intact.
+
+On the next normally integrated source, run only this missing regression (or
+reuse a same-source normal-CI result); do not repeat completed audit groups:
+
+```sh
+cargo test --locked --lib -j1 tss_tutorial_agent_drafts_parse_and_keep_mutations_reviewed -- --test-threads=1
+```
+
+It now also changes the real 06.07 preview to `auto` in memory and requires
+exactly its `auto_blocked_by_runtime` finding. No command executes or fixture
+changes. The Python companion pins the existing reviewed/non-project-mutating
+declaration, not the Rust parser's runtime result. Rust verification is pending;
+include it in the normal source-bound return below, not a new freeze or bundle.
+
 ## Primer Payload Phase 2, 2026-10-26
 
 **Forward to Glen after Steffen's normal push.** Verify the integrated source

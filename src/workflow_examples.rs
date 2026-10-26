@@ -9178,7 +9178,32 @@ mod tests {
         assert_eq!(check.summary.tutorials, 5);
         assert_eq!(check.summary.cases, 27);
         assert_eq!(check.summary.declared_mutating, 8);
-        assert_eq!(check.summary.parser_state_mutating, 15);
+        // The 06.07 preview writes a report, so parser approval includes it
+        // without changing the author's biological/project mutation count.
+        assert_eq!(check.summary.parser_state_mutating, 16);
+
+        let mut sequence_design = units
+            .iter()
+            .find(|unit| unit.id == "synthetic_sequence_design")
+            .expect("sequence-design tutorial")
+            .clone();
+        let preview = sequence_design
+            .agent_parity
+            .as_mut()
+            .expect("sequence-design agent contract")
+            .cases
+            .iter_mut()
+            .find(|case| case.id == "preview_joint_constraints")
+            .expect("report-writing preview");
+        assert_eq!(preview.execution, TutorialAgentExecutionIntent::Ask);
+        assert!(!preview.mutating);
+        preview.execution = TutorialAgentExecutionIntent::Auto;
+        let blocked = check_tutorial_agent_parity(&[sequence_design], root);
+        assert_eq!(blocked.summary.parser_state_mutating, 1);
+        assert_eq!(blocked.findings.len(), 1, "{:?}", blocked.findings);
+        assert_eq!(blocked.findings[0].code, "auto_blocked_by_runtime");
+        assert_eq!(blocked.findings[0].tutorial_id, "synthetic_sequence_design");
+        assert_eq!(blocked.findings[0].case_id, "preview_joint_constraints");
     }
 
     #[test]
