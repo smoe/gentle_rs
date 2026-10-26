@@ -1,5 +1,54 @@
 # Glen: Next Verification And Return
 
+## RNA Genomic Exon And Strand Admission, 2026-10-26
+
+Reviewed against `11a6cd9b` (README-only successor to `4acee734`). The main
+checkout's untracked `rna_panel_overlap_strand_codex_prompt_20261026.md` was
+read, not copied or edited. No fetch, push or CI dispatch is performed here;
+the existing local `f6777b6c` repair still requires integrated Rust/CI evidence.
+
+At the next ordinary verification, run:
+
+```sh
+cargo check --locked --all-features --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_examples_docs
+cargo test --locked --lib -j1 rna_panel -- --test-threads=1
+cargo test --locked --lib -j1 rna_legacy -- --test-threads=1
+cargo test --locked --lib -j1 agent_rna_ -- --test-threads=1
+```
+
+Eleven new `overlap_tests` cases are authored, unrun. Check that reflected
+records cannot hide same-genomic-strand exonic duplication, while opposite-
+strand exonic overlaps are admitted independently of extraction orientation.
+Keep exact assembly/chromosome comparison, adjacent one-base boundaries,
+disjoint exons despite shared flanks, and unknown/unmappable conservative
+fallbacks. Same-record/DNA-hash/declared-gene safeguards remain active even
+for antisense records. Present assessments must be recomputed and reject
+honestly rehashed tampering; absent historical fields retain old wire bytes,
+hashes and admission, not an implicit upgrade. New builds/extensions get new
+panel identities; do not pool their reports with historical-panel results.
+
+Tutorial 10.04 now explains `source_overlap_assessment.rule=genomic_exons_v1`,
+`antisense_overlapping_loci` and `conservative_source_pairs`. Inspect new
+panels and summary JSON through GUI, shared shell/MCP and the live inner agent:
+discover `source_overlap_contract`, preserve approved writes, distinguish
+annotation strand from read/library orientation, and never collapse or reassign
+ambiguous counts. Summaries retain source geometry even with zero verified
+files; their inspection is structural, not fresh source authentication/mapping.
+TSV counts and scientific nomination policy are unchanged.
+
+Run canonical tutorial/parity checks and the existing no-shell/native Windows
+path/handle acceptance at the actual integrated source. No live-model/native
+or Rust pass is claimed here. Optional random-background characterization was
+not added: this repair changes admission only, not sensitivity or budgets.
+
+Offline verification: `python3 -m unittest scripts.test_rna_panel_tutorial
+scripts.test_tutorial_checkouts scripts.test_capability_maturity` passes all
+115 tests. Scoped rustfmt, documentation status, maturity freshness and
+whitespace checks pass. Session-close reports four OK, two expected
+worktree/manual-plan warnings and no failures; roadmap remains 400 lines.
+These checks do not execute the new Rust regressions or establish native parity.
+
 ## RNA Work Profiles, Error Scripts And Summary Evidence, 2026-10-26
 
 Use normal integrated source, not a new candidate freeze. The residual prompt

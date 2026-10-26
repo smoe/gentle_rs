@@ -79,6 +79,10 @@ index/per-file work counters; missing historical profiles are unrecorded, not
 zero. Summary sets show their optional sequence-sharing evidence, not an origin
 assignment or explanation of read ambiguity. **Verify summary tables** is separate
 bounded background work, not a FASTQ reread. Long count tables use virtualized rows.
+Panel and summary inspection also show the engine's optional exon-based source-
+overlap assessment, annotated antisense intervals/member IDs and conservative
+mapping fallbacks. Legacy absence keeps the historical record-extent rule;
+no adapter infers genomic strands or assigns a read's origin.
 **Add screen to summary** or **Export > Add screen reports...** selects explicit
 inputs. Review the summary request before **Export reviewed summary (writes
 files)**; compatibility/deduplication remains engine-owned. Reopen the bound

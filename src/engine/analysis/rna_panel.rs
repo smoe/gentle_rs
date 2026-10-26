@@ -15,6 +15,11 @@ mod control;
 mod error_tests;
 #[path = "rna_panel/input.rs"]
 mod input;
+#[path = "rna_panel/overlap.rs"]
+mod overlap;
+#[cfg(test)]
+#[path = "rna_panel/overlap_tests.rs"]
+mod overlap_tests;
 #[path = "rna_panel/primer_trace.rs"]
 mod primer_trace;
 #[cfg(test)]
@@ -142,16 +147,6 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
     let mut pairs = vec![];
     for (i, a) in loci.iter().enumerate() {
         for b in &loci[i + 1..] {
-            // Conservative admission: two seeds on the same loaded record can
-            // expand to the same group even when their local feature IDs differ.
-            let same_record = a.source.seq_id == b.source.seq_id;
-            let same_sequence = a
-                .source_sequence_sha256
-                .as_ref()
-                .zip(b.source_sequence_sha256.as_ref())
-                .is_some_and(|(x, y)| x == y);
-            let same_declared_gene =
-                a.source.assembly == b.source.assembly && a.source.gene_id == b.source.gene_id;
             let overlap = match (&a.genome_anchor, &b.genome_anchor) {
                 (Some(x), Some(y)) => {
                     a.source.assembly == b.source.assembly
@@ -162,12 +157,25 @@ fn source_overlaps(loci: &[RnaReadPanelLocus]) -> Vec<(String, String)> {
                 }
                 _ => false,
             };
-            if same_record || same_sequence || same_declared_gene || overlap {
+            if same_source_identity(a, b) || overlap {
                 pairs.push((a.source.locus_id.clone(), b.source.locus_id.clone()));
             }
         }
     }
     pairs
+}
+
+fn same_source_identity(a: &RnaReadPanelLocus, b: &RnaReadPanelLocus) -> bool {
+    // These conservative identity checks are independent of the coordinate rule.
+    let same_record = a.source.seq_id == b.source.seq_id;
+    let same_sequence = a
+        .source_sequence_sha256
+        .as_ref()
+        .zip(b.source_sequence_sha256.as_ref())
+        .is_some_and(|(x, y)| x == y);
+    let same_declared_gene =
+        a.source.assembly == b.source.assembly && a.source.gene_id == b.source.gene_id;
+    same_record || same_sequence || same_declared_gene
 }
 
 fn shared_transcript_sequences(
@@ -353,6 +361,7 @@ impl GentleEngine {
             selected_transcript_count: 0,
             annotated_transcript_count: 0,
             overlapping_source_pairs: vec![],
+            source_overlap_assessment: None,
             shared_transcript_sequences: None,
             gene_set_resolution,
             parent_panel_sha256,
@@ -472,7 +481,9 @@ impl GentleEngine {
             .collect::<BTreeSet<_>>()
             .len();
         panel.selected_transcript_count = panel.templates.len();
-        panel.overlapping_source_pairs = source_overlaps(&panel.loci);
+        let (pairs, assessment) = overlap::assess(&panel);
+        panel.overlapping_source_pairs = pairs;
+        panel.source_overlap_assessment = Some(assessment);
         panel.shared_transcript_sequences = Some(shared_transcript_sequences(&panel.templates));
         project::validate_gene_set(&panel)?;
         seal_panel(&mut panel)?;
@@ -541,7 +552,6 @@ fn validate_panel(panel: &RnaReadPanel) -> Result<(), EngineError> {
                     .count()
                     > l.annotated_transcript_count
         })
-        || panel.overlapping_source_pairs != source_overlaps(&panel.loci)
         || Some(panel.annotated_transcript_count)
             != panel.loci.iter().try_fold(0usize, |sum, l| {
                 sum.checked_add(l.annotated_transcript_count)
@@ -601,6 +611,20 @@ fn validate_panel(panel: &RnaReadPanel) -> Result<(), EngineError> {
     }
     if bases > 32_000_000 {
         return Err(bad("panel_reference_budget: 32 million transcript bases"));
+    }
+    match &panel.source_overlap_assessment {
+        None => {
+            // Never reinterpret or reseal historical panels under a new admission rule.
+            if panel.overlapping_source_pairs != source_overlaps(&panel.loci) {
+                return Err(bad("panel_source_overlap_binding"));
+            }
+        }
+        Some(recorded) => {
+            let (pairs, expected) = overlap::assess(panel);
+            if panel.overlapping_source_pairs != pairs || recorded != &expected {
+                return Err(bad("panel_source_overlap_binding"));
+            }
+        }
     }
     if panel
         .shared_transcript_sequences

@@ -16,6 +16,41 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_versioned_source_overlap_is_engine_owned_and_legacy_absence_stays_omitted(self):
+        paths = ("src/engine/protocol/rna_panel.rs", "src/engine/analysis/rna_panel.rs",
+                 "src/engine/analysis/rna_panel/overlap.rs", "src/engine/analysis/rna_panel/summary.rs")
+        types, engine, overlap, summary = [(ROOT / p).read_text(encoding="utf-8") for p in paths]
+        for crlf in (False, True):
+            with self.subTest(crlf=crlf):
+                t, e, o, s = [v.replace("\n", "\r\n") if crlf else v for v in (types, engine, overlap, summary)]
+                field = r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub source_overlap_assessment: Option<RnaReadPanelSourceOverlapAssessment>'
+                self.assertEqual(len(re.findall(field, t)), 2, "panel and summary absence must stay omitted")
+                self.assertIn("RnaReadPanelSourceOverlapRule::GenomicExonsV1", o)
+                self.assertIn("GentleEngine::genomic_interval_from_anchor", o)
+                self.assertIn("UnknownAnchorStrand", o)
+                self.assertIn("UnmappableExons", o)
+                self.assertIn("source_overlap_assessment = Some(assessment)", e)
+                self.assertIn("match &panel.source_overlap_assessment", e)
+                self.assertIn("panel.overlapping_source_pairs != source_overlaps(&panel.loci)", e)
+                self.assertIn("recorded != &expected", e)
+                self.assertIn("same_source_identity(a, b)", o)
+                self.assertIn("overlap::validate_summary(summary)?", s)
+                self.assertIn("source_overlap_assessment: reference.source_overlap_assessment.clone()", s)
+        for path in ("src/app/rna_panel_ui.rs", "src/app/rna_panel_ui/processing/evidence.rs"):
+            self.assertIn("source_overlap_assessment", (ROOT / path).read_text(encoding="utf-8"))
+        self.assertIn("source_overlap_contract", (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8"))
+        tests = (ROOT / "src/engine/analysis/rna_panel/overlap_tests.rs").read_text(encoding="utf-8")
+        self.assertEqual(len(re.findall(r"#\[test\]", tests)), 11)
+        for phrase in ("historical_overlap_rule_and_wire_digest_are_not_reinterpreted",
+                       "antisense_assessment_and_nominations_are_extraction_orientation_invariant",
+                       "unknown_or_unmappable_anchor_uses_disclosed_conservative_overlap"):
+            self.assertIn(phrase, tests)
+        for text in (GUIDE.read_text(encoding="utf-8"), GUIDE.read_text(encoding="utf-8").replace("\n", "\r\n")):
+            guide = re.sub(r"\s+", " ", text)
+            for phrase in ("genomic_exons_v1", "antisense_overlapping_loci", "conservative_source_pairs",
+                           "library orientation", "different-panel reports", "Historical missing assessments remain unrecorded"):
+                self.assertIn(phrase, guide)
+
     def test_work_observation_and_summary_sharing_are_shared_optional_not_new_policy(self):
         paths = ("src/engine/protocol/rna_panel.rs", "src/engine/analysis/rna_panel.rs",
                  "src/engine/analysis/rna_panel/work_profile.rs", "src/engine/analysis/rna_panel/summary.rs")

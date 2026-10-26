@@ -875,6 +875,13 @@ impl GENtleApp {
                     }
                     if let Some(panel) = &state.panel {
                         ui.monospace(&panel.content_sha256);
+                        if let Some(assessment) = &panel.source_overlap_assessment {
+                            ui.label(format!(
+                                "{} annotated antisense overlaps; {} conservative mapping fallbacks",
+                                assessment.antisense_overlapping_loci.len(),
+                                assessment.conservative_source_pairs.len()
+                            ));
+                        }
                         if let Some(shared) = &panel.shared_transcript_sequences {
                             if !shared.is_empty() {
                                 ui.colored_label(
