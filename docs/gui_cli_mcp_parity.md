@@ -19,11 +19,11 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 65 | 788 | 0 |
-| gentle_cli | 501 | 376 | 0 |
-| MCP | 197 | 544 | 49 |
-| JS | 78 | 618 | 69 |
-| Lua | 77 | 619 | 69 |
+| GUI | 65 | 790 | 0 |
+| gentle_cli | 501 | 378 | 0 |
+| MCP | 197 | 546 | 49 |
+| JS | 78 | 620 | 69 |
+| Lua | 77 | 621 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -657,6 +657,8 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | CancelRnaReadPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRnaReadPanelSummary | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | EvaluateGenomeEditIntent | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| PlanDnaSequenceDesign | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ApplyDnaSequenceDesign | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | LoadFile | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SaveFile | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RenderSequenceSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

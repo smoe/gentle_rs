@@ -842,6 +842,10 @@ non-claims. It is not persisted and creates no project sequence, file, network
 activity, undo entry or mutation/structural revision. The ordinary operation
 journal/execution receipt may advance. Generic MCP `op` still requires
 `confirm=true`, but this operation does not create or rewrite its state file.
+This apply/file-level rule does not yet cover generic construction: `from_state`
+repairs lineage/containers before dispatch, so JS/Lua can return repaired state
+for an unreconciled input. Constructor/workflow preservation remains separately
+gated; suppressing a disk save does not establish unchanged in-memory content.
 There is no dedicated editing command, GUI designer, guide/profile selection,
 efficacy/off-target prediction, observed genotype or laboratory execution.
 
@@ -853,6 +857,17 @@ motif-removal preview for explicit synthetic inserts. `ApplyDnaSequenceDesign
 sequence without rerunning optimization. Shared shell routes are
 `sequence-design plan REQUEST_JSON_OR_@FILE [--path PREVIEW.json]` and
 `sequence-design apply PREVIEW_JSON_OR_@FILE --approve DIGEST`.
+
+The engine-owned request approval facet requires conversation confirmation for
+any present `PlanDnaSequenceDesign.path`, even an empty/malformed path. Absent
+path adds no operation-derived confirmation; explicit candidate/tool gates
+remain additive. Static Plan metadata is External with confirmation, not an
+authorization source. Approval covers the report-write attempt, including
+`cancelled` reports, not successful search. A file may be written successfully
+while its retained search status remains cancelled. Scientific/report bytes and
+the existing writer are unchanged. This does not implement constructor,
+reconciliation, history, autosave or destination-alias policy; those lifecycle
+facets and S2 remain separately gated.
 
 Portable schemas in `gentle_protocol::sequence_design`:
 `gentle.dna_sequence_design_request.v1`,

@@ -34,6 +34,27 @@ def fenced_request(text):
 
 
 class SequenceDesignTutorialSourceTests(unittest.TestCase):
+    def test_request_aware_artifact_approval_is_wired_without_lifecycle_claims(self):
+        policy = (ROOT / "src/engine/operation_lifecycle.rs").read_text(encoding="utf-8")
+        selector = policy.split("#[cfg(test)]", 1)[0]
+        for text in ("Operation::PlanDnaSequenceDesign", "path: Some(_)", "path: None",
+                     "ConfirmArtifactWriteAttempt", "NoAdditionalConfirmation", "_ => None"):
+            self.assertIn(text, selector)
+        self.assertNotIn("serde_json", selector)
+        self.assertNotIn("std::fs", selector)
+        shell = (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8")
+        approval = shell.split("pub fn is_state_mutating(", 1)[1].split("pub fn ", 1)[0]
+        self.assertIn("operation_approval_policy(&operation)", approval)
+        self.assertIn("policy.requires_confirmation()", approval)
+        descriptor = shell.split("fn sequence_design_capability_descriptor(", 1)[1].split("fn tss_view_svg_capability_descriptor(", 1)[0]
+        self.assertIn('else {"external"}', descriptor)
+        self.assertIn('"requires_confirmation":true', descriptor)
+        self.assertIn("write attempt", descriptor)
+        bridge = (ROOT / "src/agent_bridge.rs").read_text(encoding="utf-8")
+        self.assertIn('requires execution="ask" for the exact report-write attempt', bridge)
+        guide = GUIDE.read_text(encoding="utf-8")
+        self.assertIn("approval for the report-write attempt", guide)
+
     def test_discovery_and_links(self):
         source = json.loads(SOURCE.read_text(encoding="utf-8"))
         self.assertEqual(source["schema"], "gentle.tutorial_source.v4")

@@ -346,6 +346,127 @@ mod tests {
     };
 
     #[test]
+    fn sequence_design_forged_flags_cannot_authorize_wrapped_report_writes() {
+        use crate::engine_shell::quote_shell_arg;
+        let request: Value = serde_json::from_str(include_str!(
+            "../docs/tutorial/inputs/synthetic_sequence_design.json"
+        ))
+        .unwrap();
+        let td = tempfile::tempdir().unwrap();
+        let output = td.path().join("preview's report.json");
+        let operation =
+            serde_json::json!({"PlanDnaSequenceDesign":{"request":request,"path":output}});
+        let workflow = serde_json::json!({"ops":[operation]});
+        let named = format!(
+            "sequence-design plan {} --path {}",
+            quote_shell_arg(&request.to_string()),
+            quote_shell_arg(&output.display().to_string())
+        );
+        let raw = format!("op {}", quote_shell_arg(&operation.to_string()));
+        let cases = [
+            (AgentPlanCandidateKind::Shell, Some(named), None, None),
+            (AgentPlanCandidateKind::Shell, Some(raw.clone()), None, None),
+            (
+                AgentPlanCandidateKind::Shell,
+                Some(format!(
+                    "workflow {}",
+                    quote_shell_arg(&workflow.to_string())
+                )),
+                None,
+                None,
+            ),
+            (
+                AgentPlanCandidateKind::Shell,
+                Some(format!("macros run {}", quote_shell_arg(&raw))),
+                None,
+                None,
+            ),
+            (AgentPlanCandidateKind::Op, None, Some(operation), None),
+            (AgentPlanCandidateKind::Workflow, None, None, Some(workflow)),
+        ];
+        let mut engine = GentleEngine::new();
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let journal = engine.journal_len();
+        for (kind, shell_command, operation, workflow) in cases {
+            let plan = AgentPlanResult {
+                schema: "gentle.agent_plan_result.v1".into(),
+                assistant_message: "Synthetic approval regression".into(),
+                questions: vec![],
+                candidates: vec![AgentPlanCandidate {
+                    candidate_id: "preview".into(),
+                    title: "Preview".into(),
+                    kind,
+                    execution_mode: AgentPlanExecutionMode::Auto,
+                    mutating: false,
+                    requires_confirmation: false,
+                    shell_command,
+                    operation,
+                    workflow,
+                    ..Default::default()
+                }],
+            };
+            let denied = execute_agent_plan_candidate_with_feedback(
+                &mut engine,
+                &plan,
+                "preview",
+                false,
+                &ShellExecutionOptions::default(),
+            );
+            assert!(denied.result.unwrap_err().contains("--confirm"));
+            assert_eq!(denied.feedback.status, AgentExecutionStatus::Blocked);
+            assert_eq!(denied.feedback.before, denied.feedback.after);
+            assert!(!output.exists());
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            assert_eq!(engine.journal_len(), journal);
+        }
+    }
+
+    #[test]
+    fn sequence_design_approved_write_attempt_can_publish_a_cancelled_report() {
+        use crate::engine_shell::quote_shell_arg;
+        let td = tempfile::tempdir().unwrap();
+        let output = td.path().join("cancelled preview.json");
+        let request = include_str!("../docs/tutorial/inputs/synthetic_sequence_design.json");
+        let plan = AgentPlanResult {
+            schema: "gentle.agent_plan_result.v1".into(),
+            assistant_message: "Synthetic cancellation regression".into(),
+            questions: vec![],
+            candidates: vec![AgentPlanCandidate {
+                candidate_id: "preview".into(),
+                title: "Preview".into(),
+                kind: AgentPlanCandidateKind::Shell,
+                execution_mode: AgentPlanExecutionMode::Auto,
+                shell_command: Some(format!(
+                    "sequence-design plan {} --path {}",
+                    quote_shell_arg(request),
+                    quote_shell_arg(&output.display().to_string())
+                )),
+                ..Default::default()
+            }],
+        };
+        let options = ShellExecutionOptions {
+            progress_callback: Some(std::sync::Arc::new(std::sync::Mutex::new(Box::new(|_| {
+                false
+            })))),
+            ..Default::default()
+        };
+        let mut engine = GentleEngine::new();
+        assert!(
+            execute_agent_plan_candidate(&mut engine, &plan, "preview", false, &options)
+                .unwrap_err()
+                .contains("--confirm")
+        );
+        assert!(!output.exists());
+        let result =
+            execute_agent_plan_candidate(&mut engine, &plan, "preview", true, &options).unwrap();
+        let saved: Value = serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
+        assert_eq!(saved["status"], "cancelled");
+        assert!(saved["approval_digest"].is_null());
+        assert_eq!(saved, result.output["result"]["dna_sequence_design"]);
+        assert!(!result.state_changed);
+    }
+
+    #[test]
     fn ui_intent_candidate_is_translated_to_ui_shell_command() {
         let value = serde_json::json!({
             "action": "open",

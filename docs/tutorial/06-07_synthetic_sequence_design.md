@@ -207,6 +207,12 @@ Ask GENtle's Agent Assistant:
 > search status. Do not apply yet.
 
 The agent should propose the same parser-valid `sequence-design plan` command.
+When it includes `--path`, give explicit approval for the report-write attempt
+before the agent executes it. This is separate from approving DNA application.
+A cancelled search may still save a report after that approval; a saved file
+does not turn `cancelled` into a completed search. Without `--path`, the request
+adds no new confirmation, but any candidate/tool requirement still applies.
+Direct CLI use above is your explicit invocation, not a new `--confirm` option.
 It must not invent output DNA or hashes, infer a CDS from a label, recode a
 natural assay template, or silently select another strategy. No agent is needed
 to replay this tutorial. In Agent Assistant, **Use reviewed result in next

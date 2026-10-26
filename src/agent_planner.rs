@@ -570,6 +570,104 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sequence_design_ordinary_planner_requires_report_write_confirmation() {
+        use crate::{
+            agent_execution::execute_agent_plan_candidate_with_feedback,
+            agent_feedback::AgentExecutionStatus,
+            engine::GentleEngine,
+            engine_shell::{ShellExecutionOptions, quote_shell_arg},
+        };
+        let request: Value = serde_json::from_str(include_str!(
+            "../docs/tutorial/inputs/synthetic_sequence_design.json"
+        ))
+        .unwrap();
+        let request = request.to_string();
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("preview's report.json");
+        let command = format!(
+            "sequence-design plan {} --path {}",
+            quote_shell_arg(&request),
+            quote_shell_arg(&path.display().to_string())
+        );
+        let prompt = format!("auto: {command}");
+        let plan = builtin_echo_plan_result(&prompt, None, true).unwrap();
+        assert!(plan.candidates[0].mutating);
+        assert!(
+            !plan.candidates[0].requires_confirmation,
+            "the normal planner relies on parsed request approval, not an independent flag"
+        );
+        assert!(
+            builtin_echo_plan_result(&prompt, None, false)
+                .unwrap()
+                .candidates
+                .is_empty()
+        );
+        let mut engine = GentleEngine::new();
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let journal = engine.journal_len();
+        let denied = execute_agent_plan_candidate_with_feedback(
+            &mut engine,
+            &plan,
+            "candidate-1",
+            false,
+            &ShellExecutionOptions::default(),
+        );
+        assert!(denied.result.unwrap_err().contains("--confirm"));
+        assert_eq!(denied.feedback.status, AgentExecutionStatus::Blocked);
+        assert_eq!(denied.feedback.before, denied.feedback.after);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(engine.journal_len(), journal);
+        assert!(!path.exists());
+        let allowed = execute_agent_plan_candidate_with_feedback(
+            &mut engine,
+            &plan,
+            "candidate-1",
+            true,
+            &ShellExecutionOptions::default(),
+        )
+        .result
+        .unwrap();
+        let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved, allowed.output["result"]["dna_sequence_design"]);
+        assert!(!allowed.state_changed);
+
+        let no_path = builtin_echo_plan_result(
+            &format!("auto: sequence-design plan {}", quote_shell_arg(&request)),
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(no_path.candidates.len(), 1);
+        assert!(!no_path.candidates[0].mutating);
+        execute_agent_plan_candidate_with_feedback(
+            &mut engine,
+            &no_path,
+            "candidate-1",
+            false,
+            &ShellExecutionOptions::default(),
+        )
+        .result
+        .unwrap();
+        for candidate_gate in [false, true] {
+            let mut gated = no_path.clone();
+            gated.candidates[0].mutating = candidate_gate;
+            gated.candidates[0].requires_confirmation = !candidate_gate;
+            assert!(
+                execute_agent_plan_candidate_with_feedback(
+                    &mut engine,
+                    &gated,
+                    "candidate-1",
+                    false,
+                    &ShellExecutionOptions::default()
+                )
+                .result
+                .unwrap_err()
+                .contains("--confirm")
+            );
+        }
+    }
+
+    #[test]
     fn builtin_echo_planner_supports_multiple_candidate_kinds() {
         let plan = builtin_echo_plan_result(
             "auto: state-summary\nop: {\"SetParameter\":{\"name\":\"x\",\"value\":1}}\nui: {\"action\":\"open\",\"target\":\"agent-assistant\"}",

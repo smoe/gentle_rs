@@ -107,7 +107,13 @@ new acceptance pass or authority to begin S2. No registry, permission, mutation,
 serialization or biology contract is broadened.
 The owner requested a [request-aware lifecycle proposal](operation_lifecycle_policy_proposal.md)
 and [forwardable Claude review prompt](operation_lifecycle_claude_review_prompt_20261025.md)
-on 2026-10-25. Both remain design-only and unreviewed; no runtime policy is adopted.
+on 2026-10-25. Claude's source-only review is now reconciled in that proposal.
+The owner authorized only optional report-write confirmation and conservative
+static metadata; their source implementation still requires Rust execution.
+The S1 decision is narrowed to existing apply-time and CLI/MCP disk behavior:
+generic constructors can still repair JS/Lua state-out. Construction/workflow/
+autosave coverage and destination-alias/writer rules remain separately gated,
+as does S2. No full lifecycle or cross-adapter preservation guarantee is adopted.
 
 ### Software Review Reconciliation (2026-10-22)
 

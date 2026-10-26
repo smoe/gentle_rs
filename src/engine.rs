@@ -1256,6 +1256,10 @@ struct ResolvedGenomePromoterSlice {
 // contracts stay in this file; heavy helpers and operation families live in the
 // corresponding `src/engine/*` module so future edits can land in one focused
 // area without changing adapter-visible APIs.
+#[path = "engine/operation_lifecycle.rs"]
+mod operation_lifecycle;
+pub(crate) use operation_lifecycle::operation_approval_policy;
+
 #[path = "engine/ops/candidate_guides.rs"]
 mod candidate_guides;
 #[path = "engine/analysis/candidate_metrics.rs"]

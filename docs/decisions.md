@@ -374,8 +374,16 @@ identities remain disjoint. Retained unversioned names do not authorize guessed
 accessions, inline reference association is caller-declared, and absent
 annotations stay unavailable. Desired sequence strings in a transient report
 are neither materialized project DNA nor observed alleles. For this operation,
-generic adapter reachability must preserve no-mutation semantics; MCP's
-independent tool confirmation does not authorize a state-file write for this inspection. Future
+in-process apply skips persistent reconciliation, and the named CLI/MCP direct
+operation routes suppress their implicit state-file save. MCP's independent
+tool confirmation does not authorize a state-file write for this inspection.
+These are not yet a cross-adapter construction guarantee: generic `from_state`
+repairs lineage/containers before dispatch, so JS/Lua state-in/state-out calls
+can return repaired project content. Workflow construction/persistence also
+needs separate coverage. Unchanged CLI/MCP disk bytes do not prove an unchanged
+in-memory state. This existing gap is tracked in the
+[lifecycle proposal](operation_lifecycle_policy_proposal.md); no constructor
+behavior is changed by its initial approval repair. Future
 editor feasibility, persisted handoff/apply and laboratory review need their
 own explicit contracts, not a widened S1 or transferred sequence-design approval.
 
@@ -387,6 +395,25 @@ replace confirmation, history, reconciliation or persistence rules with that
 label alone. Before S2, separately review a shared lifecycle policy that
 distinguishes project effects, external writes, reconciliation and confirmation;
 preserve existing adapter gates until that policy and its regressions land.
+
+## Sequence-Design Preview Report Approval
+
+Owner-authorized 2026-10-26: migrate only the conversation-approval facet of
+`PlanDnaSequenceDesign`. The engine-owned typed selector adds approval for every
+present report path, including empty/malformed paths; an absent path adds no
+operation-derived requirement. Unmigrated operations retain legacy policy.
+Explicit candidate and MCP/tool gates remain additive. The shared compatibility
+flag `is_state_mutating()` includes external file effects, not just project
+mutation. Static Plan metadata is conservatively External with confirmation,
+consistent with TSS SVG export; it is not the runtime permission oracle.
+
+Approval covers the exact write attempt, including a cancelled search report.
+Successful file publication is not scientific/search completion; retain actual
+status and report bytes. No constructor, reconciliation, checkpoint/journal,
+autosave, alias/collision or overwrite semantics change follows. Strict preview
+state preservation and S2 remain separately gated. Rust boundary regressions
+are authored but unexecuted locally; this decision records scope, not a tested
+security, native or scientific acceptance verdict.
 
 ## Synthetic Sequence-Design Boundaries
 

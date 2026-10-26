@@ -86,6 +86,37 @@
   execution remains prohibited and acceptance is pending. Shared interpreter
   and adapter integration follows separately.
 
+## 2026-10-26 - Require Approval For Sequence-Design Report Write Attempts
+
+- Recheck Claude's six lifecycle findings at local main `b544a21b`. With explicit
+  owner approval for slices 1--2, add a typed engine-owned approval facet only
+  for Plan's optional report path. Any present path requires conversational
+  confirmation; absent path adds none but cannot remove candidate/tool gates.
+  Shared planner/auto-execution consumers reuse the parsed-command rule.
+- Classify the static Plan operation/command family as External and require
+  confirmation in detailed discovery, retaining optional artifact effects.
+  Register the two already-implemented raw sequence-design IDs missing from
+  the canonical list and reconcile their two shell-only matrix rows/counts;
+  no new operation or maturity attestation is introduced.
+  Preserve SaveFile, Apply, S1 and all unmigrated fallbacks; no solver, report,
+  writer, checkpoint, reconciliation, autosave or destination-rule change.
+- Author six Rust regressions for ordinary planner, forged/wrapped, cancelled
+  report, path-presence and metadata/control boundaries. Flip the old with-path
+  approval assertion without changing scientific/report/apply equalities.
+  Reuse the existing synthetic tutorial fixture; no private inputs or new data.
+- Reconcile the proposal, correct the overbroad S1 JS/Lua preservation claim,
+  and explain write-attempt approval in CLI/protocol/tutorial 06.07 and the
+  agent guidance/consolidated Glen handoff. Successful file publication is not a completed
+  search. Constructor/workflow and alias/writer slices remain separate; no S2.
+- Rust regressions and compiler checks remain unrun under the no-local-Rust
+  restriction. Source implementation is not an executed security/native/scientific
+  acceptance verdict. No push, model call, original Claude-prompt edit or private read.
+- Local checks: 99 Python/source/teaching/checkout tests pass, four optional CLI
+  replays skip; scoped rustfmt, documentation/maturity freshness and whitespace
+  pass. The two matrix rows/counts follow canonical surfacing rules; exact Rust
+  generator freshness still needs execution. Lockfile/maturity outputs unchanged.
+  Session-close: four OK, two expected working-tree/plan warnings, zero failures.
+
 ## 2026-10-26 - Repair Five RNA Regression Fixtures Without Relaxing Guards
 
 - Keep a real but deliberately malformed input in the overlap-refusal test so

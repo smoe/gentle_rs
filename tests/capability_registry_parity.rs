@@ -18,6 +18,43 @@ struct Glossary {
     commands: Vec<GlossaryCommand>,
 }
 
+#[test]
+fn sequence_design_registry_family_is_external_without_reclassifying_controls() {
+    for (source, name, expected) in [
+        (
+            CapabilitySource::EngineOperation,
+            "PlanDnaSequenceDesign",
+            CapabilityMutation::External,
+        ),
+        (
+            CapabilitySource::GlossaryCommand,
+            "sequence-design plan",
+            CapabilityMutation::External,
+        ),
+        (
+            CapabilitySource::EngineOperation,
+            "ApplyDnaSequenceDesign",
+            CapabilityMutation::Mutating,
+        ),
+        (
+            CapabilitySource::EngineOperation,
+            "SaveFile",
+            CapabilityMutation::ReadOnly,
+        ),
+        (
+            CapabilitySource::EngineOperation,
+            "EvaluateGenomeEditIntent",
+            CapabilityMutation::ReadOnly,
+        ),
+    ] {
+        let row = capability_registry()
+            .iter()
+            .find(|row| row.source == source && row.name == name)
+            .unwrap();
+        assert_eq!(row.mutating, expected, "{name}");
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct GlossaryCommand {
     path: String,

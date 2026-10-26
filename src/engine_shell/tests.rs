@@ -56,6 +56,72 @@ fn primer_payload_discovery_templates_preserve_typed_routes_and_confirmation() {
 }
 
 #[test]
+fn sequence_design_approval_distinguishes_optional_paths_and_static_family_metadata() {
+    let request: gentle_protocol::sequence_design::DnaSequenceDesignRequest = serde_json::from_str(
+        include_str!("../../docs/tutorial/inputs/synthetic_sequence_design.json"),
+    )
+    .unwrap();
+    for path in [
+        None,
+        Some("preview's report.json"),
+        Some(""),
+        Some("invalid\0path"),
+    ] {
+        let operation = Operation::PlanDnaSequenceDesign {
+            request: Box::new(request.clone()),
+            path: path.map(str::to_string),
+        };
+        let raw = parse_shell_line(&format!(
+            "op {}",
+            quote_shell_arg(&serde_json::to_string(&operation).unwrap())
+        ))
+        .unwrap();
+        assert_eq!(raw.is_state_mutating(), path.is_some());
+        if path.is_none_or(|p| !p.is_empty() && !p.contains('\0')) {
+            let mut line = format!(
+                "sequence-design plan {}",
+                quote_shell_arg(&serde_json::to_string(&request).unwrap())
+            );
+            if let Some(path) = path {
+                line.push_str(&format!(" --path {}", quote_shell_arg(path)));
+            }
+            assert_eq!(
+                parse_shell_line(&line).unwrap().is_state_mutating(),
+                path.is_some()
+            );
+        }
+    }
+    for id in ["PlanDnaSequenceDesign", "sequence-design plan"] {
+        let descriptor = sequence_design_capability_descriptor(id, false);
+        assert_eq!(descriptor["mutating"], "external");
+        assert_eq!(descriptor["requires_confirmation"], true);
+        assert_eq!(descriptor["effects"][0]["fact"], "artifact.written");
+        assert!(
+            descriptor["artifact_approval_contract"]
+                .as_str()
+                .unwrap()
+                .contains("write attempt")
+        );
+    }
+    let save = Operation::SaveFile {
+        seq_id: "synthetic".into(),
+        path: "unchanged.json".into(),
+        format: crate::engine::ExportFormat::GenBank,
+    };
+    assert!(
+        parse_shell_line(&format!(
+            "op {}",
+            quote_shell_arg(&serde_json::to_string(&save).unwrap())
+        ))
+        .unwrap()
+        .is_state_mutating()
+    );
+    let apply = sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true);
+    assert_eq!(apply["mutating"], "true");
+    assert_eq!(apply["requires_confirmation"], true);
+}
+
+#[test]
 fn primer_trace_introspection_templates_are_typed_but_require_reviewed_inputs() {
     use crate::engine::{RnaPrimerPanelBinding, RnaPrimerTraceBudgets, RnaPrimerTracePolicy};
 

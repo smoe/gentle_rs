@@ -1291,7 +1291,10 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bo
         quote_shell_arg(&output_path.display().to_string())
     ))
     .unwrap();
-    assert!(!command.is_state_mutating());
+    assert!(
+        command.is_state_mutating(),
+        "a report-write attempt requires approval"
+    );
     let mut shell_engine = GentleEngine::new();
     let mut direct = GentleEngine::new();
     let result = execute_shell_command(&mut shell_engine, &command).unwrap();

@@ -1,7 +1,10 @@
 # Request-Aware Operation Lifecycle Policy
 
-Status: proposal for owner-forwarded Claude review, 2026-10-25. Not implemented,
-not an adopted decision, and not authorization for editing S2. Review prompt:
+Status, 2026-10-26: Claude's source-only review is reconciled below. The owner
+authorized slices 1--2 only: report-write confirmation and conservative static
+metadata. Those bounded source changes and regressions are implemented but
+unexecuted under the no-local-Rust restriction. Constructor/workflow lifecycle
+migration and alias/writer rules remain proposals, not S2 authorization. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
 
 ## Source And Scope
@@ -13,6 +16,50 @@ onto local main before this inspection; no fetch was performed. These documents
 were prepared as working-copy drafts; committing them does not adopt the policy.
 Untracked `output/` is unrelated and untouched.
 
+The review was forwarded from Claude's inspection of `adacb2bc`; Codex rechecked
+the load-bearing paths at local main `b544a21b81b0d98896599f4ae21cdf60eea59b62`
+before editing. The primary checkout's untracked
+`docs/operation_lifecycle_codex_prompt_20261025.md` was read, not copied or
+modified. No fetch, Rust execution, model call or private-data use was performed.
+
+## Review Reconciliation And Approved Scope
+
+Original Codex plan: migrate optional-path planning through a full lifecycle
+selector and construction/persistence coverage before S2; it incorrectly framed
+the missing approval as an invariant to preserve and preferred static ReadOnly.
+Claude verified the source claims and identified these corrections:
+
+| Finding | Revised Codex action |
+| --- | --- |
+| F1: ordinary planner report writes need no confirmation | Accept as a present permission defect, not just forged metadata. Implement the engine-owned request approval facet and reuse the shared parsed-command gate. Add ordinary planner and forged/wrapped regressions. Source repair is not an executed acceptance claim. |
+| F2: static external precedent already exists | Use `External` in the canonical registry and `external`/confirmation in detailed discovery, like TSS SVG export. Only a concrete absent-path request adds no operation-derived approval; explicit candidate/tool requirements stay additive. |
+| F3: S1 decision overstates scripting preservation | Narrow the decision now: apply-time no-reconcile and named CLI/MCP file-save suppression do not preserve unreconciled JS/Lua constructor state-out. Leave constructor migration separate. |
+| F4: approval and destination restrictions are independent | Defer alias/collision and writer changes explicitly; they must not delay confirmation. Do not claim project/report alias safety or implicit-save suppression for Plan. |
+| F5: one existing assertion must flip | Change `assert_sequence_design_shell_parity`'s with-path confirmation assertion only. Preserve saved/direct/report equality checks and exact apply/undo assertions. |
+| F6: approval covers cancelled-report writes too | Approve the write attempt, not search success. Retain a saved report's `cancelled` status. A completed file write is publication evidence, not a completed search; do not conflate the two. |
+
+Two qualifications to the review: planner candidates derive their mutation flag
+from the parsed command; static descriptor changes alone cannot protect forged
+flags. Also, actually writing a cancelled report can succeed: the scientific
+outcome must remain cancelled, not be relabelled completed because publication
+succeeded. The existing writer/report bytes are unchanged.
+
+Static alignment also exposed a missing source fact: neither existing raw
+sequence-design operation ID was in `PUBLIC_ENGINE_OPERATION_NAMES`, despite
+the named glossary commands. Register both existing variants, with Plan External
+and Apply's unchanged Mutating classification. This is required discovery/parity
+alignment, not a new operation or adjacent biological feature. Add their two
+shell-only matrix rows and counts using the existing projection rules; canonical
+Rust byte-freshness remains an external check. Existing LF/CRLF matrix coverage
+is retained, with no new freshness gate or maturity regeneration.
+
+The implemented helper is `engine/operation_lifecycle.rs::operation_approval_policy`.
+It selects only `PlanDnaSequenceDesign`, inspecting `path.is_some()` through
+typed variants without I/O or registry inference. Every present path requires
+confirmation, even empty/malformed strings. `None` for any other operation means
+legacy behavior, not an exemption. This is only the approval facet, not the full
+policy type or the construction/persistence guarantees proposed below.
+
 Start with `PlanDnaSequenceDesign`, distinguish its absent/present output path,
 and use `EvaluateGenomeEditIntent`, `ApplyDnaSequenceDesign` and `SaveFile` as
 controls. Do not migrate every operation or infer policy from names, prefixes,
@@ -21,9 +68,10 @@ The [S1 review reconciliation](base_prime_editing_preparation.md#landed-s1-revie
 and [existing safety decision](decisions.md#read-only-genome-edit-intent) explain
 why a single read-only boolean is insufficient.
 
-## Observed Behavior, Not Desired Guarantees
+## Pre-Repair Behavior, Not Desired Guarantees
 
-This is source inspection, not an executed regression or security exploit.
+These observations were rechecked before the bounded repair at `b544a21b`.
+They are source inspection, not an executed regression or security exploit.
 
 | Boundary | Current source fact |
 | --- | --- |
@@ -41,9 +89,10 @@ This is source inspection, not an executed regression or security exploit.
 | Construction/workflows | `GentleEngine::from_state` reconciles before dispatch; skipping only the apply preamble is not sufficient to preserve the loaded in-memory state. Direct CLI/MCP workflow paths also save after success. |
 | Scripting | `js_interface.rs::apply_operation_impl`/`apply_workflow` and Lua's `apply_operation`/`apply_workflow` also construct with `from_state` and return the resulting state. Python's `GentleClient.op`/`workflow` delegate to CLI. They need the same covered-request construction policy, not a separate script implementation. |
 
-The existing shell parity test explicitly expects a plan with `--path` to have
-`is_state_mutating()==false`. Preserve its scientific assertions, but do not
-bless that boolean as proof that an agent may write without confirmation.
+The existing shell parity test expected a plan with `--path` to have
+`is_state_mutating()==false`. Slice 1 flips that assertion; its scientific
+report equalities remain untouched. The compatibility boolean includes external
+write approval, not only persistent project mutation.
 The new S1 unreconciled-state regression in `ced03a22` remains relevant and
 requires actual Glen/CI execution, not another source-only acceptance claim.
 
@@ -75,7 +124,11 @@ autosave. Do not change generic `from_state`, all checkpoint rules or all export
 permissions merely to remove match lists. Existing mutation/stale-owner guards,
 parsed-command confirmation and the nested-agent ban remain intact.
 
-### Recommended Target For The First Migration
+### Full Lifecycle Target Beyond Slices 1--2
+
+Only Plan's final approval column is implemented by the current bounded repair.
+The construction, reconciliation, history and autosave columns remain future
+targets, not guarantees of this partial migration.
 
 | Typed request | Project content | Explicit artifact | Reconcile | Undo/redo | Implicit project save | Operation-derived conversation approval |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -90,7 +143,10 @@ the write classification and refuse them before execution. Loading `@request`
 remains an explicit input read, not a filesystem-write permission. The policy
 does not authorize an implicit reference fetch, sequence creation or S2 design.
 
-## Concrete Consumer Rules
+## Full Migration Consumer Rules
+
+The approval/static-metadata parts of rules 2 and 5 are implemented in source.
+Other lifecycle changes remain deferred pending separate owner authorization.
 
 1. **Engine construction and apply:** add an explicitly selected inspection
    construction path that retains project content without persistent repairs;
@@ -101,8 +157,10 @@ does not authorize an implicit reference fetch, sequence creation or S2 design.
 2. **Shell and agents:** use the request policy both for confirmation and for
    `state_changed`. Keep `is_state_mutating` as a compatibility wrapper if needed,
    but document that the existing boolean also enforces external-write approval.
-   A forged candidate with both flags false cannot run a plan with an output
-   path without confirmation. Named command and generic `op` must agree.
+   Repair the existing normal-planner defect as well as forged flags: neither
+   may run a plan with an output path without confirmation. Named command and
+   generic `op` must agree. Approval is for the write attempt, including a
+   cancelled report, not an assurance of successful search or publication.
 3. **CLI/MCP persistence:** suppress implicit project-file creation/rewrite for
    both plan forms, not the explicitly requested report. Preserve direct CLI
    invocation as explicit user intent without inventing a universal `--confirm`
@@ -117,14 +175,13 @@ does not authorize an implicit reference fetch, sequence creation or S2 design.
    Cover the generic JS/Lua state-in/state-out constructors and Python's CLI
    routes in that inventory; an unchanged disk file does not prove that a
    scripting response preserved unreconciled project content.
-5. **Metadata:** recommend projecting Plan's durable-project effect as
-   `ReadOnly`, with explicit conditional artifact details; the coarse label is
-   never an authorization source. A static family descriptor should conservatively
-   disclose that report output can require approval; a concrete parsed no-path
+5. **Metadata:** project Plan's static family as `External` with confirmation,
+   retaining explicit optional-artifact details; the coarse label is never an
+   authorization source. A concrete parsed no-path
    request can have no operation-derived approval. Explicit candidate/tool
    requirements are never removed. Reconcile canonical registry, detailed
-   introspection, effects and generated projections together; ask Claude to
-   challenge this compatibility projection before adopting it.
+   introspection, effects and generated projections together. This replaces the
+   original ReadOnly recommendation following Claude's source-grounded review.
 
 ### Output And Cancellation Boundaries Requiring Review
 
@@ -133,9 +190,10 @@ the project filename as the explicit report path. Proposed rule: reject a
 preview destination aliasing the selected project file before writing, including
 existing aliases supported by the repository's cross-platform path helpers.
 Inspect those helpers before choosing the implementation. Do not promise
-symlink/hard-link or race safety without an executed design/test path. If this
-cannot be enforced narrowly, defer the with-path migration rather than claim
-project-file preservation that it cannot provide.
+symlink/hard-link or race safety without an executed design/test path. This is
+explicitly deferred from slices 1--2 and must not delay approval repair. The
+current approval facet makes no destination or strict project-file-preservation
+guarantee for Plan.
 
 Do not globally replace `write_pretty_json_file` or silently change report
 overwrite semantics. A stronger fresh/atomic/no-clobber contract is a separate
@@ -150,29 +208,44 @@ call either case a successfully published artifact without an actual write.
 Failure before dispatch writes nothing; do not introduce workflow rollback of
 already written files or infer that undo removes them.
 
-## Minimal Implementation Order After Review And Approval
+## Revised Slice Order
 
-1. **Characterize and add failing boundary tests.** Pin the scientific/report
-   bytes and current journal/undo contract; expose the target permission,
-   unreconciled-state and autosave mismatches without weakening expectations.
-   Inventory the actual managed/scripting call sites before selecting them.
-2. **Migrate the covered requests coherently.** Add the scoped policy selector
-   and wire construction, reconciliation, checkpoints, shell confirmation,
-   state-change reporting and CLI/MCP persistence together. Reuse it in covered
-   workflow/host paths; leave all other operations on explicit legacy fallback.
-   Do not ship an intermediate change that suppresses approval but still writes.
-3. **Align metadata and user contracts.** Update the canonical classification,
-   detailed discovery and affected generated artifacts with LF/CRLF coverage.
-   Correct tests that assume MCP planning creates a project file: explicitly
-   initialize a project for subsequent apply instead of loosening apply checks.
-   Explain the new artifact approval and autosave behavior in existing CLI/
-   protocol/tutorial 06.07 text. No new active editing tutorial or release gate.
+1. **Confirmation repair plus decision-record correction.** Owner-authorized;
+   source implemented, Rust execution pending. The engine-owned approval facet
+   covers only Plan's optional path and the shared parsed-command consumers.
+   Ordinary planner, forged Shell/Op/Workflow and macro-wrapped cases have
+   authored regressions, including approved cancelled-report publication and
+   additive no-path candidate gates. Narrow S1's scripting claim now rather
+   than imply its constructor is already covered. Flip only the historical
+   with-path boolean assertion; preserve scientific/report/apply equalities.
+2. **Conservative static metadata.** Owner-authorized; source implemented,
+   canonical Rust freshness/parity execution pending. Plan's operation and
+   named-command families are External; detailed discovery requires confirmation
+   and explains concrete absent-path handling. Do not change `SaveFile`, S1 or
+   Apply classification, glossary routes or maturity attestations. Existing
+   matrix surfacing columns do not encode mutation, but the missing raw IDs
+   require two shell-only rows/counts. No new byte-exact artifact gate or
+   unrelated regeneration is introduced. Retain existing LF/CRLF checks.
+3. **Construction, scripting and workflow lifecycle coverage.** Not authorized
+   by slices 1--2. Add the explicit inspection construction path, reconcile/history
+   facets and implicit autosave suppression together; preserve ordinary
+   construction and session bookkeeping. Inventory JS/Lua state-out and Python/
+   CLI/MCP/workflow persistence. Only then replace tests that rely on Plan's
+   project autosave, explicitly initializing state for subsequent Apply.
+4. **Alias/collision and writer contract.** Separate owner decision; not a
+   prerequisite for slices 1--3. Inspect existing portable helpers before any
+   promises about symlinks, hard links, races, atomicity or no-clobber behavior.
 
 Keep S1 regressions as a control, not a reason to repeat its scientific review.
 Do not expand this to every read-only operation before evidence warrants it.
 S2 still needs separate implementation authorization after this prerequisite.
 
-## Required Deterministic Verification
+## Full Target Verification
+
+Approval/metadata and unchanged scientific-report comparisons apply to the
+current repair. Constructor, autosave, strict project-content preservation and
+alias/writer rows below remain requirements for the separately authorized later
+slices, not claims that slices 1--2 implement them.
 
 | Boundary | Required expectation |
 | --- | --- |
@@ -195,18 +268,46 @@ Current no-local-Rust restrictions remain in force; Glen/CI runs belong in the
 existing consolidated handoff only after an implementation exists. No runtime,
 native, scientific or performance acceptance is claimed for this proposal.
 
-## Questions For Claude And The Owner
+## Remaining Owner Decisions
 
-- Is the scope small enough while covering the constructor, workflow and raw
-  adapter save paths that could otherwise undermine a strict preview?
-- Is `ReadOnly` plus conditional artifact evidence the right compatibility
-  projection, or should the coarse family be `External` until metadata can
-  express those dimensions? Neither answer may weaken request-time approval.
-- Can the project/report collision rule reuse a sound existing helper without
-  expanding this into a generic writer rewrite? Identify limits explicitly.
-- Are journal/cancel semantics and static-versus-concrete confirmation stated
-  precisely enough to preserve existing host and scripting behavior?
+Claude's source review is received; External versus ReadOnly and write-attempt
+approval are no longer unanswered design questions for slices 1--2. Execution
+evidence for the repair is still required before describing the defect as
+verified fixed. The existing `ced03a22` S1 regressions remain in the consolidated
+Glen/CI request, with no inherited pass.
 
-These are review questions, not accepted invariants. After Claude's source-
-grounded reply, reconcile it with the original proposal, revise the minimal
-plan and obtain implementation authorization before changing runtime behavior.
+Separate authorization is still required for construction/scripting/autosave
+migration, the destination-alias/writer policy, and S2 itself. Strict project
+preservation cannot be claimed from a confirmation guard or unchanged disk
+bytes alone. There is no new release gate, writer redesign or S2 editor work.
+
+## Local Verification Of Slices 1--2
+
+macOS, 2026-10-26, based on `b544a21b` with the scoped working-copy changes:
+
+```sh
+python3 -m unittest scripts.test_sequence_design_tutorial scripts.test_primer_trace_contract scripts.test_tutorial_checkouts scripts.test_capability_maturity -q
+python3 scripts/check_documentation_status.py
+python3 scripts/generate_capability_maturity.py --check
+rustfmt --edition 2024 --check --config skip_children=true src/engine/operation_lifecycle.rs src/engine.rs src/engine_shell.rs src/engine_shell/tests.rs src/agent_planner.rs src/agent_execution.rs src/agent_bridge.rs src/engine/analysis/sequence_design/tests.rs crates/gentle-protocol/src/lib.rs tests/capability_registry_parity.rs
+git diff --check
+```
+
+The combined Python run discovers 103 tests: 99 pass, four explicitly configured
+binary-dependent CLI replays skip. A later focused source/maturity run discovers
+28 tests: 24 pass, the same four skip. These are source/teaching/checkout checks,
+not execution of the Rust permission gate. LF/CRLF matrix/fixture coverage and
+matrix count consistency pass. No fresh Rust canonical matrix generation or
+byte-freshness result is claimed. Maturity projections and `Cargo.lock` remain
+unchanged. Documentation status, formatting and whitespace checks pass.
+
+Six new Rust regressions remain authored and unrun, as do the required Cargo
+check and integrated S1 control run. No new scientific fixture was committed;
+the existing teaching input's README now records its approval-test consumers.
+The source diff leaves solver, writer, operation handler, CLI/MCP persistence
+and JS/Lua constructors untouched. The added raw registry IDs and two-row matrix
+projection are the necessary static-alignment extension, not an adjacent feature.
+Session-close reports four OK, two expected dirty-tree/manual-plan warnings and
+zero failures; unrelated untracked `output/` is untouched. Committing these
+changes is not execution evidence. No push, workflow dispatch, model call,
+native or scientific acceptance is performed here.

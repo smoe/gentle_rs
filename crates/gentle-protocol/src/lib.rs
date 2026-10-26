@@ -5733,6 +5733,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "CancelRnaReadPanel",
     "ExportRnaReadPanelSummary",
     "EvaluateGenomeEditIntent",
+    "PlanDnaSequenceDesign",
+    "ApplyDnaSequenceDesign",
     "LoadFile",
     "SaveFile",
     "RenderSequenceSvg",
@@ -7771,6 +7773,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
     if matches!(
         operation,
         "ComputeTssTfbsProfiles"
+            | "PlanDnaSequenceDesign"
             | "TracePrimerReads"
             | "PreparePrimerPayloadAlignmentQueries"
             | "SummarizePrimerPayloadAlignments"

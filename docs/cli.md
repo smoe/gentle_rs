@@ -280,7 +280,14 @@ gentle_cli --state project.json sequence-design apply @preview.json --approve sh
 ```
 
 The same commands run in GUI Shell and through inner-agent suggestions. The
-second command must not run until the user approves the exact feasible preview.
+plan command with `--path` requires explicit agent confirmation for the exact
+report-write attempt, including a cancelled report. Omitting `--path` adds no
+operation-derived approval but does not remove candidate/tool requirements;
+generic MCP retains its confirmation gate. Direct CLI invocation is explicit
+user intent and gains no new universal `--confirm` flag. Successful report
+writing is not search completion. This repair does not change implicit project
+saves, legacy reconciliation, destination collisions or overwrite behavior.
+The second command must not run until the user approves the exact feasible preview.
 Use its actual `approval_digest`, never the illustrative placeholder above.
 Planning never changes source/project sequences; application creates a derived
 sequence without rerunning search, retains a receipt, and is undoable. Stale

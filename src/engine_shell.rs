@@ -14254,6 +14254,8 @@ impl ShellCommand {
         }
     }
 
+    /// Compatibility approval flag: includes external writes, not just project mutation.
+    /// Explicit candidate/tool approval remains additive to this request-derived rule.
     pub fn is_state_mutating(&self) -> bool {
         if matches!(self, Self::RnaReadPanelLoadDraft { .. }) {
             return false;
@@ -14268,9 +14270,12 @@ impl ShellCommand {
         // handoffs keep the conservative generic-op confirmation behavior.
         if let Self::Op { payload } = self
             && let Ok(operation) = serde_json::from_str::<Operation>(payload)
-            && match operation {
+        {
+            if let Some(policy) = crate::engine::operation_approval_policy(&operation) {
+                return policy.requires_confirmation();
+            }
+            let inspection = match operation {
                 Operation::EvaluateGenomeEditIntent { .. }
-                | Operation::PlanDnaSequenceDesign { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectRnaReadPanel { .. }
@@ -14283,9 +14288,10 @@ impl ShellCommand {
                     gentle_protocol::gel_workbench::GelWorkbenchRequest::InspectAlgebra { .. }
                 ),
                 _ => false,
+            };
+            if inspection {
+                return false;
             }
-        {
-            return false;
         }
         if let Self::FeaturesEditLocation { dry_run, .. }
         | Self::FeaturesCreate { dry_run, .. }
@@ -21650,14 +21656,16 @@ fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
     }
     json!({
         "id":id, "kind":if id.starts_with("sequence-design ") {"command"} else {"operation"},
-        "mutating":if apply {"true"} else {"false"}, "requires_confirmation":apply,
+        "mutating":if apply {"true"} else {"external"}, "requires_confirmation":true,
         "args":args, "reads":[], "precondition_expr":{"all":[]},
         "effects":if apply {vec![json!({"fact":"sequence.exists", "subject":{"arg":"OUTPUT_ID"}, "effect_kind":"may_on_success"})]} else {vec![json!({"fact":"artifact.written", "subject":{"arg":"OUTPUT_PATH"}, "effect_kind":"external_handoff"})]},
         "description":if apply {
             "Create exact approved synthetic DNA without rerunning search. Execution validates source/table/protection/output bindings; cancelled, unresolved, altered or stale previews are refused. One undoable derivation; original annotations omitted. No functional, order or experimental approval."
         } else {
-            "Read-only bounded synonymous motif removal for synthetic coding inserts, not natural assay targets or full DNA Chisel. Runtime admission validates explicit CDS/protein/code and frozen bases. Both-strand/overlap/flank motifs supported. Search exhaustion is unresolved, never infeasibility; no performance claim."
-        }, "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
+            "Bounded synonymous motif removal for synthetic coding inserts, not natural assay targets or full DNA Chisel. No design sequence is materialized; optional report writes require confirmation. Runtime admission validates explicit CDS/protein/code and frozen bases. Both-strand/overlap/flank motifs supported. Search exhaustion is unresolved, never infeasibility; no performance claim."
+        },
+        "artifact_approval_contract":"The static plan family conservatively requires confirmation because an optional output path writes a report. The engine-owned request policy adds no confirmation only when path is absent; explicit candidate and tool gates remain additive. Any present path, including an empty or malformed path, requires approval before attempted execution. Approval covers the write attempt, including a cancelled report. Report publication and search completion are separate; this policy does not change legacy reconciliation, autosave, destination aliasing or overwrite behavior.",
+        "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
     })
 }
 

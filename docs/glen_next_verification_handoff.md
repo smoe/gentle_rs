@@ -125,6 +125,59 @@ locations/manifests. Keep source consistency, producer claims, actual runtime,
 native/live-agent, performance and scientific verdicts separate. No release,
 publication, molecule/isoform assignment or scientific acceptance is implied.
 
+## Sequence-Design Approval Facet, 2026-10-26
+
+Fold this into the pushing thread's single integrated request, not a separate
+branch freeze or audit campaign. Claude reviewed the old proposal at `adacb2bc`;
+Codex rechecked the permission/construction claims at `b544a21b` and the owner
+authorized only slices 1--2. The source repair requires executed boundary tests
+before anyone calls the confirmation defect verified fixed. No local Rust,
+model, private-data or native run was performed.
+
+At the ordinary integrated-source verification:
+
+```sh
+cargo check -q --locked
+cargo test --locked --lib sequence_design_approval_policy_is_request_aware_and_legacy_conservative
+cargo test --locked --lib sequence_design_ordinary_planner_requires_report_write_confirmation
+cargo test --locked --lib sequence_design_forged_flags_cannot_authorize_wrapped_report_writes
+cargo test --locked --lib sequence_design_approved_write_attempt_can_publish_a_cancelled_report
+cargo test --locked --lib sequence_design_approval_distinguishes_optional_paths_and_static_family_metadata
+cargo test --locked --test capability_registry_parity sequence_design_registry_family_is_external_without_reclassifying_controls
+cargo test --locked --lib sequence_design -- --test-threads=1
+cargo test --locked --lib genome_edit_intent -- --test-threads=1
+cargo run --locked --bin gentle_examples_docs -- parity-matrix-check
+cargo run --locked --bin gentle_examples_docs -- tutorial-catalog-check
+cargo run --locked --bin gentle_examples_docs -- tutorial-manifest-check
+python3 -m unittest scripts.test_sequence_design_tutorial scripts.test_tutorial_checkouts -q
+```
+
+Six new Rust regressions are authored, not executed locally. Preserve the
+existing scientific/report/apply equality assertions: only the with-path
+approval assertion in `assert_sequence_design_shell_parity` flips. Use the
+existing synthetic 06.07 fixture with its provenance, not private DNA. Verify
+ordinary builtin-echo planner candidates and falsely read-only Shell/Op/Workflow,
+raw-op and macro wrappers cannot write without confirmation. Confirm no-path
+requests do not remove explicit candidate/tool gates, empty/malformed supplied
+paths are still writes, and approved cancellation retains a written report's
+`cancelled` status. File publication does not establish successful search.
+
+Static Plan operation/command metadata is External with confirmation, while
+request policy is engine-owned and typed. SaveFile/S1/Apply and unmigrated
+operations retain their classifications and runtime fallbacks. Both existing
+raw sequence-design IDs were absent from the canonical list: register them and
+project two shell-only matrix rows/counts, without adding new operations. Matrix
+columns encode surfacing, not mutation; the rows/counts were reconciled from
+the canonical rules without running the Rust generator. Run its byte-freshness
+check. Existing LF/CRLF checkout coverage is retained and no new byte-exact
+freshness gate or fixture is introduced. Maturity attestations stay unchanged.
+
+Constructor/reconciliation/history/autosave behavior, project/report aliases
+and writer overwrite/atomicity are deliberately unchanged. S1's decision now
+states its apply-time and CLI/MCP disk scope rather than promising unchanged
+JS/Lua state-out. Keep `ced03a22` execution pending at the integrated source;
+neither this approval repair nor old platform results close that or authorize S2.
+
 ## Five RNA Fixture Repairs, 2026-10-26
 
 The owner-reported full library run had 4504 passes, five failures and 16
