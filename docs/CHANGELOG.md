@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-26 - Prepare Lifecycle Slice 3 For Review
+
+- Inspect `320d5803` and prepare the constructor/workflow/autosave plan plus a
+  forwardable read-only Claude prompt. Keep the implemented approval facet and
+  its source-bound passes separate from the proposed migration.
+- Specify covered typed inspections, conservative mixed/empty/opaque fallback,
+  state-out and disk baselines, loader hydration, session/history preservation,
+  captured payloads, managed-worker dependencies and fail-first adapter tests.
+  Explicitly ask review to challenge wrapper scope and journal publication.
+- Link the review draft from the parent proposal and roadmap. Planning only:
+  no runtime/schema/fixture/tutorial change, implementation authorization, new
+  release gate, Rust execution, Claude invocation, push or dispatch.
+- Documentation status, 11 LF/CRLF-aware documentation-status tests and
+  whitespace checks pass. Session-close reports four OK, two intentional
+  working-tree/manual-plan warnings and no failures. These are not runtime
+  execution or a Claude verdict on the proposed contract.
+
 ## 2026-10-26 - Consolidate Glen's Payload Verification Handoff
 
 - Combine preparation, interpretation, mask/exclusion repairs and the CLI-doc

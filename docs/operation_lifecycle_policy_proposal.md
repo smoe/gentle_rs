@@ -231,7 +231,10 @@ already written files or infer that undo removes them.
    require two shell-only rows/counts. No new byte-exact artifact gate or
    unrelated regeneration is introduced. Retain existing LF/CRLF checks.
 3. **Construction, scripting and workflow lifecycle coverage.** Not authorized
-   by slices 1--2. Add the explicit inspection construction path, reconcile/history
+   by slices 1--2. The owner requested a [detailed Slice 3 plan](operation_lifecycle_slice3_plan.md)
+   and [read-only Claude review prompt](operation_lifecycle_slice3_claude_review_prompt.md),
+   not implementation; that draft awaits review and separate authorization.
+   Add the explicit inspection construction path, reconcile/history
    facets and implicit autosave suppression together; preserve ordinary
    construction and session bookkeeping. Inventory JS/Lua state-out and Python/
    CLI/MCP/workflow persistence. Only then replace tests that rely on Plan's
