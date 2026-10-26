@@ -20,6 +20,8 @@ mod overlap;
 #[cfg(test)]
 #[path = "rna_panel/overlap_tests.rs"]
 mod overlap_tests;
+#[path = "rna_panel/primer_payload.rs"]
+mod primer_payload;
 #[path = "rna_panel/primer_trace.rs"]
 mod primer_trace;
 #[cfg(test)]

@@ -30,6 +30,10 @@ pub use rna_panel::*;
 mod primer_trace;
 pub use primer_trace::*;
 
+#[path = "protocol/primer_payload.rs"]
+mod primer_payload;
+pub use primer_payload::*;
+
 #[path = "protocol/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
 pub use primer_specificity_multi::*;

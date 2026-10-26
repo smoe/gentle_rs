@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-26 - Prepare Verified Primer-Free Query Copies
+
+- Add strict Phase 2 data contracts and engine query preparation with explicit
+  retained-primary versus original FASTQ replay modes. Bind selected source
+  rows/anchors, preserve competing primer IDs and mask/exclude other observed
+  primer intervals in new copies. Only EOF/hash-verified units publish.
+- Reuse the unchanged Phase 1 TSV header/decoder and existing FASTQ/hash/control
+  intake. No aligner, automatic input discovery, old wire change or project
+  mutation. Six synthetic preparation regressions are authored; local Rust
+  execution remains prohibited and acceptance is pending. Shared interpreter
+  and adapter integration follows separately.
+
 ## 2026-10-26 - Repair Five RNA Regression Fixtures Without Relaxing Guards
 
 - Keep a real but deliberately malformed input in the overlap-refusal test so

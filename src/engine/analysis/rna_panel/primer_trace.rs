@@ -185,7 +185,7 @@ fn bucket(value: usize) -> String {
     }
     format!("{lower}..{upper}")
 }
-fn count(counts: &mut RnaPrimerTraceCounts, row: &RnaPrimerTraceRow, len: usize) {
+pub(super) fn count(counts: &mut RnaPrimerTraceCounts, row: &RnaPrimerTraceRow, len: usize) {
     counts.reads += 1;
     *counts
         .anchor_classes
@@ -221,6 +221,45 @@ fn count(counts: &mut RnaPrimerTraceCounts, row: &RnaPrimerTraceRow, len: usize)
             .entry(bucket(len - hit.end))
             .or_default() += 1;
     }
+}
+
+/// Shared TSV decoding only; callers separately decide prefix inspection versus EOF verification.
+pub(super) const HEADER: [&str; 21] = [
+    "record_index",
+    "read_id",
+    "anchor_class",
+    "anchor_position",
+    "primer_multiplicity",
+    "locus_relation",
+    "evidence_tier",
+    "anchor_json",
+    "leader_json",
+    "payload_json",
+    "payload_transcript_sense",
+    "payload_mean_phred",
+    "payload_fraction_below_q10",
+    "template_matches_json",
+    "artifact_flags_json",
+    "reasons_json",
+    "hit_count",
+    "hits_json",
+    "read_length",
+    "leader_length",
+    "payload_length",
+];
+
+pub(super) fn parse_row(r: &csv::StringRecord) -> Result<RnaPrimerTraceRow, EngineError> {
+    if r.len() != 21 {
+        return Err(bad("primer_trace_inspection_columns"));
+    }
+    let parse = |i: usize| serde_json::from_str::<Value>(&r[i]).map_err(|e| bad(e.to_string()));
+    let value = serde_json::json!({"record_index":r[0].parse::<u64>().map_err(|e|bad(e.to_string()))?,"read_id":r[1].to_string(),
+        "anchor_class":r[2].to_string(),"anchor_position":if r[3].is_empty(){Value::Null}else{Value::String(r[3].to_string())},
+        "primer_multiplicity":if r[4].is_empty(){Value::Null}else{Value::String(r[4].to_string())},"locus_relation":r[5].to_string(),
+        "evidence_tier":r[6].to_string(),"anchor":parse(7)?,"leader":parse(8)?,"payload":parse(9)?,"payload_transcript_sense":parse(10)?,
+        "payload_mean_phred":parse(11)?,"payload_fraction_below_q10":parse(12)?,"template_matches":parse(13)?,"artifact_flags":parse(14)?,"reasons":parse(15)?,"hits":parse(17)?,
+        "read_length":r[18].parse::<usize>().map_err(|e|bad(e.to_string()))?,"leader_length":parse(19)?,"payload_length":parse(20)?});
+    serde_json::from_value(value).map_err(|e| bad(e.to_string()))
 }
 
 fn validate_report(report: &RnaPrimerTraceReport) -> Result<(), EngineError> {
@@ -580,30 +619,7 @@ impl GentleEngine {
                         &used,
                         request.budgets.max_sidecar_bytes,
                     )?);
-            rows.write_record([
-                "record_index",
-                "read_id",
-                "anchor_class",
-                "anchor_position",
-                "primer_multiplicity",
-                "locus_relation",
-                "evidence_tier",
-                "anchor_json",
-                "leader_json",
-                "payload_json",
-                "payload_transcript_sense",
-                "payload_mean_phred",
-                "payload_fraction_below_q10",
-                "template_matches_json",
-                "artifact_flags_json",
-                "reasons_json",
-                "hit_count",
-                "hits_json",
-                "read_length",
-                "leader_length",
-                "payload_length",
-            ])
-            .map_err(|e| bad(e.to_string()))?;
+            rows.write_record(HEADER).map_err(|e| bad(e.to_string()))?;
             let mut fasta = if request.export_payload_fasta {
                 Some(LimitedWriter::new(
                     &unit.path().join("payload.fasta"),
@@ -923,19 +939,7 @@ impl GentleEngine {
                     .from_reader(input);
                 for record in reader.records().take(rows) {
                     let r = record.map_err(|e| bad(e.to_string()))?;
-                    if r.len() != 21 {
-                        return Err(bad("primer_trace_inspection_columns"));
-                    }
-                    let parse = |i: usize| {
-                        serde_json::from_str::<Value>(&r[i]).map_err(|e| bad(e.to_string()))
-                    };
-                    let value = serde_json::json!({"record_index":r[0].parse::<u64>().map_err(|e|bad(e.to_string()))?,"read_id":r[1].to_string(),
-                        "anchor_class":r[2].to_string(),"anchor_position":if r[3].is_empty(){Value::Null}else{Value::String(r[3].to_string())},
-                        "primer_multiplicity":if r[4].is_empty(){Value::Null}else{Value::String(r[4].to_string())},"locus_relation":r[5].to_string(),
-                        "evidence_tier":r[6].to_string(),"anchor":parse(7)?,"leader":parse(8)?,"payload":parse(9)?,"payload_transcript_sense":parse(10)?,
-                        "payload_mean_phred":parse(11)?,"payload_fraction_below_q10":parse(12)?,"template_matches":parse(13)?,"artifact_flags":parse(14)?,"reasons":parse(15)?,"hits":parse(17)?,
-                        "read_length":r[18].parse::<usize>().map_err(|e|bad(e.to_string()))?,"leader_length":parse(19)?,"payload_length":parse(20)?});
-                    inspected.push(serde_json::from_value(value).map_err(|e| bad(e.to_string()))?);
+                    inspected.push(parse_row(&r)?);
                 }
             }
         }
