@@ -3579,9 +3579,14 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     };
     // Named file-only operations have no project effects; a missing state file
     // remains missing. Keep the generic op confirmation gate unchanged.
-    let preserves_state_file = matches!(&operation, Operation::EvaluateGenomeEditIntent { .. }
-        | Operation::ValidateRnaPrimerPanel { .. } | Operation::TracePrimerReads { .. }
-        | Operation::InspectPrimerTrace { .. } | Operation::CancelPrimerTrace { .. });
+    let preserves_state_file = matches!(
+        &operation,
+        Operation::EvaluateGenomeEditIntent { .. }
+            | Operation::ValidateRnaPrimerPanel { .. }
+            | Operation::TracePrimerReads { .. }
+            | Operation::InspectPrimerTrace { .. }
+            | Operation::CancelPrimerTrace { .. }
+    );
     let state = match load_state(&state_path) {
         Ok(state) => state,
         Err(err) => {
@@ -5360,41 +5365,72 @@ mod tests {
 
     #[test]
     fn primer_trace_mcp_and_agent_cannot_bypass_artifact_confirmation() {
-        let temp=tempdir().unwrap();let state=temp.path().join("unchanged state.json");
-        ProjectState::default().save_to_path(&state.to_string_lossy()).unwrap();
-        let before=fs::read(&state).unwrap();
-        let request=json!({"schema":"gentle.rna_primer_trace_request.v1",
+        let temp = tempdir().unwrap();
+        let state = temp.path().join("unchanged state.json");
+        ProjectState::default()
+            .save_to_path(&state.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state).unwrap();
+        let request = json!({"schema":"gentle.rna_primer_trace_request.v1",
             "primer_panel":{"kind":"file","path":"missing synthetic.json","expected_sha256":format!("sha256:{}","0".repeat(64))},
             "files":[],"output_dir":temp.path().join("never published")});
-        for (op,suffix) in [("TracePrimerReads",""),("CancelPrimerTrace"," --cancel")] {
-            let mut operation=serde_json::Map::new();operation.insert(op.into(),json!({"request":request}));
-            let denied=run_tool(DEFAULT_MCP_STATE_PATH,"op",json!({"state_path":state,"operation":operation,"confirm":false}));
-            assert_eq!(denied["result"]["isError"],true);assert!(denied.to_string().contains("confirm"));
-            let line=format!("rna-reads primer-trace {}{suffix}",crate::engine_shell::quote_shell_arg(&request.to_string()));
-            let plan=json!({"schema":"gentle.agent_plan_result.v1","assistant_message":"Synthetic parser check","questions":[],"candidates":[{
+        for (op, suffix) in [("TracePrimerReads", ""), ("CancelPrimerTrace", " --cancel")] {
+            let mut operation = serde_json::Map::new();
+            operation.insert(op.into(), json!({"request":request}));
+            let denied = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "op",
+                json!({"state_path":state,"operation":operation,"confirm":false}),
+            );
+            assert_eq!(denied["result"]["isError"], true);
+            assert!(denied.to_string().contains("confirm"));
+            let line = format!(
+                "rna-reads primer-trace {}{suffix}",
+                crate::engine_shell::quote_shell_arg(&request.to_string())
+            );
+            let plan = json!({"schema":"gentle.agent_plan_result.v1","assistant_message":"Synthetic parser check","questions":[],"candidates":[{
                 "candidate_id":"trace","title":"Trace","rationale":"Synthetic only","kind":"shell","mutating":false,"requires_confirmation":false,"execution_mode":"auto","shell_command":line}]});
-            let denied=run_tool(DEFAULT_MCP_STATE_PATH,"agent_execute_plan",json!({"state_path":state,"candidate_id":"trace","plan":plan}));
-            assert_eq!(denied["result"]["isError"],true);assert!(denied.to_string().contains("confirm"));
+            let denied = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "agent_execute_plan",
+                json!({"state_path":state,"candidate_id":"trace","plan":plan}),
+            );
+            assert_eq!(denied["result"]["isError"], true);
+            assert!(denied.to_string().contains("confirm"));
         }
-        assert_eq!(fs::read(state).unwrap(),before);assert!(!temp.path().join("never published").exists());
+        assert_eq!(fs::read(state).unwrap(), before);
+        assert!(!temp.path().join("never published").exists());
     }
 
     #[test]
     fn primer_trace_mcp_validation_preserves_existing_and_missing_project_files() {
-        let temp=tempdir().unwrap();
+        let temp = tempdir().unwrap();
         let mut panel:crate::engine::RnaPrimerPanel=serde_json::from_value(json!({"schema":"gentle.rna_primer_panel.v1","content_sha256":"",
             "primers":[{"primer_id":"synthetic","assay_label":"Synthetic only","sequence":"ACGTCTAGCA",
                 "components":[{"component_id":"core","role":"target_core","start":0,"end":10}],"core_orientation":"sense_5prime",
                 "expected_targets":[],"variant":"synthetic","source":"Hand-written parser regression"}],"policy":{}})).unwrap();
         GentleEngine::seal_rna_primer_panel(&mut panel).unwrap();
-        let operation=Operation::ValidateRnaPrimerPanel {panel:Box::new(crate::engine::RnaPrimerPanelBinding::Inline {panel:Box::new(panel)}),seal:false};
-        let state=temp.path().join("existing.json");ProjectState::default().save_to_path(&state.to_string_lossy()).unwrap();
-        let before=fs::read(&state).unwrap();
-        for path in [&state,&temp.path().join("missing.json")] {
-            let reply=run_tool(DEFAULT_MCP_STATE_PATH,"op",json!({"state_path":path,"operation":operation,"confirm":true}));
-            assert_eq!(reply["result"]["isError"],false,"{reply}");
+        let operation = Operation::ValidateRnaPrimerPanel {
+            panel: Box::new(crate::engine::RnaPrimerPanelBinding::Inline {
+                panel: Box::new(panel),
+            }),
+            seal: false,
+        };
+        let state = temp.path().join("existing.json");
+        ProjectState::default()
+            .save_to_path(&state.to_string_lossy())
+            .unwrap();
+        let before = fs::read(&state).unwrap();
+        for path in [&state, &temp.path().join("missing.json")] {
+            let reply = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "op",
+                json!({"state_path":path,"operation":operation,"confirm":true}),
+            );
+            assert_eq!(reply["result"]["isError"], false, "{reply}");
         }
-        assert_eq!(fs::read(&state).unwrap(),before);assert!(!temp.path().join("missing.json").exists());
+        assert_eq!(fs::read(&state).unwrap(), before);
+        assert!(!temp.path().join("missing.json").exists());
     }
 
     #[test]

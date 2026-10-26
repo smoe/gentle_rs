@@ -19870,7 +19870,10 @@ fn rna_panel_descriptor(id: &str) -> Value {
 }
 
 fn primer_trace_descriptor(id: &str) -> Value {
-    let writes = matches!(id, "TracePrimerReads" | "CancelPrimerTrace" | "rna-reads primer-trace");
+    let writes = matches!(
+        id,
+        "TracePrimerReads" | "CancelPrimerTrace" | "rna-reads primer-trace"
+    );
     json!({"id":id,"kind":"operation","mutating":if writes {"external"} else {"false"},
         "requires_confirmation":writes,"args":[{"name":"REQUEST_OR_PATH","required":true,
         "detail":"primer-panel-validate PANEL_BINDING_JSON_OR_@FILE [--seal]; primer-trace REQUEST_JSON_OR_@FILE [--cancel]; primer-trace-show REPORT [--file-id ID --rows 0..1000] [--binding JSON_OR_@FILE]. --seal is read-only, inline draft with empty digest only. Explicit reviewed oligos; file panels require semantic SHA-256; no input discovery."}],
@@ -66336,16 +66339,37 @@ fn execute_op_command(
     // These file-only observation/control routes never append a project journal.
     match &op {
         Operation::ValidateRnaPrimerPanel { panel, seal } => {
-            let panel = GentleEngine::validate_rna_primer_panel(panel, *seal).map_err(|e| e.to_string())?;
-            return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"rna_primer_panel":panel}}) });
+            let panel =
+                GentleEngine::validate_rna_primer_panel(panel, *seal).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"rna_primer_panel":panel}}),
+            });
         }
-        Operation::InspectPrimerTrace { path, expected_result, file_id, rows } => {
-            let inspection = GentleEngine::inspect_primer_trace(path, expected_result.as_deref(), file_id.as_deref(), *rows).map_err(|e| e.to_string())?;
-            return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"rna_primer_trace_inspection":inspection}}) });
+        Operation::InspectPrimerTrace {
+            path,
+            expected_result,
+            file_id,
+            rows,
+        } => {
+            let inspection = GentleEngine::inspect_primer_trace(
+                path,
+                expected_result.as_deref(),
+                file_id.as_deref(),
+                *rows,
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"rna_primer_trace_inspection":inspection}}),
+            });
         }
         Operation::CancelPrimerTrace { request } => {
             let message = GentleEngine::cancel_primer_trace(request).map_err(|e| e.to_string())?;
-            return Ok(ShellRunResult { state_changed:false, output:json!({"cancel_requested":true,"termination_confirmed":false,"message":message}) });
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
         }
         _ => {}
     }

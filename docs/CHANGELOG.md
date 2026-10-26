@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-26 - Format Integrated Primer-Trace Adapters
+
+- Integrate `gentle_rs_2_main` through `d17103f9`. The broader post-merge
+  rustfmt check found formatting failures in 11 adapter/engine/test files,
+  outside the earlier new-module-only formatting check. Apply rustfmt only to
+  those affected files as a separate follow-up; no runtime or matching-policy
+  change, generated metadata refresh or local Rust build is introduced.
+- The imported primer-trace regressions remain authored, not Rust/native or
+  biological acceptance. Private inputs, unrelated output and the paused goal
+  remain untouched; no push or Glen communication.
+- Verification after formatting: 164 Python/source checks pass, five optional
+  binary checks skip; scoped rustfmt, documentation/maturity freshness and
+  whitespace pass. Session-close: four OK, two expected warnings, no failures.
+
 ## 2026-10-26 - Preserve Primer Trace Outcomes In Agent Feedback
 
 - Rebase primer tracing onto `4acee734`, retaining RNA-screen work profiles,

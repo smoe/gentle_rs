@@ -3274,7 +3274,9 @@ pub enum Operation {
         #[serde(default)]
         seal: bool,
     },
-    TracePrimerReads { request: Box<TracePrimerReadsRequest> },
+    TracePrimerReads {
+        request: Box<TracePrimerReadsRequest>,
+    },
     InspectPrimerTrace {
         path: String,
         #[serde(default)]
@@ -3284,7 +3286,9 @@ pub enum Operation {
         #[serde(default)]
         rows: usize,
     },
-    CancelPrimerTrace { request: Box<TracePrimerReadsRequest> },
+    CancelPrimerTrace {
+        request: Box<TracePrimerReadsRequest>,
+    },
     BuildRnaReadPanel {
         request: Box<BuildRnaReadPanelRequest>,
     },

@@ -68,11 +68,19 @@ impl AgentExecutionStatus {
             == Some("gentle.command_primer_trace_result.v1")
         {
             return match (
-                output.pointer("/primer_trace_result/schema").and_then(Value::as_str),
-                output.pointer("/primer_trace_result/outcome").and_then(Value::as_str),
+                output
+                    .pointer("/primer_trace_result/schema")
+                    .and_then(Value::as_str),
+                output
+                    .pointer("/primer_trace_result/outcome")
+                    .and_then(Value::as_str),
             ) {
-                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("completed")) => Self::Completed,
-                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("cancelled")) => Self::Cancelled,
+                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("completed")) => {
+                    Self::Completed
+                }
+                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("cancelled")) => {
+                    Self::Cancelled
+                }
                 _ => Self::Failed,
             };
         }
@@ -368,12 +376,18 @@ mod tests {
                 "schema":"gentle.rna_primer_trace_report.v1"}}}),
             serde_json::json!({"result":{"rna_primer_trace":{"schema":"unknown","status":"completed"}}}),
         ] {
-            assert_eq!(AgentExecutionStatus::from_shell_output(&output), AgentExecutionStatus::Failed);
+            assert_eq!(
+                AgentExecutionStatus::from_shell_output(&output),
+                AgentExecutionStatus::Failed
+            );
         }
         let inspection = serde_json::json!({"result":{"rna_primer_trace_inspection":{
             "report":{"schema":"gentle.rna_primer_trace_report.v1","status":"cancelled"}}}});
-        assert_eq!(AgentExecutionStatus::from_shell_output(&inspection), AgentExecutionStatus::Completed,
-            "successfully inspecting a cancelled run is not another cancelled execution");
+        assert_eq!(
+            AgentExecutionStatus::from_shell_output(&inspection),
+            AgentExecutionStatus::Completed,
+            "successfully inspecting a cancelled run is not another cancelled execution"
+        );
     }
 
     #[test]

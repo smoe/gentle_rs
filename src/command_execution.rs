@@ -31,9 +31,9 @@ const MAX_ACTIVE: usize = 4;
 const MAX_RETAINED: usize = 32;
 const MAX_RESULT_BYTES: usize = 16 * 1024 * 1024;
 
-mod rna_artifacts;
 #[cfg(test)]
 mod primer_trace_tests;
+mod rna_artifacts;
 #[cfg(test)]
 mod rna_tests;
 
