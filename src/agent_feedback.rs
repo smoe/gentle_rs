@@ -64,6 +64,28 @@ impl AgentExecutionStatus {
 
     /// Interpret only engine-owned job envelopes, never free-text messages.
     pub fn from_shell_output(output: &Value) -> Self {
+        if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.command_primer_trace_result.v1")
+        {
+            return match (
+                output.pointer("/primer_trace_result/schema").and_then(Value::as_str),
+                output.pointer("/primer_trace_result/outcome").and_then(Value::as_str),
+            ) {
+                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("completed")) => Self::Completed,
+                (Some("gentle.rna_primer_trace_result_binding.v1"), Some("cancelled")) => Self::Cancelled,
+                _ => Self::Failed,
+            };
+        }
+        if let Some(report) = output.pointer("/result/rna_primer_trace") {
+            return match (
+                report.get("schema").and_then(Value::as_str),
+                report.get("status").and_then(Value::as_str),
+            ) {
+                (Some("gentle.rna_primer_trace_report.v1"), Some("completed")) => Self::Completed,
+                (Some("gentle.rna_primer_trace_report.v1"), Some("cancelled")) => Self::Cancelled,
+                _ => Self::Failed,
+            };
+        }
         if output.get("schema").and_then(Value::as_str) == Some("gentle.command_artifact_result.v1")
         {
             return match (
@@ -322,6 +344,37 @@ impl AgentExecutionFeedback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn primer_trace_feedback_keeps_full_and_compact_publication_outcomes() {
+        for (outcome, expected) in [
+            ("completed", AgentExecutionStatus::Completed),
+            ("cancelled", AgentExecutionStatus::Cancelled),
+            ("control_error", AgentExecutionStatus::Failed),
+            ("unknown", AgentExecutionStatus::Failed),
+        ] {
+            let full = serde_json::json!({"result":{"rna_primer_trace":{
+                "schema":"gentle.rna_primer_trace_report.v1","status":outcome}}});
+            let compact = serde_json::json!({"schema":"gentle.command_primer_trace_result.v1",
+                "primer_trace_result":{"schema":"gentle.rna_primer_trace_result_binding.v1","outcome":outcome}});
+            assert_eq!(AgentExecutionStatus::from_shell_output(&full), expected);
+            assert_eq!(AgentExecutionStatus::from_shell_output(&compact), expected);
+        }
+        for output in [
+            serde_json::json!({"schema":"gentle.command_primer_trace_result.v1"}),
+            serde_json::json!({"schema":"gentle.command_primer_trace_result.v1",
+                "primer_trace_result":{"schema":"unknown","outcome":"completed"}}),
+            serde_json::json!({"result":{"rna_primer_trace":{
+                "schema":"gentle.rna_primer_trace_report.v1"}}}),
+            serde_json::json!({"result":{"rna_primer_trace":{"schema":"unknown","status":"completed"}}}),
+        ] {
+            assert_eq!(AgentExecutionStatus::from_shell_output(&output), AgentExecutionStatus::Failed);
+        }
+        let inspection = serde_json::json!({"result":{"rna_primer_trace_inspection":{
+            "report":{"schema":"gentle.rna_primer_trace_report.v1","status":"cancelled"}}}});
+        assert_eq!(AgentExecutionStatus::from_shell_output(&inspection), AgentExecutionStatus::Completed,
+            "successfully inspecting a cancelled run is not another cancelled execution");
+    }
 
     #[test]
     fn agent_feedback_async_start_is_not_completion() {

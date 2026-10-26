@@ -33,6 +33,8 @@ const MAX_RESULT_BYTES: usize = 16 * 1024 * 1024;
 
 mod rna_artifacts;
 #[cfg(test)]
+mod primer_trace_tests;
+#[cfg(test)]
 mod rna_tests;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -192,6 +192,10 @@ reference, report, location and outcome). No live project journal is merged;
 late host cancellation cannot relabel published evidence. Validation/show are
 bounded observation work; cancellation has the control lane. These exceptions
 do not implement or generalize the proposed lifecycle-policy framework.
+Agent execution feedback preserves `completed`, `cancelled` and `control_error`
+from both full trace results and compact managed receipts; control faults are
+failed execution, not successful screening. Inspecting a retained cancelled
+report can itself complete normally without relabelling that report's outcome.
 Generic MCP `op` still requires confirmation, but these named operations do
 not rewrite its state file. Shared shell, CLI, MCP and agent plans reuse the
 same operations and external-write approval classification. No new GUI.

@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-10-26 - Preserve Primer Trace Outcomes In Agent Feedback
+
+- Rebase primer tracing onto `4acee734`, retaining RNA-screen work profiles,
+  summary evidence and both consolidated verification checklists.
+- Interpret full trace and compact managed receipt outcomes in agent feedback:
+  cancellation stays cancelled, control errors stay failed, unknown/missing
+  schemas or outcomes fail closed. Successful report inspection is distinct
+  from the retained run's outcome; no biology or matching policy changes.
+- Author synthetic managed-worker regressions for partial verified units under
+  a held project write lock and compact output surviving project replacement
+  and late Cancel after publication. Together with the feedback matrix these
+  bring primer-trace Rust regressions to 24, still unrun under the standing
+  no-local-Rust restriction. Private data and owner output remain untouched.
+- Integrated-source checks: 164 Python tests pass, five optional binary checks
+  skip; scoped rustfmt, documentation/maturity freshness and whitespace pass.
+  `Cargo.lock` is unchanged. These checks are not Rust/native acceptance.
+
 ## 2026-10-26 - Observe RNA Work And Preserve Summary Sequence Evidence
 
 - Add optional deterministic index and verified-file work profiles without

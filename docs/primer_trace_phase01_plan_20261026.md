@@ -68,10 +68,12 @@ scientific acceptance remain separate and unclaimed. No push is authorized.
 ## Implementation And Local Evidence
 
 Phase 0/1 source is implemented on `gentle_rs_2_main` based on `adacb2bc`.
-The policy/biological decision remains proposed. Local `main` advanced to
-`4acee734` during this session (RNA-screen profiling/summary work); this diff
-was not rebased or compiled against that newer source. Integrate before the
-single consolidated Glen/CI run; do not inherit either branch's old verdicts.
+The policy/biological decision remains proposed. It is now rebased onto local
+`main` at `4acee7346e3a6e0b662c26b1db67ef58a635d8ef`, retaining the separate
+RNA-screen profiling/summary work. The rebase reconciled the shared module list
+and retained both documentation/handoff records; neither branch's old verdicts
+is acceptance of the integrated source.
+No Rust compilation of the integrated source has been performed.
 
 Changed areas: new protocol/matching/publication modules; the existing FASTQ
 record's quality field; operation/result wiring and required constructor
@@ -113,3 +115,26 @@ four OK, two warnings (intentional dirty/generated files and manual plan-fidelit
 reminder), zero failures. The dedicated named artifact policy and explicit
 read-only draft sealing are intentional, documented parts of this slice; the
 general lifecycle proposal remains unimplemented.
+
+## Post-Rebase Follow-Up
+
+Continued source review found that agent feedback did not recognize trace
+outcomes: cancelled/control-error results would fall through to `completed`.
+Recognize full trace reports and compact managed bindings, fail closed on
+unknown/missing schemas or outcomes, and distinguish successful inspection
+from the inspected run's status. Add one outcome-matrix regression and two
+managed-worker regressions using temporary synthetic FASTQ, channels and the
+actual shared executor: a held project lock with partial verified results;
+and compact output surviving project replacement/late Cancel after publication.
+This brings authored primer-trace Rust regressions to 24, all still unrun.
+No matching/default policy, original RNA nomination, private input or general
+lifecycle change is made by this follow-up.
+
+On the integrated source, the combined Python command above now discovers 169
+tests: 164 pass and five optional binary-dependent checks are skipped. The new
+sixth primer-trace Python test checks source wiring, not Rust execution. All
+five new Rust modules pass scoped rustfmt; the modified feedback/host modules
+also parse through rustfmt without rewriting existing formatting. Documentation
+status, maturity freshness, whitespace and the 400-line roadmap check pass;
+`Cargo.lock` remains unchanged. Canonical Rust generator, compiler, platform,
+private-library and scientific checks remain in the single Glen/CI handoff.

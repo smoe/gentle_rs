@@ -83,6 +83,14 @@ cargo run --locked --bin gentle_examples_docs -- tutorial-manifest-check
 python3 -m unittest scripts.test_primer_trace_contract scripts.test_rna_panel_tutorial scripts.test_tutorial_checkouts -q
 ```
 
+The primer-trace implementation is rebased onto local main `4acee734`, including
+its separate RNA work-profile and summary-evidence changes. Verify the integrated
+source, not the pre-rebase `adacb2bc` baseline. The `primer_trace` Rust filter now
+includes managed-worker and agent-feedback regressions (24 new tests total,
+authored but not locally executed). Full and compact results must preserve
+cancelled/control-error outcomes in agent feedback; inspecting an old cancelled
+report must still be a successfully completed inspection.
+
 Check the actual shell/MCP/managed-host boundaries, not just the matching
 helper: writes and `--cancel` require approval, forged plan metadata cannot
 remove that gate, validation/show leave state/journal alone, and the MCP
@@ -92,6 +100,12 @@ replacement, close, source-file changes, late host Cancel, explicit marker
 Cancel, publication failure and reopening the bound report. Preserve completed,
 cancelled and control-error outcomes; late host cancellation is not a new
 scientific verdict. No GUI acceptance is claimed or needed for this slice.
+The new managed tests use channels to hold the interval after publication, force
+compact output, replace the live project and issue late Cancel; the published
+completed binding must survive without any project commit. A separate test holds
+the project write lock throughout partial-cancellation/control-error execution
+and reopens the retained verified unit through its exact binding. These tests
+are synthetic software checks, not native, platform or private-data acceptance.
 
 Synthetic regressions cover four exact orientation geometries, substitutions/
 indels, core limits, quality/nulls, shared handles, multiple anchors, template

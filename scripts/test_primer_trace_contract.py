@@ -94,6 +94,26 @@ class PrimerTraceContractTests(unittest.TestCase):
         row = types.split("pub struct RnaPrimerTraceRow", 1)[1].split("#[derive", 1)[0]
         self.assertNotIn("sequence:", row, "read-level inspection must not retain read sequence")
 
+    def test_managed_trace_and_feedback_regressions_are_wired(self):
+        host = (ROOT / "src/command_execution.rs").read_text()
+        self.assertIn("mod primer_trace_tests;", host)
+        tests = (ROOT / "src/command_execution/primer_trace_tests.rs").read_text()
+        for name in (
+            "primer_trace_managed_partial_reports_keep_outcomes_without_project_lock",
+            "primer_trace_managed_compact_result_survives_late_cancel_and_project_replacement",
+        ):
+            self.assertIn("fn " + name, tests)
+        feedback = (ROOT / "src/agent_feedback.rs").read_text()
+        self.assertIn("fn primer_trace_feedback_keeps_full_and_compact_publication_outcomes", feedback)
+        interpreter = feedback.split("pub fn from_shell_output(", 1)[1].split("pub fn after_sequence_import(", 1)[0]
+        for marker in (
+            "gentle.command_primer_trace_result.v1",
+            "gentle.rna_primer_trace_result_binding.v1",
+            "/result/rna_primer_trace",
+            "gentle.rna_primer_trace_report.v1",
+        ):
+            self.assertIn(marker, interpreter)
+
     def test_source_modules_and_regressions_are_explicit(self):
         for parent, child in [
             ("src/engine/analysis/rna_panel.rs", "rna_panel/primer_trace.rs"),
