@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-26 - Observe RNA Work And Preserve Summary Sequence Evidence
+
+- Add optional deterministic index and verified-file work profiles without
+  changing panels, candidates, keys, sidecars, hard budgets or intake policy.
+  Bound peak-ID retention and omit legacy absence. Project these observations
+  through shared inspection and the thin native inspector, with no timing or
+  calibrated performance claim.
+- Retain shared-sequence groups and per-set citations/common-sequence flags
+  in summary JSON/TSV. Historical panel evidence stays unknown; matching RNA
+  is not physical gene identity, an explanation of ambiguity or reassignment.
+  Add consistency checks and synthetic known/unknown/different-sequence,
+  zero-unit and tamper regressions without relaxing source admission.
+- Author real-base substitution/indel scripts and profiling equivalence tests;
+  update tutorial 10.04 and the consolidated Glen handoff. Rust/native/CI
+  verification remains external; no private reads, push or goal resumption.
+- Verification: 114 Python source/tutorial/LF-CRLF checkout/maturity checks,
+  scoped rustfmt, documentation status, maturity freshness and whitespace pass.
+  Session-close reports four OK, two expected working-tree/manual-plan warnings
+  and no failures. The 19 new Rust regressions remain authored, not executed.
+
 ## 2026-10-25 - Separate Shared RNA Sequences From Source Identity
 
 - Add optional digest-bound cross-locus mature-sequence groups to new panels,

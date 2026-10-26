@@ -263,6 +263,44 @@ pub struct RnaReadPanelArtifact {
     pub locus_id: Option<String>,
 }
 
+/// Deterministic index fan-out, not elapsed time or a biological specificity score.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelIndexWorkProfile {
+    pub distinct_words: usize,
+    pub max_postings_per_word: usize,
+    pub max_templates_per_word: usize,
+    pub max_loci_per_word: usize,
+    /// Strictly greater than each fixed threshold, not greater than or equal.
+    pub words_above_posting_thresholds: BTreeMap<usize, usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelReadWorkPeak {
+    pub anchors: u64,
+    pub record_index: u64,
+    pub read_id: String,
+    /// Read IDs longer than 256 Unicode scalar values retain a prefix and full-ID hash.
+    pub read_id_truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_id_sha256: Option<String>,
+}
+
+/// Work for verified reads only; cancelled/failed unfinished units publish no profile.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelFileWorkProfile {
+    pub peak_anchor_postings: Option<RnaReadPanelReadWorkPeak>,
+    pub anchor_histogram_upper_bounds: Vec<u64>,
+    pub anchor_histogram_counts: Vec<u64>,
+    /// None means arithmetic overflow, never zero work or a reason to abort screening.
+    pub total_anchor_postings: Option<u64>,
+    /// Counts template/orientation LCSk++ invocations, not qualifying candidates.
+    pub peak_template_chain_evaluations: usize,
+    pub equivalence_key_bytes_added: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RnaReadPanelFileReceipt {
@@ -276,6 +314,8 @@ pub struct RnaReadPanelFileReceipt {
     /// V2 keys encode NominationSetKey; v1 keys encode only member IDs. Neither is an isoform call.
     pub equivalence_classes: BTreeMap<String, u64>,
     pub artifacts: Vec<RnaReadPanelArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_profile: Option<RnaReadPanelFileWorkProfile>,
 }
 
 /// Where a marker failure was observed, not a request to cancel.
@@ -311,6 +351,8 @@ pub struct RnaReadPanelScreenReport {
     pub request: ScreenRnaReadPanelRequest,
     pub panel_sha256: String,
     pub indexed_postings: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_work_profile: Option<RnaReadPanelIndexWorkProfile>,
     pub isoform_assignment_performed: bool,
     pub alignment_confirmation_performed: bool,
     pub files_completed: Vec<RnaReadPanelFileReceipt>,
@@ -435,6 +477,19 @@ pub struct RnaReadPanelSummaryNominationSet {
     pub class: String,
     pub member_ids: Vec<String>,
     pub reads: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_sharing: Option<RnaReadPanelSummarySequenceSharing>,
+}
+
+/// Sequence identity among the nominated members, never proof of physical source or causality.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RnaReadPanelSummarySequenceSharing {
+    /// `recorded` or `unknown` (historical source panel has no diagnostic).
+    pub status: String,
+    /// Canonical SHA-256 of complete source-panel sharing-group records.
+    pub group_sha256s: Vec<String>,
+    pub all_members_share_one_sequence: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -483,6 +538,9 @@ pub struct RnaReadPanelSummary {
     pub ambiguous_sets: Option<Vec<RnaReadPanelSummaryAmbiguousSet>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub co_nomination_sets: Option<Vec<RnaReadPanelSummaryNominationSet>>,
+    /// Copied from the validated source panel, never reconstructed for historical absence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_transcript_sequences: Option<Vec<RnaReadPanelSharedTranscriptSequence>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sample_coverage: Option<Vec<RnaReadPanelSampleCoverage>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

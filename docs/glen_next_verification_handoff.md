@@ -1,5 +1,64 @@
 # Glen: Next Verification And Return
 
+## RNA Work Profiles, Error Scripts And Summary Evidence, 2026-10-26
+
+Use normal integrated source, not a new candidate freeze. The residual prompt
+was read from the main checkout's untracked
+`docs/rna_panel_residual_gaps_codex_prompt_20261025.md`; that draft is not copied
+or changed here. Baseline local main was `adacb2bc`. The local `f6777b6c`
+owned-ID repair is present; read-only search finds no explicit `GuiTestId`
+callers outside its wrapper depending on `Copy` or a static `as_str` lifetime.
+This is not compile/CI evidence, and no push/dispatch is performed here.
+
+At the next ordinary verification:
+
+```sh
+cargo check --locked --all-features --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_examples_docs
+cargo test --locked --lib -j1 rna_panel -- --test-threads=1
+cargo test --locked --lib -j1 rna_legacy -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_eight_percent_acgt_edits -- --nocapture --test-threads=1
+```
+
+New `index_work_profile` measures maximum postings/templates/loci per word and
+fixed fan-out counts. Each completed unit's `work_profile` retains total/peak
+anchors, fixed histogram, peak record/ID, peak template-orientation chain calls
+and file-local key bytes debited to the run budget. Long peak IDs are bounded,
+explicitly truncated and full-ID hashed. No wall time is digest-bound, and
+unfinished units publish no work claims. The no-profiling private test path
+must produce byte-identical nomination TSV/FASTA and class/member counts.
+Legacy omitted profiles retain old semantic hashes; panel digests are unchanged.
+
+Summary JSON/TSV now retains exact sequence-sharing group records/citations
+and a common-sequence flag, not a causal explanation or source-identity verdict.
+Unknown historical evidence stays unknown, counts stay unchanged and no-source-
+file-reverification claims remain. Check genuine differing-sequence cross-gene
+sets, exact common sequences, unknown old panels, zero verified files and
+re-digested tampering. Verify canonical generator/parity, inner-agent/MCP and
+native projections in tutorial 10.04, including Windows cleanup/handles.
+
+The deterministic substitution/short-indel scripts use actual A/C/G/T, not
+skipped N windows. The 2%/8% software characterizations do not calibrate real
+Nanopore sensitivity. Rust execution/native acceptance is not performed here.
+On the separately authorized first complete chunk, retain profiles and external
+time/memory, selected counts, panel/policy, exact SHA/toolchain and raw budget
+failures before considering any index rewrite. Keep per-template equivalence,
+hard budget failures and zero-length-record refusal unchanged.
+
+Owner question, not an implementation change: does the facility/basecaller
+actually emit zero-length FASTQ records? If yes, decide separately whether
+they remain fatal or deserve an explicit digest-bound intake class. No such
+class, scheduler, private-data run or paused-goal resumption is introduced.
+
+Local verification: 114 tests pass with `python3 -m unittest
+scripts.test_rna_panel_tutorial scripts.test_tutorial_checkouts
+scripts.test_capability_maturity`; scoped rustfmt, documentation status,
+maturity freshness and whitespace pass. Session-close: four OK, two expected
+working-tree/manual-plan warnings, no failures; roadmap remains 400 lines.
+Nineteen new Rust tests in `profile_tests`, `error_tests` and `sharing_tests`
+are authored but unrun. Preserve their synthetic provenance and retain the
+8% characterization output without converting it into a sensitivity verdict.
+
 ## Shared-Sequence Ambiguity And Legacy Output Regressions, 2026-10-25
 
 At ordinary integrated source, run:
@@ -92,8 +151,8 @@ missing historical duplicate coverage is unknown, not proof of uniqueness.
 
 Before changing indexing/budgets, use the owner's separately authorized first
 completed chunk with all annotated isoforms. Retain indexed postings, selected/
-annotated counts, actual peak posting work (profiling still needed on successful
-reads), key bytes, class counts, toolchain/SHA and memory/throughput evidence.
+annotated counts, actual peak posting work (new report profiles above need
+execution/measurement), key bytes, class counts, toolchain/SHA and memory/throughput evidence.
 The authored default-cap regression exercises a legitimate synthetic shared
 read exceeding the budget; it is unrun and establishes no real-library risk
 frequency or performance. Require

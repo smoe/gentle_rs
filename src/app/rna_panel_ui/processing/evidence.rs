@@ -329,6 +329,9 @@ impl GENtleApp {
                 let outcome = ui.heading(format!("Scientific outcome: {}", report.status));
                 capture_status(&outcome, "rna_panel.inspect.outcome", Some(&report.content_sha256), &report.status);
                 ui.label(format!("Panel: {}", report.panel_sha256));
+                if let Some(profile) = &report.index_work_profile { ui.label(format!("Index work (counts, not timings): {:?}", profile)); }
+                else { ui.label("Index work profile: not recorded (historical report)."); }
+                table(ui, "rna_file_work_profiles", report.files_completed.len(), |ui, i| { let file = &report.files_completed[i]; if let Some(profile) = &file.work_profile { ui.label(format!("{} work: {:?}", file.file_id, profile)); } else { ui.label(format!("{} work: not recorded", file.file_id)); } });
                 ui.label(format!("Submitted request: {}", report.submitted_request_sha256.as_deref().unwrap_or("not recorded (legacy)")));
                 if let Some(binding) = &loaded.binding { ui.label(format!("Effective request: {}", binding.effective_request_sha256)); }
                 ui.label(format!("{} verified file units / {} requested", report.files_completed.len(), report.request.files.len()));
@@ -373,7 +376,7 @@ impl GENtleApp {
                 table(ui, "rna_summary_samples", summary.samples.len(), |ui, i| { let r = &summary.samples[i]; ui.label(format!("{} | {} verified reads | {} single-candidate | co-nominated {:?} | historical ambiguous {:?} | {:?}", r.sample_id, r.reads, r.single_candidate_reads, r.co_nominated_reads, r.ambiguous_reads, r.classes)); });
                 table(ui, "rna_summary_transcripts", summary.transcripts.len(), |ui, i| { let r = &summary.transcripts[i]; ui.label(format!("{} | {} / {} | {} | {} | single {} | co-nominated {:?} | historical {:?}", r.sample_id, r.gene_symbol, r.gene_id, r.member_id, r.transcript_id, r.single_candidate_reads, r.co_nominated_reads, r.ambiguous_compatible_reads)); });
                 if let Some(sets) = &summary.co_nomination_sets {
-                    table(ui, "rna_summary_sets", sets.len(), |ui, i| { let r = &sets[i]; ui.label(format!("{} | {} | {} reads | {:?}", r.sample_id, r.class, r.reads, r.member_ids)); });
+                    table(ui, "rna_summary_sets", sets.len(), |ui, i| { let r = &sets[i]; ui.label(format!("{} | {} | {} reads | {:?} | sequence sharing {:?}", r.sample_id, r.class, r.reads, r.member_ids, r.sequence_sharing)); });
                 }
                 if let Some(sets) = &summary.ambiguous_sets {
                     ui.label("legacy_class_unresolved: class association cannot be recovered");

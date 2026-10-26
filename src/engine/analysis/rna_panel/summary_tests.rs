@@ -54,6 +54,12 @@ fn fixture(
 }
 
 fn save_report(path: &str, report: &mut RnaReadPanelScreenReport) {
+    // Synthetic count mutations below have no measured work history; preserve absence,
+    // not stale counter values from the original screen fixture.
+    report.index_work_profile = None;
+    for file in &mut report.files_completed {
+        file.work_profile = None;
+    }
     if report.schema == RNA_PANEL_SCREEN_SCHEMA {
         report.inputs_not_completed =
             Some(report.request.files[report.files_completed.len()..].to_vec());
@@ -382,7 +388,11 @@ fn rna_panel_summary_legacy_json_keeps_digest_and_never_acquires_new_claims() {
     old["ambiguous_sets"] = sets;
     for set in old["ambiguous_sets"].as_array_mut().unwrap() {
         set.as_object_mut().unwrap().remove("class");
+        set.as_object_mut().unwrap().remove("sequence_sharing");
     }
+    old.as_object_mut()
+        .unwrap()
+        .remove("shared_transcript_sequences");
     for name in ["sample_coverage", "class_member_counts_complete"] {
         old.as_object_mut().unwrap().remove(name);
     }

@@ -7,6 +7,131 @@ const MAX_TRANSCRIPT_ROWS: usize = 250_000;
 const MAX_AMBIGUOUS_SETS: usize = 65_536;
 const MAX_MEMBER_VISITS: usize = 2_000_000;
 
+fn sharing_group_members(
+    groups: Option<&[RnaReadPanelSharedTranscriptSequence]>,
+) -> Result<Option<BTreeMap<&str, String>>, EngineError> {
+    let Some(groups) = groups else {
+        return Ok(None);
+    };
+    let mut members = BTreeMap::new();
+    for group in groups {
+        let hash = sha256_prefixed_bytes(&encode(group)?);
+        for member in &group.member_ids {
+            if members.insert(member.as_str(), hash.clone()).is_some() {
+                return Err(bad("panel_summary_shared_sequence_binding"));
+            }
+        }
+    }
+    Ok(Some(members))
+}
+
+fn sequence_sharing(
+    group_members: Option<&BTreeMap<&str, String>>,
+    member_ids: &[String],
+    member_loci: &BTreeMap<&str, &str>,
+) -> Result<RnaReadPanelSummarySequenceSharing, EngineError> {
+    let Some(group_members) = group_members else {
+        return Ok(RnaReadPanelSummarySequenceSharing {
+            status: "unknown".into(),
+            group_sha256s: vec![],
+            all_members_share_one_sequence: None,
+        });
+    };
+    let selected = member_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let loci = selected
+        .iter()
+        .filter_map(|id| member_loci.get(id).copied())
+        .collect::<BTreeSet<_>>();
+    let mut hashes = vec![];
+    let mut all_share = false;
+    if loci.len() > 1 {
+        // One sequence group per member: visit only this set's members, not every
+        // panel group per set. Group digests are prepared once for the summary.
+        let mut coverage = BTreeMap::<&str, (BTreeSet<&str>, usize)>::new();
+        for member in member_ids {
+            if let (Some(hash), Some(locus)) = (
+                group_members.get(member.as_str()),
+                member_loci.get(member.as_str()),
+            ) {
+                let (covered, count) = coverage.entry(hash.as_str()).or_default();
+                covered.insert(locus);
+                *count += 1;
+            }
+        }
+        for (hash, (covered, count)) in coverage {
+            if covered == loci {
+                hashes.push(hash.to_owned());
+                all_share |= count == member_ids.len();
+            }
+        }
+    }
+    Ok(RnaReadPanelSummarySequenceSharing {
+        status: "recorded".into(),
+        group_sha256s: hashes,
+        all_members_share_one_sequence: Some(all_share),
+    })
+}
+
+pub(super) fn validate_sequence_sharing(summary: &RnaReadPanelSummary) -> Result<(), EngineError> {
+    let member_loci = summary
+        .transcripts
+        .iter()
+        .map(|t| (t.member_id.as_str(), t.locus_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    if let Some(groups) = &summary.shared_transcript_sequences {
+        for group in groups {
+            // Member IDs already have the engine's locus:feature namespace. Groups may
+            // exist even when no sample has a verified file and hence no count rows.
+            let actual_loci = group
+                .member_ids
+                .iter()
+                .map(|id| {
+                    let (locus, feature) = id
+                        .rsplit_once(':')
+                        .ok_or_else(|| bad("panel_summary_shared_sequence_binding"))?;
+                    if feature.parse::<usize>().ok().is_none() {
+                        return Err(bad("panel_summary_shared_sequence_binding"));
+                    }
+                    Ok(locus)
+                })
+                .collect::<Result<BTreeSet<_>, EngineError>>()?;
+            if !group.sequence_sha256.starts_with("sha256:")
+                || !valid_digest(&group.sequence_sha256[7..], 64)
+                || group.member_ids.windows(2).any(|p| p[0] >= p[1])
+                || actual_loci.len() < 2
+                || group
+                    .locus_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    != actual_loci.into_iter().collect::<Vec<_>>()
+            {
+                return Err(bad("panel_summary_shared_sequence_binding"));
+            }
+        }
+    }
+    let group_members = sharing_group_members(summary.shared_transcript_sequences.as_deref())?;
+    for set in summary.co_nomination_sets.iter().flatten() {
+        if let Some(sharing) = &set.sequence_sharing {
+            if set
+                .member_ids
+                .iter()
+                .any(|id| !member_loci.contains_key(id.as_str()))
+                || *sharing
+                    != sequence_sharing(group_members.as_ref(), &set.member_ids, &member_loci)?
+            {
+                return Err(bad("panel_summary_shared_sequence_binding"));
+            }
+        } else if summary.shared_transcript_sequences.is_some() {
+            return Err(bad("panel_summary_shared_sequence_binding"));
+        }
+    }
+    Ok(())
+}
+
 fn add(total: &mut u64, value: u64) -> Result<(), EngineError> {
     *total = total
         .checked_add(value)
@@ -440,14 +565,35 @@ impl GentleEngine {
                 .into();
             }
         }
+        let reference = panel.as_ref().unwrap();
+        let member_loci = reference
+            .templates
+            .iter()
+            .map(|t| (t.member_id.as_str(), t.locus_id.as_str()))
+            .collect::<BTreeMap<_, _>>();
+        let group_members =
+            sharing_group_members(reference.shared_transcript_sequences.as_deref())?;
+        let co_nomination_sets = sets
+            .into_iter()
+            .map(|((sample_id, class, member_ids), reads)| {
+                let sharing = sequence_sharing(group_members.as_ref(), &member_ids, &member_loci)?;
+                Ok(RnaReadPanelSummaryNominationSet {
+                    sample_id,
+                    class,
+                    member_ids,
+                    reads,
+                    sequence_sharing: Some(sharing),
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
         let mut summary = RnaReadPanelSummary {
             submitted_request_sha256: Some(sha256_prefixed_bytes(&encode(request)?)),
-            schema: RNA_PANEL_SUMMARY_SCHEMA.into(), content_sha256: String::new(), panel_sha256: panel.unwrap().content_sha256,
+            schema: RNA_PANEL_SUMMARY_SCHEMA.into(), content_sha256: String::new(), panel_sha256: reference.content_sha256.clone(),
             policy, completeness: completeness.into(), source_runs: runs, source_files: files,
             samples: samples.into_values().collect(), transcripts: transcripts.into_values().collect(),
             ambiguous_sets: None,
-            co_nomination_sets: Some(sets.into_iter().map(|((sample_id, class, member_ids), reads)|
-                RnaReadPanelSummaryNominationSet { sample_id, class, member_ids, reads }).collect()),
+            co_nomination_sets: Some(co_nomination_sets),
+            shared_transcript_sequences: reference.shared_transcript_sequences.clone(),
             sample_coverage: Some(coverage.into_values().collect()), class_member_counts_complete: Some(class_member_counts_complete),
             original_inputs_reverified: false, nomination_sidecars_reverified: false, artifacts: vec![], nonclaims: vec![
                 "Counts are supporting reads, not original molecule copy numbers, expression or exclusive isoform identification; no alignment confirmation is added.".into(),
@@ -457,6 +603,7 @@ impl GentleEngine {
                 "Zero denotes no stored support among verified files, not biological absence. Completeness covers only the explicit report selection; cancelled or control-error reports keep this summary partial.".into(),
                 "Only stored report/panel content bindings and count consistency are checked. Original FASTQ and nomination sidecars are not reopened or reverified; content hashes are not authenticated provenance.".into(),
                 "Duplicate compressed-input hashes are refused. Distinct files can still contain duplicate reads; no read-level or PCR/UMI deduplication is performed.".into(),
+                "Sequence-sharing flags compare selected mature sequences, not gene identity or the cause of read ambiguity. All-members-sharing is not whole-read compatibility or an exclusive assignment; historical panel evidence remains unknown.".into(),
             ],
         };
         let parent = output
@@ -538,7 +685,15 @@ impl GentleEngine {
         summary.artifacts.push(write_tsv(
             staging.path(),
             "co_nomination_sets.tsv",
-            &["sample_id", "class", "member_ids_json", "reads"],
+            &[
+                "sample_id",
+                "class",
+                "member_ids_json",
+                "reads",
+                "sequence_sharing_status",
+                "shared_sequence_group_sha256s_json",
+                "all_members_share_one_sequence",
+            ],
             summary
                 .co_nomination_sets
                 .as_ref()
@@ -550,6 +705,17 @@ impl GentleEngine {
                         &r.class,
                         serde_json::to_string(&r.member_ids).map_err(|e| bad(e.to_string()))?,
                         r.reads,
+                        r.sequence_sharing
+                            .as_ref()
+                            .map(|s| s.status.as_str())
+                            .unwrap_or("unknown"),
+                        serde_json::to_string(
+                            &r.sequence_sharing.as_ref().map(|s| &s.group_sha256s),
+                        )
+                        .map_err(|e| bad(e.to_string()))?,
+                        r.sequence_sharing
+                            .as_ref()
+                            .and_then(|s| s.all_members_share_one_sequence),
                     ))
                 })
                 .collect::<Result<Vec<_>, _>>()?,

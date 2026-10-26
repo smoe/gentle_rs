@@ -10,8 +10,14 @@ use std::path::{Path, PathBuf};
 
 #[path = "rna_panel/control.rs"]
 mod control;
+#[cfg(test)]
+#[path = "rna_panel/error_tests.rs"]
+mod error_tests;
 #[path = "rna_panel/input.rs"]
 mod input;
+#[cfg(test)]
+#[path = "rna_panel/profile_tests.rs"]
+mod profile_tests;
 #[path = "rna_panel/project.rs"]
 mod project;
 #[path = "rna_panel/result_binding.rs"]
@@ -19,12 +25,17 @@ mod result_binding;
 #[cfg(test)]
 #[path = "rna_panel/result_binding_tests.rs"]
 mod result_binding_tests;
+#[cfg(test)]
+#[path = "rna_panel/sharing_tests.rs"]
+mod sharing_tests;
 #[path = "rna_panel/summary.rs"]
 mod summary;
 #[path = "rna_panel/tools.rs"]
 mod tools;
 #[path = "rna_panel/verification.rs"]
 mod verification;
+#[path = "rna_panel/work_profile.rs"]
+mod work_profile;
 use input::{HashedWriter, visit_fastq};
 
 fn bad(message: impl Into<String>) -> EngineError {
@@ -121,6 +132,7 @@ fn validate_screen_report_binding(report: &RnaReadPanelScreenReport) -> Result<(
     if !valid_outcome {
         return Err(bad("panel_report_control_outcome_binding"));
     }
+    work_profile::validate(report)?;
     Ok(())
 }
 
@@ -641,6 +653,7 @@ fn admit_run_key_bytes(used: usize, additional: usize) -> Option<usize> {
         .filter(|sum| *sum <= MAX_RUN_EQUIVALENCE_KEY_BYTES)
 }
 
+#[cfg(test)]
 fn nominate(
     panel: &RnaReadPanel,
     index: &Index,
@@ -648,8 +661,20 @@ fn nominate(
     read: &[u8],
     cancel: &mut dyn FnMut() -> bool,
 ) -> Result<(String, Vec<RnaReadPanelCandidate>), EngineError> {
+    nominate_with_work(panel, index, policy, read, cancel, None)
+}
+
+fn nominate_with_work(
+    panel: &RnaReadPanel,
+    index: &Index,
+    policy: &RnaReadPanelPolicy,
+    read: &[u8],
+    cancel: &mut dyn FnMut() -> bool,
+    work: Option<&mut work_profile::ReadWork>,
+) -> Result<(String, Vec<RnaReadPanelCandidate>), EngineError> {
     let mut candidates = vec![];
     let mut anchors_used = 0;
+    let mut template_chain_evaluations = 0;
     let mut saw_seed = false;
     let rc = GentleEngine::reverse_complement_bytes(read);
     for (reverse, sequence) in [(false, read), (true, rc.as_slice())] {
@@ -684,6 +709,7 @@ fn nominate(
             }
             anchors.sort_unstable();
             anchors.dedup();
+            template_chain_evaluations += 1;
             let chain = bio::alignment::sparse::lcskpp(&anchors, policy.kmer_len);
             if chain.score < policy.min_chain_bases {
                 continue;
@@ -756,6 +782,10 @@ fn nominate(
         })
     }) {
         class = "multi_segment_candidate";
+    }
+    if let Some(work) = work {
+        work.anchors = anchors_used as u64;
+        work.template_chain_evaluations = template_chain_evaluations;
     }
     Ok((class.into(), candidates))
 }
@@ -940,9 +970,18 @@ fn screen(
 
 // Clock injection keeps control/polling regressions deterministic without altering production cadence.
 fn screen_with_clock(
+    request: ScreenRnaReadPanelRequest,
+    progress: &mut dyn FnMut(OperationProgress) -> bool,
+    now: impl FnMut() -> std::time::Instant,
+) -> Result<RnaReadPanelScreenReport, EngineError> {
+    screen_with_clock_and_profiling(request, progress, now, true)
+}
+
+fn screen_with_clock_and_profiling(
     mut request: ScreenRnaReadPanelRequest,
     progress: &mut dyn FnMut(OperationProgress) -> bool,
     mut now: impl FnMut() -> std::time::Instant,
+    record_work: bool,
 ) -> Result<RnaReadPanelScreenReport, EngineError> {
     let original_cancel_id = control::cancel_identity(&request)?;
     validate_request(&mut request)?;
@@ -978,6 +1017,7 @@ fn screen_with_clock(
     let mut report = RnaReadPanelScreenReport { schema: RNA_PANEL_SCREEN_SCHEMA.into(), content_sha256: String::new(),
         submitted_request_sha256: Some(cancel_ids[0].clone()),
         status: "completed".into(), request: request.clone(), panel_sha256: panel.content_sha256.clone(), indexed_postings: count,
+        index_work_profile: record_work.then(|| work_profile::index_profile(&panel, &index)),
         isoform_assignment_performed: false, alignment_confirmation_performed: false,
         files_completed: vec![], files_not_completed: vec![], inputs_not_completed: Some(vec![]), control_error: None, nonclaims: vec![
             "Partial seed-chain support only co-nominates members; it does not establish compatibility with the entire read, exclusive isoform identification, full-length capture, calibrated probability, expression or transcriptome-wide specificity.".into(),
@@ -996,6 +1036,7 @@ fn screen_with_clock(
         ] };
     let mut equivalence_bytes = 0usize;
     for (ordinal, source) in request.files.iter().enumerate() {
+        let equivalence_bytes_before_file = equivalence_bytes;
         let file_id = format!("file_{ordinal:04}");
         let expected_input_digest = source
             .expected_md5
@@ -1054,6 +1095,7 @@ fn screen_with_clock(
             classes: BTreeMap::new(),
             equivalence_classes: BTreeMap::new(),
             artifacts: vec![],
+            work_profile: record_work.then(work_profile::file_profile),
         };
         let mut gate = control::PollGate::default();
         let mut marker_error = None;
@@ -1120,7 +1162,8 @@ fn screen_with_clock(
             ) {
                 return Ok(false);
             }
-            let nomination = nominate(
+            let mut work = work_profile::ReadWork::default();
+            let nomination = nominate_with_work(
                 &panel,
                 &index,
                 &request.policy,
@@ -1134,6 +1177,7 @@ fn screen_with_clock(
                         false,
                     )
                 },
+                record_work.then_some(&mut work),
             );
             let (class, candidates) = match nomination {
                 Err(error) if error.message == "panel_cancelled" => return Ok(false),
@@ -1145,6 +1189,9 @@ fn screen_with_clock(
                 }
                 Ok(value) => value,
             };
+            if let Some(profile) = receipt.work_profile.as_mut() {
+                work_profile::record_read(profile, &work, receipt.reads, &record.read_id)?;
+            }
             let mut members = candidates
                 .iter()
                 .map(|c| c.member_id.clone())
@@ -1238,6 +1285,9 @@ fn screen_with_clock(
         receipt.observed_sha256 = digest.sha256;
         receipt.observed_md5 = digest.md5;
         receipt.compressed_bytes = digest.bytes;
+        if let Some(profile) = receipt.work_profile.as_mut() {
+            profile.equivalence_key_bytes_added = equivalence_bytes - equivalence_bytes_before_file;
+        }
         if !progress(OperationProgress::RnaReadPanel(RnaReadPanelProgress {
             file_id: file_id.clone(),
             sample_id: source.sample_id.clone(),

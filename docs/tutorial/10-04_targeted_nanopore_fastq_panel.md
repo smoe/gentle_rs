@@ -509,7 +509,8 @@ separate job scheduler or automatic directory watcher. Standard four-line FASTQ
 records are supported (LF/CRLF, Phred+33, concatenated gzip members); wrapped
 sequence/quality records are refused, not silently repaired.
 Zero-length reads are also a hard refusal, not an unmatched read or biological
-absence; we have not established whether your basecaller emits them. A gzip
+absence. Zero-length FASTQ records still abort the run; we have not established
+whether your basecaller emits them. A gzip
 file can end cleanly after losing an entire concatenated member: that is why
 the supplier digest is still required even when decompression reaches valid EOF.
 
@@ -683,6 +684,24 @@ show it for approval and invoke `rna-reads panel-export-summary`:
 | `artifacts/co_nomination_sets.tsv` | One row per sample, `class` and exact sorted member set, with read count. A read co-nominating A and B increments `[A,B]` in that class once, never either singleton. `member_ids_json` joins to `member_id` in the transcript table. |
 | `report.json` | The same structured counts, panel/policy binding, source report/input hashes, missing-file ledger, table hashes and non-claims. This is the final publication marker. Reopen it with `panel-show`. |
 
+New summaries also retain the panel's `shared_transcript_sequences`. Each
+co-nomination set has `sequence_sharing`: `status`, cited `group_sha256s` and
+`all_members_share_one_sequence`. The TSV appends `sequence_sharing_status`,
+`shared_sequence_group_sha256s_json` and `all_members_share_one_sequence`.
+Use these to distinguish recorded identical mature sequences from a set whose
+members have different mature sequences, without changing any read counts.
+A group is cited only when its nominated members cover all the set's loci;
+the common-sequence flag requires every nominated member to share one sequence.
+Hashes bind the complete group records retained in summary JSON.
+
+**This is not an explanation of the read's ambiguity.** Identical mature RNA
+does not identify its physical gene of origin, prove whole-read compatibility
+or authorize assignment of an ambiguous count. Genuine cross-gene ambiguity
+remains ambiguous. A historical panel without these diagnostics gives
+`status: unknown`, no group citations and a null flag, not false. Older
+summaries lacking the new fields retain their original digests and table
+receipts; missing annotations must not be reconstructed as negative evidence.
+
 For example, **hypothetical, not a demo or biological result**: 12 reads support
 only A, 7 only B, 30 co-nominate A and B through partial seeds and 5 nominate
 neither. The sample has 54 reads, including 19 single-candidate and 30
@@ -773,9 +792,30 @@ New reports carry the restricted-competitor and unmasked-repeat nonclaims
 themselves, not just this lesson. The over-budget diagnostic includes observed
 posting hits and the configured limit. On Glen's first authorized completed
 chunk, retain the panel's selected/annotated counts, `indexed_postings`, budget
-diagnostics and cumulative class-key bytes. Peak anchors on successful reads
-still need profiling; they are not a new report metric. These measurements must
-precede changing the index or budgets. One chain per genomic locus is not a
+diagnostics and the new optional work profiles. `index_work_profile` records
+maximum postings/templates/loci per word and counts of words with strictly
+more than 1, 8, 64 or 256 postings. Each checksum-verified file's `work_profile`
+records total and peak anchor postings, a fixed histogram, peak record index/read
+ID, peak template-orientation chain evaluations and
+`equivalence_key_bytes_added`. Anchors include both read orientations before
+chain deduplication, matching the existing budget's accounting. Key bytes are
+each file's contribution to the unchanged cumulative budget; a repeated key
+in another file is counted again. Equal peaks retain the first read. Long peak
+IDs are explicitly truncated and full-ID hashed. An empty verified file has
+zero observations and no peak read; an unfinished file publishes no profile.
+
+Inspect these through **Inspect** or `panel-show` and retain `report.json`.
+Missing historical profiles mean unrecorded, not zero work. An overflowed total
+is unknown, not zero. These deterministic counters are not runtime, peak memory,
+sensitivity or proof that a budget is appropriate; Glen must also collect
+external time/memory on the separately authorized real chunk. They do not
+change nominations, sidecars, panel identity or the hard failure rules.
+Synthetic tests introduce real A/C/G/T substitutions and short indels at
+about 2% and 8%; these characterize software behavior, not a calibrated
+Nanopore error model or a sensitivity guarantee, especially at 8%.
+
+These measurements must precede changing the index or budgets.
+One chain per genomic locus is not a
 drop-in replacement for all per-template chains: it must preserve candidates
 on alternative exon paths, rather than discard a valid non-winning path.
 Sense and antisense segments from the same locus can both remain nominated

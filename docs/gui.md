@@ -74,8 +74,11 @@ Published runs reopen with their exact result binding; saved-file inspection
 after restart is explicit and does not invent a submitted-service receipt.
 The view retains verified/missing file units, control diagnostics, sample
 coverage, all class/member associations and non-claims. Nomination prefixes are
-bounded and explicitly unverified; **Verify summary tables** is separate bounded
-background work, not a FASTQ reread. Long count tables use virtualized rows.
+bounded and explicitly unverified. New screen inspection also projects optional
+index/per-file work counters; missing historical profiles are unrecorded, not
+zero. Summary sets show their optional sequence-sharing evidence, not an origin
+assignment or explanation of read ambiguity. **Verify summary tables** is separate
+bounded background work, not a FASTQ reread. Long count tables use virtualized rows.
 **Add screen to summary** or **Export > Add screen reports...** selects explicit
 inputs. Review the summary request before **Export reviewed summary (writes
 files)**; compatibility/deduplication remains engine-owned. Reopen the bound

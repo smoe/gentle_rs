@@ -110,7 +110,7 @@ pub(super) fn request(
     }
 }
 
-fn shared_mature_sequence_sources(
+pub(super) fn shared_mature_sequence_sources(
     directory: &Path,
     same_declared_gene: bool,
 ) -> (GentleEngine, BuildRnaReadPanelRequest, String) {
@@ -1650,6 +1650,15 @@ fn rna_panel_mid_run_marker_errors_preserve_verified_units_with_explicit_outcome
         assert_eq!(encode(engine.state()).unwrap(), before);
         let output = Path::new(&run.output_dir);
         for file in &report.files_completed {
+            assert_eq!(
+                file.work_profile
+                    .as_ref()
+                    .unwrap()
+                    .anchor_histogram_counts
+                    .iter()
+                    .sum::<u64>(),
+                file.reads
+            );
             for artifact in &file.artifacts {
                 let bytes = fs::read(output.join(&artifact.path)).unwrap();
                 assert_eq!(sha256_prefixed_bytes(&bytes), artifact.sha256);

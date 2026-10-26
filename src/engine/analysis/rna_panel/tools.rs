@@ -379,6 +379,7 @@ impl GentleEngine {
             {
                 return Err(bad("panel_summary_binding"));
             }
+            summary::validate_sequence_sharing(&summary)?;
             return Ok((None, None, None, Some(summary)));
         }
         let report: RnaReadPanelScreenReport =

@@ -22,6 +22,7 @@ impl GentleEngine {
         if summary.content_sha256 != sha256_prefixed_bytes(&encode(&basis)?) {
             return Err(bad("panel_summary_binding"));
         }
+        summary::validate_sequence_sharing(summary)?;
         let expected =
             BTreeSet::from(["artifacts/samples.tsv", "artifacts/transcripts.tsv", third]);
         if summary.artifacts.len() != 3

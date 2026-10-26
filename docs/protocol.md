@@ -143,6 +143,24 @@ panel/report/row payloads are the same; no adapter-local classification is added
   New reports carry optional `submitted_request_sha256` before manifest MD5
   resolution. Their stored `request` remains the effective request. Missing
   historical hashes are not reconstructed as authenticated submission evidence.
+- New screen reports include optional `index_work_profile`: `distinct_words`,
+  maximum postings/templates/loci per packed word and counts of words with
+  strictly more than 1, 8, 64 or 256 postings. This observes the actual built
+  index, not the panel definition or a calibrated specificity score.
+  Each verified file may include `work_profile`: total/peak anchor postings,
+  peak record index/read ID, fixed histogram upper bounds/counts, peak template-
+  orientation chain evaluations and `equivalence_key_bytes_added`. Anchor work
+  counts both read orientations before chain deduplication, exactly as the
+  existing hard admission budget does. Histogram bounds are inclusive
+  `[0,1,2,4,...,262144]`; zero has its own bucket. Equal peaks retain the first
+  record. Peak IDs longer than 256 Unicode scalar values disclose truncation
+  and retain a full-ID SHA-256; record index and input hash locate the record.
+  Key bytes debit each new file-local key, including the same key in later
+  files, against the unchanged cumulative run limit. Unfinished units publish
+  no observations. Arithmetic overflow of `total_anchor_postings` is null/unknown,
+  not zero or a new screening failure. These deterministic counts contain no clock times and do
+  not change candidates, keys, nomination TSV/FASTA or failure policy. Absent
+  profiles remain omitted/unknown, preserving earlier v2 semantic hashes.
 - `gentle.rna_read_panel_inspection.v1` optionally accompanies an inspected
   screen report in `OpResult.rna_read_panel_inspection`. It binds the report
   digest and expected TSV digest, but reports `artifact_content_verified=false`:
@@ -250,6 +268,19 @@ and published as `report.json` after closed/synced LF TSV files under `artifacts
 - `co_nomination_sets.tsv`: sample, class, sorted `member_ids_json` and reads. Every
   co-nominated read increments exactly one joint set; per-member support
   overlaps, must not be summed as totals and is never fractionally reassigned.
+  New exports append `sequence_sharing_status`,
+  `shared_sequence_group_sha256s_json` and `all_members_share_one_sequence`.
+  The JSON set's optional `sequence_sharing` has `status`, sorted
+  `group_sha256s` and optional `all_members_share_one_sequence`. Group hashes
+  bind canonical complete sharing-group records, not just sequence bytes.
+  A group is cited only when nominated members in it cover all the set's loci;
+  the common-sequence flag requires every nominated member to belong to one
+  such group. This is not proof of the cause of ambiguity, physical gene identity
+  or whole-read compatibility. Counts are unchanged. Summary JSON retains the
+  source panel's optional `shared_transcript_sequences`; missing historical
+  panel evidence yields `status=unknown`, empty citations and a null flag,
+  not false. Earlier summaries omit both additions and keep their old digests
+  and table receipts. Inspection/verification checks new flags for consistency.
 
 The JSON retains these rows, exact source report/file digests, the common
 panel/policy, table hashes and nonclaims. Ordering is deterministic by report

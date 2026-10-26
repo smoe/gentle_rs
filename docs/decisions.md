@@ -166,6 +166,17 @@ legacy winner selection, posting caps or thresholds follow. Legacy regressions
 compare complete reports before/after file-only panel building and equivalent
 no-op expansion, excluding only creation time and explicit mode notices.
 
+RNA residual follow-up, 2026-10-26: optional deterministic work profiles observe
+the existing nomination path and verified file units, never select candidates
+or change budgets. Keep profiles out of panel/request identity, omit historical
+absence and keep timing outside scientific records. Carry selected sequence-
+sharing evidence into summary JSON/TSV without inferring physical source or
+causality: all nominated members may share one mature sequence while their
+biological origin remains unresolved. Historical absence stays unknown, not
+negative. Synthetic substitution/indel tests are software characterizations,
+not calibrated Nanopore sensitivity. Zero-length FASTQ remains a hard error;
+any future different intake class requires a separate owner decision.
+
 ## Development And Release Verification Cadence
 
 Owner decision, 2026-10-15: continue development on `main` without intermediate

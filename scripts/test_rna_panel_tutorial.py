@@ -16,6 +16,38 @@ HELPER = ROOT / "scripts/prepare_rna_panel_tutorial.py"
 
 
 class RnaPanelTutorialTests(unittest.TestCase):
+    def test_work_observation_and_summary_sharing_are_shared_optional_not_new_policy(self):
+        paths = ("src/engine/protocol/rna_panel.rs", "src/engine/analysis/rna_panel.rs",
+                 "src/engine/analysis/rna_panel/work_profile.rs", "src/engine/analysis/rna_panel/summary.rs")
+        types, engine, work, summary = [(ROOT / p).read_text(encoding="utf-8") for p in paths]
+        for crlf in (False, True):
+            with self.subTest(crlf=crlf):
+                t, e, w, s = [v.replace("\n", "\r\n") if crlf else v for v in (types, engine, work, summary)]
+                for name, inner in (("index_work_profile", "RnaReadPanelIndexWorkProfile"),
+                                    ("work_profile", "RnaReadPanelFileWorkProfile"),
+                                    ("sequence_sharing", "RnaReadPanelSummarySequenceSharing")):
+                    self.assertRegex(t, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s*pub ' + name + r': Option<' + inner + '>')
+                self.assertIn("nominate_with_work", e)
+                self.assertIn("record_work.then_some(&mut work)", e)
+                self.assertIn("equivalence_bytes - equivalence_bytes_before_file", e)
+                self.assertNotIn("Instant", w)
+                self.assertNotIn("elapsed", w)
+                self.assertIn("ANCHOR_UPPER_BOUNDS", w)
+                self.assertIn("read_id_truncated", w)
+                self.assertIn("read_id_sha256", w)
+                self.assertIn('status: "unknown"', re.sub(r"\s+", " ", s))
+                self.assertIn("all_members_share_one_sequence", s)
+                self.assertIn("sha256_prefixed_bytes(&encode(group)?)", s)
+        error_tests = (ROOT / "src/engine/analysis/rna_panel/error_tests.rs").read_text(encoding="utf-8")
+        for phrase in ("Edit::Substitute", "Edit::Insert", "Edit::Delete", "24/1200", "96/1200"):
+            self.assertIn(phrase, error_tests)
+        for name in ("work_profile_contract", "summary_sequence_sharing_contract"):
+            self.assertIn(name, (ROOT / "src/engine_shell.rs").read_text(encoding="utf-8"))
+        guide = re.sub(r"\s+", " ", GUIDE.read_text(encoding="utf-8"))
+        for phrase in ("index_work_profile", "equivalence_key_bytes_added", "not zero work",
+                       "all_members_share_one_sequence", "about 2% and 8%", "Zero-length FASTQ records still abort"):
+            self.assertIn(phrase, guide)
+
     def test_shared_mature_sequences_are_diagnostics_not_source_identity_in_both_checkouts(self):
         panel = (ROOT / "src/engine/analysis/rna_panel.rs").read_text(encoding="utf-8")
         types = (ROOT / "src/engine/protocol/rna_panel.rs").read_text(encoding="utf-8")
@@ -82,7 +114,7 @@ class RnaPanelTutorialTests(unittest.TestCase):
             self.assertIn("fn " + name, tests)
         for raw in (GUIDE.read_bytes(), GUIDE.read_bytes().replace(b"\n", b"\r\n")):
             text = re.sub(r"\s+", " ", raw.decode())
-            for phrase in ("source_sequence_sha256", "Peak anchors on successful reads still need profiling",
+            for phrase in ("source_sequence_sha256", "index_work_profile", "peak anchor postings",
                            "Zero-length reads", "alternative exon paths", "not a drop-in replacement"):
                 self.assertIn(phrase, text)
 
