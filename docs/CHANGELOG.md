@@ -18,6 +18,37 @@
   Update tutorial 06.07 and shared contracts without changing scientific inputs.
   Rust/process/VM/native execution remains Glen/CI's; no local Rust build or push.
 
+## 2026-10-26 - Propose Observed Transcript Structure Evidence
+
+- Inspect the owner's TP53 audit archive read-only: verify its ZIP hash/CRC and
+  24 payload manifest entries, read scripts/reports and count stored tables.
+  No audit script, BAM replay, aligner or conditional protein predictor runs;
+  private reads/primers and archive files are not copied into the repository.
+- Prepare a generic downstream evidence plan and forwardable Claude prompt.
+  Reuse detailed Phase 2 operations/masks, not annotation-only splice edges;
+  separate exact chains, tolerant reference relationships, RNA ends, retention
+  evidence and read support. Specify explicit BAM/annotation ingress, source
+  limitations, portable outputs, later shared presentation and adversarial tests.
+- Make the owner's reference-gene requirement explicit in the plan and review
+  prompt: a source-bound `reference_gene` request variable, per-source resolution,
+  generic labels and two-gene/strand regressions; TP53 is only a replay example,
+  with no species, assembly, locus or canonical-isoform default. Proposal only.
+- Reconcile the owner's supplied Claude review against source: propose a
+  strand-neutral physical chain, shared DAG/operation geometry, stable-gene-ID
+  selection, record-level anchor reconciliation and reused annotation geometry.
+  Distinguish known-junction combinations from new skips, tighten terminal/end
+  claims, name resource/state tests and prefer explicit SAM-text ingress before
+  binary BAM. Keep unspliced observation IDs, not structural-family IDs; legal
+  DAG paths and SAM provenance need more than node membership or QNAME. Update
+  the optional follow-up prompt; no implementation approval or execution.
+- Link the proposal from the existing RNA roadmap item. Planning only: no new
+  operation/schema, biological inference, implementation authorization, release
+  gate, Claude invocation, local Rust execution, push or acceptance claim.
+- Documentation status, 11 documentation-status tests including LF/CRLF
+  checkouts, and whitespace checks pass. Session-close reports four OK, two
+  expected working-tree/manual-plan warnings and no failures; the only unrelated
+  untracked path is `output/`. No runtime, BAM or scientific verification runs.
+
 ## 2026-10-26 - Align Tutorial Agent Approval Count
 
 - Correct the stale tutorial parser-classification expectation from 15 to 16:
