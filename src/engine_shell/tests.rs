@@ -2328,7 +2328,16 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
     if path == "rna-reads primer-trace-show" {
         if flag == "--rows" {
-            line.push_str(" --file-id file_0000");
+            let mut tokens = split_shell_words(line).unwrap();
+            let index = tokens.iter().position(|token| token == "--rows").unwrap();
+            // The documented range describes one numeric argument, not literal shell input.
+            tokens[index + 1] = "4".into();
+            tokens.extend(["--file-id".into(), "file_0000".into()]);
+            *line = tokens
+                .iter()
+                .map(|token| quote_shell_arg(token))
+                .collect::<Vec<_>>()
+                .join(" ");
         }
         if flag == "--binding" {
             let hash = format!("sha256:{}", "0".repeat(64));
@@ -2369,6 +2378,48 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
     };
     if let Some(companion) = companion {
         line.push_str(companion);
+    }
+}
+
+#[test]
+fn glossary_primer_trace_rows_smoke_keeps_numeric_bounds_and_file_selection() {
+    let glossary = glossary_fixture();
+    let entry = glossary
+        .commands
+        .iter()
+        .find(|command| command.path == "rna-reads primer-trace-show")
+        .unwrap();
+    let scratch = tempdir().unwrap();
+    let base = smoke_command_line_for_glossary_command(entry, scratch.path());
+    let (_, value) = option_flags_from_usage(&entry.usage)
+        .into_iter()
+        .find(|(flag, _)| flag == "--rows")
+        .unwrap();
+    let mut smoke = shell_command_line_with_option(&base, "--rows", value.as_deref()).unwrap();
+    add_required_glossary_flag_companion(&entry.path, "--rows", &mut smoke);
+    let tokens = split_shell_words(&smoke).unwrap();
+    let index = tokens.iter().position(|token| token == "--rows").unwrap();
+    assert_eq!(tokens[index + 1], "4");
+    for (line, expected_rows) in std::iter::once((smoke, 4)).chain([0, 4, 1000].map(|rows| {
+        (format!("rna-reads primer-trace-show 'report with spaces.json' --file-id file_0000 --rows {rows}"), rows)
+    })) {
+        let parsed = parse_shell_line(&line).unwrap();
+        assert!(!parsed.is_state_mutating());
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("expected shared primer trace inspection");
+        };
+        let Operation::InspectPrimerTrace { file_id, rows, .. } = serde_json::from_str(&payload).unwrap() else {
+            panic!("expected primer trace inspection operation");
+        };
+        assert_eq!(file_id.as_deref(), Some("file_0000"));
+        assert_eq!(rows, expected_rows);
+    }
+    for invalid in [
+        "rna-reads primer-trace-show demo --file-id file_0000 --rows 0..1000",
+        "rna-reads primer-trace-show demo --file-id file_0000 --rows 1001",
+        "rna-reads primer-trace-show demo --rows 4",
+    ] {
+        assert!(parse_shell_line(invalid).is_err(), "{invalid}");
     }
 }
 

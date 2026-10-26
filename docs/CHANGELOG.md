@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-26 - Repair Five RNA Regression Fixtures Without Relaxing Guards
+
+- Keep a real but deliberately malformed input in the overlap-refusal test so
+  path preflight succeeds and the test reaches source admission before FASTQ
+  parsing. Recompute the 200-template fixture's sequence-sharing diagnostics
+  before resealing, preserving strict binding validation and all 200 members.
+- Distinguish permitted core-boundary indels from evidence of primer boundary
+  divergence: retain the original negative control and add an unambiguous
+  three-base positive control. Inject a marker fault only after one verified
+  unit for partial-retention coverage, and separately assert that a fault before
+  EOF retains no unit. Keep publication reservation/sentinel assertions.
+- Give the primer-trace glossary row-count smoke a concrete number and a file
+  selection; test 0/4/1000 plus range-text, over-limit and missing-file refusals.
+  Remove the already-reported unused test import. No production matching,
+  validation, cancellation, confirmation or no-overwrite behavior changes.
+- Add an independent tiny edit-distance oracle for the literal synthetic
+  boundary controls. Rust execution remains unrun under the local restriction;
+  source/Python checks do not establish that the reported full-suite failure
+  is green. See the consolidated Glen follow-up for focused execution.
+- Verification: 166 Python/source checks pass and five optional binary checks
+  skip, including LF/CRLF coverage and the independent boundary oracle. Scoped
+  rustfmt, documentation status, maturity freshness and whitespace pass.
+
 ## 2026-10-26 - Format Integrated Primer-Trace Adapters
 
 - Integrate `gentle_rs_2_main` through `d17103f9`. The broader post-merge

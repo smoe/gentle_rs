@@ -876,6 +876,17 @@ fn rna_panel_twenty_loci_two_hundred_shared_isoforms_have_no_sixty_four_posting_
     panel.selected_transcript_count = 200;
     panel.annotated_transcript_count = 200;
     seal_panel(&mut panel).unwrap();
+    assert_eq!(
+        validate_panel(&panel).unwrap_err().message,
+        "panel_shared_sequence_binding"
+    );
+    panel.shared_transcript_sequences = Some(shared_transcript_sequences(&panel.templates));
+    let sharing = panel.shared_transcript_sequences.as_ref().unwrap();
+    assert_eq!(sharing.len(), 1);
+    assert_eq!(sharing[0].locus_ids.len(), 20);
+    assert_eq!(sharing[0].member_ids.len(), 200);
+    assert_eq!(sharing[0].sequence_sha256, prototype.sequence_sha256);
+    seal_panel(&mut panel).unwrap();
     validate_panel(&panel).unwrap();
     let policy = RnaReadPanelPolicy {
         kmer_len: 8,

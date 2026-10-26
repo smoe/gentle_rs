@@ -136,16 +136,26 @@ fn rna_panel_opposite_record_orientations_cannot_hide_same_strand_duplicate_exon
         panel.overlapping_source_pairs,
         vec![("locus_0".into(), "locus_1".into())]
     );
-    let mut run = request(&panel, td.path(), &panel.templates[0].sequence);
-    run.files[0].path = td
-        .path()
-        .join("must-not-be-opened.fastq.gz")
-        .display()
-        .to_string();
+    let run = request(&panel, td.path(), &panel.templates[0].sequence);
+    let unreadable_fastq = b"not FASTQ: overlapping sources must refuse before streaming\n";
+    // Path admission requires an existing file; invalid contents prove streaming never starts.
+    fs::write(&run.files[0].path, unreadable_fastq).unwrap();
+    let mut progress_calls = 0;
     let error = engine
-        .screen_rna_read_panel(run, &mut |_| true)
+        .screen_rna_read_panel(run.clone(), &mut |_| {
+            progress_calls += 1;
+            true
+        })
         .unwrap_err();
-    assert!(error.message.starts_with("panel_overlapping_sources:"));
+    assert!(
+        error.message.starts_with("panel_overlapping_sources:"),
+        "{error:?}"
+    );
+    assert_eq!(progress_calls, 0);
+    assert_eq!(
+        fs::read(&run.files[0].path).unwrap(),
+        unreadable_fastq.to_vec()
+    );
     assert!(!td.path().join("run").exists());
 }
 

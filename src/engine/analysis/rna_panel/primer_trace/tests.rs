@@ -502,6 +502,22 @@ fn primer_trace_other_template_probe_is_not_contiguous_core_evidence() {
                 && !m.core_and_probe_contiguous
                 && m.core_3prime_mismatches == Some(8))
     );
+    // A permitted terminal core deletion exposes GCC, only two mismatches from GAT.
+    assert!(
+        !row.artifact_flags
+            .contains(&"primer_boundary_divergence".into())
+    );
+    // AAA differs at all three bases from every admissible GG/C shifted boundary.
+    let divergent_payload = format!("AAA{}", &PAYLOAD[3..]);
+    refs.templates[1].sequence = format!("{}{divergent_payload}", "A".repeat(22));
+    let read = format!("{}{divergent_payload}", panel.primers[0].sequence);
+    let row = classify(&panel, Some(&refs), read.as_bytes());
+    assert_eq!(row.locus_relation, "other_panel_template");
+    assert!(
+        row.template_matches
+            .iter()
+            .any(|m| m.member_id == "synthetic_locus:1" && !m.core_and_probe_contiguous)
+    );
     assert!(
         row.artifact_flags
             .contains(&"primer_boundary_divergence".into())
@@ -547,20 +563,38 @@ fn primer_trace_bound_reference_does_not_change_primer_observation_fields() {
 fn primer_trace_marker_fault_preserves_verified_units_and_reservation_fails_closed() {
     let root = tempfile::tempdir().unwrap();
     let mut request = request(root.path(), primers(PrimerCoreOrientation::Sense5prime));
+    let mut second = request.files[0].clone();
+    let second_path = root.path().join("second input.fastq");
+    let second_bytes = fs::read(&second.path).unwrap();
+    fs::write(&second_path, &second_bytes).unwrap();
+    second.path = second_path.display().to_string();
+    request.files.push(second);
     let marker = root.path().join("marker");
     request.cancel_path = Some(marker.display().to_string());
     let engine = GentleEngine::new();
     let report = engine
-        .trace_primer_reads(request.clone(), &mut |_| {
-            fs::write(&marker, "invalid marker").unwrap();
+        .trace_primer_reads(request.clone(), &mut |event| {
+            // The first unit has passed EOF/hash verification before the second starts.
+            if matches!(event, OperationProgress::RnaReadPanel(ref p) if p.file_ordinal == 2 && p.compressed_bytes_total == 0)
+            {
+                fs::write(&marker, "invalid marker").unwrap();
+            }
             true
         })
         .unwrap();
     assert_eq!(report.status, "control_error");
     assert_eq!(report.files_completed.len(), 1);
+    assert_eq!(report.files_completed[0].file_id, "file_0000");
     assert_eq!(report.files_completed[0].counts.reads, 1);
-    assert!(report.inputs_not_completed.is_empty());
-    assert!(report.control_error.is_some());
+    assert_eq!(
+        report.files_completed[0].observed_sha256,
+        request.files[0].expected_sha256.as_ref().unwrap().as_str()
+    );
+    assert_eq!(report.inputs_not_completed.len(), 1);
+    assert_eq!(report.inputs_not_completed[0].path, request.files[1].path);
+    let diagnostic = report.control_error.as_ref().unwrap();
+    assert_eq!(diagnostic.phase, RnaReadPanelControlErrorPhase::Streaming);
+    assert_eq!(diagnostic.file_id.as_deref(), Some("file_0001"));
     fs::remove_file(&marker).unwrap();
     request.cancel_path = None;
     request.output_dir = root
@@ -584,6 +618,33 @@ fn primer_trace_marker_fault_preserves_verified_units_and_reservation_fails_clos
         "owner data"
     );
     assert!(!output.join("report.json").exists());
+}
+
+#[test]
+fn primer_trace_marker_fault_before_verified_eof_discards_the_unfinished_unit() {
+    let root = tempfile::tempdir().unwrap();
+    let mut request = request(root.path(), primers(PrimerCoreOrientation::Sense5prime));
+    let marker = root.path().join("early marker");
+    request.cancel_path = Some(marker.display().to_string());
+    let output = PathBuf::from(&request.output_dir);
+    let report = GentleEngine::new()
+        .trace_primer_reads(request, &mut |event| {
+            if matches!(event, OperationProgress::RnaReadPanel(ref p) if p.compressed_bytes_total == 0)
+            {
+                fs::write(&marker, "invalid marker").unwrap();
+            }
+            true
+        })
+        .unwrap();
+    assert_eq!(report.status, "control_error");
+    assert!(report.files_completed.is_empty());
+    assert!(report.summary.by_sample_barcode.is_empty());
+    assert_eq!(report.inputs_not_completed.len(), 1);
+    let diagnostic = report.control_error.as_ref().unwrap();
+    assert_eq!(diagnostic.phase, RnaReadPanelControlErrorPhase::Streaming);
+    assert_eq!(diagnostic.file_id.as_deref(), Some("file_0000"));
+    assert!(output.join("report.json").is_file());
+    assert!(!output.join("artifacts/file_0000").exists());
 }
 
 #[test]

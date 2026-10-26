@@ -1,5 +1,48 @@
 # Glen: Next Verification And Return
 
+## Five RNA Fixture Repairs, 2026-10-26
+
+The owner-reported full library run had 4504 passes, five failures and 16
+ignored tests; its tested SHA/toolchain was not supplied. The five affected
+fixtures are repaired without changing production matching, source admission,
+confirmation, marker handling or publication guards. Verify on the next ordinary
+integrated source, not a new interim freeze:
+
+```sh
+cargo test --locked --lib -j1 rna_panel_opposite_record_orientations_cannot_hide_same_strand_duplicate_exons -- --test-threads=1
+cargo test --locked --lib -j1 primer_trace_other_template_probe_is_not_contiguous_core_evidence -- --test-threads=1
+cargo test --locked --lib -j1 primer_trace_marker_fault_ -- --test-threads=1
+cargo test --locked --lib -j1 rna_panel_twenty_loci_two_hundred_shared_isoforms_have_no_sixty_four_posting_bias -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+```
+
+The overlap case uses existing invalid FASTQ bytes, not an absent path: preflight
+must pass, then overlap refusal must precede parsing/progress/publication. The
+200-template panel must recompute sharing diagnostics before its content digest;
+strict validation and the 200-member/order-independence assertions remain.
+
+The original GAT probe cannot establish boundary divergence because an allowed
+terminal core deletion exposes GCC (two initial mismatches). Keep this negative
+control and the AAA positive control, which disagrees at all three initial
+bases at every admitted boundary. An independent Python edit-distance oracle
+checks these literal controls, not Rust-Bio execution or assay performance.
+
+Marker faults on the second unit must retain only the first EOF/hash-verified
+unit and report a streaming control error for file_0001; faults before the first
+verified EOF must retain none. Preserve the occupied-output sentinel/refusal.
+Glossary rows use a numeric value, retain read-only inspection, and still reject
+literal range text, counts over 1000 and positive rows without a file selector.
+
+Run the existing RNA/primer-trace filters, all-features/headless checks and normal
+freshness/CI as already consolidated below; do not rerun unrelated completed gel
+or labware audits. All Rust/native checks remain unrun by Codex. Return actual
+source/toolchain/platform, command counts, failures/skips and retained evidence;
+no private-data run or scientific acceptance is implied.
+
+Local checks: 166 Python/source checks pass, five optional binary checks skip;
+LF/CRLF and the independent boundary oracle pass. Scoped rustfmt, documentation
+status, maturity freshness and whitespace pass. None executes the Rust repairs.
+
 ## RNA Genomic Exon And Strand Admission, 2026-10-26
 
 Reviewed against `11a6cd9b` (README-only successor to `4acee734`). The main

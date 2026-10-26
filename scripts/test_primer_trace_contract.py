@@ -13,6 +13,41 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PrimerTraceContractTests(unittest.TestCase):
+    def test_boundary_divergence_fixture_distinguishes_admissible_core_deletions(self):
+        source = (ROOT / "src/engine/analysis/rna_panel/primer_trace/tests.rs").read_text()
+        core = re.search(r'const CORE: &str = "([ACGT]+)";', source).group(1)
+        payload = re.search(r'const PAYLOAD: &str = "([ACGT]+)";', source).group(1)
+        types = (ROOT / "src/engine/protocol/primer_trace.rs").read_text()
+        defaults = types.split("impl Default for RnaPrimerTracePolicy", 1)[1].split("#[derive", 1)[0]
+        core_edits = int(re.search(r"max_core_edits_for_attribution: (\d+)", defaults).group(1))
+        probe_edits = int(re.search(r"max_probe_edits: (\d+)", defaults).group(1))
+        reference = core + "C" * 45
+
+        def distance(a, b):
+            row = list(range(len(b) + 1))
+            for i, x in enumerate(a, 1):
+                following = [i]
+                for j, y in enumerate(b, 1):
+                    following.append(min(following[-1] + 1, row[j] + 1,
+                                         row[j - 1] + (x != y)))
+                row = following
+            return row[-1]
+
+        flanks = {
+            reference[end:end + 3]
+            for start in range(len(reference))
+            for end in range(start + max(1, len(core) - core_edits),
+                             min(start + len(core) + core_edits, len(reference) - 3) + 1)
+            if distance(core, reference[start:end]) <= core_edits
+        }
+        self.assertTrue(flanks)
+        self.assertTrue(any(sum(a != b for a, b in zip(payload[:3], flank)) <= probe_edits
+                            for flank in flanks))
+        self.assertTrue(all(sum(a != b for a, b in zip("AAA", flank)) > probe_edits
+                            for flank in flanks))
+        self.assertIn('let divergent_payload = format!("AAA{}", &PAYLOAD[3..]);', source)
+        self.assertIn("fn primer_trace_marker_fault_before_verified_eof_discards_the_unfinished_unit", source)
+
     def test_tutorial_preparation_is_synthetic_and_digest_bound(self):
         guide = (ROOT / "docs/tutorial/10-04_targeted_nanopore_fastq_panel.md").read_text()
         addendum = guide.split("## Primer Trace Addendum: Synthetic Only", 1)[1]

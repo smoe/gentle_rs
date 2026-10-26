@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::agent_feedback::AgentExecutionStatus;
-use crate::engine::{Engine, Operation, RnaPrimerPanel, TracePrimerReadsRequest};
+use crate::engine::{Operation, RnaPrimerPanel, TracePrimerReadsRequest};
 use std::{
     fs,
     path::Path,
