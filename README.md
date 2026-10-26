@@ -22,7 +22,7 @@ GENtle brings genomic and regulatory evidence into the same workspace as
 sequences, assay designs and cloning plans. Annotations, experimental layouts,
 results and their provenance remain linked as a project develops.
 
-Its computational services range from **individual operations** to **biological
+Its computational capabilities range from **individual operations** to **biological
 analyses** and **composed workflows**. One deterministic engine serves desktop
 users, the integrated **inner agent**, and **outer agents** using CLI/MCP.
 Agents discover supported capabilities, bind inputs and execute approved tasks;
@@ -86,6 +86,7 @@ cloning-workflow result or validated assay. [Story and provenance](docs/showcase
   repeats and RNA evidence in anchored loci. [TP73/TERT examples](docs/showcase.md#genome-and-regulatory-context).
 - **Primer pairs and isoform discrimination:** candidate design, product matrices
   and separate readiness gates. [04.02 pair-review tutorial](docs/tutorial/generated/chapters/04-02_pcr_selection_batch_primer_pairs_offline.md),
+  [04.08 isoform-marker tutorial](docs/tutorial/04-08_gene_assay_study_gui.md),
   [conceptual design diagram](docs/figures/isoform_primer_design_inputs.svg)
   ([interpretation notes](docs/figures/isoform_primer_design_inputs_notes.md)),
   [comparison with Primer-BLAST](docs/primer_blast_comparison.md).
@@ -108,8 +109,8 @@ More figures, captions and regeneration instructions live in the
 | **ClawBio/OpenClaw** | Curated scientific handoffs | [Integration guide](integrations/clawbio/README.md) |
 
 Coverage varies by capability; the [parity matrix](docs/gui_cli_mcp_parity.md)
-records remaining gaps. The expression preview's generic MCP executor test is
-authored but unrun, while its MCP/JavaScript/Lua entries still record `gap`.
+records remaining gaps. The expression preview is listed for GUI and MCP;
+its JavaScript/Lua entries still record `gap`.
 
 ### One Project, Two Agent Positions
 
