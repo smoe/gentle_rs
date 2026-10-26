@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-26 - Execute Sequence-Design Approval And Parity Checks
+
+- At `ab80743e` on macOS/arm64 with desktop defaults, pass 21 registry/adapter
+  tests and one matrix-freshness test. Canonical matrix, 69-entry tutorial
+  catalog and 30-chapter manifest checks pass without regeneration. The configured
+  tutorial 06.07 companion passes 9/9, including four previously optional CLI cases.
+- Rebase onto local main's RNA fixes, producing `98c9331a`. Default-feature
+  locked/offline Cargo check and workspace formatting pass. Headless library
+  filters pass sequence-design 32/32 and S1 14/14 with no ignored cases,
+  including all five new approval boundaries, four MCP preview/apply parity
+  tests and the unreconciled-state/MCP state-file controls. The earlier default
+  library-test build was interrupted for rebase, not counted as a failed test.
+- Record exact commands, sources, binary/lockfile hashes, toolchain, profile and
+  feature scopes in the lifecycle proposal; reconcile the decision, editing
+  plan, roadmap and single Glen handoff. No runtime fix, generated artifact,
+  maturity or lockfile change was needed. Preserve the existing linker and
+  headless unused-helper warnings rather than suppressing them.
+- The owner approved local checks and removal of two inactive incremental
+  caches only. Sources, active builds and untracked `output/` remain intact.
+  Constructor/writer policy and S2 remain separately gated; no native GUI/cross-platform,
+  full-suite, model, package, performance or scientific acceptance, push or dispatch.
+
 ## 2026-10-26 - Bind Payload Exclusions To Source Records And Policy
 
 - Re-derive query/exclusion dispositions from the selected bound Phase 1 rows

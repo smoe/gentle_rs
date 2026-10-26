@@ -101,15 +101,16 @@ keep S2 and broader lifecycle changes outside that authorization.
 | D: mixed coordinate names look like an off-by-one | Name the numerically equivalent half-open window end at the comparison. Preserve arithmetic, checked bounds and existing edge tests. |
 | E: submitted versus canonical allele wording | State that S1 uppercases returned intent alleles without separate raw-allele fields. The original inline target spelling remains in `request.target`. Preserve submitted/canonical placement only as a requirement for future repeat-indel normalization, not an implemented S1 promise. |
 
-The new named regression and strengthened case-normalization assertions require
-Glen/CI execution under the standing no-local-Rust restriction. They are not a
-new acceptance pass or authority to begin S2. No registry, permission, mutation,
+The named regression and case-normalization controls now have
+[headless macOS execution at `98c9331a`](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26):
+14 S1 tests pass, including MCP state-file preservation. This is not native GUI,
+Windows/full-suite or scientific acceptance, or authority to begin S2. No
 serialization or biology contract is broadened.
 The owner requested a [request-aware lifecycle proposal](operation_lifecycle_policy_proposal.md)
 and [forwardable Claude review prompt](operation_lifecycle_claude_review_prompt_20261025.md)
 on 2026-10-25. Claude's source-only review is now reconciled in that proposal.
 The owner authorized only optional report-write confirmation and conservative
-static metadata; their source implementation still requires Rust execution.
+static metadata; their focused approval/parity execution is recorded there.
 The S1 decision is narrowed to existing apply-time and CLI/MCP disk behavior:
 generic constructors can still repair JS/Lua state-out. Construction/workflow/
 autosave coverage and destination-alias/writer rules remain separately gated,

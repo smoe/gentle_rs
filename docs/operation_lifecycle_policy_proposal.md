@@ -2,15 +2,16 @@
 
 Status, 2026-10-26: Claude's source-only review is reconciled below. The owner
 authorized slices 1--2 only: report-write confirmation and conservative static
-metadata. Those bounded source changes and regressions are implemented but
-unexecuted under the no-local-Rust restriction. Constructor/workflow lifecycle
+metadata. The owner subsequently requested local parity checks; the bounded
+approval regressions and canonical checks now have the source-scoped macOS
+results below. Constructor/workflow lifecycle
 migration and alias/writer rules remain proposals, not S2 authorization. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
 
 ## Source And Scope
 
 Repository: `/Users/u005069/.codex/worktrees/47dd/gentle_rs`.
-Branch: `gentle_rs_2_main`; local main and preparation HEAD:
+Proposal preparation baseline on `gentle_rs_2_main` (then local main/HEAD):
 `81b675048ab0c886185d55e101551790d8c3bea5`. The clean tracked branch was rebased
 onto local main before this inspection; no fetch was performed. These documents
 were prepared as working-copy drafts; committing them does not adopt the policy.
@@ -20,7 +21,8 @@ The review was forwarded from Claude's inspection of `adacb2bc`; Codex rechecked
 the load-bearing paths at local main `b544a21b81b0d98896599f4ae21cdf60eea59b62`
 before editing. The primary checkout's untracked
 `docs/operation_lifecycle_codex_prompt_20261025.md` was read, not copied or
-modified. No fetch, Rust execution, model call or private-data use was performed.
+modified. No fetch, Rust execution, model call or private-data use was performed
+during that source review. Later authorized execution is recorded below.
 
 ## Review Reconciliation And Approved Scope
 
@@ -50,8 +52,9 @@ the named glossary commands. Register both existing variants, with Plan External
 and Apply's unchanged Mutating classification. This is required discovery/parity
 alignment, not a new operation or adjacent biological feature. Add their two
 shell-only matrix rows and counts using the existing projection rules; canonical
-Rust byte-freshness remains an external check. Existing LF/CRLF matrix coverage
-is retained, with no new freshness gate or maturity regeneration.
+Rust byte-freshness is now checked at the recorded source below. Existing
+LF/CRLF matrix coverage is retained, with no new freshness gate or maturity
+regeneration.
 
 The implemented helper is `engine/operation_lifecycle.rs::operation_approval_policy`.
 It selects only `PlanDnaSequenceDesign`, inspecting `path.is_some()` through
@@ -73,7 +76,7 @@ why a single read-only boolean is insufficient.
 These observations were rechecked before the bounded repair at `b544a21b`.
 They are source inspection, not an executed regression or security exploit.
 
-| Boundary | Current source fact |
+| Boundary | Pre-repair source fact |
 | --- | --- |
 | Shared solver | `engine/analysis/sequence_design.rs::plan_dna_sequence_design` takes `&self` and returns a transient report. Apply is separate. |
 | Shared parser | `engine_shell/command_parsers.rs::parse_sequence_design_command` lowers both named commands to `ShellCommand::Op`; `--path` becomes `PlanDnaSequenceDesign.path`. There is not a second named-command executor. |
@@ -93,8 +96,8 @@ The existing shell parity test expected a plan with `--path` to have
 `is_state_mutating()==false`. Slice 1 flips that assertion; its scientific
 report equalities remain untouched. The compatibility boolean includes external
 write approval, not only persistent project mutation.
-The new S1 unreconciled-state regression in `ced03a22` remains relevant and
-requires actual Glen/CI execution, not another source-only acceptance claim.
+The S1 unreconciled-state regression in `ced03a22` remains a control; its later
+headless macOS execution is recorded below, not inherited from source review.
 
 ## Proposed Policy Dimensions
 
@@ -211,17 +214,18 @@ already written files or infer that undo removes them.
 ## Revised Slice Order
 
 1. **Confirmation repair plus decision-record correction.** Owner-authorized;
-   source implemented, Rust execution pending. The engine-owned approval facet
-   covers only Plan's optional path and the shared parsed-command consumers.
+   source implemented and covered by the focused macOS execution below. The
+   engine-owned approval facet covers only Plan's optional path and the shared
+   parsed-command consumers.
    Ordinary planner, forged Shell/Op/Workflow and macro-wrapped cases have
-   authored regressions, including approved cancelled-report publication and
-   additive no-path candidate gates. Narrow S1's scripting claim now rather
+   executed headless regressions, including approved cancelled-report publication
+   and additive no-path candidate gates. Narrow S1's scripting claim now rather
    than imply its constructor is already covered. Flip only the historical
    with-path boolean assertion; preserve scientific/report/apply equalities.
-2. **Conservative static metadata.** Owner-authorized; source implemented,
-   canonical Rust freshness/parity execution pending. Plan's operation and
-   named-command families are External; detailed discovery requires confirmation
-   and explains concrete absent-path handling. Do not change `SaveFile`, S1 or
+2. **Conservative static metadata.** Owner-authorized; source implemented with
+   canonical Rust freshness/parity checked at the recorded source. Plan's
+   operation and named-command families are External; detailed discovery requires
+   confirmation and explains concrete absent-path handling. Do not change `SaveFile`, S1 or
    Apply classification, glossary routes or maturity attestations. Existing
    matrix surfacing columns do not encode mutation, but the missing raw IDs
    require two shell-only rows/counts. No new byte-exact artifact gate or
@@ -264,24 +268,25 @@ Reuse `genome_edit_intent`, `sequence_design`, `sequence_design_*_parity`,
 command-execution tests and canonical generator checks; select exact commands
 against the eventual implementation. Include normal locked Cargo check and
 `scripts.test_sequence_design_tutorial`, `scripts.test_tutorial_checkouts`.
-Current no-local-Rust restrictions remain in force; Glen/CI runs belong in the
-existing consolidated handoff only after an implementation exists. No runtime,
-native, scientific or performance acceptance is claimed for this proposal.
+The owner-requested local checks below are a bounded exception to the earlier
+no-local-Rust restriction, not authorization to implement the remaining policy.
+Glen/CI verification stays in the existing consolidated handoff. The full target,
+native, scientific and performance acceptance are not established by these checks.
 
 ## Remaining Owner Decisions
 
 Claude's source review is received; External versus ReadOnly and write-attempt
-approval are no longer unanswered design questions for slices 1--2. Execution
-evidence for the repair is still required before describing the defect as
-verified fixed. The existing `ced03a22` S1 regressions remain in the consolidated
-Glen/CI request, with no inherited pass.
+approval are no longer unanswered design questions for slices 1--2. The executed
+evidence below supports the bounded confirmation repair on the named macOS
+source/features. The `ced03a22` S1 control also ran headlessly; neither result
+transfers to unrun constructors, platforms or later integrated source.
 
 Separate authorization is still required for construction/scripting/autosave
 migration, the destination-alias/writer policy, and S2 itself. Strict project
 preservation cannot be claimed from a confirmation guard or unchanged disk
 bytes alone. There is no new release gate, writer redesign or S2 editor work.
 
-## Local Verification Of Slices 1--2
+## Authoring Checks Before Rust Execution
 
 macOS, 2026-10-26, based on `b544a21b` with the scoped working-copy changes:
 
@@ -301,9 +306,10 @@ matrix count consistency pass. No fresh Rust canonical matrix generation or
 byte-freshness result is claimed. Maturity projections and `Cargo.lock` remain
 unchanged. Documentation status, formatting and whitespace checks pass.
 
-Six new Rust regressions remain authored and unrun, as do the required Cargo
-check and integrated S1 control run. No new scientific fixture was committed;
-the existing teaching input's README now records its approval-test consumers.
+At this authoring stage, six new Rust regressions, Cargo check and the S1 control
+were still unrun; the subsequent execution record follows. No new scientific
+fixture was committed; the existing teaching input's README records its
+approval-test consumers.
 The source diff leaves solver, writer, operation handler, CLI/MCP persistence
 and JS/Lua constructors untouched. The added raw registry IDs and two-row matrix
 projection are the necessary static-alignment extension, not an adjacent feature.
@@ -311,3 +317,67 @@ Session-close reports four OK, two expected dirty-tree/manual-plan warnings and
 zero failures; unrelated untracked `output/` is untouched. Committing these
 changes is not execution evidence. No push, workflow dispatch, model call,
 native or scientific acceptance is performed here.
+
+## Executed Local Verification (2026-10-26)
+
+The owner requested parity execution and rebasing, superseding the earlier local
+Rust restriction for this bounded verification. No runtime repair or generated
+artifact change was needed. Sources and features must remain distinguished:
+
+| Tested source | Features | Executed results |
+| --- | --- | --- |
+| `ab80743e300a42083a24de2c63dcabf680b5335b`, on local main `07389910` | Defaults: `desktop-gui`, `screenshot-capture` | Registry/adapter integration 21/21; matrix freshness 1/1; canonical matrix check OK, catalog 69 entries OK, manifest 30 chapters OK; configured tutorial companion 9/9, including its four actual-CLI cases. |
+| `98c9331aea3bb4062447d91db0052ceb832580a5`, rebased onto local main `f1a60ae4` | Defaults | `cargo check` and whole-workspace formatting pass. |
+| `98c9331aea3bb4062447d91db0052ceb832580a5` | `--no-default-features` | Sequence-design library filter 32/32, including all five new shared-engine approval regressions and four existing MCP preview/apply parity tests; S1 filter 14/14, including unreconciled-state and MCP state-file controls. No ignored tests in these filters. |
+
+The sixth new regression is the registry-family test in the first row. Rebase
+added RNA payload repairs, not changes to the approval/registry/parity files;
+this does not turn the earlier desktop binary into a newly built-source pass.
+The default-feature library-test build was interrupted for the requested rebase
+before running tests (exit 130), not counted as a failure or pass.
+
+Exact commands, from the checkout root, with no profile/RUSTFLAGS overrides:
+
+```sh
+cargo test --locked --offline -j 1 --test capability_registry_parity --test parity_matrix_freshness
+target/debug/gentle_examples_docs parity-matrix-check
+target/debug/gentle_examples_docs tutorial-catalog-check
+target/debug/gentle_examples_docs tutorial-manifest-check
+GENTLE_TUTORIAL_BIN_DIR="$PWD/target/debug" python3 -m unittest scripts.test_sequence_design_tutorial -q
+cargo check -q --locked --offline -j 1
+cargo fmt --check
+cargo test --locked --offline --no-default-features -j 1 --lib sequence_design -- --test-threads=1
+cargo test --locked --offline --no-default-features -j 1 --lib genome_edit_intent -- --test-threads=1
+```
+
+Host: Darwin 27.0.0 arm64 / `aarch64-apple-darwin`; rustc
+`1.100.0-beta.5 (8ea38001b 2026-10-13)`; Cargo
+`1.100.0-beta.5 (7552a885e 2026-09-29)`. Cargo test/dev uses opt-level 0,
+debug 1, incremental true, 256 codegen units, dependency debug 0, and default
+debug/overflow checks. The checkout config supplies a 16-MiB Rust thread stack.
+
+SHA-256 identities:
+
+```text
+Cargo.lock (unchanged): 97671e924a77d61de6dad2e6c6fe3afbee440b8606d79ca0ad2b494fd32d66ad
+ab80743e gentle_cli: 6b90b57bba45c9ffdef03200586ca84f5d8622f8c401f51f73409bb28c42fe32
+ab80743e gentle_examples_docs: a3e6e3ea0680994b88f7679a3cdf6bb80676cd0fa33a1972b21b41301bdd199f
+98c9331a headless library-test binary: c13309a2386c616cda28d0d3e896a88f42b82fe5fc5a765c72c4e3c22267204d
+```
+
+The fast Python run at `ab80743e` passes 99/103, with four optional CLI cases
+skipped; the configured nine-test run above executes those four without skips.
+The post-rebase focused source/maturity run passes 24/28 with the same four
+optional skips. LF/CRLF coverage, documentation/maturity checks and whitespace
+pass; no lockfile or maturity output regeneration. The linker reports a large
+`__eh_frame` warning; headless compilation also reports three unused existing
+GUI diagnostics helpers. These warnings were not suppressed or repaired.
+
+Only the two owner-approved inactive incremental caches were removed after an
+open-file check; the active build, sources and unrelated `output/` were preserved.
+Session-close: four OK, two warnings (intentional documentation edits/existing
+`output/`, and the manual plan-fidelity reminder), no failures. The final diff
+only records verification and reconciles status; no additional policy is adopted.
+Full-suite, native GUI, Windows/Linux execution, live-model, package, performance
+and scientific acceptance remain unrun here. No push, fetch or workflow dispatch.
+Construction/reconciliation/autosave, destination safety and S2 remain separate.

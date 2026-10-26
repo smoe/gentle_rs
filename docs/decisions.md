@@ -411,9 +411,9 @@ Approval covers the exact write attempt, including a cancelled search report.
 Successful file publication is not scientific/search completion; retain actual
 status and report bytes. No constructor, reconciliation, checkpoint/journal,
 autosave, alias/collision or overwrite semantics change follows. Strict preview
-state preservation and S2 remain separately gated. Rust boundary regressions
-are authored but unexecuted locally; this decision records scope, not a tested
-security, native or scientific acceptance verdict.
+state preservation and S2 remain separately gated. Focused macOS boundary and
+parity checks have a [source/feature-bound execution record](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26).
+They do not establish full-policy security, native or scientific acceptance.
 
 ## Synthetic Sequence-Design Boundaries
 
