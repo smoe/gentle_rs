@@ -12,7 +12,7 @@ fn file(path: &Path) -> PrimerPayloadFile {
     }
 }
 
-fn request(
+pub(super) fn request(
     root: &Path,
     trace: RnaPrimerTraceResultBinding,
     prepared: &PrimerPayloadQueries,

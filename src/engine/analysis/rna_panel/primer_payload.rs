@@ -21,6 +21,9 @@ mod summarize;
 
 #[path = "primer_payload/binding.rs"]
 mod binding;
+#[cfg(test)]
+#[path = "primer_payload/binding_tests.rs"]
+mod binding_tests;
 #[path = "primer_payload/prepare.rs"]
 mod prepare;
 #[cfg(test)]

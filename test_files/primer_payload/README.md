@@ -14,6 +14,14 @@ These are geometry inputs, not biologically admissible oligos. A temporary
 two-read/four-anchor fixture checks shared preparation/verification in both
 orientations, including verification after the original FASTQ is removed.
 
+`primer_payload/binding_tests.rs` uses those temporary invented sources to
+deliberately alter/re-hash only new query manifests/FASTA, then checks canonical
+record/policy accounting and source-byte preservation. Fixed anchor-identity
+digests pin the original JSON encoding (also calculated independently in
+Python); they are serialization drift guards, not source-origin approval. The
+optional actual-CLI companion includes a coherently rehashed false-exclusion
+refusal under LF/CRLF with spaced/apostrophe paths; no local Rust run is implied.
+
 Recreate in a **fresh** synthetic directory using the Phase 2 addendum to
 tutorial 10.04. The helper has no GENtle build, subprocess, network or implicit
 input-discovery capability. It creates new fixture files with exclusive opens;

@@ -246,6 +246,74 @@ pub(super) fn payload_geometry(
     })
 }
 
+pub(super) fn selected_anchors(
+    row: &RnaPrimerTraceRow,
+    selection: PrimerPayloadAnchorSelection,
+) -> Vec<&RnaPrimerHit> {
+    let hits = match selection {
+        PrimerPayloadAnchorSelection::Primary => row.anchor.iter().collect::<Vec<_>>(),
+        PrimerPayloadAnchorSelection::All => row.hits.iter().collect(),
+    };
+    let mut groups = BTreeMap::new();
+    for hit in hits.into_iter().filter(|h| h.primer_id.is_some()) {
+        groups
+            .entry((hit.start, hit.end, hit.strand, hit.core_start, hit.core_end))
+            .or_insert(hit);
+    }
+    groups.into_values().collect()
+}
+
+pub(super) fn anchor_primers(row: &RnaPrimerTraceRow, anchor: &RnaPrimerHit) -> Vec<String> {
+    row.hits
+        .iter()
+        .filter(|h| {
+            (h.start, h.end, h.strand, h.core_start, h.core_end)
+                == (
+                    anchor.start,
+                    anchor.end,
+                    anchor.strand,
+                    anchor.core_start,
+                    anchor.core_end,
+                )
+        })
+        .filter_map(|h| h.primer_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+pub(super) fn anchor_identity(
+    trace: &str,
+    file: &str,
+    row: &RnaPrimerTraceRow,
+    hit: &RnaPrimerHit,
+    primers: &[String],
+) -> Result<String, EngineError> {
+    hash(&(
+        trace,
+        file,
+        row.record_index,
+        &row.read_id,
+        (hit.start, hit.end, hit.strand, hit.core_start, hit.core_end),
+        primers,
+    ))
+}
+
+pub(super) fn exclusion_reason(
+    request: &PreparePrimerPayloadAlignmentQueriesRequest,
+    geometry: &PayloadGeometry,
+) -> Option<&'static str> {
+    if geometry.usable < request.min_payload_bases {
+        Some("insufficient_primer_free_payload")
+    } else if !geometry.excluded.is_empty()
+        && request.internal_primer_policy == PrimerPayloadInternalPrimerPolicy::Unassessed
+    {
+        Some("additional_primer_interval_unassessed")
+    } else {
+        None
+    }
+}
+
 fn add_row(
     row: &RnaPrimerTraceRow,
     source: &RnaPrimerTraceFile,
@@ -256,19 +324,8 @@ fn add_row(
     unassessed: &mut Vec<PrimerPayloadUnassessed>,
     writer: &mut impl Write,
 ) -> Result<(), EngineError> {
-    let hits = match request.anchor_selection {
-        PrimerPayloadAnchorSelection::Primary => row.anchor.iter().collect::<Vec<_>>(),
-        PrimerPayloadAnchorSelection::All => {
-            row.hits.iter().filter(|h| h.primer_id.is_some()).collect()
-        }
-    };
-    let mut groups = BTreeMap::new();
-    for hit in hits.into_iter().filter(|h| h.primer_id.is_some()) {
-        groups
-            .entry((hit.start, hit.end, hit.strand, hit.core_start, hit.core_end))
-            .or_insert(hit);
-    }
-    if groups.is_empty() {
+    let anchors = selected_anchors(row, request.anchor_selection);
+    if anchors.is_empty() {
         unassessed.push(PrimerPayloadUnassessed {
             file_id: source.file_id.clone(),
             record_index: row.record_index,
@@ -281,58 +338,40 @@ fn add_row(
             return Err(bad("primer_payload_query_budget"));
         }
     }
-    for ((start, end, strand, core_start, core_end), hit) in groups {
-        let primer_ids = row
-            .hits
-            .iter()
-            .filter(|h| {
-                (h.start, h.end, h.strand, h.core_start, h.core_end)
-                    == (start, end, strand, core_start, core_end)
-            })
-            .filter_map(|h| h.primer_id.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let anchor_id = hash(&(
+    for hit in anchors {
+        let primer_ids = anchor_primers(row, hit);
+        let anchor_id = anchor_identity(
             &request.trace.report_content_sha256,
             &source.file_id,
-            row.record_index,
-            &row.read_id,
-            (start, end, strand, core_start, core_end),
+            row,
+            hit,
             &primer_ids,
-        ))?;
-        let PayloadGeometry {
-            interval: (a, z),
-            excluded,
-            usable,
-        } = payload_geometry(row.read_length, hit, &row.hits)?;
-        if usable < request.min_payload_bases
-            || (!excluded.is_empty()
-                && request.internal_primer_policy == PrimerPayloadInternalPrimerPolicy::Unassessed)
-        {
+        )?;
+        let geometry = payload_geometry(row.read_length, hit, &row.hits)?;
+        if let Some(reason) = exclusion_reason(request, &geometry) {
             unassessed.push(PrimerPayloadUnassessed {
                 file_id: source.file_id.clone(),
                 record_index: row.record_index,
                 read_id: row.read_id.clone(),
                 anchor_id: Some(anchor_id),
                 primer_ids,
-                reason: if usable < request.min_payload_bases {
-                    "insufficient_primer_free_payload"
-                } else {
-                    "additional_primer_interval_unassessed"
-                }
-                .into(),
+                reason: reason.into(),
             });
             if unassessed.len() > request.budgets.max_records {
                 return Err(bad("primer_payload_query_budget"));
             }
             continue;
         }
+        let PayloadGeometry {
+            interval: (a, z),
+            excluded,
+            usable,
+        } = geometry;
         let mut sequence = if let Some(raw) = raw {
             if raw.len() != row.read_length {
                 return Err(bad("primer_payload_read_length_binding"));
             }
-            if strand == PrimerReadStrand::Forward {
+            if hit.strand == PrimerReadStrand::Forward {
                 raw[a..z].to_vec()
             } else {
                 GentleEngine::reverse_complement_bytes(&raw[a..z])

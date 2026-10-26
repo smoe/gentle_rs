@@ -42,6 +42,84 @@ pub(super) fn validate_queries(report: &PrimerPayloadQueries) -> Result<(), Engi
     Ok(())
 }
 
+fn validate_anchor_accounting(
+    report: &PrimerPayloadQueries,
+    by_unit: &BTreeMap<String, Vec<RnaPrimerTraceRow>>,
+) -> Result<(), EngineError> {
+    let mut queries = BTreeMap::new();
+    let mut excluded = BTreeMap::new();
+    let mut unattributed = BTreeMap::new();
+    for q in &report.queries {
+        if queries.insert(q.anchor_id.as_str(), q).is_some() {
+            return Err(bad("primer_payload_duplicate_anchor_accounting"));
+        }
+    }
+    for missing in &report.unassessed {
+        if let Some(id) = missing.anchor_id.as_deref() {
+            if queries.contains_key(id) || excluded.insert(id, missing).is_some() {
+                return Err(bad("primer_payload_duplicate_anchor_accounting"));
+            }
+        } else if unattributed
+            .insert((missing.file_id.as_str(), missing.record_index), missing)
+            .is_some()
+        {
+            return Err(bad("primer_payload_duplicate_anchor_accounting"));
+        }
+    }
+    // Match each source observation to exactly one policy-derived disposition; never trust a reason label.
+    for (file, rows) in by_unit {
+        for row in rows {
+            let anchors = prepare::selected_anchors(row, report.request.anchor_selection);
+            if anchors.is_empty() {
+                let missing = unattributed
+                    .remove(&(file.as_str(), row.record_index))
+                    .ok_or_else(|| bad("primer_payload_anchor_accounting_coverage"))?;
+                if missing.read_id != row.read_id
+                    || !missing.primer_ids.is_empty()
+                    || missing.reason != "no_attributed_anchor"
+                {
+                    return Err(bad("primer_payload_exclusion_binding"));
+                }
+            }
+            for hit in anchors {
+                let primers = prepare::anchor_primers(row, hit);
+                let id = prepare::anchor_identity(
+                    &report.request.trace.report_content_sha256,
+                    file,
+                    row,
+                    hit,
+                    &primers,
+                )?;
+                let geometry = prepare::payload_geometry(row.read_length, hit, &row.hits)?;
+                if let Some(reason) = prepare::exclusion_reason(&report.request, &geometry) {
+                    let missing = excluded
+                        .remove(id.as_str())
+                        .ok_or_else(|| bad("primer_payload_exclusion_policy_binding"))?;
+                    if missing.file_id != *file
+                        || missing.record_index != row.record_index
+                        || missing.read_id != row.read_id
+                        || missing.primer_ids != primers
+                        || missing.reason != reason
+                    {
+                        return Err(bad("primer_payload_exclusion_binding"));
+                    }
+                } else {
+                    if excluded.contains_key(id.as_str()) {
+                        return Err(bad("primer_payload_exclusion_policy_binding"));
+                    }
+                    if queries.remove(id.as_str()).is_none() {
+                        return Err(bad("primer_payload_anchor_accounting_coverage"));
+                    }
+                }
+            }
+        }
+    }
+    if !queries.is_empty() || !excluded.is_empty() || !unattributed.is_empty() {
+        return Err(bad("primer_payload_anchor_accounting_coverage"));
+    }
+    Ok(())
+}
+
 pub(super) fn queries(
     file: &PrimerPayloadFile,
     trace: &RnaPrimerTraceReport,
@@ -95,9 +173,11 @@ pub(super) fn queries(
         || report.source_trace_status != trace.status
         || report.source_inputs_missing != trace.inputs_not_completed.len()
         || encode(&report.primer_panel)? != encode(&trace.primer_panel)?
-        || report.queries.len() > b.max_queries
     {
         return Err(bad("primer_payload_query_source_binding"));
+    }
+    if report.queries.len() > b.max_queries || report.unassessed.len() > b.max_records {
+        return Err(bad("primer_payload_query_import_budget"));
     }
     let expected = Path::new(&report.request.output_dir).join("report.json");
     if fs::canonicalize(&expected).ok() != fs::canonicalize(&file.path).ok() {
@@ -145,6 +225,7 @@ pub(super) fn queries(
     let mut anchors = BTreeSet::new();
     let mut seen_rows = BTreeMap::new();
     let mut retained = BTreeMap::new();
+    let mut records = 0usize;
     for id in &report.files_completed {
         let unit = trace
             .files_completed
@@ -152,6 +233,10 @@ pub(super) fn queries(
             .find(|f| &f.file_id == id)
             .ok_or_else(|| bad("primer_payload_query_unit"))?;
         let rows = prepare::source_rows(&trace_root, unit, &trace.primer_panel, b)?;
+        records = records
+            .checked_add(rows.len())
+            .filter(|n| *n <= b.max_records && *n <= report.request.budgets.max_records)
+            .ok_or_else(|| bad("primer_payload_trace_record_budget"))?;
         if report.request.source_mode == PrimerPayloadSourceMode::RetainedPrimaryFasta {
             retained.insert(id.clone(), prepare::retained_fasta(&trace_root, unit, b)?);
         }
@@ -177,25 +262,8 @@ pub(super) fn queries(
             excluded: mask,
             usable,
         } = prepare::payload_geometry(row.read_length, h, &row.hits)?;
-        let ids = row
-            .hits
-            .iter()
-            .filter(|x| {
-                (x.start, x.end, x.strand, x.core_start, x.core_end)
-                    == (h.start, h.end, h.strand, h.core_start, h.core_end)
-            })
-            .filter_map(|x| x.primer_id.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let anchor = hash(&(
-            &trace.content_sha256,
-            &q.file_id,
-            q.record_index,
-            &q.read_id,
-            (h.start, h.end, h.strand, h.core_start, h.core_end),
-            &ids,
-        ))?;
+        let ids = prepare::anchor_primers(row, h);
+        let anchor = prepare::anchor_identity(&trace.content_sha256, &q.file_id, row, h, &ids)?;
         let seq = seqs
             .get(&q.query_id)
             .ok_or_else(|| bad("primer_payload_query_sequence_missing"))?;
@@ -249,83 +317,7 @@ pub(super) fn queries(
     if seen.len() != seqs.len() {
         return Err(bad("primer_payload_query_fasta_coverage"));
     }
-    for missing in &report.unassessed {
-        let row = seen_rows
-            .get(&missing.file_id)
-            .and_then(|r| {
-                usize::try_from(missing.record_index)
-                    .ok()
-                    .and_then(|i| r.get(i))
-            })
-            .ok_or_else(|| bad("primer_payload_unassessed_row"))?;
-        if missing.read_id != row.read_id
-            || missing.reason.trim().is_empty()
-            || missing
-                .primer_ids
-                .iter()
-                .any(|id| !row.hits.iter().any(|h| h.primer_id.as_ref() == Some(id)))
-        {
-            return Err(bad("primer_payload_unassessed_binding"));
-        }
-    }
-    // A rehashed manifest cannot silently drop a source row/anchor or turn it into an off-target zero.
-    let mut wanted = BTreeSet::new();
-    let mut no_anchor = BTreeSet::new();
-    for (file, rows) in &seen_rows {
-        for row in rows {
-            let hits = if report.request.anchor_selection == PrimerPayloadAnchorSelection::Primary {
-                row.anchor.iter().collect::<Vec<_>>()
-            } else {
-                row.hits.iter().filter(|h| h.primer_id.is_some()).collect()
-            };
-            let groups = hits
-                .into_iter()
-                .filter(|h| h.primer_id.is_some())
-                .map(|h| (h.start, h.end, h.strand, h.core_start, h.core_end))
-                .collect::<BTreeSet<_>>();
-            if groups.is_empty() {
-                no_anchor.insert((file.clone(), row.record_index));
-            }
-            for geometry in groups {
-                let ids = row
-                    .hits
-                    .iter()
-                    .filter(|h| (h.start, h.end, h.strand, h.core_start, h.core_end) == geometry)
-                    .filter_map(|h| h.primer_id.clone())
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                wanted.insert(hash(&(
-                    &trace.content_sha256,
-                    file,
-                    row.record_index,
-                    &row.read_id,
-                    geometry,
-                    &ids,
-                ))?);
-            }
-        }
-    }
-    let mut accounted = report
-        .queries
-        .iter()
-        .map(|q| q.anchor_id.clone())
-        .collect::<BTreeSet<_>>();
-    let mut missing_no_anchor = BTreeSet::new();
-    for missing in &report.unassessed {
-        if let Some(id) = &missing.anchor_id {
-            if !accounted.insert(id.clone()) {
-                return Err(bad("primer_payload_duplicate_anchor_accounting"));
-            }
-        } else if !missing_no_anchor.insert((missing.file_id.clone(), missing.record_index))
-            || missing.reason != "no_attributed_anchor"
-        {
-            return Err(bad("primer_payload_missing_anchor_accounting"));
-        }
-    }
-    if accounted != wanted || no_anchor != missing_no_anchor {
-        return Err(bad("primer_payload_anchor_accounting_coverage"));
-    }
+    validate_anchor_accounting(&report, &seen_rows)?;
     Ok(report)
 }
 

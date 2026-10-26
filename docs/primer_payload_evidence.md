@@ -38,6 +38,15 @@ FASTQ replay or alignment search. Retained-primary bases are additionally
 compared to verified Phase 1 FASTA; all-anchor replay remains a content-bound
 preparation witness, not authenticated provenance.
 
+Interpretation re-derives each selected source anchor's disposition under the
+captured policy. Rehashing a manifest and its query FASTA does not authorize
+discarding an eligible query, promoting an excluded one or moving an exclusion
+to another record. Exclusion primer groups and reason priority must match the
+source/policy exactly. Valid list permutations are allowed. Import record caps
+apply across all completed units and to exclusions. Metadata-only inspection
+does not perform this source replay; output-artifact verification is not a
+scientific or authenticated-producer verdict.
+
 Preparation verifies the Phase 1 report/binding, selected sidecars, row counts
 and anchor identities. `retained_primary_fasta` never reopens FASTQ and permits
 only `primary` anchors. `replay_verified_fastq` explicitly rereads exact completed

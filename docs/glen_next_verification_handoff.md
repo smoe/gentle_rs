@@ -1,5 +1,39 @@
 # Glen: Next Verification And Return
 
+## Primer Payload Exclusion Bindings, 2026-10-26
+
+Continue with the next normal integrated source, not an interim freeze. The
+reader now derives each selected anchor's query/exclusion from its bound source
+row and captured policy; an anchor-ID set alone was insufficient. Shared
+selection/identity/reason helpers preserve the existing hash encoding. Record
+budgets also apply across units. Valid exclusions, no-anchor rows and reordered
+lists must still work. No new approval or scientific verdict follows.
+
+Nine additional Rust regressions are authored; execute the existing full
+`primer_payload_` filter, or focus the new boundary first:
+
+```sh
+cargo test --locked --lib -j1 primer_payload_rehashed_ -- --test-threads=1
+cargo test --locked --lib -j1 primer_payload_bound_ -- --test-threads=1
+cargo test --locked --lib -j1 primer_payload_anchor_identity_ -- --test-threads=1
+```
+
+Require genuine acceptance of eligible, masked, short, wholly unassessed and
+unattributed source cases before testing refusals. Rehash the deliberately
+tampered query manifest/FASTA, not the original Phase 1 evidence: hiding an
+eligible anchor, changing policy without recomputing observations, swapping
+exclusion IDs across repeated read names, wrong primer groups/reasons and
+missing/duplicate/foreign observations must fail. Out-of-range anchors return
+errors, not panic. Two one-record units must exceed an import record cap of one.
+
+The public summary-import regression must first succeed on the genuine fixture,
+then refuse the rehashed false exclusion without creating a final output or
+changing any source bytes. The opt-in actual-CLI LF/CRLF replay below now includes
+the same refusal through the shared command. It must execute, not skip. Capture
+Windows file/path handling and source/binary hashes separately. Local Python
+pins/source checks are not Rust, CLI, native or scientific acceptance.
+
+
 ## Primer Payload Mask Geometry, 2026-10-26
 
 Incremental source repair after the initial Phase 2 commits: preparation and
@@ -53,8 +87,9 @@ cargo test --locked --test capability_registry_parity --test parity_matrix_fresh
 Then execute the canonical tutorial/catalog/parity generators and freshness
 checks using same-source binaries. The eight parity rows/counts were projected
 from registry changes without running the Rust generator locally; source-table
-counts are not a byte-freshness verdict. Twenty Rust regressions are authored,
-not locally compiled/run. Local source/Python checks do not close acceptance.
+counts are not a byte-freshness verdict. The initial 20 Rust regressions and the
+follow-ups above are authored, not locally compiled/run. Local source/Python
+checks do not close acceptance.
 
 Replay [the Phase 2 synthetic recipe](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only),
 then run the actual-process companion with an explicitly source-matched binary:

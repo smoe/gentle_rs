@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-26 - Bind Payload Exclusions To Source Records And Policy
+
+- Re-derive query/exclusion dispositions from the selected bound Phase 1 rows
+  and captured preparation policy. Reject coherently rehashed manifests that
+  hide eligible anchors, promote excluded ones, move exclusions between repeated
+  read names/records, alter primer groups/reasons, or omit/duplicate observations.
+- Share the existing anchor selection, primer-group/identity recipe and
+  exclusion reason between writer and reader; pin the unchanged identity
+  encoding independently. Enforce import record caps across completed units and
+  exclusions, not just one file at a time. No valid wire/hash, Phase 1 data,
+  biological threshold, confirmation or publication rule changes.
+- Author nine additional Rust regressions and extend the optional real-CLI
+  LF/CRLF replay with rehashed false-exclusion refusal and no-publication/source
+  preservation assertions. These Rust/CLI paths are not locally executed.
+  Independent Python pins/source checks do not establish runtime acceptance.
+- Available verification across this continuation: 130 Python/source tests pass,
+  one actual-CLI case skips; scoped rustfmt, documentation, maturity freshness
+  and whitespace pass. Session-close: four OK, two intentional dirty-worktree/
+  manual plan-fidelity warnings, no failures. No push or local Rust build/check.
+
+
 ## 2026-10-26 - Guard Primer Payload Mask Arithmetic
 
 - Replace eager conditional mask arithmetic with one shared, validated payload

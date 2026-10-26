@@ -20,6 +20,34 @@ BIN = os.environ.get("GENTLE_PAYLOAD_CLI")
 
 
 class PrimerPayloadSourceTests(unittest.TestCase):
+    def test_rehashed_dispositions_are_rederived_from_source_and_policy(self):
+        base = ROOT / "src/engine/analysis/rna_panel/primer_payload"
+        prepare = (base / "prepare.rs").read_text()
+        binding = (base / "binding.rs").read_text()
+        for helper in ("selected_anchors", "anchor_primers", "anchor_identity", "exclusion_reason"):
+            self.assertIn("fn " + helper + "(", prepare)
+            self.assertIn("prepare::" + helper + "(", binding)
+        for guard in ("exclusion_policy_binding", "exclusion_binding", "duplicate_anchor_accounting",
+                      "anchor_accounting_coverage", "trace_record_budget", "query_import_budget"):
+            self.assertIn(guard, binding)
+        regressions = (base / "binding_tests.rs").read_text()
+        for required in ("eligible_anchor_cannot_be_hidden", "between_repeated_read_records",
+                         "policy_flip_cannot_change", "budget_is_global_across_units",
+                         "anchor_out_of_range_is_refused"):
+            self.assertIn(required, regressions)
+
+    def test_anchor_identity_fixed_encoding_is_independently_pinned(self):
+        source = (ROOT / "src/engine/analysis/rna_panel/primer_payload/binding_tests.rs").read_text()
+        observed = []
+        for strand in ("forward", "reverse_complement"):
+            value = ["sha256:" + "0" * 64, "arbitrary_file", 5, "abstract_read",
+                     [0, 10, strand, 0, 10], ["invented_primer"]]
+            identity = "sha256:" + hashlib.sha256(json.dumps(
+                value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+            self.assertIn(identity, source)
+            observed.append(identity)
+        self.assertNotEqual(observed[0], observed[1])
+
     def test_mask_clipping_is_shared_and_matches_independent_basewise_oracle(self):
         base = ROOT / "src/engine/analysis/rna_panel/primer_payload"
         preparation = (base / "prepare.rs").read_text()
@@ -156,6 +184,46 @@ class PrimerPayloadCliAcceptance(unittest.TestCase):
                 result = result["result"]["primer_payload_inspection"]
                 self.assertTrue(result["artifact_content_verified"])
                 self.assertEqual(sorted(r["classification"] for r in result["rows"]), ["expected_dominant", "off_target_dominant"])
+                self.assertEqual(trace.read_bytes(), original)
+                self.assertEqual(fastq.read_bytes(), raw)
+                self.assertFalse(state.exists())
+                # Rehashing both a query manifest and its FASTA must not authorize hiding a valid anchor.
+                manifest_path = root / "queries/report.json"
+                manifest = json.loads(manifest_path.read_text())
+                hidden = manifest["queries"].pop(0)
+                manifest["unassessed"].append(dict(file_id=hidden["file_id"], record_index=hidden["record_index"],
+                    read_id=hidden["read_id"], anchor_id=hidden["anchor_id"], primer_ids=hidden["primer_ids"],
+                    reason="insufficient_primer_free_payload"))
+                fasta = root / "queries/artifacts/queries.fasta"
+                kept, keep = [], False
+                for line in fasta.read_text().splitlines(keepends=True):
+                    if line.startswith(">"):
+                        keep = line[1:].strip() != hidden["query_id"]
+                    if keep:
+                        kept.append(line)
+                fasta.write_bytes("".join(kept).encode())
+                manifest["artifacts"][0].update({k: fixture.bound(fasta)[k] for k in ("sha256", "bytes")})
+                manifest["content_sha256"] = ""
+                manifest["content_sha256"] = fixture.digest(manifest)
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                request = json.loads((root / "summarize.json").read_text())
+                request["queries"] = fixture.bound(manifest_path)
+                request["query_manifest_sha256"] = manifest["content_sha256"]
+                batch = request["batches"][0]
+                batch["query_manifest_sha256"] = manifest["content_sha256"]
+                batch["accounting"].pop(hidden["query_id"])
+                filtered = root / "filtered synthetic.paf"
+                filtered.write_bytes(b"".join(line for line in Path(batch["paf"]["path"]).read_bytes().splitlines(keepends=True)
+                                             if line.split(b"\t", 1)[0].decode() != hidden["query_id"]))
+                batch["paf"] = fixture.bound(filtered)
+                refused_output = root / "must not publish"
+                request["output_dir"] = str(refused_output)
+                fixture.write(root / "refused request.json", request)
+                refused = subprocess.run([BIN, "--state", str(state), "rna-reads", "primer-payload-summarize",
+                    "@" + str(root / "refused request.json")], capture_output=True, text=True, timeout=120)
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertIn("exclusion_policy_binding", refused.stderr + refused.stdout)
+                self.assertFalse(refused_output.exists())
                 self.assertEqual(trace.read_bytes(), original)
                 self.assertEqual(fastq.read_bytes(), raw)
                 self.assertFalse(state.exists())

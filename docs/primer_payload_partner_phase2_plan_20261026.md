@@ -46,6 +46,16 @@ all-anchor opposite-orientation round trip. See the
 Execution remains pending; this does not turn the initial 20 authored Rust tests
 or any scientific gate into a pass. Phase 1 wire/artifact definitions stay intact.
 
+### Rehashed Exclusion Follow-Up
+
+The reader now re-derives the selected source anchor's policy disposition and
+binds exclusion metadata to its exact record/primer group/reason, not merely an
+anchor-ID set. Shared selection/identity/reason helpers preserve valid encoding.
+Input record budgets apply across units as well as per file. Nine additional
+Rust regressions and a negative case in the opt-in actual-CLI replay are authored;
+see the [incremental handoff](glen_next_verification_handoff.md#primer-payload-exclusion-bindings-2026-10-26).
+No Rust/runtime gate is closed by source inspection or Python hash pins.
+
 ## 1. Outcome And Limits
 
 Interpret externally aligned, primer-free payloads as a separate engine-owned
