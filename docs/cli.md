@@ -7,8 +7,15 @@ need to start with raw operation JSON.
 For experimental external primer-free payload alignments, see the
 [Phase 2 command/claim reference](primer_payload_evidence.md) and the synthetic
 [tutorial 10.04 rehearsal](tutorial/10-04_targeted_nanopore_fastq_panel.md#phase-2-primer-free-payload-evidence-synthetic-only).
-The `rna-reads primer-payload-prepare|summarize|show|cancel` routes share the
-engine; they do not invoke an aligner or implicitly reopen FASTQ.
+These routes share the engine; they do not invoke an aligner or implicitly
+reopen FASTQ:
+
+```text
+rna-reads primer-payload-prepare REQUEST_JSON_OR_@FILE
+rna-reads primer-payload-summarize REQUEST_JSON_OR_@FILE
+rna-reads primer-payload-show REPORT [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]
+rna-reads primer-payload-cancel CONTROL_JSON_OR_@FILE
+```
 
 **Quick navigation:** [Start here](#start-here) |
 [Find a command or workflow](#commands) | [Interfaces](#overview) |

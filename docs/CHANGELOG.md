@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-26 - Spell Out Primer Payload CLI Routes
+
+- Replace the abbreviated `primer-payload-prepare|summarize|show|cancel` list
+  with four complete command usages in the CLI manual. The existing Rust
+  glossary coverage guard requires full paths and remains unchanged.
+- Add a fast LF/CRLF-aware source check for every CLI glossary path, with the
+  reported abbreviation as a negative control. No routing, engine, schema,
+  confirmation or scientific behavior changes. Local Rust execution remains
+  prohibited; the focused external rerun stays in Glen's handoff.
+- Verification: 16 Python/source checks pass and one actual-CLI case skips;
+  documentation status, maturity freshness and whitespace pass. Session-close
+  has four OK, two expected dirty-worktree/manual-review warnings and no failures.
+
+
 ## 2026-10-26 - Execute Sequence-Design Approval And Parity Checks
 
 - At `ab80743e` on macOS/arm64 with desktop defaults, pass 21 registry/adapter

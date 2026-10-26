@@ -1,5 +1,22 @@
 # Glen: Next Verification And Return
 
+## CLI Documentation Coverage, 2026-10-26
+
+The reported library run had 4535 passes, one failure and 16 ignored tests;
+its tested source/platform were not supplied. The failure was documentation-only:
+the payload-route abbreviation omitted three full glossary paths. The manual
+now lists all four usages explicitly; the Rust coverage check is unchanged.
+On the next normally integrated source, rerun only this focused guard alongside
+the separately open checks below:
+
+```sh
+cargo test --locked --lib -j1 cli_docs_mention_all_cli_glossary_paths -- --test-threads=1
+```
+
+The fast Python equivalent checks every CLI glossary path under LF/CRLF, but
+does not replace the external Rust result. No local Rust execution or push.
+
+
 ## Primer Payload Exclusion Bindings, 2026-10-26
 
 Continue with the next normal integrated source, not an interim freeze. The
