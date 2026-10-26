@@ -639,6 +639,9 @@ impl CommandExecutionService {
 }
 
 #[cfg(test)]
+mod lifecycle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::engine::{Engine, Operation, Workflow};

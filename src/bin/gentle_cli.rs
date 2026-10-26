@@ -36,7 +36,7 @@ use gentle::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, Engine,
         EngineStateSummary, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress,
+        GenomeTrackImportProgress, GentleEngine, LifecycleRequest, Operation, OperationProgress,
         PrimerDesignProgress, ProjectState, ReporterConstraints, ReporterCorpusExportFormat,
         RnaReadInterpretProgress, SharedAssetActivityStatus, TfbsProgress,
     },
@@ -640,8 +640,9 @@ fn execute_direct_operation(
 ) -> Result<gentle::engine::OpResult, String> {
     // Preserve the legacy save policy for other operations. Inspection must
     // neither create a missing project nor rewrite an existing representation.
-    let preserves_state_file = matches!(&operation, Operation::EvaluateGenomeEditIntent { .. });
-    let mut engine = GentleEngine::from_state(load_state(state_path)?);
+    let lifecycle = LifecycleRequest::Operation(&operation);
+    let preserves_state_file = lifecycle.preserves_project_content();
+    let mut engine = GentleEngine::from_state_for(load_state(state_path)?, lifecycle);
     let result = if let Some(sink) = progress_sink {
         let mut printer = ProgressPrinter::new(sink);
         engine
@@ -1391,7 +1392,9 @@ fn run() -> Result<(), String> {
                 .map(gentle_cli_tss_output::export_directory)
                 .collect();
 
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let lifecycle = LifecycleRequest::Workflow(&workflow);
+            let preserves_state_file = lifecycle.preserves_project_content();
+            let mut engine = GentleEngine::from_state_for(load_state(&state_path)?, lifecycle);
             let results = if let Some(sink) = global.progress_sink {
                 let mut printer = ProgressPrinter::new(sink);
                 engine
@@ -1403,10 +1406,12 @@ fn run() -> Result<(), String> {
             } else {
                 engine.apply_workflow(workflow).map_err(|e| e.to_string())?
             };
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
+            if !preserves_state_file {
+                engine
+                    .state()
+                    .save_to_path(&state_path)
+                    .map_err(|e| e.to_string())?;
+            }
             let output = results
                 .into_iter()
                 .zip(export_dirs)

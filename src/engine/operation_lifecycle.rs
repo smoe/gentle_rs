@@ -1,9 +1,36 @@
-//! Request-aware conversation approval for the explicitly migrated sequence-design preview.
-//!
-//! This is only the approval facet of the proposed lifecycle policy. It does not
-//! change construction, reconciliation, history, persistence or destination safety.
+//! Explicit request-aware approval and project-content preservation; unknown operations stay legacy.
 
-use super::Operation;
+use super::{Operation, Workflow};
+
+/// A decoded request, never a parser, I/O boundary or sticky engine mode.
+/// Host approval gates and explicit artifact writes remain independent.
+#[derive(Clone, Copy)]
+pub enum LifecycleRequest<'a> {
+    Operation(&'a Operation),
+    Workflow(&'a Workflow),
+}
+
+/// Only explicitly migrated inspections receive this fact; absence keeps host-specific fallback.
+fn preserves_operation_project_content(op: &Operation) -> bool {
+    matches!(
+        op,
+        Operation::PlanDnaSequenceDesign { .. } | Operation::EvaluateGenomeEditIntent { .. }
+    )
+}
+
+impl LifecycleRequest<'_> {
+    /// Skip project repair and implicit project saves, not journals or requested report writes.
+    /// Empty and mixed workflows deliberately retain legacy construction/save behavior.
+    pub fn preserves_project_content(self) -> bool {
+        match self {
+            Self::Operation(op) => preserves_operation_project_content(op),
+            Self::Workflow(workflow) => {
+                !workflow.ops.is_empty()
+                    && workflow.ops.iter().all(preserves_operation_project_content)
+            }
+        }
+    }
+}
 
 /// Operation-derived approval only; candidate and host/tool gates remain additive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

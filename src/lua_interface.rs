@@ -3,7 +3,7 @@
 use crate::dna_sequence::{self, DNAsequence};
 use crate::engine::{
     Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-    GentleEngine, Operation, ProjectState, Workflow,
+    GentleEngine, LifecycleRequest, Operation, ProjectState, Workflow,
 };
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
@@ -1344,7 +1344,8 @@ impl LuaInterface {
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let op: Operation = Self::parse_or_decode(lua, op)?;
-                    let mut engine = GentleEngine::from_state(state);
+                    let mut engine =
+                        GentleEngine::from_state_for(state, LifecycleRequest::Operation(&op));
                     let result = engine.apply(op).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
@@ -2001,7 +2002,8 @@ impl LuaInterface {
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let workflow: Workflow = Self::parse_or_decode(lua, workflow)?;
-                    let mut engine = GentleEngine::from_state(state);
+                    let mut engine =
+                        GentleEngine::from_state_for(state, LifecycleRequest::Workflow(&workflow));
                     let results = engine.apply_workflow(workflow).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
@@ -2095,6 +2097,96 @@ mod tests {
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn lifecycle_slice3_lua_runtime_preserves_state_and_legacy_controls() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        let state = fixture::state();
+        let expected = serde_json::to_value(&state).unwrap();
+        lua.globals()
+            .set("input", lua.to_value(&state).unwrap())
+            .unwrap();
+        for op in [
+            fixture::plan(None, false),
+            fixture::plan(None, true),
+            fixture::snv(),
+        ] {
+            lua.globals()
+                .set("request", serde_json::to_string(&op).unwrap())
+                .unwrap();
+            lua.load("out = apply_operation(input, request)")
+                .exec()
+                .unwrap();
+            let out: serde_json::Value = lua
+                .from_value(lua.globals().get::<Value>("out").unwrap())
+                .unwrap();
+            assert_eq!(out["state"], expected);
+        }
+        for (covered, ops) in [
+            (true, vec![fixture::snv(), fixture::plan(None, true)]),
+            (true, vec![fixture::plan(None, false), fixture::snv()]),
+            (false, vec![]),
+            (false, vec![fixture::snv(), fixture::create()]),
+        ] {
+            let wf = Workflow {
+                run_id: "synthetic-lua".into(),
+                ops,
+            };
+            lua.globals()
+                .set("request", serde_json::to_string(&wf).unwrap())
+                .unwrap();
+            lua.load("out = apply_workflow(input, request)")
+                .exec()
+                .unwrap();
+            let out: serde_json::Value = lua
+                .from_value(lua.globals().get::<Value>("out").unwrap())
+                .unwrap();
+            assert_eq!(out["state"] == expected, covered);
+        }
+        let mut invalid = fixture::plan(None, true);
+        if let Operation::PlanDnaSequenceDesign { request, .. } = &mut invalid {
+            request.target = gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                seq_id: "missing".into(),
+            };
+        }
+        lua.globals()
+            .set("request", serde_json::to_string(&invalid).unwrap())
+            .unwrap();
+        assert!(
+            lua.load("out = apply_operation(input, request)")
+                .exec()
+                .is_err()
+        );
+        let unchanged: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("input").unwrap())
+            .unwrap();
+        assert_eq!(unchanged, expected);
+    }
+
+    #[test]
+    fn lifecycle_slice3_lua_opaque_agent_plan_keeps_legacy_construction() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let plan = serde_json::json!({"schema":"gentle.agent_plan_result.v1","assistant_message":"synthetic",
+            "questions":[],"candidates":[{"candidate_id":"inspect","title":"Synthetic inspection","rationale":"legacy wrapper control",
+            "kind":"shell","mutating":false,"requires_confirmation":false,"execution_mode":"auto",
+            "shell_command":format!("op {}",crate::engine_shell::shell_quote(&serde_json::to_string(&fixture::snv()).unwrap()))}]});
+        let input = fixture::state();
+        let out = LuaInterface::execute_agent_plan(
+            Some(input.clone()),
+            plan.to_string(),
+            "inspect".into(),
+            Some(true),
+        )
+        .unwrap();
+        assert_ne!(
+            serde_json::to_value(out.state).unwrap(),
+            serde_json::to_value(input).unwrap(),
+            "opaque wrapper intentionally still repairs on construction"
+        );
+    }
 
     fn normalize_construct_reasoning_status_output(
         mut value: serde_json::Value,

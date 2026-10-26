@@ -1,268 +1,164 @@
 # Lifecycle Slice 3: Construction, Workflows And Implicit Persistence
 
-Status, 2026-10-26: proposed software contract, **not implemented and not yet
-Claude-reviewed**. The owner requested this plan and a
-[forwardable review prompt](operation_lifecycle_slice3_claude_review_prompt.md),
-not implementation. Prior approval of slices 1--2 does not authorize this slice.
-The [parent proposal](operation_lifecycle_policy_proposal.md#revised-slice-order)
-and [roadmap](roadmap.md) retain scope/order authority; S2 remains separate.
+Status, 2026-10-27: owner-authorized revised implementation authored; Rust,
+actual-process, scripting-runtime and native verification remain with Glen/CI.
+This replaces the original proposal, not the historical executed evidence for
+slices 1--2. The owner supplied Claude's review and explicitly excluded the
+new payload-resolution layer. No further Claude call was made. See the
+[historical review prompt](operation_lifecycle_slice3_claude_review_prompt.md),
+[parent proposal](operation_lifecycle_policy_proposal.md#revised-slice-order)
+and [verification handoff](glen_next_verification_handoff.md#lifecycle-slice-3-2026-10-27).
+No release gate, S2 authorization or scientific acceptance follows from this slice.
 
-## Baseline And Scope
+## Source And Scope
 
-- Worktree: `/Users/u005069/.codex/worktrees/47dd/gentle_rs`.
-- Branch: `gentle_rs_2_main`; HEAD and local main when inspection began:
-  `320d580376dbcec41f9e1f25d463bd7d6afb60f6`. No fetch was performed.
-- During preparation, local main advanced to
-  `7d7519ad33e2ca932d98f82799e051656f21e513` in CHANGELOG/Glen-handoff text only.
-  Runtime inspection predates the owner's subsequent commit/rebase request.
-  These SHAs record inspection provenance, not a frozen-HEAD requirement;
-  check actual source drift when reviewing the committed/rebased documents.
-- Tracked tree was clean before these planning edits; unrelated `output/` is
-  untouched. Private data, the primary checkout's untracked prompts and `paper/`
-  are not inputs to this plan.
-- Slices 1--2 already provide Plan's request-aware write-attempt approval and
-  External family metadata. Preserve their
-  [source-scoped executed evidence](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26),
-  including headless 32/32 sequence-design and 14/14 S1 at `98c9331a` and earlier
-  desktop parity checks at `ab80743e`. Those are not new-source execution here.
-- Cover `PlanDnaSequenceDesign` with either path form and
-  `EvaluateGenomeEditIntent` (S1). Do not migrate all nominally read-only ops.
-  `ApplyDnaSequenceDesign`, `SaveFile` and unknown/unmigrated operations are
-  compatibility controls, not newly exempt operations.
+Implementation began on `gentle_rs_3` in
+`/Users/u005069/.codex/worktrees/faae/gentle_rs` at `ce4d33b5` (then also local
+main). The original inspection was at `320d5803`, later `7d7519ad`, in the
+47dd review worktree. These are provenance, not an instruction to freeze main.
+Unrelated `outputs/` and the previously paused goal stay untouched; no push.
 
-Goal: a covered inspection must not repair persisted project content merely
-because a host reconstructs an engine, runs a workflow, or saves after success.
-Keep explicit requested artifacts distinct from implicit project persistence.
+Only `PlanDnaSequenceDesign` (with or without `path`) and
+`EvaluateGenomeEditIntent` (S1) are migrated. `ApplyDnaSequenceDesign`, explicit
+`SaveFile`, ordinary loading and unknown operations remain compatibility controls.
+No biological, schema, parser, agent-approval, scheduler or writer change.
 
-## Verified Source Map
+## One Engine-Owned Fact
 
-Use file plus symbol rather than historical line numbers. These are inspected
-facts at the baseline above, not claims that the proposed fixes exist.
+`engine::LifecycleRequest::{Operation,Workflow}::preserves_project_content()` is
+a pure selector over already decoded requests. It performs no file reads,
+parsing, model calls or template expansion. False means the consumer retains its
+existing fallback, not a universal instruction to save. In particular MCP's
+existing RNA file-only no-save list remains intact.
 
-| Source and anchor | Current boundary |
-| --- | --- |
-| `src/engine/operation_lifecycle.rs::operation_approval_policy` | Typed Plan approval only; does not control construction, history or saving. |
-| `src/engine.rs::GentleEngine::{new,from_state,reseed_op_counter_from_state}` | `from_state` sets session/history defaults, repairs lineage/containers and reseeds counters. Ordinary `new` does not perform those repairs. |
-| `src/engine/ops/operation_handlers.rs::apply_internal` | Only S1 skips pre-dispatch repair today. Plan can repair even on refusal. Its handler can write a cancelled report through the existing writer. |
-| `src/engine/state/lineage_containers.rs::{add_lineage_edges,add_container_from_result}` | Post-handler helpers return without creating lineage/containers when no sequence was created, as for Plan/S1. Keep these controls rather than assume all post-handler code is inert. |
-| `src/engine.rs::{operation_checkpoint_kind,apply_with_progress,apply_workflow_with_progress}` and `impl Engine` | Plan/S1 have no undo checkpoint; successful operations still append journals and advance execution bookkeeping. Both workflow implementations retain per-step semantics and `run_id`. |
-| `src/engine.rs::ProjectState::load_from_path`; `src/cli_support.rs::load_state_or_default` | Loading can hydrate candidate sidecars and change load-warning metadata before engine construction. Missing/empty files yield default state; existing JSON is not rewritten by loading. |
-| `src/bin/gentle_cli.rs::{execute_direct_operation,parse_forwarded_shell_command,run}` | Raw op suppresses saving only for S1. Raw workflow saves after success. Named/shared-shell paths already parse an outer `ShellCommand`, construct normally, then use `state_changed`; Op/Workflow payloads may still require resolution. |
-| `src/engine_shell.rs::{resolve_operation_payload,execute_op_command,execute_workflow_command,execute_parsed_workflow_command}` | Shared payload decoding/execution already exists. Plan/S1 raw-op results use explicit false project-change flags; workflow uses before/after state serialization. |
-| `src/mcp_server.rs::{op_tool_result,workflow_tool_result,run_shell_tool_with_optional_persist}` | Raw tools retain mandatory confirmation. Op's no-save list includes S1 and named RNA file-only operations; workflow saves after success. Shell construction happens before effective payload resolution. |
-| `src/js_interface.rs::{apply_operation_impl,apply_workflow}`; `src/lua_interface.rs::LuaInterface` registration of `apply_operation`/`apply_workflow` | Generic state-in/state-out routes reconstruct normally and can return repaired state despite a covered operation. |
-| `integrations/python/gentle_py/client.py::GentleClient::{op,workflow,shell}` | Thin CLI delegation, not a second engine or persistence implementation. |
-| `src/command_execution.rs::{fork_admitted_command,execute_command,submit_work_with_cancel}`; `src/command_execution/rna_artifacts.rs::{admission,freeze,publication}` | Generic Plan/S1/Workflow currently use the project-bound detached path. A false `state_changed` alone does not prevent its guarded commit/journal publication. Named RNA observations instead may execute without a project snapshot. |
-| `src/js_interface.rs::execute_agent_plan_impl`; Lua `execute_agent_plan`; CLI/MCP generic agent/macro wrappers | Some reconstruct an engine before resolving the selected candidate or expansion. Do not advertise universal wrapper preservation from fixing direct Op/Workflow. |
-| `src/mcp_server.rs::tests::assert_sequence_design_mcp_parity` | Explicitly reads a project file currently created by preview before testing Apply. This fixture must change deliberately when preview stops autosaving. |
+| Request | Construction/apply repair | Checkpoints | Implicit project save |
+| --- | --- | --- | --- |
+| Plan, absent or present path; S1 | Skip persistent reconciliation | Preserve undo/redo | Suppress on migrated raw routes |
+| Nonempty workflow of only those operations | Same | Existing per-step semantics | Suppress |
+| Empty workflow, mixed or unmigrated request | Legacy construction; covered children still skip their own repair | Legacy per-step semantics | Existing host fallback |
 
-## Proposed Contract
+`GentleEngine::from_state_for` retains fresh instance identity, history defaults
+and operation-counter reseeding without repairing supplied state. Ordinary
+`from_state` is unchanged. This is not a sticky engine mode: a subsequent
+ordinary mutation still reconciles normally. `apply_internal` consults the same
+fact before even a refused inspection can repair state.
 
-Keep a pure, typed, engine-owned lifecycle selector beside the existing approval
-facet. Suggested internal facts are project-content preservation, pre-dispatch
-reconciliation, checkpoint policy and implicit-save eligibility. Names are
-provisional Rust design vocabulary, not new serialized schemas or endpoints.
-Existing approval behavior must remain equivalent, including additive host gates.
+Successful inspections still journal and advance execution bookkeeping. They do
+not acquire checkpoints or advance mutation/structural revisions. Whole
+`history_summary` equality is therefore the wrong oracle; compare checkpoint
+contents and mutation/structural revisions separately from operation-log count.
 
-| Request | Construction/apply repair | Undo/redo | Implicit project save | Explicit artifact and approval |
-| --- | --- | --- | --- | --- |
-| S1 | Skip persistent repair | Preserve checkpoints | Forbid | None; preserve independent MCP/tool confirmation. |
-| Plan, absent path | Skip persistent repair | Preserve checkpoints | Forbid | None; do not remove explicit candidate/tool requirements. |
-| Plan, any present path | Skip persistent repair | Preserve checkpoints | Forbid | Existing report write attempt and approval, including bad/empty paths and cancelled reports. |
-| Apply, SaveFile, any unmigrated operation | Existing behavior | Existing behavior | Existing host-specific behavior | Existing confirmation, digest, effects and writer. |
+## Adapter Boundaries
 
-`None` from the selector means **use that consumer's existing fallback**, not
-"always save" or "no effects". In particular, do not erase MCP's existing RNA
-file-only save exemptions. Do not infer lifecycle from registry `ReadOnly`,
-`state_changed`, a command prefix or model-provided flags.
+- Raw CLI op/workflow and raw MCP op/workflow use the decoded request for
+  construction and implicit-save policy. MCP `confirm=true` still precedes
+  payload parsing and project loading, including no-path previews and S1.
+- Generic JavaScript/Lua operation/workflow bindings use the same factory.
+  Compare decoded state-in/state-out semantically, not serialized byte order.
+  Python remains a thin CLI delegate; it gains no separate policy.
+- Shared-shell/named/forwarded CLI and MCP-shell helpers are **not refactored**.
+  Their existing change flags already suppress inspection saves; regressions
+  cover their file-backed spellings. They may construct an ordinarily repaired
+  engine before resolving a payload; no general state-out promise is added.
+- No resolve-once envelope, public payload helper, second grammar, early
+  `@file` read or new captured-payload identity is introduced. CLI and shared
+  shell retain their existing different file-intent/error rules. Conservative
+  wrapper/candidate confirmation remains additive.
+- Raw MCP's returned `state_summary` now describes the preserved post-loader
+  state, not constructor-repaired containers/arrangements. Counts can differ
+  from older versions without sequence/report differences. The standalone
+  `state_summary` tool remains an ordinary construction route.
 
-### Define What Is Preserved
+Missing project files remain missing. Empty, noncanonical, LF/CRLF project files
+and candidate sidecar bytes remain untouched when no explicit writer targets
+them. In-memory preservation starts **after** the existing loader, including
+sidecar hydration and warning metadata. Permissive loading can still remove a
+broken candidate reference in memory; unmigrated autosaving routes can persist
+that loss. This residual is not repaired globally here. Strict/permissive load
+behavior and explicit saves are unchanged.
 
-- Direct state-in/state-out: compare the supplied decoded `ProjectState` with
-  returned state semantically, including unreconciled lineage, containers and
-  metadata. This is not byte identity of arbitrarily formatted input JSON.
-- File-backed routes: absent files remain absent; empty/noncanonical/LF/CRLF
-  existing project bytes remain unchanged. No implicit parent/sidecar writes.
-  The engine baseline is the state returned by the existing shared loader;
-  sidecar hydration and its diagnostics are not disabled or relabelled repair.
-- Live engines: preserve dispatch-time project content, mutation/structural
-  revisions and existing undo/redo checkpoints. Ordinary project opening may
-  already have reconciled data; this slice does not undo that loading behavior.
-- Preserve session semantics: fresh engine-instance identity, history defaults,
-  counter reseeding, successful operation journals, workflow `run_id`, execution
-  revisions and existing failed-attempt bookkeeping. Whole `history_summary`
-  equality is not appropriate when its operation-log fields legitimately change.
+## Workflows, Managed Jobs And Failures
 
-### Constructor And Apply Seams
+Both workflow executors retain order, `run_id`, child journals/checkpoints and
+cooperative cancellation. No nested `apply`, rollback or error-path save is
+added. In-process failures retain an executed prefix; raw CLI/MCP save only on
+overall success; scripting may raise without state-out; managed failures discard
+unpublished deltas. Already written reports survive those failures.
 
-Prefer request-aware engine factories (tentative `from_state_for_operation` /
-`from_state_for_workflow`) over changing ordinary `from_state` or introducing a
-sticky "read-only engine" mode. A covered factory initializes normal session
-identity/defaults and reseeds counters from existing state without modifying it.
-It may later execute an ordinary mutation, which must retain its legacy repair.
-Expose only the small Rust boundary needed by binaries; keep policy decisions
-in the engine, with no dependency from protocol/engine back to frontend modules.
+Managed generic Op/Workflow remains a **journal-publishing project worker**,
+even when all operations are covered inspections. Keep the loaded-target
+snapshot, owner identity, structural/history stale checks and guarded commit.
+Do not move it to RNA's independent observation lane or discard its journal.
+Persisted content/checkpoints/dirty revisions are unchanged on inspection commit.
+[DEC-026](decisions.md#dec-026-long-gui-jobs-use-optimistic-engine-snapshots)
+distinguishes this from observation-only workers that never commit.
 
-Consult the same facts at the start of `apply_internal`, before validation or
-refusal can cause repair. Retain successful journaling and no-checkpoint behavior
-through both apply methods and both workflow methods; do not rewrite workflows
-as nested `apply` calls that change `run_id`, double-journal or add checkpoints.
-Do not remove journals to make a persistence test pass.
+A concurrent inspection journal append can still make another managed job stale.
+The test pins that boundary rather than weakening it. Cancellation before commit
+can discard a computed journal while leaving a requested report on disk; report
+publication is not proof of job commit or scientific completion.
 
-### Workflow Aggregation And Failure Semantics
+Opaque agent-plan and macro/template wrappers that construct before discovering
+the selected request remain legacy. JS/Lua regressions explicitly pin that
+repair rather than claiming universal wrapper parity. Nested-agent guards,
+approval requirements and managed admission remain unchanged.
 
-| Workflow | Recommended aggregate |
-| --- | --- |
-| Non-empty, every op covered | Preserve construction/project content, forbid implicit save; explicit report intents combine without becoming project mutations. |
-| Any mutation or unmigrated op, in either order | Legacy aggregate construction/save fallback; each covered child still skips its own repair. This is not a whole-workflow no-change guarantee. |
-| Empty workflow | Preserve legacy behavior for compatibility; do not gain an exemption through vacuous `all()`. Ask Claude to challenge this default. |
-| Invalid/unresolved payload | No guessed inspection exemption; preserve existing structured refusal and explicit input-read errors. |
+## Authored Regressions And External Checks
 
-Keep operation order, child checkpoint boundaries, workflow journals, progress
-and cancellation intact. Preserve each host's error behavior: in-process failed
-workflows can retain an executed prefix; CLI/MCP raw file routes currently save
-only after overall success; JS/Lua can raise without returning state; managed
-failure discards unpublished engine deltas. Do not make these transactional or
-add error-path autosaves. Already written explicit artifacts are not rolled back.
-A cancelled Plan report returned successfully is not the same as workflow
-cancellation/error, and a written file is not a completed scientific search.
+New synthetic fixtures live inline in `src/engine/lifecycle_slice3_tests.rs` and
+the Python companion, reusing tutorial 06.07's hand-crafted literal CDS and a
+six-base invented S1 request. No private input or new byte-bound fixture.
 
-### Resolve Once, Then Select Construction
+- Engine: genuinely unreconciled construction, unique identity/counter reseeding,
+  later mutation, state/revision/checkpoint-pointer and redo preservation on
+  success/refusal/bad output/cancellation/infeasible/exhausted outcomes; both
+  workflow executors, order/run IDs, failure/cancel prefixes and legacy controls.
+- Service: loaded-target op/workflow, guarded journal publication with no dirty
+  state/history loss; concurrent-journal stale rejection and cancellation after
+  explicit report writing. Existing owner-replacement/stale tests remain controls.
+- MCP: preview must leave state absent, denied Apply leaves it absent, approved
+  Apply still creates exact DNA; shared-shell `@file` helper bytes stay unchanged.
+- Real JS/Lua VM tests: generic operation/workflow state-out, inline/loaded
+  targets, refusal/mutation/empty controls, plus opaque-wrapper legacy controls.
+- Opt-in actual CLI/MCP/Python companion: absent/empty/unreconciled projects,
+  LF/CRLF payloads, apostrophe paths, all-covered and legacy workflows, explicit
+  report/failure prefixes, pre-I/O MCP confirmation, state-summary counts and
+  candidate sidecar preservation with isolated strict/permissive subprocess env.
 
-Thin Op/Workflow adapters can select policy from their decoded requests before
-constructing the engine. Named/shared-shell routes need an existing-parser-based
-resolution boundary: retain typed `Operation`/`Workflow` plus captured payload
-identity for execution, rather than read `@file` for classification and read it
-again during dispatch. A small Rust-only resolved envelope/helper is acceptable;
-a second command grammar, operation registry or scientific executor is not.
-Use the captured request for lifecycle, applicable approval checks and execution.
-Where a host already checks an original wrapper's conservative confirmation,
-keep that gate additive: raw `op @file` must not become unconfirmed merely
-because capture reveals a no-path Plan. This is a prevention requirement, not
-a claim that the current file-backed route already bypasses approval.
-Retain denials that currently precede payload I/O; resolution must not become
-a reason to read files before a conservative wrapper/tool gate can reject.
-
-Resolution I/O belongs in the existing execution/worker phase, not the pure
-selector, GUI frame or nonblocking admission. Preserve original approved request
-bytes/receipt hashes and bind the policy to the actual executed payload. Reuse
-shared parser/error rules, not normalization that changes digest-bound inputs.
-
-## Host Scope And Explicit Limits
-
-1. Wire raw CLI op/workflow, forwarded typed commands and `shell op|workflow`
-   through request-aware construction and the shared implicit-save fact. No new
-   universal CLI confirmation flag; direct invocation remains user intent.
-2. Wire raw MCP op/workflow and applicable shared-shell tools coherently. Keep
-   raw `confirm=true` checks before payload parsing/resolution, project loading
-   and construction, not merely before dispatch; retain all legacy exemptions
-   for operations outside this slice. Do not infer successful artifact writes.
-3. Cover generic JS/Lua direct operation/workflow state-out using the same
-   factories, with real runtime tests under their optional features. Python
-   inherits the CLI contract and needs actual-process verification, not a new
-   Python policy implementation. Explicit `save_project` is not autosave.
-4. GUI live engines use apply policy without reconstruction. Keep dirty-state
-   checks revision-based; covered shell workflows can return false from typed
-   policy without two full-project serializations. Mixed/unmigrated routes keep
-   their existing change-detection fallback.
-5. Managed Op/Workflow must keep required project snapshots, owner/history/
-   structural checks, cancellation and short guarded publication. Recommended
-   default: retain current journal/execution publication while asserting unchanged
-   `ProjectState`, mutation revision and checkpoints. Do not route Plan/S1 into
-   RNA's no-project `Observe` path, drop loaded targets, or claim no commit of
-   any session bookkeeping. Ask Claude whether this bounded approach is
-   compatible with the architecture's read-only worker rule or needs a smaller
-   explicit journal-publication distinction within this slice.
-
-Opaque `agents execute-plan`, macro/template expansion and other wrappers that
-reconstruct before discovering their effective operation remain legacy unless
-already resolved through the shared boundary above. This is a deliberate proposed
-cut line, **not** a promise that every spelling/state-out wrapper is fixed.
-Claude must assess whether this residual makes the slice misleading and must
-be included now. Never expand templates or call models during policy selection;
-never change nested-agent, mutation-approval or managed admission guards.
-
-## Required Fail-First Tests
-
-Reuse existing explicitly synthetic sequence-design/S1 fixtures and document
-any new fixture consumer. Generate temporary projects locally; no private DNA,
-reference downloads, model calls or native screenshots are needed.
-
-| Boundary | Required positive and negative controls |
-| --- | --- |
-| Construction | Sequence-only state missing lineage/containers is genuinely repairable under ordinary `from_state`, but unchanged under covered factories. Verify fresh instance IDs, reseeded unique op IDs and normal defaults; later mutation still repairs. |
-| Apply/history | Plan without/with a report and S1 preserve state, mutation/structural revisions, checkpoint contents and redo on success/refusal. Check invalid binding, invalid path, exhausted/infeasible/cancelled reports; retain existing journal/counter semantics. |
-| Workflows | S1/Plan in both orders; multiple requested reports; a failing later step; cancellation before first, after a written prefix and before final result publication. Empty, Apply, SetParameter and SaveFile/unmigrated mixed controls retain legacy behavior and `run_id`. |
-| CLI/MCP actual ingress | Raw op, named plan, shared-shell op/workflow and raw workflow; missing/empty/existing noncanonical project bytes; explicit report only. Keep raw MCP false/missing confirmation refused before payload/state I/O. Never use a helper-only pass as file-boundary proof. |
-| Resolution | Inline and `@file` payloads execute the captured request, including a deterministic file-change-between-resolution-and-dispatch control. Keep original command/approval/receipt identity, conservative file-wrapper confirmation and existing invalid-JSON errors. |
-| JS/Lua | Execute real generic op/workflow runtime bindings against unreconciled state; compare decoded state-in/state-out. Cover loaded and inline targets, refusals and mutation controls. Source grep or mocked clients are not VM execution. |
-| Python | Actual supplied CLI for op/workflow/shell, missing and byte-preserved existing projects; mocked wrapper tests alone do not close parity. |
-| Managed GUI/shared service | Valid loaded-target snapshot, preserved live state/history/dirty revisions, retained journal semantics, replaced-project and stale-history refusals, cancellation before/after compute and explicit artifact survival. No weakened lock/admission guard. |
-| Load/fallback | Candidate sidecar hydration and strict/permissive load diagnostics stay unchanged. Existing RNA file-only exemptions, ordinary loads, Apply digests, SaveFile behavior and explicit save requests remain controls. |
-
-`assert_sequence_design_mcp_parity` currently reads a preview-created project.
-First assert preview does not create that file; explicitly initialize a baseline
-project before the separate Apply phase, without manufacturing an operation to
-seed counters. Keep confirmation/refusal, scientific report equality, exact DNA,
-hashes and undo assertions intact. Audit tutorial 06.07 and its actual CLI
-companion for similar reliance; do not weaken tests or automatically bless new
-scientific output/approval hashes to make the lifecycle change pass.
-
-## Proposed Implementation Order After Review And Owner Approval
-
-1. Engine facts/factories, apply reconciliation and workflow aggregation, plus
-   fail-first state/history controls. Keep the slices 1--2 approval tests green.
-2. Shared resolution and thin CLI/MCP/JS/Lua/Python consumers together with
-   direct file/state-out tests and deliberate preview/Apply fixture separation.
-3. Managed/GUI controls and the reviewed wrapper cut line. Stop for an owner
-   decision if preserving journals requires a broader scheduler/wire change.
-4. Reconcile protocol/CLI/GUI/tutorial wording and the existing decisions only
-   after implementation is tested. No generated/maturity churn unless a
-   canonical check proves it is required; use the consolidated Glen handoff,
-   not a separate branch freeze or repeated audit campaign.
-
-Suggested new test prefix: `lifecycle_slice3_` (not present yet). Future runs
-must prove the requested tests executed, not report success for zero matches:
+No test may claim execution from source inspection or a skipped process/VM suite.
+Run nonzero selected tests at one normally integrated source; reuse existing
+same-source CI results rather than repeating audit campaigns:
 
 ```sh
-cargo test --locked --offline --no-default-features -j 1 --lib lifecycle_slice3_ -- --test-threads=1
-cargo test --locked --offline --no-default-features -j 1 --lib sequence_design -- --test-threads=1
-cargo test --locked --offline --no-default-features -j 1 --lib genome_edit_intent -- --test-threads=1
-cargo test --locked --offline --no-default-features --features js-interface -j 1 --lib lifecycle_slice3_ -- --test-threads=1
-cargo test --locked --offline --no-default-features --features lua-interface -j 1 --lib lifecycle_slice3_ -- --test-threads=1
-cargo test --locked --offline -j 1 --test capability_registry_parity --test parity_matrix_freshness
-cargo check -q --locked --offline -j 1
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo test --locked --no-default-features -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib sequence_design -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib genome_edit_intent -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib command_execution -- --test-threads=1
+cargo test --locked --no-default-features --features js-interface -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked --no-default-features --features lua-interface -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
 cargo fmt --check
-GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/same-source/binaries python3 -m unittest scripts.test_sequence_design_tutorial -q
+GENTLE_LIFECYCLE_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_operation_lifecycle_slice3 -v
+GENTLE_TUTORIAL_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_sequence_design_tutorial -v
 ```
 
-Also require a new actual CLI/MCP process boundary test and actual Python client
-coverage, with their final test commands documented at implementation time.
-Missing optional JS/V8/Lua dependencies are blocked/unrun evidence, not a skip
-count converted into parity. No dependency downloads/builds are authorized by
-this planning document. Preserve existing LF/CRLF tests; add scoped checkout
-coverage/provenance if any new byte-bound fixture or freshness gate is introduced.
-Use shared shell quoting and native Windows handle/path tests, without hash
-weakening, production timeout changes or fixture identity normalization.
+Missing V8/Lua prerequisites are blocked/unrun evidence, not parity. Glen also
+owns native GUI dirty/redo checks and Windows file/handle/path acceptance. Current
+local checks are Python source/metadata/checkout checks and formatting only:
+focused lifecycle/tutorial suite 8 passed, 9 actual-binary skips; full LF/CRLF
+checkout suite 75 passed; documentation-status/maturity group 23 passed (includes
+11 documentation tests also in the checkout suite). Scoped rustfmt, documentation
+status and whitespace checks passed. Session-close: 4 OK, 2 warnings (intentional
+dirty tree/manual plan-fidelity reminder), 0 failures. None is Rust/runtime or
+native acceptance.
 
-## Review Questions And Exit Boundary
+## Explicit Remaining Boundaries
 
-- Is the explicit-factory plus typed policy boundary sufficient and minimal?
-  Should shell resolution return an engine/run pair or a small resolved request?
-- Is legacy fallback for empty/mixed workflows the right compatibility choice?
-  Verify failure-prefix behavior per host rather than imposing one global rule.
-- Must opaque agent/template wrappers join this slice, or can the stated cut
-  line remain without claiming universal readonly behavior or unblocking S2?
-- Can managed journal publication stay on the existing guarded path without
-  weakening the read-only-worker invariant or silently discarding receipts?
-- Are the decoded-state/post-loader baselines and sidecar limitations honest?
-  Is any additional persisted mutation performed after the identified preamble?
-
-Explicit report/project-path aliases, symlink/hard-link/race safety, writer
-overwrite/atomicity/no-clobber changes remain Slice 4. **Forbid autosave is not
-a guarantee that a user-selected report path cannot overwrite the project.**
-Use disjoint report/project paths in preservation tests; do not claim alias
-refusal exists. No S2, new editor/protocol biology, broad registry reclassification,
-global constructor/loader change, asynchronous-service redesign or new release
-gate is authorized. Review feedback and owner implementation approval are still
-required; this plan itself grants neither implementation nor acceptance.
+- No captured-payload layer or broad opaque-wrapper migration.
+- No global sidecar-loader/implicit-save repair or journal concurrency redesign.
+- Explicit report/project aliases and symlink/hard-link/race, overwrite,
+  atomicity/no-clobber rules remain separately authorized Slice 4. **Suppressing
+  autosave cannot stop an explicitly chosen report path overwriting a project.**
+- S2, new editor biology and release/native/scientific acceptance stay separate.

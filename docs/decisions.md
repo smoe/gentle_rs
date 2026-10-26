@@ -377,13 +377,13 @@ are neither materialized project DNA nor observed alleles. For this operation,
 in-process apply skips persistent reconciliation, and the named CLI/MCP direct
 operation routes suppress their implicit state-file save. MCP's independent
 tool confirmation does not authorize a state-file write for this inspection.
-These are not yet a cross-adapter construction guarantee: generic `from_state`
-repairs lineage/containers before dispatch, so JS/Lua state-in/state-out calls
-can return repaired project content. Workflow construction/persistence also
-needs separate coverage. Unchanged CLI/MCP disk bytes do not prove an unchanged
-in-memory state. This existing gap is tracked in the
-[lifecycle proposal](operation_lifecycle_policy_proposal.md); no constructor
-behavior is changed by its initial approval repair. Future
+The owner-authorized [Lifecycle Slice 3](operation_lifecycle_slice3_plan.md)
+extends this to decoded raw CLI/MCP and generic JS/Lua Op/Workflow construction:
+Plan/S1 and nonempty all-covered workflows preserve post-loader/supplied state
+and suppress implicit project saves. Ordinary `from_state`, empty/mixed
+workflows and opaque wrappers remain legacy. Unchanged disk bytes and unchanged
+decoded state are distinct guarantees; candidate hydration/warnings still occur.
+Future
 editor feasibility, persisted handoff/apply and laboratory review need their
 own explicit contracts, not a widened S1 or transferred sequence-design approval.
 
@@ -394,7 +394,8 @@ reconcile state, and `PlanDnaSequenceDesign` has an optional report path. Do not
 replace confirmation, history, reconciliation or persistence rules with that
 label alone. Before S2, separately review a shared lifecycle policy that
 distinguishes project effects, external writes, reconciliation and confirmation;
-preserve existing adapter gates until that policy and its regressions land.
+preserve existing adapter gates. Slice 3's authored regressions await external
+Rust/VM/native execution; Slice 4 alias/writer safety and S2 remain separate.
 
 ## Sequence-Design Preview Report Approval
 
@@ -410,8 +411,11 @@ consistent with TSS SVG export; it is not the runtime permission oracle.
 Approval covers the exact write attempt, including a cancelled search report.
 Successful file publication is not scientific/search completion; retain actual
 status and report bytes. No constructor, reconciliation, checkpoint/journal,
-autosave, alias/collision or overwrite semantics change follows. Strict preview
-state preservation and S2 remain separately gated. Focused macOS boundary and
+autosave, alias/collision or overwrite semantics change follows from that approval
+facet alone. The separately owner-authorized
+[Slice 3](operation_lifecycle_slice3_plan.md) now supplies covered construction/
+state preservation, with external verification pending; alias/writer safety and
+S2 remain separately gated. Focused macOS approval boundary and
 parity checks have a [source/feature-bound execution record](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26).
 They do not establish full-policy security, native or scientific acceptance.
 
@@ -1024,7 +1028,14 @@ Persisted-state mutation revision is separate from structural and read-only
 execution identity so GUI dirty checks remain constant-time without marking
 inspections as edits.
 
-Read-only workers use a history-free engine clone and do not commit it. A raw
+Observation-only workers use a history-free engine clone and do not commit it.
+Managed generic Op/Workflow commands are instead journal-publishing workers,
+even for covered Plan/S1 inspections: they retain a project snapshot and the
+same guarded commit, owner/history/structural checks and cancellation boundary.
+An inspection commit preserves persisted content, mutation/structural revisions
+and undo/redo, but advances the journal/execution identity. Concurrent journal
+publication can still make another job stale; Slice 3 does not waive that guard
+or move these commands into the independent observation lane. A raw
 `GentleEngine::clone` in a background worker is prohibited because it retains
 unneeded history (even with shared checkpoints). Persisted metadata mutations outside
 `apply` must advance the mutation revision and clear redo; otherwise a redo

@@ -9,7 +9,8 @@ use crate::{
     about,
     cli_support::load_state_or_default,
     engine::{
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, LifecycleRequest, Operation,
+        ProjectState, Workflow,
     },
     engine_shell::{
         ShellExecutionOptions, UiConfigurationSection, UiIntentAction, UiIntentTarget,
@@ -3583,18 +3584,20 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     };
     // Named file-only operations have no project effects; a missing state file
     // remains missing. Keep the generic op confirmation gate unchanged.
-    let preserves_state_file = matches!(
-        &operation,
-        Operation::EvaluateGenomeEditIntent { .. }
-            | Operation::ValidateRnaPrimerPanel { .. }
-            | Operation::TracePrimerReads { .. }
-            | Operation::PreparePrimerPayloadAlignmentQueries { .. }
-            | Operation::SummarizePrimerPayloadAlignments { .. }
-            | Operation::InspectPrimerPayload { .. }
-            | Operation::CancelPrimerPayload { .. }
-            | Operation::InspectPrimerTrace { .. }
-            | Operation::CancelPrimerTrace { .. }
-    );
+    let lifecycle = LifecycleRequest::Operation(&operation);
+    let preserves_state_file = lifecycle.preserves_project_content()
+        || matches!(
+            &operation,
+            Operation::EvaluateGenomeEditIntent { .. }
+                | Operation::ValidateRnaPrimerPanel { .. }
+                | Operation::TracePrimerReads { .. }
+                | Operation::PreparePrimerPayloadAlignmentQueries { .. }
+                | Operation::SummarizePrimerPayloadAlignments { .. }
+                | Operation::InspectPrimerPayload { .. }
+                | Operation::CancelPrimerPayload { .. }
+                | Operation::InspectPrimerTrace { .. }
+                | Operation::CancelPrimerTrace { .. }
+        );
     let state = match load_state(&state_path) {
         Ok(state) => state,
         Err(err) => {
@@ -3605,7 +3608,7 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             );
         }
     };
-    let mut engine = GentleEngine::from_state(state);
+    let mut engine = GentleEngine::from_state_for(state, lifecycle);
     let result = match engine.apply(operation) {
         Ok(result) => result,
         Err(err) => {
@@ -3680,15 +3683,19 @@ fn workflow_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             );
         }
     };
-    let mut engine = GentleEngine::from_state(state);
+    let lifecycle = LifecycleRequest::Workflow(&workflow);
+    let preserves_state_file = lifecycle.preserves_project_content();
+    let mut engine = GentleEngine::from_state_for(state, lifecycle);
     let results = match engine.apply_workflow(workflow) {
         Ok(results) => results,
         Err(err) => {
             return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
         }
     };
-    if let Err(err) = engine.state().save_to_path(&state_path) {
-        return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
+    if !preserves_state_file {
+        if let Err(err) = engine.state().save_to_path(&state_path) {
+            return tool_result_json(json!({ "state_path": state_path, "error": err }), true);
+        }
     }
     tool_result_json(
         json!({
@@ -5721,6 +5728,45 @@ mod tests {
         assert_eq!(serde_json::to_value(direct.state()).unwrap(), before);
     }
 
+    #[test]
+    fn lifecycle_slice3_mcp_shared_shell_keeps_file_payload_and_persistence_contracts() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let td = tempdir().unwrap();
+        let state = td.path().join("synthetic's project.json");
+        let original = format!("{}\r\n ", serde_json::to_string(&fixture::state()).unwrap());
+        std::fs::write(&state, &original).unwrap();
+        let op_path = td.path().join("synthetic's op.json");
+        let wf_path = td.path().join("synthetic's workflow.json");
+        std::fs::write(
+            &op_path,
+            serde_json::to_vec_pretty(&fixture::plan(None, true)).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            &wf_path,
+            serde_json::to_vec_pretty(&Workflow {
+                run_id: "synthetic-shell".into(),
+                ops: vec![fixture::snv(), fixture::plan(None, true)],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        let args = json!({"state_path":state.to_string_lossy()})
+            .as_object()
+            .unwrap()
+            .clone();
+        for (verb, path) in [("op", op_path), ("workflow", wf_path)] {
+            run_shell_tool_with_optional_persist(
+                DEFAULT_MCP_STATE_PATH,
+                &args,
+                vec![verb.into(), format!("@{}", path.display())],
+                "synthetic-test",
+            )
+            .unwrap();
+            assert_eq!(std::fs::read(&state).unwrap(), original.as_bytes());
+        }
+    }
+
     fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool, window: bool) {
         // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
         let temp = tempdir().unwrap();
@@ -5801,7 +5847,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(direct_result.dna_sequence_design.as_deref(), Some(&preview));
-        let before = std::fs::read(&state_path).unwrap();
+        assert!(
+            !state_path.exists(),
+            "preview must not create project state"
+        );
         request["params"]["arguments"]["operation"] = json!({"ApplyDnaSequenceDesign":{
             "proposal":preview, "approval_digest":preview.approval_digest
         }});
@@ -5811,7 +5860,10 @@ mod tests {
             denied.pointer("/result/isError").and_then(Value::as_bool),
             Some(true)
         );
-        assert_eq!(std::fs::read(&state_path).unwrap(), before);
+        assert!(
+            !state_path.exists(),
+            "denied Apply must not create project state"
+        );
         request["params"]["arguments"]["confirm"] = true.into();
         let allowed = run_single(DEFAULT_MCP_STATE_PATH, request);
         assert_ne!(

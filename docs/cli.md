@@ -292,8 +292,14 @@ report-write attempt, including a cancelled report. Omitting `--path` adds no
 operation-derived approval but does not remove candidate/tool requirements;
 generic MCP retains its confirmation gate. Direct CLI invocation is explicit
 user intent and gains no new universal `--confirm` flag. Successful report
-writing is not search completion. This repair does not change implicit project
-saves, legacy reconciliation, destination collisions or overwrite behavior.
+writing is not search completion. Raw Plan/S1 op requests and nonempty workflows
+containing only those inspections preserve post-loader project content and do
+not implicitly create/rewrite project files or candidate sidecars. Named/shared-
+shell inspection commands retain their existing no-change save behavior. Empty,
+mixed and opaque wrappers keep legacy construction/save rules; parsing and
+payload-file errors are unchanged. Explicit report paths must be distinct from
+project/sidecar files: destination collisions and overwrite behavior are not
+repaired by autosave suppression. Generic MCP still requires `confirm=true`.
 The second command must not run until the user approves the exact feasible preview.
 Use its actual `approval_digest`, never the illustrative placeholder above.
 Planning never changes source/project sequences; application creates a derived

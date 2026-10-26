@@ -1,5 +1,68 @@
 # Glen: Next Verification And Return
 
+## Lifecycle Slice 3, 2026-10-27
+
+Owner-authorized implementation starts from `ce4d33b5`; integrate normally and
+record the exact tested full SHA. No new payload resolver or parser change.
+Verify Plan/S1 request-aware construction/apply, raw no-autosave, generic
+JS/Lua state-out and existing journal-publishing managed jobs. The
+[reconciled plan](operation_lifecycle_slice3_plan.md) owns scope and limitations.
+Keep the earlier goal paused; push/coordination remains with the main thread.
+
+Changed runtime files: `src/engine.rs`, `src/engine/operation_lifecycle.rs`,
+`src/engine/ops/operation_handlers.rs`, `src/bin/gentle_cli.rs`,
+`src/mcp_server.rs`, `src/js_interface.rs`, `src/lua_interface.rs`.
+Tests: new `src/engine/lifecycle_slice3_tests.rs`,
+`src/command_execution/lifecycle_tests.rs` and
+`scripts/test_operation_lifecycle_slice3.py`, plus the module registration in
+`src/command_execution.rs` and adapter-local regressions. Documentation:
+`docs/{architecture,decisions,protocol,cli,gui,roadmap,CHANGELOG}.md`, this
+handoff, the lifecycle proposal/plan/historical review prompt, tutorial 06.07
+and its input README. Shared shell/parser, Python client and Cargo files are
+unchanged. Unrelated `outputs/` remains untouched.
+
+Use same-source CI where already available; run only missing groups. Rust,
+actual binaries/VMs and native acceptance were not executed by Codex:
+
+```sh
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo test --locked --no-default-features -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib sequence_design -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib genome_edit_intent -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib command_execution -- --test-threads=1
+cargo test --locked --no-default-features --features js-interface -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked --no-default-features --features lua-interface -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo fmt --check
+```
+
+Require nonzero selected counts; blocked optional runtimes are not parity. Build
+CLI/MCP once at that source if needed, then supply them explicitly (never let the
+Python client fall back to Cargo):
+
+```sh
+cargo build --locked --no-default-features -j1 --bin gentle_cli --bin gentle_mcp
+GENTLE_LIFECYCLE_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_operation_lifecycle_slice3 -v
+GENTLE_TUTORIAL_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_sequence_design_tutorial -v
+```
+
+Check absent/empty/noncanonical LF/CRLF projects and candidate sidecar bytes,
+MCP denial before I/O, preview/denied Apply absence and approved exact DNA,
+unreconciled MCP summary counts, loaded/inline targets, failure/cancel prefixes,
+real JS/Lua/Python, redo and managed owner/history/structural guards. Existing
+managed project-replacement tests remain essential controls. A concurrent
+journal append is still allowed to make another job stale. No live model call
+is needed: retain existing inner-agent approval/ask and nested-agent tests.
+Glen owns native GUI dirty/redo behavior and Windows handle/path checks.
+
+Do not relabel old approval passes as current-source evidence. Opaque wrappers
+still repair on construction; permissive sidecar warnings can still be saved
+by unmigrated commands; explicit report paths aliasing project/sidecars remain
+Slice 4. Report these boundaries, not a universal read-only guarantee. Return
+changed-source SHA, feature/platform/toolchain, exact selected counts, failures
+and unrun checks through the main-maintaining thread; no new audit campaign.
+
 ## Tutorial Agent-Parity Approval Count, 2026-10-26
 
 The owner reports 4549 library passes, one failure and 16 ignored tests; tested

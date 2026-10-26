@@ -40489,7 +40489,7 @@ impl GentleEngine {
     ) -> Result<OpResult, EngineError> {
         // Inspection must not repair legacy/unreconciled project state, even
         // when the request is refused. Other operations keep their setup.
-        if !matches!(&op, Operation::EvaluateGenomeEditIntent { .. }) {
+        if !LifecycleRequest::Operation(&op).preserves_project_content() {
             self.reconcile_lineage_nodes();
             self.reconcile_containers();
         }

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-27 - Preserve Covered Inspection Construction And Persistence
+
+- Implement the owner-authorized, Claude-revised Lifecycle Slice 3 without a
+  new payload-resolution layer. One pure decoded-request selector and factory
+  preserve Plan/S1 state through raw CLI/MCP and generic JS/Lua operations and
+  nonempty all-covered workflows, and suppress their implicit project saves.
+  Ordinary loading, mixed/empty/opaque wrappers, parsers and approval stay legacy.
+- Skip apply preamble repair for Plan as well as S1; retain fresh instance IDs,
+  counter reseeding, journals and redo. Managed Op/Workflow still uses guarded
+  journal publication, not the independent observation lane. Concurrent journal
+  staleness, permissive sidecar loss on unmigrated saves and explicit report
+  alias/writer safety remain documented boundaries, not silently fixed behavior.
+- Author synthetic engine/history, workflow/failure/cancel, managed-publication,
+  real scripting VM and opt-in CLI/MCP/Python regressions. Correct the MCP fixture:
+  preview/denied Apply leave state absent; approved Apply creates exact DNA.
+  Update tutorial 06.07 and shared contracts without changing scientific inputs.
+  Rust/process/VM/native execution remains Glen/CI's; no local Rust build or push.
+
 ## 2026-10-26 - Align Tutorial Agent Approval Count
 
 - Correct the stale tutorial parser-classification expectation from 15 to 16:

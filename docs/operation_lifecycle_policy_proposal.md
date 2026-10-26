@@ -1,11 +1,13 @@
 # Request-Aware Operation Lifecycle Policy
 
-Status, 2026-10-26: Claude's source-only review is reconciled below. The owner
-authorized slices 1--2 only: report-write confirmation and conservative static
-metadata. The owner subsequently requested local parity checks; the bounded
-approval regressions and canonical checks now have the source-scoped macOS
-results below. Constructor/workflow lifecycle
-migration and alias/writer rules remain proposals, not S2 authorization. Original review prompt:
+Status, 2026-10-27: slices 1--2 retain the source-scoped executed macOS approval/
+parity evidence below. After a further owner-supplied Claude review, the owner
+authorized [revised Slice 3](operation_lifecycle_slice3_plan.md), explicitly
+without the new payload-resolution layer. Construction/workflow/no-autosave
+changes and regressions are authored; Rust/actual-process/VM/native verification
+remains with Glen/CI. The original review/source observations below are historical;
+the revised slice order records current scope. Alias/writer rules and S2 remain
+separately gated. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
 
 ## Source And Scope
@@ -230,15 +232,15 @@ already written files or infer that undo removes them.
    matrix surfacing columns do not encode mutation, but the missing raw IDs
    require two shell-only rows/counts. No new byte-exact artifact gate or
    unrelated regeneration is introduced. Retain existing LF/CRLF checks.
-3. **Construction, scripting and workflow lifecycle coverage.** Not authorized
-   by slices 1--2. The owner requested a [detailed Slice 3 plan](operation_lifecycle_slice3_plan.md)
-   and [read-only Claude review prompt](operation_lifecycle_slice3_claude_review_prompt.md),
-   not implementation; that draft awaits review and separate authorization.
-   Add the explicit inspection construction path, reconcile/history
-   facets and implicit autosave suppression together; preserve ordinary
-   construction and session bookkeeping. Inventory JS/Lua state-out and Python/
-   CLI/MCP/workflow persistence. Only then replace tests that rely on Plan's
-   project autosave, explicitly initializing state for subsequent Apply.
+3. **Construction, scripting and workflow lifecycle coverage.** Owner authorized
+   the Claude-reviewed revision on 2026-10-26 **without a new payload-resolution
+   layer**. The [reconciled Slice 3](operation_lifecycle_slice3_plan.md) is authored;
+   Rust/actual-process/VM/native verification remains with Glen/CI. One explicit
+   decoded-request factory/selector covers Plan/S1 and nonempty all-covered
+   workflows; ordinary construction, mixed/empty/opaque wrappers and parsers
+   stay legacy. Preserve journals and guarded managed commits, not just DNA.
+   The MCP fixture now asserts preview/denied Apply leave state absent; approved
+   Apply creates it. No artificial baseline or new request/digest is needed.
 4. **Alias/collision and writer contract.** Separate owner decision; not a
    prerequisite for slices 1--3. Inspect existing portable helpers before any
    promises about symlinks, hard links, races, atomicity or no-clobber behavior.

@@ -200,6 +200,14 @@ may be inferred from a gene label. This is not full DNA Chisel or a `.12` gate.
 See [the exact request and non-claims](cli.md#synthetic-sequence-design) and
 [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for the offline
 joint motif/GC preview, separately approved apply and same-session undo/redo.
+Plan/S1 inspections preserve the live project, mutation/structural revisions and
+undo/redo, including when a report is requested or a preview is refused.
+Managed generic Op/Workflow still publishes its journal through the existing
+owner/stale-checked commit; it is not an independent observation lane. A concurrent
+journal append may make another job stale. Existing explicit report-write approval
+and cancellation remain; a written report may survive a cancelled/failed command.
+No new window, payload resolver, native acceptance or report/project alias safety
+is implied by this lifecycle repair.
 The same request optionally selects `search_strategy=conflict_directed`; omission
 retains enumeration. GUI Shell and Agent Assistant share the engine policy and
 need a freshly reviewed approval after a strategy change. This adds no separate

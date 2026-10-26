@@ -1,7 +1,12 @@
 # Claude Review Prompt: Lifecycle Slice 3
 
-Prepared 2026-10-26 for Steffen to forward. **Design review only; not yet
-Claude-reviewed. Do not implement the plan.** No direct Claude call was made.
+Historical prompt prepared 2026-10-26 for Steffen to forward. The owner supplied
+Claude's review and authorized the revised Slice 3 on 2026-10-26, explicitly
+**without the new payload-resolution layer**. The reconciled
+[implementation plan/status](operation_lifecycle_slice3_plan.md) supersedes the
+proposal below, including its resolve-once and baseline-before-Apply suggestions.
+Rust/runtime/native verification remains pending with Glen/CI. No direct Claude
+call was made here; the historical review instructions below are not a new task.
 
 ---
 

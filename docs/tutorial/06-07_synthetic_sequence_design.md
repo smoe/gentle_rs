@@ -88,6 +88,14 @@ gentle_cli --state tutorial.gentle.json sequence-design plan @request.json --pat
 ```
 
 This writes `preview.json` but creates no project sequence or container.
+It also leaves a missing `tutorial.gentle.json` missing, and does not implicitly
+rewrite an existing project or its candidate sidecars. Keep `preview.json`
+separate from project/sidecar paths: an explicitly selected report destination
+is still a write, and alias/overwrite safety is not supplied by this guarantee.
+The raw CLI/MCP op and nonempty all-inspection workflow routes share this rule;
+MCP still requires `confirm=true`. Empty/mixed workflows and opaque agent-plan
+wrappers retain legacy construction/save behavior. In-memory undo/redo and dirty
+revisions stay unchanged, while successful operation journals still advance.
 The input is inline DNA in the request, not an existing sequence to overwrite.
 Planning also leaves any already stored project DNA unchanged.
 

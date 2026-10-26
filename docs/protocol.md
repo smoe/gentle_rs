@@ -842,10 +842,13 @@ non-claims. It is not persisted and creates no project sequence, file, network
 activity, undo entry or mutation/structural revision. The ordinary operation
 journal/execution receipt may advance. Generic MCP `op` still requires
 `confirm=true`, but this operation does not create or rewrite its state file.
-This apply/file-level rule does not yet cover generic construction: `from_state`
-repairs lineage/containers before dispatch, so JS/Lua can return repaired state
-for an unreconciled input. Constructor/workflow preservation remains separately
-gated; suppressing a disk save does not establish unchanged in-memory content.
+Decoded raw CLI/MCP and generic JS/Lua operation/workflow routes now use the
+engine's request-aware construction: Plan/S1 and nonempty all-covered workflows
+preserve supplied/post-loader project content and suppress implicit saves.
+Successful journals/execution bookkeeping still advance, without checkpoints or
+mutation/structural revision changes. Ordinary construction, empty/mixed and
+opaque wrappers stay legacy. File bytes and decoded state are separate oracles;
+sidecar hydration/load warnings remain part of the existing loader boundary.
 There is no dedicated editing command, GUI designer, guide/profile selection,
 efficacy/off-target prediction, observed genotype or laboratory execution.
 
@@ -865,9 +868,15 @@ remain additive. Static Plan metadata is External with confirmation, not an
 authorization source. Approval covers the report-write attempt, including
 `cancelled` reports, not successful search. A file may be written successfully
 while its retained search status remains cancelled. Scientific/report bytes and
-the existing writer are unchanged. This does not implement constructor,
-reconciliation, history, autosave or destination-alias policy; those lifecycle
-facets and S2 remain separately gated.
+the existing writer are unchanged. The same Slice 3 construction/save rule as
+S1 covers Plan, including requested reports. A preview does not create a missing
+project; denied Apply keeps it missing; approved Apply creates the exact DNA.
+Raw MCP's returned `state_summary` reflects unreconciled preserved content, so
+container/arrangement counts may differ from older constructor-repaired results.
+Its separate `state_summary` tool retains ordinary construction. Generic managed
+Op/Workflow retains guarded journal publication; inspection is not an independent
+observation job. No new payload resolver or parser read is added. Explicit
+report/project aliases, overwrite/race safety and S2 remain separately gated.
 
 Portable schemas in `gentle_protocol::sequence_design`:
 `gentle.dna_sequence_design_request.v1`,

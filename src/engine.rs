@@ -1258,6 +1258,7 @@ struct ResolvedGenomePromoterSlice {
 // area without changing adapter-visible APIs.
 #[path = "engine/operation_lifecycle.rs"]
 mod operation_lifecycle;
+pub use operation_lifecycle::LifecycleRequest;
 pub(crate) use operation_lifecycle::operation_approval_policy;
 
 #[path = "engine/ops/candidate_guides.rs"]
@@ -7207,6 +7208,19 @@ impl GentleEngine {
         ret.reconcile_containers();
         ret.reseed_op_counter_from_state();
         ret
+    }
+
+    /// Construct for an already decoded request. Covered inspections preserve the
+    /// supplied state while retaining fresh session identity and counter reseeding.
+    /// Ordinary loading and later mutating operations still reconcile normally.
+    pub fn from_state_for(state: ProjectState, request: LifecycleRequest<'_>) -> Self {
+        if !request.preserves_project_content() {
+            return Self::from_state(state);
+        }
+        let mut engine = Self::new();
+        engine.state = state;
+        engine.reseed_op_counter_from_state();
+        engine
     }
 
     fn parse_op_counter_from_id(op_id: &str) -> Option<u64> {
@@ -30912,5 +30926,8 @@ impl Engine for GentleEngine {
     }
 }
 
+#[cfg(test)]
+#[path = "engine/lifecycle_slice3_tests.rs"]
+pub(crate) mod lifecycle_slice3_tests;
 #[cfg(test)]
 mod tests;

@@ -3,8 +3,8 @@
 use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
-        Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, Operation, ProjectState,
-        Workflow,
+        Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, LifecycleRequest, Operation,
+        ProjectState, Workflow,
     },
     engine_shell::{ShellCommand, execute_shell_command},
     enzymes::active_restriction_enzymes,
@@ -857,7 +857,7 @@ fn apply_operation_impl(
     op_json: &str,
 ) -> Result<OperationApplyResponse, JsAnyhow> {
     let op: Operation = serde_json::from_str(op_json).map_err(deno_core::anyhow::Error::from)?;
-    let mut engine = GentleEngine::from_state(state);
+    let mut engine = GentleEngine::from_state_for(state, LifecycleRequest::Operation(&op));
     let result = engine.apply(op).map_err(JsAnyhow::from)?;
     Ok(OperationApplyResponse {
         state: engine.state().clone(),
@@ -873,7 +873,7 @@ fn apply_workflow(
 ) -> Result<WorkflowApplyResponse, JsAnyhow> {
     let workflow: Workflow =
         serde_json::from_str(workflow_json).map_err(deno_core::anyhow::Error::from)?;
-    let mut engine = GentleEngine::from_state(state);
+    let mut engine = GentleEngine::from_state_for(state, LifecycleRequest::Workflow(&workflow));
     let results = engine.apply_workflow(workflow).map_err(JsAnyhow::from)?;
     Ok(WorkflowApplyResponse {
         state: engine.state().clone(),
@@ -1420,6 +1420,59 @@ mod tests {
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn lifecycle_slice3_js_runtime_preserves_state_and_legacy_controls() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let state = serde_json::to_value(fixture::state()).unwrap();
+        let ops = [
+            fixture::plan(None, false),
+            fixture::plan(None, true),
+            fixture::snv(),
+        ];
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(r#"
+            const input = {state};
+            const ops = {ops};
+            function canonical(x) {{
+                if (Array.isArray(x)) return x.map(canonical);
+                if (x !== null && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
+                return x;
+            }}
+            const eq = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+            for (const op of ops) {{
+                if (!eq(input, apply_operation(input,op).state)) throw Error('inspection repaired state');
+            }}
+            for (const items of [ops, [...ops].reverse()]) {{
+                if (!eq(input,apply_workflow(input,{{run_id:'synthetic',ops:items}}).state)) throw Error('workflow repaired state');
+            }}
+            const mutation = {mutation};
+            if (eq(input,apply_operation(input,mutation).state)) throw Error('mutation control did not mutate');
+            if (eq(input,apply_workflow(input,{{run_id:'empty',ops:[]}}).state)) throw Error('empty workflow lost legacy repair');
+            if (eq(input,apply_workflow(input,{{run_id:'mixed',ops:[ops[2],mutation]}}).state)) throw Error('mixed workflow lost legacy behavior');
+            const missing = {{PlanDnaSequenceDesign:{{...ops[0].PlanDnaSequenceDesign,request:{{...ops[0].PlanDnaSequenceDesign.request,target:{{kind:'loaded_sequence',seq_id:'missing'}}}}}}}};
+            let refused = false;
+            try {{ apply_operation(input,missing); }} catch (_) {{ refused = true; }}
+            if (!refused || !eq(input,{state})) throw Error('refusal changed input');
+        "#,ops=serde_json::to_string(&ops).unwrap(),mutation=serde_json::to_string(&fixture::create()).unwrap())).unwrap();
+    }
+
+    #[test]
+    fn lifecycle_slice3_js_opaque_agent_plan_keeps_legacy_construction() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let plan = serde_json::json!({"schema":"gentle.agent_plan_result.v1","assistant_message":"synthetic",
+            "questions":[],"candidates":[{"candidate_id":"inspect","title":"Synthetic inspection","rationale":"legacy wrapper control",
+            "kind":"shell","mutating":false,"requires_confirmation":false,"execution_mode":"auto",
+            "shell_command":format!("op {}",crate::engine_shell::shell_quote(&serde_json::to_string(&fixture::snv()).unwrap()))}]});
+        let input = fixture::state();
+        let out =
+            execute_agent_plan_impl(input.clone(), &plan.to_string(), "inspect", true).unwrap();
+        assert_ne!(
+            serde_json::to_value(out.state).unwrap(),
+            serde_json::to_value(input).unwrap(),
+            "opaque wrapper intentionally still repairs on construction"
+        );
+    }
 
     fn normalize_construct_reasoning_status_output(
         mut value: serde_json::Value,

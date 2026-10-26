@@ -1016,8 +1016,13 @@ Interactive orchestration contract:
   publication serializes cancellation with the existing guarded engine commit.
   Failed/cancelled managed commands discard unpublished engine deltas, not external
   effects. Blocking CLI callers retain their prior nontransactional prefix semantics.
-- Read-only background computation uses the same engine execution baseline but
+- Observation-only background computation uses the same engine execution baseline but
   clones no inherited undo/redo checkpoints and never enters the commit path.
+  Managed generic Op/Workflow instead publishes its operation journal through
+  the guarded commit even for Plan/S1 inspections; it preserves project content,
+  dirty revisions and undo/redo, not journal identity. A concurrent journal
+  append can still make another job stale. No observation-lane exemption follows
+  from a false `state_changed` or registry read-only label (DEC-026).
   Raw full-engine clones are not permitted in GUI workers: retaining unneeded
   shared history can keep complete historical project snapshots alive.
 - Persisted metadata edits made outside `apply` go through the engine auxiliary
@@ -1027,6 +1032,14 @@ Interactive orchestration contract:
   structural revisions.
   GUI dirty-state detection compares the mutation revision with the last saved
   revision instead of serializing and hashing the complete project on a timer.
+- `LifecycleRequest` selects construction/repair/implicit-save preservation
+  only for decoded Plan/S1 operations and nonempty all-covered workflows.
+  `from_state_for` keeps fresh engine identity, defaults and counter reseeding
+  without reconciling supplied state; apply uses the same selector. Ordinary
+  construction, mixed/empty/opaque wrappers and payload parsing stay unchanged.
+  File-backed preservation starts after shared loading/hydration and does not
+  cover an explicit report path aliasing a project. See the
+  [Slice 3 contract and remaining boundaries](operation_lifecycle_slice3_plan.md).
 - Root-frame orchestration is O(1) unless a cheap revision/count stamp changes.
   Expensive signatures, serialization, disk/network I/O, and subprocess
   preflight belong behind such a gate or in a background worker.
