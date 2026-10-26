@@ -49,6 +49,11 @@ Other observed primer intervals are masked with N in **new copies** and excluded
 from support, or explicitly unassessed. The denominator is unmasked query length,
 not aligned length. Original reads and Phase 1 artifacts remain unchanged.
 
+Preparation and verification share the same clipped geometry: a hit wholly
+outside a payload contributes no mask and is rejected from arithmetic before
+subtraction. Empty/fully masked payloads have no usable denominator; they cannot
+produce a numerical fraction or an off-target zero.
+
 References explicitly bind ID, transcriptome/genome scope, assembly/release,
 FASTA and normalized annotation. Transcript records associate exact target
 name/length with sorted unique gene IDs. Genome scope requires exact contig,

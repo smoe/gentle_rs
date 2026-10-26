@@ -36,6 +36,16 @@ parity freshness, Windows handles, live-agent responsiveness and private-cohort
 accuracy/throughput remain external acceptance work. No item is accepted merely
 because source/Python checks pass. The existing goal stays paused.
 
+### Mask Arithmetic Follow-Up
+
+The source-only continuation centralizes preparation/verification clipping and
+guards empty expected-fraction denominators. Five additional Rust regressions
+are authored, including 12,168 abstract interval/orientation cases and an
+all-anchor opposite-orientation round trip. See the
+[incremental handoff](glen_next_verification_handoff.md#primer-payload-mask-geometry-2026-10-26).
+Execution remains pending; this does not turn the initial 20 authored Rust tests
+or any scientific gate into a pass. Phase 1 wire/artifact definitions stay intact.
+
 ## 1. Outcome And Limits
 
 Interpret externally aligned, primer-free payloads as a separate engine-owned

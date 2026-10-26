@@ -20,6 +20,32 @@ BIN = os.environ.get("GENTLE_PAYLOAD_CLI")
 
 
 class PrimerPayloadSourceTests(unittest.TestCase):
+    def test_mask_clipping_is_shared_and_matches_independent_basewise_oracle(self):
+        base = ROOT / "src/engine/analysis/rna_panel/primer_payload"
+        preparation = (base / "prepare.rs").read_text()
+        binding = (base / "binding.rs").read_text()
+        self.assertIn("payload_geometry(row.read_length, hit, &row.hits)?", preparation)
+        self.assertIn("prepare::payload_geometry(row.read_length, h, &row.hits)?", binding)
+        self.assertNotIn(".then_some(if", preparation + binding)
+        # Independent oracle cross-check only, not execution of Rust.
+        cases = 0
+        for start in range(12):
+            for end in range(start + 1, 13):
+                for other_start in range(12):
+                    for other_end in range(other_start + 1, 13):
+                        for reverse in (False, True):
+                            a, z = (0, start) if reverse else (end, 12)
+                            raw_positions = list(range(a, z))
+                            if reverse:
+                                raw_positions.reverse()
+                            observed = [i for i, raw in enumerate(raw_positions)
+                                        if other_start <= raw < other_end]
+                            s, e = max(a, other_start), min(z, other_end)
+                            clipped = [] if s >= e else list(range(z - e, z - s) if reverse else range(s - a, e - a))
+                            self.assertEqual(observed, clipped)
+                            cases += 1
+        self.assertEqual(cases, 12168)
+
     def test_invented_inputs_vary_oligos_orientation_and_opaque_names(self):
         for prefix in ("toy", "renamed_arbitrary_ids"):
             with tempfile.TemporaryDirectory() as scratch:

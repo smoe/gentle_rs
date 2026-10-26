@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-26 - Guard Primer Payload Mask Arithmetic
+
+- Replace eager conditional mask arithmetic with one shared, validated payload
+  geometry helper for preparation and manifest verification. Disjoint earlier/
+  later hits are excluded before subtraction; empty, fully masked and reverse
+  windows remain explicit. Invalid anchor/hit spans return a structured error.
+- Guard zero/inconsistent expected-fraction denominators without eager division.
+  No matching thresholds, Phase 1 bytes, scope, confirmation or publication
+  rules change. No current-panel branch is added.
+- Author five Rust regressions, including a 12,168-case basewise interval oracle,
+  extreme coordinates and an all-anchor forward/reverse preparation/import
+  round trip with original FASTQ removed before inspection. Add an independent
+  Python arithmetic/source check; this is not Rust execution or acceptance.
+
+
 ## 2026-10-26 - Add Generic Primer-Free Payload Evidence (Experimental)
 
 - Add strict Phase 2 schemas and separate verified query preparation: retained

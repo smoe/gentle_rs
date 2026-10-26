@@ -8,6 +8,12 @@ are 10/12 nt, not the motivating 44-mer oligos; read names deliberately repeat.
 The second raw read is reverse-complemented. Literal PAF rows are teaching
 evidence, not the output of a reproduced aligner/search.
 
+Inline mask regressions additionally enumerate abstract intervals over 12
+positions (12,168 ordered anchor/hit/orientation cases) and coordinate extremes.
+These are geometry inputs, not biologically admissible oligos. A temporary
+two-read/four-anchor fixture checks shared preparation/verification in both
+orientations, including verification after the original FASTQ is removed.
+
 Recreate in a **fresh** synthetic directory using the Phase 2 addendum to
 tutorial 10.04. The helper has no GENtle build, subprocess, network or implicit
 input-discovery capability. It creates new fixture files with exclusive opens;

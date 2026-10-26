@@ -197,12 +197,53 @@ pub(super) fn retained_fasta(
     Ok(result)
 }
 
-fn payload(hit: &RnaPrimerHit, length: usize) -> (usize, usize) {
-    if hit.strand == PrimerReadStrand::Forward {
-        (hit.end, length)
-    } else {
-        (0, hit.start)
+pub(super) struct PayloadGeometry {
+    pub interval: (usize, usize),
+    pub excluded: Vec<(usize, usize)>,
+    pub usable: usize,
+}
+
+/// Clip observed hits before subtraction, using the same transform for writing and verification.
+pub(super) fn payload_geometry(
+    length: usize,
+    anchor: &RnaPrimerHit,
+    hits: &[RnaPrimerHit],
+) -> Result<PayloadGeometry, EngineError> {
+    if anchor.primer_id.is_none()
+        || !hits.contains(anchor)
+        || hits.iter().any(|h| h.start >= h.end || h.end > length)
+    {
+        return Err(bad("primer_payload_anchor_geometry"));
     }
+    let (a, z) = if anchor.strand == PrimerReadStrand::Forward {
+        (anchor.end, length)
+    } else {
+        (0, anchor.start)
+    };
+    let excluded = union(
+        hits.iter()
+            .filter_map(|other| {
+                let s = a.max(other.start);
+                let e = z.min(other.end);
+                if s >= e {
+                    return None;
+                }
+                Some(if anchor.strand == PrimerReadStrand::Forward {
+                    (s - a, e - a)
+                } else {
+                    (z - e, z - s)
+                })
+            })
+            .collect(),
+    );
+    let usable = (z - a)
+        .checked_sub(span_bases(&excluded))
+        .ok_or_else(|| bad("primer_payload_anchor_geometry"))?;
+    Ok(PayloadGeometry {
+        interval: (a, z),
+        excluded,
+        usable,
+    })
 }
 
 fn add_row(
@@ -260,22 +301,11 @@ fn add_row(
             (start, end, strand, core_start, core_end),
             &primer_ids,
         ))?;
-        let (a, z) = payload(hit, row.read_length);
-        let excluded = union(
-            row.hits
-                .iter()
-                .filter_map(|other| {
-                    let s = a.max(other.start);
-                    let e = z.min(other.end);
-                    (s < e).then_some(if strand == PrimerReadStrand::Forward {
-                        (s - a, e - a)
-                    } else {
-                        (z - e, z - s)
-                    })
-                })
-                .collect(),
-        );
-        let usable = z - a - span_bases(&excluded);
+        let PayloadGeometry {
+            interval: (a, z),
+            excluded,
+            usable,
+        } = payload_geometry(row.read_length, hit, &row.hits)?;
         if usable < request.min_payload_bases
             || (!excluded.is_empty()
                 && request.internal_primer_policy == PrimerPayloadInternalPrimerPolicy::Unassessed)

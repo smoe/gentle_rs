@@ -172,24 +172,11 @@ pub(super) fn queries(
             })
             .ok_or_else(|| bad("primer_payload_query_source_row"))?;
         let h = &q.anchor;
-        let interval = if h.strand == PrimerReadStrand::Forward {
-            (h.end, row.read_length)
-        } else {
-            (0, h.start)
-        };
-        let mask = union(
-            row.hits
-                .iter()
-                .filter_map(|x| {
-                    let (a, z) = (interval.0.max(x.start), interval.1.min(x.end));
-                    (a < z).then_some(if h.strand == PrimerReadStrand::Forward {
-                        (a - interval.0, z - interval.0)
-                    } else {
-                        (interval.1 - z, interval.1 - a)
-                    })
-                })
-                .collect(),
-        );
+        let prepare::PayloadGeometry {
+            interval,
+            excluded: mask,
+            usable,
+        } = prepare::payload_geometry(row.read_length, h, &row.hits)?;
         let ids = row
             .hits
             .iter()
@@ -230,7 +217,7 @@ pub(super) fn queries(
             || q.query_length != interval.1 - interval.0
             || seq.len() != q.query_length
             || q.sequence_sha256 != sha256_prefixed_bytes(seq)
-            || q.usable_bases != q.query_length - span_bases(&mask)
+            || q.usable_bases != usable
             || q.usable_bases < report.request.min_payload_bases
             || q.sample_id != unit.input.sample_id
             || q.barcode != unit.input.barcode

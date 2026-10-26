@@ -23,6 +23,14 @@ pub(super) fn source(
     fasta: bool,
     sequence: &str,
 ) -> (GentleEngine, RnaPrimerTraceResultBinding) {
+    source_reads(root, fasta, &[format!("AGTCCGATCA{sequence}")])
+}
+
+pub(super) fn source_reads(
+    root: &Path,
+    fasta: bool,
+    reads: &[String],
+) -> (GentleEngine, RnaPrimerTraceResultBinding) {
     let engine = GentleEngine::new();
     let mut panel: RnaPrimerPanel = serde_json::from_value(serde_json::json!({
         "schema":RNA_PRIMER_PANEL_SCHEMA,"content_sha256":"", "policy":{"max_full_edits":0,"max_core_edits_for_attribution":0},
@@ -31,8 +39,10 @@ pub(super) fn source(
             "core_orientation":"sense_5prime","expected_targets":[{"locus_id":"invented_expected_locus","transcript_feature_id":null}],"variant":"invented","source":"Inline Phase 2 fixture"}]
     })).unwrap();
     GentleEngine::seal_rna_primer_panel(&mut panel).unwrap();
-    let read = format!("AGTCCGATCA{sequence}");
-    let bytes = format!("@reused_name\n{read}\n+\n{}\n", "I".repeat(read.len()));
+    let bytes = reads
+        .iter()
+        .map(|read| format!("@reused_name\n{read}\n+\n{}\n", "I".repeat(read.len())))
+        .collect::<String>();
     let input = root.join("invented input's reads.fastq");
     fs::write(&input, bytes.as_bytes()).unwrap();
     let request: TracePrimerReadsRequest = serde_json::from_value(serde_json::json!({
@@ -73,6 +83,202 @@ pub(super) fn prepare(
 }
 
 pub(super) const PAYLOAD: &str = "GATCCATGAGCTAGTCGACATCGTAGCTACGATGCTAGCATCG";
+
+pub(super) fn bound_file(path: &Path) -> PrimerPayloadFile {
+    let bytes = fs::read(path).unwrap();
+    PrimerPayloadFile {
+        path: path.display().to_string(),
+        sha256: sha256_prefixed_bytes(&bytes),
+        bytes: bytes.len() as u64,
+    }
+}
+
+fn interval_hit(start: usize, end: usize, strand: PrimerReadStrand) -> RnaPrimerHit {
+    RnaPrimerHit {
+        primer_id: Some("abstract_interval_only".into()),
+        anchor_class: "synthetic_geometry".into(),
+        strand,
+        start,
+        end,
+        edits: 0,
+        core_start: Some(start),
+        core_end: Some(end),
+        core_edits: Some(0),
+        terminal: false,
+    }
+}
+
+#[test]
+fn primer_payload_masks_exhaustive_positions_match_basewise_oracle() {
+    // Abstract intervals, not biologically admissible oligos or another primer matcher.
+    let length = 12usize;
+    let mut cases = 0;
+    for start in 0..length {
+        for end in start + 1..=length {
+            for other_start in 0..length {
+                for other_end in other_start + 1..=length {
+                    for strand in [
+                        PrimerReadStrand::Forward,
+                        PrimerReadStrand::ReverseComplement,
+                    ] {
+                        let anchor = interval_hit(start, end, strand);
+                        let other = interval_hit(other_start, other_end, PrimerReadStrand::Forward);
+                        let hits = vec![anchor.clone(), other];
+                        let got = prepare::payload_geometry(length, &anchor, &hits).unwrap();
+                        let positions = match strand {
+                            PrimerReadStrand::Forward => (end..length).collect::<Vec<_>>(),
+                            PrimerReadStrand::ReverseComplement => {
+                                (0..start).rev().collect::<Vec<_>>()
+                            }
+                        };
+                        let mut expected = Vec::<(usize, usize)>::new();
+                        let mut usable = 0;
+                        for (index, raw) in positions.iter().enumerate() {
+                            if hits.iter().any(|h| (h.start..h.end).contains(raw)) {
+                                if let Some(last) = expected.last_mut()
+                                    && last.1 == index
+                                {
+                                    last.1 += 1;
+                                } else {
+                                    expected.push((index, index + 1));
+                                }
+                            } else {
+                                usable += 1;
+                            }
+                        }
+                        assert_eq!(
+                            got.excluded, expected,
+                            "{start}..{end}, {other_start}..{other_end}, {strand:?}"
+                        );
+                        assert_eq!(got.usable, usable);
+                        assert_eq!(got.interval.1 - got.interval.0, positions.len());
+                        cases += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 12_168);
+}
+
+#[test]
+fn primer_payload_masks_reject_invalid_anchor_and_hit_geometry() {
+    let anchor = interval_hit(4, 7, PrimerReadStrand::Forward);
+    assert!(prepare::payload_geometry(12, &anchor, &[]).is_err());
+    for invalid in [
+        interval_hit(5, 5, anchor.strand),
+        interval_hit(7, 3, anchor.strand),
+        interval_hit(8, 13, anchor.strand),
+    ] {
+        assert!(prepare::payload_geometry(12, &invalid, std::slice::from_ref(&invalid)).is_err());
+        assert!(prepare::payload_geometry(12, &anchor, &[anchor.clone(), invalid]).is_err());
+    }
+}
+
+#[test]
+fn primer_payload_masks_handle_empty_fully_masked_and_extreme_coordinates() {
+    for anchor in [
+        interval_hit(4, 12, PrimerReadStrand::Forward),
+        interval_hit(0, 8, PrimerReadStrand::ReverseComplement),
+    ] {
+        let got = prepare::payload_geometry(12, &anchor, std::slice::from_ref(&anchor)).unwrap();
+        assert_eq!(got.usable, 0);
+        assert!(got.excluded.is_empty());
+    }
+    for (anchor, other) in [
+        (
+            interval_hit(0, 4, PrimerReadStrand::Forward),
+            interval_hit(4, 12, PrimerReadStrand::Forward),
+        ),
+        (
+            interval_hit(8, 12, PrimerReadStrand::ReverseComplement),
+            interval_hit(0, 8, PrimerReadStrand::Forward),
+        ),
+    ] {
+        let got = prepare::payload_geometry(12, &anchor, &[anchor.clone(), other]).unwrap();
+        assert_eq!(got.usable, 0);
+        assert_eq!(got.excluded, vec![(0, 8)]);
+    }
+    let anchor = interval_hit(usize::MAX - 20, usize::MAX - 10, PrimerReadStrand::Forward);
+    let got = prepare::payload_geometry(
+        usize::MAX,
+        &anchor,
+        &[anchor.clone(), interval_hit(0, 5, anchor.strand)],
+    )
+    .unwrap();
+    assert_eq!(got.usable, 10);
+    assert!(got.excluded.is_empty());
+}
+
+#[test]
+fn primer_payload_fraction_zero_or_inconsistent_denominator_is_unavailable() {
+    assert_eq!(evidence::target_fraction(Some(0), 0), None);
+    assert_eq!(evidence::target_fraction(Some(1), 0), None);
+    assert_eq!(evidence::target_fraction(Some(11), 10), None);
+    assert_eq!(evidence::target_fraction(None, 10), None);
+    assert_eq!(evidence::target_fraction(Some(0), 10), Some(0));
+    assert_eq!(evidence::target_fraction(Some(5), 10), Some(500));
+    assert_eq!(
+        evidence::target_fraction(Some(usize::MAX), usize::MAX),
+        Some(1000)
+    );
+}
+
+#[test]
+fn primer_payload_masked_queries_round_trip_both_orientations_without_reopening_original() {
+    let td = tempfile::tempdir().unwrap();
+    let forward = format!("AGTCCGATCA{PAYLOAD}AGTCCGATCA{PAYLOAD}");
+    let reverse =
+        String::from_utf8(GentleEngine::reverse_complement_bytes(forward.as_bytes())).unwrap();
+    let (engine, trace_binding) = source_reads(td.path(), false, &[forward, reverse]);
+    let trace = *GentleEngine::inspect_primer_trace(
+        &trace_binding.report_path,
+        Some(&trace_binding),
+        None,
+        0,
+    )
+    .unwrap()
+    .report;
+    let before = fs::read(&trace.request.files[0].path).unwrap();
+    let mut request = prepare(trace_binding.clone(), td.path());
+    request.source_mode = PrimerPayloadSourceMode::ReplayVerifiedFastq;
+    request.anchor_selection = PrimerPayloadAnchorSelection::All;
+    let report = engine
+        .prepare_primer_payload_alignment_queries(request.clone(), &mut |_| true)
+        .unwrap();
+    assert_eq!(report.queries.len(), 4);
+    let summary = |record| {
+        let mut rows = report
+            .queries
+            .iter()
+            .filter(|q| q.record_index == record)
+            .map(|q| {
+                (
+                    q.query_length,
+                    q.usable_bases,
+                    q.excluded_query_intervals.clone(),
+                    q.sequence_sha256.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        rows.sort();
+        rows
+    };
+    assert_eq!(summary(0), summary(1));
+    assert_eq!(
+        report
+            .queries
+            .iter()
+            .filter(|q| !q.excluded_query_intervals.is_empty())
+            .count(),
+        2
+    );
+    assert_eq!(fs::read(&trace.request.files[0].path).unwrap(), before);
+    fs::remove_file(&trace.request.files[0].path).unwrap();
+    let file = bound_file(&Path::new(&request.output_dir).join("report.json"));
+    let accepted = binding::queries(&file, &trace, &trace_binding, &request.budgets, 0).unwrap();
+    assert_eq!(accepted.queries, report.queries);
+}
 
 #[test]
 fn primer_payload_prepare_retained_fasta_is_bound_without_reopening_fastq() {

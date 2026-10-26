@@ -2,6 +2,13 @@
 
 use super::*;
 
+pub(super) fn target_fraction(expected: Option<usize>, usable: usize) -> Option<usize> {
+    match expected {
+        Some(n) if usable > 0 && n <= usable => Some((n as u128 * 1000 / usable as u128) as usize),
+        _ => None,
+    }
+}
+
 fn edge(a: &paf::Alignment, head: bool) -> Option<PrimerPayloadEdge> {
     let s = &a.segment;
     let block = if head {
@@ -195,9 +202,7 @@ pub(super) fn analyze(
     } else {
         None
     };
-    let fraction = expected_bases.and_then(|n| {
-        (query.usable_bases > 0).then_some((n as u128 * 1000 / query.usable_bases as u128) as usize)
-    });
+    let fraction = target_fraction(expected_bases, query.usable_bases);
     let expected_genes = expected
         .iter()
         .flat_map(|e| e.gene_ids.iter().cloned())

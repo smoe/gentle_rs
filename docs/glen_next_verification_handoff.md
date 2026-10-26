@@ -1,5 +1,32 @@
 # Glen: Next Verification And Return
 
+## Primer Payload Mask Geometry, 2026-10-26
+
+Incremental source repair after the initial Phase 2 commits: preparation and
+manifest verification now share clipped mask geometry. An eager `then_some`
+could previously evaluate an underflow for a hit wholly outside the payload;
+the guarded expected fraction also used an eager division expression. Neither
+finding is a locally executed Rust failure; both follow directly from source.
+
+Five additional Rust tests are authored. On the next normally pushed integrated
+source, run the existing `primer_payload_` filter below, especially:
+
+```sh
+cargo test --locked --lib -j1 primer_payload_masks_ -- --test-threads=1
+cargo test --locked --lib -j1 primer_payload_masked_queries_round_trip -- --test-threads=1
+cargo test --locked --lib -j1 primer_payload_fraction_zero -- --test-threads=1
+```
+
+Require 12,168 abstract interval/orientation cases, structured refusals rather
+than panic/wrap, empty/full masks, coordinate extremes and four all-anchor query
+copies across two opposite read orientations. Their normalized masks/sequence
+hashes must agree, and a bound import must work after original FASTQ removal
+without changing the earlier trace. The original all-anchor regression remains.
+Run with ordinary overflow checks; no profile-specific workaround. Python's
+independent oracle/source check is not a Rust verdict. No new aligner, private
+read, native GUI, model, package or scientific acceptance is authorized.
+
+
 ## Primer Payload Phase 2, 2026-10-26
 
 New incremental scope only: generic primer-free query preparation, external PAF
