@@ -18,6 +18,34 @@
   Update tutorial 06.07 and shared contracts without changing scientific inputs.
   Rust/process/VM/native execution remains Glen/CI's; no local Rust build or push.
 
+## 2026-10-27 - Implement The Pure Observed-Junction S0 Kernel
+
+- Commit the revised plan as `c10bbd3e`, then rebase onto local main (no-op at
+  `ce4d33b5`). Implement the owner-approved pure Rust S0 API with configurable,
+  source-bound stable gene IDs, reused payload annotations, strand-neutral
+  physical chains and explicit coverage/end/primer/quality limitations.
+- Share operation geometry, query projection and best-equivalent DAG scoring
+  with Phase 2 while retaining its wire records and decision/work semantics.
+  Bound legal paths, reconcile original records across anchors and retain
+  partial/conflicting alternatives. Distinguish known recombinations, unknown
+  skips, unspliced coverage, coarse detail and terminal-model divergence.
+- Add inline synthetic regressions, exhaustive legal-path/basewise oracles and
+  a frozen pre-refactor analyzer for exact serialized-row/work comparisons.
+  No real reads/primers, new operation/command, I/O behavior, dependency, SAM/BAM,
+  GUI, protein inference or scientific acceptance is introduced.
+- On owner request, clean only this checkout's GENtle package artifacts:
+  26.9 GiB removed; measured target falls from about 31 GiB to 8.6 GiB before
+  rebuilding. Other packages, source and unrelated `output/` are retained.
+  Target is about 14 GiB after tests/check. Focused Rust execution is authorized for this
+  task, not a global change to the standing external-verification policy.
+- Final macOS/aarch64 headless verification: S0 23/23 and primer payload 35/35,
+  no ignored cases; locked/offline library Cargo check, formatting, whitespace,
+  documentation status and 11 LF/CRLF-aware documentation tests pass. Record
+  source/binary/lock/toolchain bindings and commands in the implementation
+  ledger. Keep existing headless/linker warnings. Session-close has four OK,
+  two expected dirty-worktree/manual-plan warnings and no failures. No native,
+  full-suite, Linux/Windows, real-data or scientific acceptance; no push.
+
 ## 2026-10-26 - Propose Observed Transcript Structure Evidence
 
 - Inspect the owner's TP53 audit archive read-only: verify its ZIP hash/CRC and

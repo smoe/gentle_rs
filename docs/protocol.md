@@ -1,5 +1,24 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Observed Junction Structures (S0, Rust-Only)
+
+`observed_transcript_structures::summarize(&Input)` is a pure, experimental
+library kernel, **not** a registered `Operation`, shell/CLI/MCP command, file
+importer or a frozen wire schema. It uses explicit `reference_gene` and
+per-source stable IDs with `PrimerPayloadAnnotation` geometry. It does not
+open files, repair project state, run aligners or choose a canonical transcript.
+
+Its typed result retains raw exact junction chains, supported blocks/masks,
+payload endpoints, legal mapping alternatives, per-source model relationships
+and unique original-record support. Physical chain IDs are strand-neutral;
+model strands are separately labelled annotation evidence. Query orientation
+is not RNA strand. Missing mask/detail/source evidence remains unassessed,
+not zero or unspliced. No-junction observations receive no chain-family ID.
+Counts describe supplied records and admitted hypotheses, not molecules or
+global search uniqueness. Hashes declare bindings; actual byte verification
+and operation/publication parity belong to S1. See the
+[S0 ledger and remaining slices](observed_transcript_structures_plan.md#s0-implementation-ledger-2026-10-27).
+
 ## Primer Payload Evidence (Phase 2, Experimental)
 
 Separate `PreparePrimerPayloadAlignmentQueries`, `SummarizePrimerPayloadAlignments`,

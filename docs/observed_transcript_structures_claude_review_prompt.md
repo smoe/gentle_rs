@@ -7,7 +7,14 @@ The owner has already supplied your initial review at `ce4d33b5` (F1--F10).
 Codex rechecked the load-bearing claims and revised the plan in place. Read its
 **Review Reconciliation** table first; do not repeat the original review as if
 it were still outstanding. This follow-up is optional and has not been sent.
-The owner has not authorized implementation or frozen the proposed schema.
+At the initial review, the owner had not authorized implementation or frozen
+the proposed schema; the bounded S0 authorization below supersedes that status.
+
+Update 2026-10-27: the owner subsequently authorized **S0 only**, after committing
+the revised plan and rebasing on local main. See the plan's S0 implementation
+ledger for current source and executed checks. If this prompt is forwarded now,
+review that bounded kernel/refactor and the still-proposed S1 boundary; do not
+infer approval or completion for operations, SAM/BAM, GUI or protein analysis.
 
 Repository: `/Users/u005069/.codex/worktrees/47dd/gentle_rs`.
 Inspected baseline: `ce4d33b5b990701f2ce51c85f6ce2821df9dc8ce`, branch
@@ -38,6 +45,10 @@ Slice 3 is separately proposed, not a safety guarantee we may assume.
 Read `AGENTS.md`, then:
 
 - `docs/observed_transcript_structures_plan.md` -- original Codex proposal under review.
+- `src/observed_transcript_structures.rs` and its `kernel`, `comparison`,
+  `geometry`, `dag` and `tests` modules -- the subsequently authorized S0.
+- `src/engine/analysis/rna_panel/primer_payload/legacy_structure_tests.rs` --
+  retained pre-refactor analyzer and serialized-row/work regression.
 - `docs/primer_payload_evidence.md` and
   `docs/primer_payload_partner_phase2_plan_20261026.md` -- landed input/claim limits.
 - `src/engine/protocol/primer_payload.rs` -- query, segment and report contracts.

@@ -2,6 +2,10 @@
 
 use super::*;
 
+#[cfg(test)]
+#[path = "legacy_structure_tests.rs"]
+mod legacy_structure_tests;
+
 pub(super) fn target_fraction(expected: Option<usize>, usable: usize) -> Option<usize> {
     match expected {
         Some(n) if usable > 0 && n <= usable => Some((n as u128 * 1000 / usable as u128) as usize),
@@ -68,39 +72,20 @@ pub(super) fn analyze(
         .primer_ids
         .iter()
         .all(|id| expected.iter().any(|e| &e.primer_id == id));
-    let n = alignments.len();
-    let weight = alignments
-        .iter()
-        .map(|a| span_bases(&a.segment.aligned_query_intervals))
-        .collect::<Vec<_>>();
-    let mut prefix = weight.clone();
-    let mut suffix = weight.clone();
-    for i in 0..n {
-        for j in 0..i {
-            *work = work
-                .checked_add(1)
-                .filter(|n| *n <= request.budgets.max_chain_comparisons)
-                .ok_or_else(|| bad("primer_payload_chain_comparison_budget"))?;
-            if alignments[j].segment.query_interval.1 <= alignments[i].segment.query_interval.0 {
-                prefix[i] = prefix[i].max(prefix[j] + weight[i]);
-            }
-        }
-    }
-    for i in (0..n).rev() {
-        for j in i + 1..n {
-            *work = work
-                .checked_add(1)
-                .filter(|n| *n <= request.budgets.max_chain_comparisons)
-                .ok_or_else(|| bad("primer_payload_chain_comparison_budget"))?;
-            if alignments[i].segment.query_interval.1 <= alignments[j].segment.query_interval.0 {
-                suffix[i] = suffix[i].max(weight[i] + suffix[j]);
-            }
-        }
-    }
-    let best = prefix.iter().copied().max().unwrap_or(0);
-    let optimal = (0..n)
-        .filter(|i| weight[*i] > 0 && prefix[*i] + suffix[*i] - weight[*i] == best)
-        .collect::<Vec<_>>();
+    let dag = crate::observed_transcript_structures::dag::best_equivalent(
+        alignments
+            .iter()
+            .map(|a| a.segment.query_interval)
+            .collect(),
+        alignments
+            .iter()
+            .map(|a| span_bases(&a.segment.aligned_query_intervals))
+            .collect(),
+        work,
+        request.budgets.max_chain_comparisons,
+    )?;
+    let (weight, prefix, suffix, best, optimal) =
+        (dag.weight, dag.prefix, dag.suffix, dag.best, dag.optimal);
     let mut reasons = Vec::new();
     let mut genes = BTreeSet::new();
     let mut edges = BTreeSet::new();

@@ -95,28 +95,7 @@ pub(super) fn catalog(
     })
 }
 
-/// Clip reference/exon overlap back to original query coordinates, including reverse mappings.
-pub(super) fn project(
-    block: &paf::Block,
-    range: (usize, usize),
-    strand: char,
-) -> Option<(usize, usize)> {
-    let (a, z) = (block.target.0.max(range.0), block.target.1.min(range.1));
-    if a >= z {
-        return None;
-    }
-    Some(if strand == '+' {
-        (
-            block.query.0 + a - block.target.0,
-            block.query.0 + z - block.target.0,
-        )
-    } else {
-        (
-            block.query.1 - (z - block.target.0),
-            block.query.1 - (a - block.target.0),
-        )
-    })
-}
+pub(super) use crate::observed_transcript_structures::geometry::project;
 
 pub(super) fn annotate(
     alignment: &mut paf::Alignment,

@@ -17,6 +17,41 @@ with the committed attributes, source text, binaries and verbatim records.
 Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
+## Observed Junction Structures: S0 Technical Boundary
+
+Owner-authorized 2026-10-27: implement the pure Rust S0 kernel from the
+[reviewed proposal](observed_transcript_structures_plan.md), not the later
+operation, adapters, file publication, SAM/BAM ingress or graphical slices.
+`reference_gene` is mandatory and source-bound by stable gene ID. No gene,
+species, assembly, strand, canonical transcript or protein label is a default.
+Reuse the payload annotation shape and explicit source-specific gene bindings;
+multiple providers do not require multiple alignment searches.
+
+The `observed_junction_chain` digest identifies the declared genomic reference,
+assembly, contig and exact ascending skips, not a full RNA or a strand call.
+Selected gene, model strand, endpoints and support counts cannot alter this
+physical key. Preserve sourced model strands, query-to-reference orientation,
+payload-end constraints, masks and alignment receipts separately. Unspliced
+observations retain record identity but receive no structural-family ID.
+Known-junction recombinations, unannotated skips, coverage divergence and
+unassessed detail remain distinct. Comparison is exact; no boundary snapping.
+
+Factor the operation walker/projection and best-equivalent query DAG once for
+Phase 2 and S0. Preserve Phase 2 wire bytes, decisions and work accounting.
+S0 must use legal paths, not the union of optimal nodes, and must not trust
+whole-span Phase 2 gene labels as transcript compatibility. Reconcile anchors
+by original source record before support counting; retain conflicting/partial
+views, incomplete producer declarations and unknown primer/flank qualification.
+Neither recurrence nor a chain implies independent molecules, natural RNA ends,
+retention mechanism, fusion, expression or protein identity.
+
+The exported Rust API is experimental, with no new registered operation or
+frozen report-file schema. It checks declared hashes/geometry in memory, not
+the corresponding files or aligner search. S1 needs its own verified ingress,
+write approval, no-save and state/journal tests; lifecycle Slice 3 is not thereby
+implemented. Runtime verification, native/platform replay and scientific
+acceptance remain separately source-bound. No assay thresholds are approved.
+
 ## Primer-Anchored Read Trace
 
 Phase 2 technical implementation authorized 2026-10-26: keep a separate

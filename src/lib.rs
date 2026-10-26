@@ -140,6 +140,8 @@ pub mod microarray_setup;
 pub mod mirna;
 /// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
 pub mod ncbi_genbank_xml;
+/// Pure, source-bound observed junction geometry and reference compatibility.
+pub mod observed_transcript_structures;
 /// Open-reading-frame detection logic.
 pub mod open_reading_frame;
 /// Read-only, source-bound bench dependency diagrams and portable SVG.

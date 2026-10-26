@@ -1,9 +1,10 @@
 # Observed Transcript Structures: Evidence-Layer Proposal
 
-Status: revised proposal, 2026-10-26; not implemented or owner-approved for
-implementation. Claude reviewed the original draft read-only at `ce4d33b5`;
-the reconciliation below is Codex's revision, not another Claude verdict.
-The owner requested a plan and a forwardable review prompt, not implementation.
+Status: S0 technically authorized by the owner on 2026-10-27 and implemented
+as a pure Rust kernel; verification is recorded in the ledger below. S1 and
+later slices remain proposals, not implemented or authorized by this S0 task.
+Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
+and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
 
 ## Aim And Recommendation
@@ -22,7 +23,7 @@ from tolerant matches, chain completeness from RNA-end completeness, and read
 support from independent molecules. A chain is not a complete transcript.
 
 Suggested operation name: `SummarizeObservedTranscriptStructures`. All new
-names and schemas below are proposals, not currently available commands.
+operation names and file schemas below remain proposals, not available commands.
 
 ## Baseline And Archive Inspection
 
@@ -125,7 +126,81 @@ structural family, not loss of auditable observation identity. A shared DAG
 needs legal path relationships, not only its optimal-node union. SAM text is a
 dependency-saving ingress option, not a trivial or already available parser.
 The request's reference label is an alias, not sufficient coordinate authority
-for a chain hash. These refinements remain proposed pending owner approval.
+for a chain hash. The owner subsequently authorized the bounded S0 technical
+implementation; this does not authorize S1 or biological calibration.
+
+## S0 Implementation Ledger (2026-10-27)
+
+- Plan commit: `c10bbd3e`; rebase onto local `main` was a no-op at
+  `ce4d33b5b990701f2ce51c85f6ce2821df9dc8ce`. No fetch/push or claim about a
+  newer remote tip. S0 is a separate implementation diff on that baseline.
+- `src/observed_transcript_structures.rs` exposes the pure `Input`/`Summary`
+  types and `summarize`; `comparison.rs` resolves stable IDs in the existing
+  annotation shape; `kernel.rs` validates observations and reconciles records.
+  `geometry.rs` and `dag.rs` are shared by the live Phase 2 path. No operation,
+  command, provider API, file writer or new dependency is introduced.
+- The physical key binds assembly, declared reference FASTA hash, contig and
+  ascending exact skips. Observation IDs additionally bind original record,
+  query/alignment receipt, scope, geometry, masks and endpoint constraints.
+  Source/model metadata and query MAPQ remain inspectable, not inferred truth.
+  Raw-skip support is not a primer-free or biologically validated junction claim;
+  flank qualification remains a separate per-skip value.
+- Legal DAG paths are bounded explicitly. Identical anchors count once;
+  contained partial chains remain separate and conflicting anchors remain
+  alternatives. No transition is invented between distinct alignment segments.
+  Empty/coarse or transcriptome-only geometry cannot become unspliced genomic
+  evidence. Zero-junction reads keep observations but no family.
+- `tests.rs` contains only inline synthetic loci/records/operations, including
+  source-ID ambiguity, two loci/strands, overlapping antisense, multi-gene
+  membership, nested intronic reads, masks, retention-like coverage versus `D`,
+  partial chains, terminal coverage, counters and exhaustive DAG/basewise oracles.
+  The test-only `legacy_structure_tests.rs` retains the `ce4d33b5` analyzer to
+  compare serialized Phase 2 rows and work counts over ten synthetic cases.
+  This is not a frozen real-data fixture or scientific replay.
+- The owner authorized reducing the checkout's `target/` and focused Rust tests.
+  `cargo clean --locked --offline -p GENtle` removed 26.9 GiB, reducing the
+  measured local target from about 31 GiB to 8.6 GiB before rebuilding. Retain
+  dependencies, source and unrelated `output/`; no other checkout was cleaned.
+- Final macOS/aarch64 headless execution passes **23/23 S0 tests** and
+  **35/35 primer-payload tests**, with zero failures or ignored cases. The
+  latter includes ten byte/work comparisons against the retained analyzer.
+  The initial 18-test checkpoint is superseded, not inherited by edited code.
+  Locked/offline headless Cargo check, workspace formatting, 11 LF/CRLF-aware
+  documentation-status tests, local links and whitespace pass. Session-close
+  has four OK, two expected working-tree/manual-plan warnings and no failures.
+- Executed source is the S0 working diff over `c10bbd3e`, not bare main. Its
+  11 Rust-path manifest SHA-256 is
+  `373aa8731630bf32170086e7dcd2aba89ae2934085b10d0a57f258184b9515cc`.
+  Recreate by hashing each file, then SHA-256 the sorted UTF-8 concatenation
+  `<path> NUL <lowercase file SHA-256> LF` for `src/lib.rs`,
+  `src/observed_transcript_structures.rs`, all five `.rs` files directly in
+  `src/observed_transcript_structures/`, and payload
+  `{evidence,paf,reference,legacy_structure_tests}.rs`. No Rust file changed
+  between this fingerprint and the final checks.
+- Toolchain: `rustc 1.100.0-beta.5 (8ea38001b 2026-10-13)`,
+  `cargo 1.100.0-beta.5 (7552a885e 2026-09-29)`, `aarch64-apple-darwin`;
+  unoptimized test profile with debuginfo and no default features. `Cargo.lock`
+  is unchanged, SHA-256
+  `97671e924a77d61de6dad2e6c6fe3afbee440b8606d79ca0ad2b494fd32d66ad`.
+  Test binary `target/debug/build/GENtle/901e473ba9ebfd83/out/gentle-901e473ba9ebfd83`
+  has SHA-256 `4ef2004ab7f4cc3a8e0d3d8a968af5714ee54895e377a045f38ab6e9ef53896a`.
+  Final measured target size is about 14 GiB after tests and Cargo check. Existing
+  headless dead-code warnings and the large `__eh_frame` linker warning remain;
+  no warnings were suppressed. No desktop/default-feature, full-suite,
+  Linux/Windows, real-data, native, package or scientific pass is claimed.
+
+Executed commands (the two Rust filters use the same final test binary):
+
+```bash
+CARGO_BUILD_JOBS=1 cargo test --locked --offline --no-default-features --lib observed_transcript_structures -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --locked --offline --no-default-features --lib primer_payload -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo check -q --locked --offline --no-default-features --lib
+cargo fmt --all --check
+python3 scripts/check_documentation_status.py
+python3 -m unittest scripts.test_tutorial_checkouts.DocumentationStatusTests -q
+git diff --check
+python3 scripts/maintenance_chore.py session-close --plan docs/observed_transcript_structures_plan.md
+```
 
 ## Proposed Contract
 
@@ -365,9 +440,9 @@ assert project bytes and journal unchanged for both CLI/MCP and preserve the
 documented constructor/state-out scope. [Lifecycle Slice 3](operation_lifecycle_slice3_plan.md)
 is a separate proposal, not an available global guarantee.
 
-## Reviewable Implementation Slices After Approval
+## Slice Boundaries And Remaining Work
 
-1. **S0 -- contract and pure kernel.** Synthetic observations, canonical geometry,
+1. **S0 -- implemented pure kernel; retain its regression guards.** Synthetic observations, canonical geometry,
    stable-gene-ID resolution, strand-neutral chain identities, independent axes,
    record reconciliation and exact source comparison. Factor the operation walk
    and geometry-only DAG into shared helpers with no Phase 2 schema/byte/behavior
@@ -474,10 +549,11 @@ Unrecoverable provenance remains explicitly unassessed, not a permanent demand
 to reconstruct a vanished experiment. Independently verify assembly/contig and
 annotation-snapshot authority before claiming cross-source novelty.
 
-Recommended owner choices before implementation: strand-neutral physical-chain
-identity with sourced strand alternatives; retained observation IDs but no
-unspliced family IDs; stable gene IDs only for S0/S1; narrow shared DAG/walker
-factoring under byte-equivalence tests. SAM-first is the preferred S2 route,
+The S0 authorization covers strand-neutral physical-chain identity with sourced
+strand alternatives, retained observation IDs but no unspliced family IDs,
+stable-gene-ID selection, and narrow shared DAG/walker factoring under
+byte-equivalence tests. S1 operation/ingress/publication remains separately
+unapproved. SAM-first is the preferred S2 route,
 not a requirement blocking pure S0 work; binary BAM needs a separate decision.
 Nonzero tolerance, flank thresholds, real-fixture publication and conditional
 CDS interpretation can be decided when their slices are reached. No universal
@@ -493,7 +569,8 @@ separate typed verdicts. Glen returns a manifest-bound report through Steffen.
 No request is sent, no candidate freeze/dispatch is created, and no native,
 release, biological or performance acceptance is claimed by this planning task.
 
-Next step: obtain owner approval for the revised first slice. The updated
+Next step after S0 verification: obtain owner approval for S1. The updated
 [Claude follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
 is available if a second read-only pass on the remaining qualifications is
-wanted; it has not been sent or executed. Do not begin implementation yet.
+wanted; it has not been sent or executed. S1, SAM/BAM, GUI and later consequences
+are not authorized by the S0 request.

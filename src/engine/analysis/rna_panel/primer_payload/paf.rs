@@ -8,11 +8,7 @@ pub(super) struct Op {
     pub len: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Block {
-    pub query: (usize, usize),
-    pub target: (usize, usize),
-}
+pub(super) use crate::observed_transcript_structures::geometry::Block;
 
 #[derive(Debug, Clone)]
 pub(super) struct Alignment {
@@ -246,86 +242,24 @@ pub(super) fn row(
     if strict && ops.is_none() {
         return Err(bad("primer_payload_alignment_detail_required"));
     }
-    let mut blocks = Vec::new();
-    let mut skips = Vec::new();
-    if let Some(ops) = ops {
-        let (mut q, mut t, mut nm, mut matching, mut columns) =
-            (0usize, ts, 0usize, 0usize, 0usize);
-        for op in ops {
-            let qc = b"M=XI".contains(&op.kind);
-            let tc = b"M=XDN".contains(&op.kind);
-            let qnext = q
-                .checked_add(if qc { op.len } else { 0 })
-                .ok_or_else(|| bad("primer_payload_cigar_overflow"))?;
-            let tnext = t
-                .checked_add(if tc { op.len } else { 0 })
-                .ok_or_else(|| bad("primer_payload_cigar_overflow"))?;
-            if qnext > qe - qs || tnext > te {
-                return Err(bad("primer_payload_cigar_span"));
-            }
-            if b"M=X".contains(&op.kind) {
-                let query = if f[4] == "+" {
-                    (qs + q, qs + qnext)
-                } else {
-                    (qe - qnext, qe - q)
-                };
-                blocks.push(Block {
-                    query,
-                    target: (t, tnext),
-                });
-            }
-            if op.kind == b'N' {
-                skips.push((t, tnext));
-            }
-            if b"XID".contains(&op.kind) {
-                nm = nm
-                    .checked_add(op.len)
-                    .ok_or_else(|| bad("primer_payload_cigar_overflow"))?;
-            }
-            if op.kind == b'=' {
-                matching = matching
-                    .checked_add(op.len)
-                    .ok_or_else(|| bad("primer_payload_cigar_overflow"))?;
-            }
-            if op.kind != b'N' {
-                columns = columns
-                    .checked_add(op.len)
-                    .ok_or_else(|| bad("primer_payload_cigar_overflow"))?;
-            }
-            q = qnext;
-            t = tnext;
-        }
-        if q != qe - qs
-            || t != te
-            || columns != block
+    let (blocks, skips) = if let Some(ops) = ops {
+        let geometry = crate::observed_transcript_structures::geometry::walk(
+            ops.iter().map(|op| (op.kind, op.len)),
+            (qs, qe),
+            (ts, te),
+            f[4].chars().next().expect("validated strand"),
+        )?;
+        if geometry.columns != block
             || edits.is_some_and(|n| n != block - matches)
             || ((cs.is_some() || ops.iter().all(|op| op.kind != b'M'))
-                && (matching != matches || edits.is_some_and(|n| n != nm)))
+                && (geometry.matching != matches || edits.is_some_and(|n| n != geometry.edits)))
         {
             return Err(bad("primer_payload_cigar_span_or_counts"));
         }
-    }
-    blocks.sort_by_key(|x| x.query);
-    let mut merged: Vec<Block> = Vec::new();
-    for block in blocks {
-        if let Some(last) = merged.last_mut()
-            && last.query.1 == block.query.0
-            && (if f[4] == "+" {
-                last.target.1 == block.target.0
-            } else {
-                last.target.0 == block.target.1
-            })
-        {
-            last.query.1 = block.query.1;
-            last.target = (
-                last.target.0.min(block.target.0),
-                last.target.1.max(block.target.1),
-            );
-        } else {
-            merged.push(block);
-        }
-    }
-    let blocks = merged;
+        (geometry.blocks, geometry.skips)
+    } else {
+        (Vec::new(), Vec::new())
+    };
     let intervals = subtract_masks(
         blocks.iter().map(|x| x.query).collect(),
         &query.excluded_query_intervals,
