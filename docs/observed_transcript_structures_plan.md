@@ -352,6 +352,36 @@ src/main_area_dna/tests.rs
 src/observed_transcript_structures/{comparison,kernel,tests}.rs
 ```
 
+### S1 Commit And Rebase
+
+Committed as `a363f1bd`, then rebased onto local main
+`b8e0118feb44726392702398be6b6d52218eec66`, producing
+`929c54e44fb04f6e69c378d60571c61fffda1de6`. Resolve only the changelog and
+Glen-handoff conflicts by retaining both S1 and Dotplot sections. Roadmap and
+source auto-merges preserve main's Dotplot work and Lifecycle Slice 4 proposal.
+The RNA/S1 source bytes are unchanged; incoming Rust differences are confined
+to `src/main_area_dna.rs`, `auxiliary_workspaces.rs` and `tests.rs` under that
+module. The earlier receipt above remains pre-rebase evidence, not overwritten.
+
+Post-rebase macOS verification at `929c54e4` passes S1 14/14, S0 24/24,
+primer-payload 46/46, lifecycle 11/11, registry 1/1 and canonical parity 1/1,
+with no failed/ignored cases. Filters overlap. Headless library/CLI/MCP and
+default-feature test-target locked/offline Cargo checks pass. The latter
+type-checks main's Dotplot additions, but does not execute its egui/native
+acceptance. The 27 fast checks pass with one expected skip; formatting and
+whitespace pass. Existing warnings and all unrun platform/native/scientific
+boundaries above remain; no push, new dependency or private-data replay.
+
+The post-rebase Rust manifest SHA-256 is
+`e2185b66814250ca99cc222b5c6b6202f89c15aeb5ea6860c838ac199aace1be`:
+use the same manifest procedure for the 24 paths above, adding
+`src/main_area_dna.rs` and `src/main_area_dna/auxiliary_workspaces.rs`
+(26 sorted paths; the included `src/main_area_dna/tests.rs` also changed).
+The headless test binary at the same path now has SHA-256
+`e836aba49e0839c866380cf95868678a8348a0ea1fe84a1888336f8c82dba4aa`;
+the lockfile/profile recipe/toolchain are unchanged. The subsequent
+integration-receipt commit changes documentation only, not these Rust bytes.
+
 ## Contract And Later Proposals
 
 ### Reference Gene Is An Explicit Request Parameter

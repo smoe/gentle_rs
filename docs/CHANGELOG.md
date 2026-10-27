@@ -47,6 +47,10 @@
   binds exact source/binary/profile. Actual CLI/VM, native/Linux/Windows,
   full-suite, package and scientific acceptance remain open. No new dependency,
   private fixture, GUI feature, SAM/BAM, push or release claim.
+- Commit as `a363f1bd`, rebase onto main `b8e0118f` as `929c54e4`, and retain
+  both documentation tracks in the two conflicts. The same Rust groups and
+  Cargo checks pass again on the rebased source; preserve pre/post source and
+  binary fingerprints separately in the [integration receipt](observed_transcript_structures_plan.md#s1-commit-and-rebase).
 
 ## 2026-10-27 - Rebase S0 And Repair Lifecycle Test API Calls
 

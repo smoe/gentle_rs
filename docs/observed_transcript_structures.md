@@ -5,8 +5,10 @@ splice patterns were observed and which supplied gene/transcript models remain
 compatible. A compatible RNA pattern does not establish a complete transcript,
 an exclusive isoform, independent molecules, expression or a protein.
 
-Implementation baseline: local `main`/`gentle_rs_2_main` at `a2637079` plus the
-S1 working diff. Focused macOS Rust verification is recorded below; this is not
+Original implementation baseline: local `main`/`gentle_rs_2_main` at `a2637079`
+plus the S1 working diff. Committed S1 was rebased as `929c54e4` onto `b8e0118f`;
+the [post-rebase receipt](observed_transcript_structures_plan.md#s1-commit-and-rebase)
+records the repeated checks separately. Focused macOS verification is not
 a native, cross-platform, scientific or release verdict.
 The [reviewed plan and ledger](observed_transcript_structures_plan.md) retain
 the earlier S0 results separately. No new aligner, dependency, GUI or SAM/BAM

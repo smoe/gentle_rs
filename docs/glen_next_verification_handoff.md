@@ -34,9 +34,10 @@ handoff; no private input, live-model run or new audit campaign is needed.
 ## Observed Transcript Structures S1, 2026-10-27
 
 Include this in the GitHub-pushing thread's **single consolidated request**,
-not a parallel per-branch acceptance run. S1 is authored on local `a2637079`
-plus its working diff; the eventual committed/integrated SHA and exact binary
-must be recorded before execution. No push/dispatch or new freeze is requested
+not a parallel per-branch acceptance run. S1 was committed as `a363f1bd` and
+rebased onto main `b8e0118f` as `929c54e4`; the [post-rebase receipt](observed_transcript_structures_plan.md#s1-commit-and-rebase)
+records repeated checks and separate source/binary fingerprints. For later
+integration, record that exact SHA/binary before missing checks. No push/dispatch or new freeze is requested
 by this note. [Contract and commands](observed_transcript_structures.md) and
 [source ledger](observed_transcript_structures_plan.md#s1-source-implementation-ledger-2026-10-27)
 separate this work from historical S0 acceptance. The owner subsequently
