@@ -16,6 +16,38 @@
   documentation status and whitespace checks pass; these do not execute the
   new egui geometry or action regressions.
 
+## 2026-10-27 - Consume Bound Observed Transcript Evidence (S1)
+
+- Add separate versioned observed-structure summarize/inspect/cancel operations
+  and shared shell/CLI, MCP and agent discovery. Select one saved genomic Phase
+  2 batch and explicit source-bound stable gene IDs; no gene, organism, strand,
+  canonical transcript or protein default. No original FASTQ/PAF/FASTA replay.
+- Verify raw/semantic source bindings, query/trace witnesses, full artifact
+  hashes and exact row accounting before S0 interpretation. Missing anchor views
+  and unknown competitor lengths remain unavailable, never stronger support.
+  Retain source/cohort gaps, per-source junction/model matches and nonadditive
+  sample/barcode/primer support in separate JSON and five JSON-cell TSVs.
+- Add bounded, fresh staged publication, cooperative request-bound cancellation,
+  absent interrupted counts, saved-output inspection and named no-save/approval
+  policy. Standalone managed publication keeps the live journal unchanged;
+  raw apply retains its audit, and workflows retain conservative publication.
+  Old Phase 2 schemas/files and absent-field result serialization are preserved.
+- Author synthetic file-backed source/geometry/hash/control/resource, LF/CRLF,
+  variable-gene, raw-lifecycle, shell/MCP and managed-publication regressions.
+  After explicit owner authorization, repair omitted optional result fields in
+  all ten headless/GUI constructors, replace a test's nonexistent default result
+  and correct its small managed-response assumption without weakening binding/
+  journal/redo assertions or changing publication behavior.
+- Final macOS checks pass S1 14/14, S0 24/24, primer-payload 46/46, lifecycle
+  11/11, full-registry introspection 1/1 and canonical parity freshness 1/1.
+  Filters overlap; the old analyzer's ten byte/work cases remain. Headless
+  library/CLI/MCP and default-feature test-target Cargo check pass. Keep initial
+  compile/test failures and existing warnings distinct from the passing rerun;
+  [the ledger](observed_transcript_structures_plan.md#s1-executed-verification-2026-10-27)
+  binds exact source/binary/profile. Actual CLI/VM, native/Linux/Windows,
+  full-suite, package and scientific acceptance remain open. No new dependency,
+  private fixture, GUI feature, SAM/BAM, push or release claim.
+
 ## 2026-10-27 - Rebase S0 And Repair Lifecycle Test API Calls
 
 - Commit S0 as `eaed85ff`, then rebase onto local main `f0b8371f`, producing

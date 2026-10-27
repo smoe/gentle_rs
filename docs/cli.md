@@ -17,6 +17,16 @@ rna-reads primer-payload-show REPORT [--rows N] [--binding JSON_OR_@FILE] [--ver
 rna-reads primer-payload-cancel CONTROL_JSON_OR_@FILE
 ```
 
+For saved genomic Phase 2 evidence, [observed transcript structures (S1)](observed_transcript_structures.md)
+accept an explicit stable reference gene and bound annotation sources. No gene,
+organism or canonical transcript is assumed; this route does not run an aligner:
+
+```text
+rna-reads transcript-structures REQUEST_JSON_OR_@FILE
+rna-reads transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]
+rna-reads transcript-structures-cancel REQUEST_JSON_OR_@FILE
+```
+
 **Quick navigation:** [Start here](#start-here) |
 [Find a command or workflow](#commands) | [Interfaces](#overview) |
 [Build from source](#build-and-run) | [Agent integration](agent_interface.md).

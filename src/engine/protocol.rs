@@ -33,6 +33,9 @@ pub use primer_trace::*;
 #[path = "protocol/primer_payload.rs"]
 mod primer_payload;
 pub use primer_payload::*;
+#[path = "protocol/observed_transcripts.rs"]
+mod observed_transcripts;
+pub use observed_transcripts::*;
 
 #[path = "protocol/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
@@ -5522,6 +5525,11 @@ pub struct OpResult {
     pub primer_payload_alignments: Option<Box<PrimerPayloadAlignmentReport>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primer_payload_inspection: Option<Box<PrimerPayloadInspection>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_transcript_structures: Option<Box<ObservedTranscriptStructuresReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_transcript_structures_inspection:
+        Option<Box<ObservedTranscriptStructuresInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_trace_inspection: Option<Box<RnaPrimerTraceInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

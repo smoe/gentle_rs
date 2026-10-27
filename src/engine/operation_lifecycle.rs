@@ -14,7 +14,11 @@ pub enum LifecycleRequest<'a> {
 fn preserves_operation_project_content(op: &Operation) -> bool {
     matches!(
         op,
-        Operation::PlanDnaSequenceDesign { .. } | Operation::EvaluateGenomeEditIntent { .. }
+        Operation::PlanDnaSequenceDesign { .. }
+            | Operation::EvaluateGenomeEditIntent { .. }
+            | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::InspectObservedTranscriptStructures { .. }
+            | Operation::CancelObservedTranscriptStructures { .. }
     )
 }
 
@@ -51,6 +55,10 @@ impl OperationApprovalPolicy {
 /// `None` leaves an unmigrated operation's existing conservative rules intact.
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
+        Operation::SummarizeObservedTranscriptStructures { .. }
+        | Operation::CancelObservedTranscriptStructures { .. } => {
+            Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
+        }
         Operation::PlanDnaSequenceDesign { path: Some(_), .. } => {
             Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
         }

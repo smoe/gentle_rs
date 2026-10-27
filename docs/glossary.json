@@ -1,6 +1,27 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["SummarizeObservedTranscriptStructures"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads transcript-structures",
+         "summary": "Interpret one bound saved genomic Phase 2 batch with an explicit stable reference gene and independent annotation sources. Publish separate read/chain/compatibility/junction evidence. No original-read or alignment replay, protein assignment or project mutation. Writes require approval.",
+         "usage": "rna-reads transcript-structures REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectObservedTranscriptStructures"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads transcript-structures-show",
+         "summary": "Inspect saved structural metadata and bounded hash-verified table rows, without opening source evidence or redoing analysis. --verify-artifacts checks all saved artifact bytes.",
+         "usage": "rna-reads transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]"
+      },
+      {
+         "aliases": [], "engine_operations": ["CancelObservedTranscriptStructures"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads transcript-structures-cancel",
+         "summary": "Write a cancellation marker for the exact reviewed structural request. Requires approval; not confirmation of worker termination.",
+         "usage": "rna-reads transcript-structures-cancel REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["PreparePrimerPayloadAlignmentQueries"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads primer-payload-prepare",

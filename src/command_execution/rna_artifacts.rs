@@ -10,6 +10,7 @@ pub(super) enum Policy {
     PrimerTrace(Box<crate::engine::TracePrimerReadsRequest>),
     PayloadQueries(Box<crate::engine::PreparePrimerPayloadAlignmentQueriesRequest>),
     PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
+    ObservedStructures(Box<crate::engine::SummarizeObservedTranscriptStructuresRequest>),
     Observe { expensive: bool },
     Control,
 }
@@ -29,6 +30,17 @@ impl Policy {
 
 fn classify(op: Operation) -> Policy {
     match op {
+        Operation::SummarizeObservedTranscriptStructures { request } => {
+            Policy::ObservedStructures(request)
+        }
+        Operation::InspectObservedTranscriptStructures {
+            verify_artifacts,
+            rows,
+            ..
+        } => Policy::Observe {
+            expensive: verify_artifacts || rows > 0,
+        },
+        Operation::CancelObservedTranscriptStructures { .. } => Policy::Control,
         Operation::PreparePrimerPayloadAlignmentQueries { request } => {
             Policy::PayloadQueries(request)
         }
@@ -170,6 +182,19 @@ pub(super) fn publication(
     output: &serde_json::Value,
 ) -> Result<Publication, String> {
     match &policy {
+        Policy::ObservedStructures(request) => {
+            let report = serde_json::from_value(
+                output
+                    .pointer("/result/observed_transcript_structures")
+                    .ok_or("Observed structures returned no typed report")?
+                    .clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let binding =
+                GentleEngine::observed_transcript_structures_result_binding(request, &report)
+                    .map_err(|e| e.to_string())?;
+            return Ok(Publication::ObservedStructures(binding));
+        }
         Policy::PayloadQueries(request) => {
             let report = serde_json::from_value(
                 output
@@ -211,7 +236,10 @@ pub(super) fn publication(
     let binding: RnaReadPanelResultBinding = match policy {
         Policy::Project => return Ok(Publication::Project),
         Policy::Observe { .. } | Policy::Control => return Ok(Publication::Observation),
-        Policy::PrimerTrace(_) | Policy::PayloadQueries(_) | Policy::PayloadAlignments(_) => {
+        Policy::PrimerTrace(_)
+        | Policy::PayloadQueries(_)
+        | Policy::PayloadAlignments(_)
+        | Policy::ObservedStructures(_) => {
             unreachable!("handled above")
         }
         Policy::Screen(request) => {

@@ -13318,6 +13318,68 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 .map_err(|e| e.to_string())?,
             })
         }
+        "transcript-structures" | "transcript-structures-cancel" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads transcript-structures|transcript-structures-cancel REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = Box::new(parse_required_json_payload::<
+                crate::engine::SummarizeObservedTranscriptStructuresRequest,
+            >(&tokens[2], "observed transcript request")?);
+            let op = if tokens[1] == "transcript-structures" {
+                Operation::SummarizeObservedTranscriptStructures { request }
+            } else {
+                Operation::CancelObservedTranscriptStructures { request }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
+            })
+        }
+        "transcript-structures-show" => {
+            if tokens.len() < 3 {
+                return Err("Use rna-reads transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]".into());
+            }
+            let (mut rows, mut binding, mut table, mut verify) = (None, None, None, false);
+            let mut i = 3;
+            while i < tokens.len() {
+                if tokens[i] == "--verify-artifacts" && !verify {
+                    verify = true;
+                    i += 1;
+                    continue;
+                }
+                let value = tokens.get(i + 1).ok_or("Missing option value")?;
+                match tokens[i].as_str() {
+                    "--rows" if rows.is_none() => {
+                        rows = Some(value.parse::<usize>().map_err(|_| "Invalid row count")?)
+                    }
+                    "--table" if table.is_none() => table = Some(value.clone()),
+                    "--binding" if binding.is_none() => {
+                        binding = Some(Box::new(parse_required_json_payload::<
+                            crate::engine::ObservedTranscriptStructuresResultBinding,
+                        >(
+                            value, "observed transcript result binding"
+                        )?))
+                    }
+                    _ => {
+                        return Err("Unknown or duplicate transcript-structures-show option".into());
+                    }
+                }
+                i += 2;
+            }
+            let rows = rows.unwrap_or(0);
+            if rows > 1000 {
+                return Err("Rows must be 0..1000".into());
+            }
+            let op = Operation::InspectObservedTranscriptStructures {
+                path: tokens[2].clone(),
+                expected_result: binding,
+                table: table.unwrap_or_else(|| "read_structures.tsv".into()),
+                rows,
+                verify_artifacts: verify,
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
+            })
+        }
         "primer-payload-prepare" | "primer-payload-summarize" | "primer-payload-cancel" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads primer-payload-prepare|primer-payload-summarize|primer-payload-cancel REQUEST_JSON_OR_@FILE".into());

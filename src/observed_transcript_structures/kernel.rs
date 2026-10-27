@@ -4,24 +4,11 @@ use super::*;
 
 fn admit(input: &Input) -> Result<(), EngineError> {
     let b = &input.budgets;
+    b.validate(input.required_flank_bases)?;
     if input.reference.assembly.trim().is_empty()
         || !is_hash(&input.reference.fasta_sha256)
-        || !(1..=1_000_000).contains(&input.required_flank_bases)
-        || [
-            b.max_queries,
-            b.max_records,
-            b.max_segments_per_query,
-            b.max_operations,
-            b.max_skips_per_chain,
-            b.max_chain_families,
-            b.max_alternatives_per_record,
-            b.max_annotation_rows,
-            b.max_model_comparisons_per_family,
-        ]
-        .iter()
-        .any(|n| !(1..=1_000_000).contains(n))
-        || !(1..=100_000_000).contains(&b.max_total_work)
         || input.queries.len() > b.max_queries
+        || input.unassessed_records.len() > b.max_records
         || input.annotation_sources.len() > b.max_annotation_rows
         || input.comparison_genes.len() > b.max_annotation_rows
     {
@@ -31,6 +18,17 @@ fn admit(input: &Input) -> Result<(), EngineError> {
     let mut records = BTreeMap::new();
     let mut operations = 0usize;
     let mut lengths = BTreeMap::new();
+    for r in &input.unassessed_records {
+        if !is_hash(&r.source_sha256)
+            || r.read_id.is_empty()
+            || records
+                .insert((&r.source_sha256, r.record_index), &r.read_id)
+                .is_some_and(|id| id != &r.read_id)
+            || records.len() > b.max_records
+        {
+            return Err(bad("observed_structure_unassessed_record"));
+        }
+    }
     for q in &input.queries {
         let key = (&q.record.source_sha256, q.record.record_index);
         if !is_hash(&q.record.source_sha256)
@@ -232,17 +230,31 @@ fn contains(
 /// Hashes bind declared inputs; this is internal consistency, not authenticated
 /// provenance, alignment-search replay, natural-end detection or a protein call.
 pub fn summarize(input: &Input) -> Result<Summary, EngineError> {
+    summarize_with_control(input, &mut || Ok(()))
+}
+
+/// Cooperative caller control between bounded query/segment/record units; no I/O here.
+pub fn summarize_with_control(
+    input: &Input,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Summary, EngineError> {
+    check()?;
     admit(input)?;
     let sources = comparison::sources(input)?;
     let mut work = 0usize;
     let mut observations = BTreeMap::<String, Observation>::new();
     let mut families = BTreeMap::<String, ChainFamily>::new();
     let mut record_paths = BTreeMap::<ReadRecord, (Vec<Vec<String>>, bool, bool)>::new();
+    for record in &input.unassessed_records {
+        record_paths.insert(record.clone(), (Vec::new(), false, false));
+    }
     let mut queries = input.queries.iter().collect::<Vec<_>>();
     queries.sort_by(|a, b| (&a.record, &a.query_id).cmp(&(&b.record, &b.query_id)));
     for query in queries {
+        check()?;
         let mut nodes = BTreeMap::new();
         for segment in &query.segments {
+            check()?;
             let observation = observe(input, query, segment, &sources, &mut work)?;
             if let Some(chain) = &observation.observed_junction_chain {
                 families
@@ -317,6 +329,7 @@ pub fn summarize(input: &Input) -> Result<Summary, EngineError> {
     let mut records = Vec::new();
     let mut used_families = BTreeSet::new();
     for (record, (hypotheses, assessed, declared_complete)) in record_paths {
+        check()?;
         let complete = assessed && declared_complete;
         let mut possible = BTreeSet::new();
         let mut definite: Option<BTreeSet<String>> = None;

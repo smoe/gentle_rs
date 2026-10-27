@@ -65,6 +65,32 @@ impl AgentExecutionStatus {
     /// Interpret only engine-owned job envelopes, never free-text messages.
     pub fn from_shell_output(output: &Value) -> Self {
         if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.command_observed_structures_result.v1")
+        {
+            return match (
+                output
+                    .pointer("/observed_structures_result/schema")
+                    .and_then(Value::as_str),
+                output
+                    .pointer("/observed_structures_result/outcome")
+                    .and_then(Value::as_str),
+            ) {
+                (
+                    Some("gentle.observed_transcript_structures_result_binding.v1"),
+                    Some("completed"),
+                ) => Self::Completed,
+                (
+                    Some("gentle.observed_transcript_structures_result_binding.v1"),
+                    Some("cancelled"),
+                ) => Self::Cancelled,
+                (
+                    Some("gentle.observed_transcript_structures_result_binding.v1"),
+                    Some("unavailable"),
+                ) => Self::Partial,
+                _ => Self::Failed,
+            };
+        }
+        if output.get("schema").and_then(Value::as_str)
             == Some("gentle.command_primer_payload_result.v1")
         {
             return match (
@@ -85,6 +111,10 @@ impl AgentExecutionStatus {
             };
         }
         for (field, schema) in [
+            (
+                "observed_transcript_structures",
+                "gentle.observed_transcript_structures_report.v1",
+            ),
             ("primer_payload_queries", "gentle.primer_payload_queries.v1"),
             (
                 "primer_payload_alignments",
@@ -98,6 +128,11 @@ impl AgentExecutionStatus {
                 ) {
                     (Some(s), Some("completed")) if s == schema => Self::Completed,
                     (Some(s), Some("cancelled")) if s == schema => Self::Cancelled,
+                    (Some(s), Some("unavailable"))
+                        if s == schema && field == "observed_transcript_structures" =>
+                    {
+                        Self::Partial
+                    }
                     _ => Self::Failed,
                 };
             }

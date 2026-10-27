@@ -18,6 +18,7 @@ pub(super) fn resolutions(sources: &[Source<'_>]) -> Vec<SourceComparison> {
             gene_id: s.gene.map(str::to_owned),
             resolution: s.status,
             junction_relation: None,
+            junctions: None,
             models: Vec::new(),
         })
         .collect()
@@ -181,6 +182,7 @@ pub(super) fn compare(
             gene_id: source.gene.map(str::to_owned),
             resolution: source.status,
             junction_relation: None,
+            junctions: None,
             models: Vec::new(),
         };
         if source.status != GeneResolution::Resolved || observation.detail != DetailStatus::Detailed
@@ -188,7 +190,7 @@ pub(super) fn compare(
             result.push(out);
             continue;
         }
-        let mut known = BTreeSet::new();
+        let mut known = BTreeMap::<Interval, BTreeSet<String>>::new();
         let mut has_run = false;
         for t in &source.models {
             model_count += 1;
@@ -204,7 +206,13 @@ pub(super) fn compare(
             } else {
                 Vec::new()
             };
-            known.extend(introns.iter().copied());
+            for intron in &introns {
+                dag::charge(work, input.budgets.max_total_work)?;
+                known
+                    .entry(*intron)
+                    .or_default()
+                    .insert(t.transcript_id.clone());
+            }
             let mut consecutive = false;
             let mut adjacent_coverage = false;
             if !observation.skips.is_empty() && introns.len() >= observation.skips.len() {
@@ -311,13 +319,28 @@ pub(super) fn compare(
                 .iter()
                 .any(|t| t.target_name == observation.contig)
         {
-            out.junction_relation = Some(if observation.skips.iter().any(|s| !known.contains(s)) {
-                JunctionRelation::ContainsUnannotatedJunction
-            } else if has_run {
-                JunctionRelation::ConsecutiveModelRun
-            } else {
-                JunctionRelation::AllJunctionsAnnotatedNoSingleModelContainsRun
-            });
+            out.junctions = Some(
+                observation
+                    .skips
+                    .iter()
+                    .map(|skip| JunctionMatch {
+                        skipped_interval: *skip,
+                        annotated_in_models: known
+                            .get(skip)
+                            .map(|ids| ids.iter().cloned().collect())
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+            );
+            out.junction_relation = Some(
+                if observation.skips.iter().any(|s| !known.contains_key(s)) {
+                    JunctionRelation::ContainsUnannotatedJunction
+                } else if has_run {
+                    JunctionRelation::ConsecutiveModelRun
+                } else {
+                    JunctionRelation::AllJunctionsAnnotatedNoSingleModelContainsRun
+                },
+            );
         }
         out.models
             .sort_by(|a, b| a.transcript_id.cmp(&b.transcript_id));

@@ -1,8 +1,9 @@
 # Observed Transcript Structures: Evidence-Layer Proposal
 
-Status: S0 technically authorized by the owner on 2026-10-27 and implemented
-as a pure Rust kernel; verification is recorded in the ledger below. S1 and
-later slices remain proposals, not implemented or authorized by this S0 task.
+Status: S0 is implemented and its verification is recorded below. The owner
+separately authorized S1 on 2026-10-27: the bound intake/publication and shared
+engine/CLI/MCP paths now have focused macOS verification recorded below. S2 and
+later slices remain proposals, not authorized by either implementation task.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
@@ -22,8 +23,9 @@ conditional consequences. Improve it by distinguishing exact splice chains
 from tolerant matches, chain completeness from RNA-end completeness, and read
 support from independent molecules. A chain is not a complete transcript.
 
-Suggested operation name: `SummarizeObservedTranscriptStructures`. All new
-operation names and file schemas below remain proposals, not available commands.
+`SummarizeObservedTranscriptStructures` and its inspection/cancellation routes
+are described by the [S1 contract](observed_transcript_structures.md). Later
+ingress, presentation and consequence operations below remain proposals.
 
 ## Baseline And Archive Inspection
 
@@ -127,7 +129,8 @@ needs legal path relationships, not only its optimal-node union. SAM text is a
 dependency-saving ingress option, not a trivial or already available parser.
 The request's reference label is an alias, not sufficient coordinate authority
 for a chain hash. The owner subsequently authorized the bounded S0 technical
-implementation; this does not authorize S1 or biological calibration.
+implementation; that S0 authorization did not cover S1 or biological calibration.
+The later, separate S1 authorization and execution are recorded below.
 
 ## S0 Implementation Ledger (2026-10-27)
 
@@ -240,7 +243,116 @@ SHA-256 `3cb229254da0c4fcfbd418484e2e298fc2477d3afd650fa7e1debbc834335ba7`.
 No production Rust source changed after the S0 commit; these test repairs and
 the documentation reconciliation are a separate integration follow-up.
 
-## Proposed Contract
+## S1 Source Implementation Ledger (2026-10-27)
+
+Baseline is local `main`/`gentle_rs_2_main` `a2637079`; no fetch, push or new
+remote-tip claim. The unrelated untracked `output/` is untouched. No further
+Claude consultation was executed; this follows the owner-supplied reviewed plan.
+
+- `protocol/observed_transcripts.rs` and payload `observed.rs` define strict
+  separate v1 request/report/result records, actual raw source-report binding,
+  full source/query/row/artifact verification, a selected genomic batch and
+  independently bound annotations. They call S0, not a copied analyser.
+- S0 gains cooperative control, explicit unassessed original records and
+  per-source exact-junction matches. These are necessary intake/output seams:
+  exclusions cannot strengthen another anchor, and missing annotation is not an
+  empty junction match. No Phase 2 geometry/DAG algorithm, schema or output is
+  changed. New optional `OpResult` fields serialize only when present.
+- Shared parser/discovery, generic MCP, agent outcome, explicit approval,
+  lifecycle/no-save and standalone artifact publication carry the new routes.
+  Source/cohort statuses and unavailable views survive. The selected batch is
+  atomic; absent interrupted analysis has absent counts, not zeros. Managed
+  standalone results do not merge the private journal; raw apply retains its
+  existing execution audit. Workflows remain conservatively project-bound.
+- Saved JSON and five JSON-cell TSVs retain read/chain/model/junction/exclusion
+  evidence and nonadditive sample/barcode/primer support. Fresh, bounded staged
+  publication writes the final report last. Inspection uses saved outputs only.
+- Inline synthetic Rust tests are authored for real file-backed intake, variable
+  gene context, unchanged source bytes, deleted original inputs, rehashed bad
+  rows/geometry, LF/CRLF hashes, cancellation/fault/resource failures, raw-state
+  preservation, shell/MCP and standalone publication. No private read, primer,
+  BAM or archive content is copied into fixtures.
+- Local Rust was initially unrun under the standing restriction. The owner then
+  explicitly authorized focused S1 tests/checks; see the executed ledger below.
+  Its canonical producer equality verifies the six required matrix rows/counts;
+  no pass is inferred from manual projection or S0's historical verification.
+
+Fast-check results and consolidated execution commands are recorded in the
+[S1 contract](observed_transcript_structures.md#verification-scope). No native,
+Windows, actual CLI process/VM, archive replay, scientific or release acceptance
+is claimed. SAM/BAM, GUI and later consequences remain separately gated.
+
+## S1 Executed Verification (2026-10-27)
+
+The owner authorized this local verification and chose the existing reviewed
+plan, not a new Claude consultation. Tested source is the S1 working diff over
+`a2637079f5a2ee1b49310f988243497562a65ccc`, not a new commit. During verification
+local `main` independently advanced to `b8e0118feb44726392702398be6b6d52218eec66`
+(Dotplot GUI and Lifecycle Slice 4 documentation); it was not merged/rebased or
+tested here. No fetch/push, remote-tip, later-main or release verdict is implied.
+
+The initial test build reported `E0277` for a nonexistent `OpResult::default()`
+in the new byte-preservation test, and three `E0063` omissions of the two new
+optional result fields. It was stopped after diagnostics, before tests ran.
+Repair all ten explicit result constructors, including GUI production/tests,
+with `None`, preserving omission in old JSON; use an actual engine result in
+the serialization test. A fast source guard now covers those constructor sites.
+The first executed S1 group was 13/14: the managed test assumed every response
+was compacted. Small responses intentionally keep typed metadata; oversized
+ones use the compact binding. Fix the test to check the small report, exact
+receipt binding and unchanged live project/journal/redo; do not change behavior.
+
+Final locked/offline macOS runs: S1 14/14, S0 24/24, primer-payload 46/46,
+lifecycle Slice 3 11/11, full-registry introspection 1/1, canonical parity
+producer/document equality 1/1; zero failed or ignored tests in these groups.
+The filters overlap. Primer-payload includes the retained old analyzer's ten
+byte/work cases. Headless library/CLI/MCP Cargo check and default-feature
+`cargo check --tests` pass. Exact commands and fast-check counts are in the
+[contract](observed_transcript_structures.md#verification-scope); the final
+test/filter reruns used `-q` additionally, which does not change their scope.
+
+Environment: macOS 27.0.1 (26A434), aarch64; `rustc 1.100.0-beta.5
+(8ea38001b 2026-10-13)`, Cargo 1.100.0-beta.5 (7552a885e 2026-09-29).
+Root tests used no default features, unoptimized test profile with debuginfo,
+one Cargo job and the repository's 16-MiB test-stack configuration. Existing
+headless dead-code warnings and the 16-MiB `__eh_frame` linker warning remain;
+no warning/profile workaround was introduced. No actual-process/VM, native,
+Linux/Windows, unfiltered full-suite, real-data, package or scientific pass.
+
+SHA-256 receipts:
+
+- Test binary `target/debug/build/GENtle/901e473ba9ebfd83/out/gentle-901e473ba9ebfd83`:
+  `6a681d1ecd48abdaf2b8a02515592762d50dead3f5c6c9a3cac97103503baebc`.
+- Unchanged `Cargo.lock`:
+  `97671e924a77d61de6dad2e6c6fe3afbee440b8606d79ca0ad2b494fd32d66ad`.
+- `Cargo.toml` profile recipe:
+  `7ac98b75c5c843eb1d7e5f491c51610512a3b4a8399e976de80304a6bd8f8716`;
+  `.cargo/config.toml`:
+  `e6549d734f8df2ab9c9e6007dc60645e1b700c44caf101ae7a05efabc6da7d66`.
+- Rust source manifest:
+  `221763d5cd1afa4e8e99d135ca22028703fec1712e3fee09fc30f22bce9ac659`.
+  Sort the following 24 expanded repository-relative paths bytewise; run
+  `shasum -a 256` on them in that order, then hash its UTF-8 stdout (each line
+  is `<hex>  <path> LF`). Documentation/receipt edits afterwards are not Rust
+  changes; do not reuse this receipt if any listed source changes:
+
+```text
+crates/gentle-protocol/src/lib.rs
+src/{agent_feedback,app,command_execution,engine,engine_shell,mcp_server,observed_transcript_structures}.rs
+src/app/tests.rs
+src/command_execution/{lifecycle_tests,rna_artifacts}.rs
+src/engine/analysis/rna_panel/primer_payload.rs
+src/engine/analysis/rna_panel/primer_payload/{observed,observed_tests}.rs
+src/engine/analysis/rna_reads.rs
+src/engine/{operation_lifecycle,protocol}.rs
+src/engine/ops/operation_handlers.rs
+src/engine/protocol/observed_transcripts.rs
+src/engine_shell/command_parsers.rs
+src/main_area_dna/tests.rs
+src/observed_transcript_structures/{comparison,kernel,tests}.rs
+```
+
+## Contract And Later Proposals
 
 ### Reference Gene Is An Explicit Request Parameter
 
@@ -478,9 +590,10 @@ assert project bytes and journal unchanged for both CLI/MCP and preserve the
 documented constructor/state-out scope. [Lifecycle Slice 3](operation_lifecycle_slice3_plan.md)
 landed independently on main at `f0b8371f`: its covered operations are
 `PlanDnaSequenceDesign`, `EvaluateGenomeEditIntent` and qualifying workflows,
-not a generic read-only guarantee. Future observed-transcript S1 operations
-are not automatically covered and still need their own lifecycle/publication
-decision and state/journal tests. S0's pure kernel adds no such operation.
+not a generic read-only guarantee. S1 now explicitly adds its three named
+operations and its own lifecycle/publication decision/tests; S0 itself stays
+pure. Raw audit, standalone artifact-only and workflow publication scopes are
+distinguished in the [S1 contract](observed_transcript_structures.md).
 
 ## Slice Boundaries And Remaining Work
 
@@ -490,7 +603,7 @@ decision and state/journal tests. S0's pure kernel adds no such operation.
    and geometry-only DAG into shared helpers with no Phase 2 schema/byte/behavior
    change. Record an owner-reviewed decision before freezing the new schema.
    No I/O behavior change, BAM, project migration, new dependency or GUI.
-2. **S1 -- consume bound Phase 2 evidence.** Verify the report, evidence TSV and
+2. **S1 -- implemented; focused macOS verification recorded above.** Verify the report, evidence TSV and
    query manifest, reconstruct geometry/hypotheses through shared helpers, and
    compare independently bound annotations. Ignore old classification/ID fields
    for structural filtering. Add shared engine/parser, bounded inspect/cancel/
@@ -594,8 +707,9 @@ annotation-snapshot authority before claiming cross-source novelty.
 The S0 authorization covers strand-neutral physical-chain identity with sourced
 strand alternatives, retained observation IDs but no unspliced family IDs,
 stable-gene-ID selection, and narrow shared DAG/walker factoring under
-byte-equivalence tests. S1 operation/ingress/publication remains separately
-unapproved. SAM-first is the preferred S2 route,
+byte-equivalence tests. S1 operation/ingress/publication was separately authorized
+on 2026-10-27; focused macOS execution is recorded above, with remaining adapter/
+platform/scientific acceptance separate. SAM-first is the preferred S2 route,
 not a requirement blocking pure S0 work; binary BAM needs a separate decision.
 Nonzero tolerance, flank thresholds, real-fixture publication and conditional
 CDS interpretation can be decided when their slices are reached. No universal
@@ -611,8 +725,9 @@ separate typed verdicts. Glen returns a manifest-bound report through Steffen.
 No request is sent, no candidate freeze/dispatch is created, and no native,
 release, biological or performance acceptance is claimed by this planning task.
 
-Next step after S0 verification: obtain owner approval for S1. The updated
+Next step: carry the source-bound macOS results into the consolidated Glen/CI
+request and execute missing process/platform checks; authorize S2 separately. The updated
 [Claude follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
 is available if a second read-only pass on the remaining qualifications is
-wanted; it has not been sent or executed. S1, SAM/BAM, GUI and later consequences
-are not authorized by the S0 request.
+wanted; it has not been sent or executed. SAM/BAM, GUI and later consequences
+are not authorized by the S1 request.

@@ -1,6 +1,6 @@
 # GENtle Engine Protocol (Draft v1)
 
-## Observed Junction Structures (S0, Rust-Only)
+## Observed Junction Structures (S0 Kernel And S1 Intake)
 
 `observed_transcript_structures::summarize(&Input)` is a pure, experimental
 library kernel, **not** a registered `Operation`, shell/CLI/MCP command, file
@@ -16,8 +16,18 @@ is not RNA strand. Missing mask/detail/source evidence remains unassessed,
 not zero or unspliced. No-junction observations receive no chain-family ID.
 Counts describe supplied records and admitted hypotheses, not molecules or
 global search uniqueness. Hashes declare bindings; actual byte verification
-and operation/publication parity belong to S1. See the
+and operation/publication are owned by the separate S1 boundary below. See the
 [S0 ledger and remaining slices](observed_transcript_structures_plan.md#s0-implementation-ledger-2026-10-27).
+
+`SummarizeObservedTranscriptStructures`, `InspectObservedTranscriptStructures`
+and `CancelObservedTranscriptStructures` consume a bound saved Phase 2 genomic
+batch, publish separate versioned evidence, and inspect/cancel through the same
+engine, shell/CLI, generic MCP and scripting paths. The new optional `OpResult`
+fields are omitted when absent, preserving old Phase 2 result serialization.
+See the [S1 request, publication and lifecycle contract](observed_transcript_structures.md).
+S1's focused macOS engine/shell/MCP-unit and lifecycle checks pass at the source
+recorded in its ledger. Actual process/VM, native, platform and scientific
+acceptance remain separate, not inherited by later main revisions.
 
 ## Primer Payload Evidence (Phase 2, Experimental)
 

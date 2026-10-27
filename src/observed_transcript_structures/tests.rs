@@ -108,6 +108,7 @@ fn input() -> Input {
         ],
     };
     Input {
+        unassessed_records: vec![],
         reference: ReferenceBinding {
             assembly: "toy_assembly".into(),
             fasta_sha256: sha('1'),
@@ -161,6 +162,28 @@ fn input() -> Input {
             max_total_work: 1_000_000,
         },
     }
+}
+
+#[test]
+fn observed_transcripts_missing_anchor_cannot_promote_an_assessed_anchor() {
+    let mut a = input();
+    let record = a.queries[0].record.clone();
+    assert_eq!(summarize(&a).unwrap().records[0].definite_chains.len(), 1);
+    a.unassessed_records.push(record.clone());
+    let summary = summarize(&a).unwrap();
+    assert_eq!(summary.records[0].record, record);
+    assert!(!summary.records[0].all_query_views_assessed);
+    assert!(summary.records[0].definite_chains.is_empty());
+    assert_eq!(summary.families[0].supporting_records, 1);
+    assert_eq!(summary.families[0].definite_records, 0);
+    assert!(
+        !summary.observations[0].comparisons[0]
+            .junctions
+            .as_ref()
+            .unwrap()[0]
+            .annotated_in_models
+            .is_empty()
+    );
 }
 
 fn one(result: &Summary) -> &Observation {

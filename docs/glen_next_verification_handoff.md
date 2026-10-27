@@ -31,6 +31,45 @@ the auxiliary window. Retain existing repeat-region/provenance checks and
 project DNA. Return source/binary/platform/profile and results with the normal
 handoff; no private input, live-model run or new audit campaign is needed.
 
+## Observed Transcript Structures S1, 2026-10-27
+
+Include this in the GitHub-pushing thread's **single consolidated request**,
+not a parallel per-branch acceptance run. S1 is authored on local `a2637079`
+plus its working diff; the eventual committed/integrated SHA and exact binary
+must be recorded before execution. No push/dispatch or new freeze is requested
+by this note. [Contract and commands](observed_transcript_structures.md) and
+[source ledger](observed_transcript_structures_plan.md#s1-source-implementation-ledger-2026-10-27)
+separate this work from historical S0 acceptance. The owner subsequently
+authorized local verification: [the executed receipt](observed_transcript_structures_plan.md#s1-executed-verification-2026-10-27)
+records macOS S1 14/14, S0 24/24, primer-payload 46/46, lifecycle 11/11,
+registry introspection 1/1 and canonical parity 1/1, plus headless CLI/MCP/library
+and default-feature test-target Cargo check. Filters overlap; these passes
+belong to the fingerprinted working diff, not later main or all platforms.
+
+Reuse unchanged same-source evidence; rerun affected filters/checks after
+integration or source changes, retaining the ten old Phase 2 byte/work cases.
+The local tests cover source-bound
+intake without original FASTQ/PAF/FASTA, configurable gene context, source/model
+separation, whole-view unavailability, exact accounting, LF/CRLF/raw hashes,
+cancel/fault/missing counts, no-overwrite output and saved-only inspection.
+Raw apply retains its ordinary audit; standalone managed publication must keep
+the live project/journal/redo unchanged and retain a published result after a
+late host cancel. Generic MCP confirmation remains required.
+
+The canonical producer/document equality and full-registry introspection now
+pass; the standalone documentation-helper CLI wrapper was not built/run.
+Exercise actual CLI/MCP processes with quoted/spaced/apostrophe paths and both
+absent and existing project files; compare project/sidecar bytes. Recheck generic
+JS/Lua state-out and all-covered versus mixed workflow behavior without treating
+a managed workflow as standalone artifact-only publication. These actual-process
+checks remain missing, not replaced by local in-process MCP/shell or the
+separate lifecycle slice. Small managed responses retain typed metadata and
+the exact binding in the job receipt; only oversized responses are compacted.
+Return exact source/platform/toolchain/profile, command/count/failure records and
+artifact hashes. No new S1 GUI, BAM/SAM, private-data replay, screenshots,
+protein claim or scientific acceptance is requested. Native/Windows outcomes
+outside an executed path remain unrun, even if the headless synthetic run passes.
+
 ## Lifecycle Slice 3, 2026-10-27
 
 Owner-authorized implementation starts from `ce4d33b5`; integrate normally and

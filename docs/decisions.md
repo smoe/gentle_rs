@@ -45,13 +45,45 @@ views, incomplete producer declarations and unknown primer/flank qualification.
 Neither recurrence nor a chain implies independent molecules, natural RNA ends,
 retention mechanism, fusion, expression or protein identity.
 
-The exported Rust API is experimental, with no new registered operation or
-frozen report-file schema. It checks declared hashes/geometry in memory, not
-the corresponding files or aligner search. S1 needs its own verified ingress,
-write approval, no-save and state/journal tests; main's independent lifecycle
-Slice 3 migration does not automatically cover this new family. Native/platform
-replay and scientific acceptance remain separately source-bound. No assay
+The exported S0 Rust API remains experimental and pure. It checks declared
+hashes/geometry in memory, not corresponding files or aligner search. The
+separately owner-authorized S1 boundary below owns verified ingress/publication;
+main's independent lifecycle Slice 3 does not implicitly cover new operations.
+Native/platform replay and scientific acceptance remain source-bound. No assay
 thresholds are approved.
+
+### Observed Structures S1 Intake And Lifecycle
+
+Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic
+Phase 2 batch through the shared engine, parser/CLI and generic MCP. Keep
+`reference_gene` configurable by source/stable ID, preserve all old Phase 2
+schemas and bytes, and publish a separate versioned result. Source trace,
+prepared-query witnesses, full evidence accounting/hashes and independently
+bound annotations are verified; original FASTQ, PAF and reference FASTA are not
+reopened. Recorded producer receipts are not an independently repeated search.
+
+Use annotation-bound target lengths. Unknown competitor lengths make the whole
+query view unavailable, not a selectively filtered mapping. Excluded/missing
+anchor views also suppress definite support from other anchors of that source
+record. Source statuses/cohort gaps, per-skip source comparison and nonadditive
+sample/barcode/primer support remain visible. Annotation uncertainty is not zero.
+
+Summarize/inspect/cancel join the named request-aware preserve-content selector:
+no constructor repair or implicit CLI/MCP project save. Raw `apply` retains the
+normal execution audit without checkpoints or project mutation. Direct pure
+analysis methods and managed standalone publication do not change the live
+project/journal; the worker's private audit is not merged. Workflow publication
+remains the existing conservative project-bound path, not a new artifact-only
+workflow service. Explicit report/marker writes require approval independently
+of this no-save fact; generic MCP confirmation stays mandatory.
+
+The selected batch is an atomic analysis unit. Cancel/fault before completion
+leaves analysis/counts absent, not zero; a complete unit can survive a final
+cancel/fault with that outcome retained. Data/hash/resource errors publish no
+final report. Bound writers stage fresh output and publish the report last.
+No source schema rewrite, BAM/SAM ingress, aligner, GUI, protein assignment,
+new dependency, push or scientific acceptance belongs to S1. See the
+[contract and pending execution scope](observed_transcript_structures.md).
 
 ## Primer-Anchored Read Trace
 

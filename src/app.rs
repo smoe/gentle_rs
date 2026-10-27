@@ -12490,6 +12490,8 @@ Error: `{err}`"
                 primer_payload_queries: None,
                 primer_payload_alignments: None,
                 primer_payload_inspection: None,
+                observed_transcript_structures: None,
+                observed_transcript_structures_inspection: None,
                 rna_primer_trace_inspection: None,
                 genome_edit_intent: None,
                 tube_profiles: None,

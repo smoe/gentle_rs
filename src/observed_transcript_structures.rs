@@ -2,7 +2,7 @@
 //!
 //! Callers bind and verify input bytes. This S0 API validates in-memory geometry,
 //! retains alternatives, and compares explicit stable gene IDs in existing payload
-//! annotations. Operation/adapters and file publication belong to later slices.
+//! annotations. S1's engine boundary verifies files and publishes a separate report.
 
 use crate::digest_utils::{canonical_json_string, sha256_prefixed_str};
 use crate::engine::{
@@ -20,11 +20,13 @@ mod tests;
 
 pub use geometry::Block as SupportedBlock;
 pub use kernel::summarize;
+pub use kernel::summarize_with_control;
 
 pub type Interval = (usize, usize);
 
 /// Coordinate authority, not an annotation/provider label or a selected gene.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReferenceBinding {
     pub assembly: String,
     pub fasta_sha256: String,
@@ -32,6 +34,7 @@ pub struct ReferenceBinding {
 
 /// A gene ID in one explicitly identified annotation; no symbol guessing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReferenceGene {
     pub source_id: String,
     pub gene_id: String,
@@ -81,6 +84,7 @@ pub struct QueryEvidence {
 
 /// Resource ceilings, not truncation policies or calibrated biological defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Budgets {
     pub max_queries: usize,
     pub max_records: usize,
@@ -94,6 +98,31 @@ pub struct Budgets {
     pub max_total_work: usize,
 }
 
+impl Budgets {
+    /// Shared admission before either in-memory interpretation or file/control effects.
+    pub(crate) fn validate(&self, flank: usize) -> Result<(), EngineError> {
+        if !(1..=1_000_000).contains(&flank)
+            || [
+                self.max_queries,
+                self.max_records,
+                self.max_segments_per_query,
+                self.max_operations,
+                self.max_skips_per_chain,
+                self.max_chain_families,
+                self.max_alternatives_per_record,
+                self.max_annotation_rows,
+                self.max_model_comparisons_per_family,
+            ]
+            .iter()
+            .any(|n| !(1..=1_000_000).contains(n))
+            || !(1..=100_000_000).contains(&self.max_total_work)
+        {
+            return Err(bad("observed_structure_admission"));
+        }
+        Ok(())
+    }
+}
+
 /// Pure S0 input. The selector is mandatory; other providers need explicit ID bindings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Input {
@@ -102,6 +131,9 @@ pub struct Input {
     pub comparison_genes: Vec<ReferenceGene>,
     pub annotation_sources: Vec<AnnotationSource>,
     pub queries: Vec<QueryEvidence>,
+    /// Excluded/missing views must not strengthen support from another anchor of the same record.
+    #[serde(default)]
+    pub unassessed_records: Vec<ReadRecord>,
     pub required_flank_bases: usize,
     pub budgets: Budgets,
 }
@@ -172,11 +204,20 @@ pub struct TranscriptMatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Exact per-source model membership; absent comparison is represented by the enclosing Option.
+pub struct JunctionMatch {
+    pub skipped_interval: Interval,
+    pub annotated_in_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceComparison {
     pub source_id: String,
     pub gene_id: Option<String>,
     pub resolution: GeneResolution,
     pub junction_relation: Option<JunctionRelation>,
+    /// None means unavailable comparison, not an unannotated/absent junction.
+    pub junctions: Option<Vec<JunctionMatch>>,
     pub models: Vec<TranscriptMatch>,
 }
 
@@ -248,7 +289,8 @@ pub struct AnnotationBinding {
     pub reference_fasta_sha256: String,
 }
 
-/// Experimental Rust-level result, not a registered operation or frozen file schema.
+/// Rust-level result; S1 v1 wraps this serialized shape in a versioned artifact.
+/// Stored-v1 semantics require an explicit compatibility/version decision before changing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Summary {
     pub context_sha256: String,

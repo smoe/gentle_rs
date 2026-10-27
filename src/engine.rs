@@ -3280,6 +3280,22 @@ pub enum Operation {
     SummarizePrimerPayloadAlignments {
         request: Box<SummarizePrimerPayloadAlignmentsRequest>,
     },
+    SummarizeObservedTranscriptStructures {
+        request: Box<SummarizeObservedTranscriptStructuresRequest>,
+    },
+    InspectObservedTranscriptStructures {
+        path: String,
+        #[serde(default)]
+        expected_result: Option<Box<ObservedTranscriptStructuresResultBinding>>,
+        table: String,
+        #[serde(default)]
+        rows: usize,
+        #[serde(default)]
+        verify_artifacts: bool,
+    },
+    CancelObservedTranscriptStructures {
+        request: Box<SummarizeObservedTranscriptStructuresRequest>,
+    },
     InspectPrimerPayload {
         path: String,
         #[serde(default)]
@@ -10280,6 +10296,9 @@ impl GentleEngine {
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::CancelPrimerPayload { .. }
+                | Operation::SummarizeObservedTranscriptStructures { .. }
+                | Operation::InspectObservedTranscriptStructures { .. }
+                | Operation::CancelObservedTranscriptStructures { .. }
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::CancelPrimerTrace { .. }
                 | Operation::ScreenRnaReadPanel { .. }

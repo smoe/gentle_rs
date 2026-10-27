@@ -22,6 +22,65 @@ fn wait(service: &CommandExecutionService, id: u64) -> Result<ShellRunResult, St
 }
 
 #[test]
+fn observed_transcripts_managed_publication_keeps_live_project_and_journal_unchanged() {
+    let td = tempfile::tempdir().unwrap();
+    let (_, request) = GentleEngine::observed_transcripts_test_fixture(td.path());
+    let service = CommandExecutionService::default();
+    let engine = Arc::new(RwLock::new(fixture::live_with_redo()));
+    let before = engine.read().unwrap();
+    let state = serde_json::to_value(before.state()).unwrap();
+    let journal = before.journal_len();
+    let history = before.history_summary();
+    drop(before);
+    let command = format!(
+        "rna-reads transcript-structures {}",
+        crate::engine_shell::quote_shell_arg(&serde_json::to_string(&request).unwrap())
+    );
+    let id = service
+        .submit(engine.clone(), command, Default::default())
+        .unwrap();
+    let result = wait(&service, id).unwrap();
+    assert!(!result.state_changed);
+    assert_eq!(
+        result.output["result"]["observed_transcript_structures"]["status"],
+        "completed"
+    );
+    let receipt = service.status(id).unwrap();
+    assert_eq!(receipt.publication, "artifact_only");
+    assert!(!receipt.requires_project_commit);
+    assert_eq!(receipt.committed_operations, 0);
+    let report: crate::engine::ObservedTranscriptStructuresReport =
+        serde_json::from_value(result.output["result"]["observed_transcript_structures"].clone())
+            .unwrap();
+    let binding =
+        GentleEngine::observed_transcript_structures_result_binding(&request, &report).unwrap();
+    assert_eq!(
+        serde_json::to_value(receipt.observed_structures_result.as_ref().unwrap()).unwrap(),
+        serde_json::to_value(binding).unwrap()
+    );
+    assert_eq!(
+        crate::agent_feedback::AgentExecutionStatus::from_shell_output(&result.output),
+        crate::agent_feedback::AgentExecutionStatus::Completed
+    );
+    assert!(!service.cancel(id));
+    let after = engine.read().unwrap();
+    assert_eq!(serde_json::to_value(after.state()).unwrap(), state);
+    assert_eq!(after.journal_len(), journal);
+    assert_eq!(
+        (
+            after.history_summary().operation_log_count,
+            after.undo_available(),
+            after.redo_available()
+        ),
+        (
+            history.operation_log_count,
+            history.undo_count,
+            history.redo_count
+        )
+    );
+}
+
+#[test]
 fn lifecycle_slice3_managed_op_and_workflow_publish_journals_not_project_changes() {
     for workflow in [false, true] {
         let service = CommandExecutionService::default();

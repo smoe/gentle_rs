@@ -14282,6 +14282,7 @@ impl ShellCommand {
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::InspectPrimerPayload { .. }
+                | Operation::InspectObservedTranscriptStructures { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
                     request.as_ref(),
@@ -19877,6 +19878,61 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
 
+fn observed_transcript_descriptor(id: &str) -> Value {
+    let inspect = matches!(
+        id,
+        "InspectObservedTranscriptStructures" | "rna-reads transcript-structures-show"
+    );
+    let cancel = matches!(
+        id,
+        "CancelObservedTranscriptStructures" | "rna-reads transcript-structures-cancel"
+    );
+    let mut descriptor = primer_payload_descriptor(if inspect {
+        "InspectPrimerPayload"
+    } else {
+        "SummarizePrimerPayloadAlignments"
+    });
+    let request = if inspect {
+        Value::Null
+    } else {
+        json!({
+            "schema":"gentle.observed_transcript_structures_request.v1",
+            "source":{"schema":"gentle.primer_payload_result_binding.v1","kind":"alignments","request_sha256":"","report_content_sha256":"","report_path":"REPLACE_SOURCE_REPORT","outcome":"REPLACE_ACTUAL_OUTCOME"},
+            "source_report":{"path":"REPLACE_SOURCE_REPORT","sha256":"","bytes":0},"batch_id":"REPLACE_GENOMIC_BATCH",
+            "reference_gene":{"source_id":"REPLACE_ANNOTATION_SOURCE","gene_id":"REPLACE_STABLE_GENE_ID"},"comparison_genes":[],"annotation_sources":[],
+            "required_flank_bases":0,"budgets":descriptor["request_template"]["budgets"],
+            "kernel_budgets":{"max_queries":0,"max_records":0,"max_segments_per_query":0,"max_operations":0,"max_skips_per_chain":0,"max_chain_families":0,"max_alternatives_per_record":0,"max_annotation_rows":0,"max_model_comparisons_per_family":0,"max_total_work":0},
+            "output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null
+        })
+    };
+    let name = if inspect {
+        "InspectObservedTranscriptStructures"
+    } else if cancel {
+        "CancelObservedTranscriptStructures"
+    } else {
+        "SummarizeObservedTranscriptStructures"
+    };
+    descriptor["id"] = json!(id);
+    descriptor["request_template"] = request.clone();
+    descriptor["operation_template"] = if inspect {
+        json!({(name):{"path":"REPLACE_REPORT","expected_result":null,"table":"read_structures.tsv","rows":0,"verify_artifacts":false}})
+    } else {
+        json!({(name):{"request":request}})
+    };
+    descriptor["description"] = json!(
+        "Experimental observed transcript structures from one bound saved Phase 2 genomic batch. Explicit stable gene/source context; independent annotation hashes; physical chains and compatible models, never exclusive RNA/protein identity. No original FASTQ, PAF or FASTA replay; no BAM or GUI. Missing evidence stays unavailable."
+    );
+    descriptor["args"] = json!([{"name":"REQUEST_OR_PATH","required":true,"detail":"transcript-structures|transcript-structures-cancel REQUEST_JSON_OR_@FILE; transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]"}]);
+    descriptor["result_contract"] = json!(
+        "gentle.observed_transcript_structures_result_binding.v1 binds completed/unavailable/cancelled/control_error output. Absent analysis counts are not zero. Separate JSON and five JSON-cell TSVs are saved without changing Phase 2 bytes. Write attempts require confirmation; marker publication does not confirm termination."
+    );
+    descriptor["template_contract"] = json!(
+        "Replace placeholders with verified source bindings and reviewed resource ceilings. No gene/organism default. At most 4096 query/evidence rows and 128 MB input/output budgets; zero budgets are deliberately nonexecutable. Generic MCP op still requires confirmation."
+    );
+    descriptor["registry"] = json!(registry_metadata_for_introspection(id));
+    descriptor
+}
+
 fn primer_payload_descriptor(id: &str) -> Value {
     let inspect = matches!(id, "InspectPrimerPayload" | "rna-reads primer-payload-show");
     let prepare = matches!(
@@ -22049,6 +22105,12 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
         rna_panel_descriptor("BuildRnaReadPanel"),
         primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
+        observed_transcript_descriptor("SummarizeObservedTranscriptStructures"),
+        observed_transcript_descriptor("InspectObservedTranscriptStructures"),
+        observed_transcript_descriptor("CancelObservedTranscriptStructures"),
+        observed_transcript_descriptor("rna-reads transcript-structures"),
+        observed_transcript_descriptor("rna-reads transcript-structures-show"),
+        observed_transcript_descriptor("rna-reads transcript-structures-cancel"),
         primer_payload_descriptor("SummarizePrimerPayloadAlignments"),
         primer_payload_descriptor("InspectPrimerPayload"),
         primer_payload_descriptor("CancelPrimerPayload"),
@@ -66442,6 +66504,34 @@ fn execute_op_command(
     let op = resolve_operation_payload(payload)?;
     // These file-only observation/control routes never append a project journal.
     match &op {
+        Operation::InspectObservedTranscriptStructures {
+            path,
+            expected_result,
+            table,
+            rows,
+            verify_artifacts,
+        } => {
+            let inspection = GentleEngine::inspect_observed_transcript_structures(
+                path,
+                expected_result.as_deref(),
+                table,
+                *rows,
+                *verify_artifacts,
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"observed_transcript_structures_inspection":inspection}}),
+            });
+        }
+        Operation::CancelObservedTranscriptStructures { request } => {
+            let message = GentleEngine::cancel_observed_transcript_structures(request)
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
         Operation::InspectPrimerPayload {
             path,
             expected_result,
@@ -66566,6 +66656,7 @@ fn execute_op_command(
             | Operation::TracePrimerReads { .. }
             | Operation::PreparePrimerPayloadAlignmentQueries { .. }
             | Operation::SummarizePrimerPayloadAlignments { .. }
+            | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
             | Operation::ExportRnaReadPanelSummary { .. }
@@ -66599,6 +66690,7 @@ fn execute_op_command(
                 | Operation::TracePrimerReads { .. }
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
+                | Operation::SummarizeObservedTranscriptStructures { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::PlanDnaSequenceDesign { .. }

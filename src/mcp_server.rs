@@ -1422,6 +1422,9 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "rna-reads primer-payload-summarize",
             "rna-reads primer-payload-show",
             "rna-reads primer-payload-cancel",
+            "rna-reads transcript-structures",
+            "rna-reads transcript-structures-show",
+            "rna-reads transcript-structures-cancel",
             "rna-reads primer-trace-show",
             "op",
             "sequence-design plan",
@@ -3621,6 +3624,18 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         }
     }
     // Transport only: large populations remain in the engine-owned report, not the model response.
+    if let Some(report) = result.observed_transcript_structures.as_deref() {
+        return match GentleEngine::observed_transcript_structures_result_binding(
+            &report.request,
+            report,
+        ) {
+            Ok(binding) => tool_result_json(
+                json!({"schema":"gentle.command_observed_structures_result.v1","state_path":state_path,"observed_structures_result":binding,"full_output_retained_in_report":true}),
+                false,
+            ),
+            Err(error) => tool_result_json(json!({"state_path":state_path,"error":error}), true),
+        };
+    }
     let payload_binding = if let Some(report) = result.primer_payload_queries.as_deref() {
         Some(GentleEngine::primer_payload_query_result_binding(
             &report.request,
@@ -5344,6 +5359,9 @@ mod tests {
             "SummarizePrimerPayloadAlignments",
             "InspectPrimerPayload",
             "CancelPrimerPayload",
+            "SummarizeObservedTranscriptStructures",
+            "InspectObservedTranscriptStructures",
+            "CancelObservedTranscriptStructures",
         ] {
             let result = op_tool_result(
                 &path.display().to_string(),
@@ -5352,6 +5370,37 @@ mod tests {
             assert_eq!(result["isError"], true);
             assert!(!path.exists());
         }
+    }
+
+    #[test]
+    fn observed_transcripts_mcp_uses_bound_source_and_preserves_project_bytes() {
+        let td = tempfile::tempdir().unwrap();
+        let (_, request) = GentleEngine::observed_transcripts_test_fixture(td.path());
+        let path = td.path().join("observed project.json");
+        ProjectState::default()
+            .save_to_path(&path.display().to_string())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let result = op_tool_result(
+            &path.display().to_string(),
+            &json!({"confirm":true,"operation":{"SummarizeObservedTranscriptStructures":{"request":request}}}),
+        );
+        assert_ne!(result["isError"], true, "{result}");
+        assert_eq!(
+            result["structuredContent"]["observed_structures_result"]["outcome"],
+            "completed"
+        );
+        assert_eq!(before, fs::read(&path).unwrap());
+        let binding = &result["structuredContent"]["observed_structures_result"];
+        let inspected = op_tool_result(
+            &path.display().to_string(),
+            &json!({"confirm":true,"operation":{"InspectObservedTranscriptStructures":{
+                "path":binding["report_path"],"expected_result":binding,"table":"read_structures.tsv","rows":1,"verify_artifacts":true
+            }}}),
+        );
+        assert_ne!(inspected["isError"], true, "{inspected}");
+        assert_eq!(inspected["structuredContent"]["result"]["observed_transcript_structures_inspection"]["rows"].as_array().unwrap().len(),1);
+        assert_eq!(before, fs::read(&path).unwrap());
     }
 
     #[test]

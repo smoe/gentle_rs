@@ -40548,6 +40548,8 @@ impl GentleEngine {
             primer_payload_queries: None,
             primer_payload_alignments: None,
             primer_payload_inspection: None,
+            observed_transcript_structures: None,
+            observed_transcript_structures_inspection: None,
             rna_primer_trace_inspection: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,
@@ -52224,6 +52226,32 @@ impl GentleEngine {
                 }
                 Operation::CancelPrimerPayload { request } => {
                     result.messages.push(Self::cancel_primer_payload(&request)?);
+                }
+                Operation::SummarizeObservedTranscriptStructures { request } => {
+                    result.observed_transcript_structures = Some(Box::new(
+                        self.summarize_observed_transcript_structures(*request, on_progress)?,
+                    ));
+                }
+                Operation::InspectObservedTranscriptStructures {
+                    path,
+                    expected_result,
+                    table,
+                    rows,
+                    verify_artifacts,
+                } => {
+                    result.observed_transcript_structures_inspection =
+                        Some(Box::new(Self::inspect_observed_transcript_structures(
+                            &path,
+                            expected_result.as_deref(),
+                            &table,
+                            rows,
+                            verify_artifacts,
+                        )?));
+                }
+                Operation::CancelObservedTranscriptStructures { request } => {
+                    result
+                        .messages
+                        .push(Self::cancel_observed_transcript_structures(&request)?);
                 }
                 Operation::TracePrimerReads { request } => {
                     let report = self.trace_primer_reads(*request, on_progress)?;

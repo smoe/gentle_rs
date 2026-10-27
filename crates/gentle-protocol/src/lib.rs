@@ -5722,6 +5722,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "TracePrimerReads",
     "PreparePrimerPayloadAlignmentQueries",
     "SummarizePrimerPayloadAlignments",
+    "SummarizeObservedTranscriptStructures",
+    "InspectObservedTranscriptStructures",
+    "CancelObservedTranscriptStructures",
     "InspectPrimerPayload",
     "CancelPrimerPayload",
     "InspectPrimerTrace",
@@ -7777,6 +7780,8 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
             | "TracePrimerReads"
             | "PreparePrimerPayloadAlignmentQueries"
             | "SummarizePrimerPayloadAlignments"
+            | "SummarizeObservedTranscriptStructures"
+            | "CancelObservedTranscriptStructures"
             | "CancelPrimerPayload"
             | "CancelPrimerTrace"
             | "ExportTssTfbsProfiles"
