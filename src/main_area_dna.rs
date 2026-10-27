@@ -2988,7 +2988,6 @@ impl MainAreaDna {
         if !normalized_id.is_empty() {
             self.dotplot_ui.dotplot_id = normalized_id.to_string();
         }
-        self.primary_map_mode = PrimaryMapMode::Dotplot;
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
         self.open_dotplot_window();
@@ -3000,7 +2999,6 @@ impl MainAreaDna {
             self.dotplot_ui.flex_track_id = normalized_id.to_string();
         }
         self.dotplot_ui.show_flexibility_track = true;
-        self.primary_map_mode = PrimaryMapMode::Dotplot;
         self.invalidate_dotplot_cache();
         self.ensure_dotplot_cache_current();
         self.open_dotplot_window();
@@ -14565,7 +14563,6 @@ impl MainAreaDna {
             Self::normalize_operation_id_token(&source_seq_id),
             transcript_feature_id + 1
         );
-        self.primary_map_mode = PrimaryMapMode::Dotplot;
         self.compute_primary_dotplot();
         self.open_dotplot_window();
         if adjusted_step_bp != requested_step_bp {
@@ -14619,7 +14616,6 @@ impl MainAreaDna {
         self.dotplot_ui.flex_track_id.clear();
         self.clear_dotplot_query_override();
         self.dotplot_ui.dotplot_id = dotplot_request.store_as.clone();
-        self.primary_map_mode = PrimaryMapMode::Dotplot;
         self.compute_primary_dotplot_with_inspection_context(Some(
             ConstructReasoningDotplotProvenanceContext {
                 graph,

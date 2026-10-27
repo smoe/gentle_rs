@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-27 - Keep Dotplot Windows Separate From The DNA Map
+
+- Remove implicit primary-map switches when opening/focusing dotplot or
+  flexibility analyses, transcript comparisons and construct-reasoning repeat
+  inspections. The explicit `Dotplot map` toolbar choice remains available;
+  repeat-region focus, computation and inspection provenance are unchanged.
+- Let its launcher fill the remaining pane height with bounded scrolling,
+  rather than a content-height frame and forced 600-px width. Preserve existing
+  saved view choices instead of guessing whether they were explicitly selected.
+- Author focus/mode and egui resize/height regressions; update the existing
+  feature/reasoning action assertions and GUI/Glen guidance. Local Rust builds
+  and native verification remain unrun; no screenshot capture or push.
+- Verification: 11 LF/CRLF-aware documentation tests, scoped rustfmt,
+  documentation status and whitespace checks pass; these do not execute the
+  new egui geometry or action regressions.
+
 ## 2026-10-27 - Rebase S0 And Repair Lifecycle Test API Calls
 
 - Commit S0 as `eaed85ff`, then rebase onto local main `f0b8371f`, producing

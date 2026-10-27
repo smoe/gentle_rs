@@ -10192,6 +10192,80 @@ fn collect_open_auxiliary_window_entries_includes_dotplot_window() {
 }
 
 #[test]
+fn dotplot_auxiliary_focus_preserves_the_selected_primary_map() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("auxiliary_focus".to_string()), None);
+    for mode in [
+        PrimaryMapMode::Standard,
+        PrimaryMapMode::Splicing,
+        PrimaryMapMode::Dotplot,
+        PrimaryMapMode::Tss,
+    ] {
+        area.primary_map_mode = mode;
+        area.show_dotplot_window = false;
+        area.focus_dotplot_analysis("synthetic_dotplot");
+        assert_eq!(area.primary_map_mode, mode);
+        assert!(area.show_dotplot_window);
+        assert_eq!(area.dotplot_ui.dotplot_id, "synthetic_dotplot");
+
+        area.show_dotplot_window = false;
+        area.focus_flexibility_track_analysis("synthetic_flexibility");
+        assert_eq!(area.primary_map_mode, mode);
+        assert!(area.show_dotplot_window);
+        assert!(area.dotplot_ui.show_flexibility_track);
+        assert_eq!(area.dotplot_ui.flex_track_id, "synthetic_flexibility");
+    }
+}
+
+#[test]
+fn dotplot_primary_launcher_fills_height_and_stays_inside_narrow_resized_body() {
+    let ctx = egui::Context::default();
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut area = MainAreaDna::new(dna, Some("launcher_geometry".to_string()), None);
+    for size in [
+        egui::vec2(1000.0, 720.0),
+        egui::vec2(360.0, 180.0),
+        egui::vec2(780.0, 940.0),
+    ] {
+        for _ in 0..2 {
+            let body = egui::Rect::from_min_size(egui::pos2(24.0, 40.0), size);
+            let mut actual = egui::Rect::NOTHING;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        size + egui::vec2(48.0, 80.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .id_salt("dotplot_launcher_geometry")
+                            .max_rect(body)
+                            .layout(egui::Layout::top_down(egui::Align::Min)),
+                    );
+                    child.set_clip_rect(body);
+                    area.render_primary_dotplot_map_ui(&mut child);
+                    actual = child.min_rect();
+                },
+            );
+            output.textures_delta.clear();
+            assert!(actual.is_finite(), "{actual:?}");
+            assert!((actual.top() - body.top()).abs() <= 1.0, "{actual:?}");
+            assert!(
+                (actual.bottom() - body.bottom()).abs() <= 1.0,
+                "launcher must fill the client height: {actual:?} vs {body:?}"
+            );
+            assert!(
+                actual.right() <= body.right() + 1.0,
+                "controls must scroll within the body: {actual:?} vs {body:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn dotplot_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
@@ -13761,11 +13835,12 @@ fn open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request() {
     let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
     let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
 
+    area.primary_map_mode = PrimaryMapMode::Splicing;
     let opened = area.open_dotplot_for_feature(0, "test");
 
     assert!(opened);
     assert!(area.show_dotplot_window);
-    assert_eq!(area.primary_map_mode, PrimaryMapMode::Dotplot);
+    assert_eq!(area.primary_map_mode, PrimaryMapMode::Splicing);
     assert_eq!(area.dotplot_ui.reference_seq_id, "seq_gene");
     match area.description_cache_expert_view.as_ref() {
         Some(FeatureExpertView::Splicing(view)) => {
@@ -17287,7 +17362,7 @@ fn open_construct_reasoning_dotplot_action_focuses_repeat_region() {
         .expect("open reasoning-guided dotplot");
 
     assert!(area.show_dotplot_window);
-    assert_eq!(area.primary_map_mode, PrimaryMapMode::Dotplot);
+    assert_eq!(area.primary_map_mode, PrimaryMapMode::Standard);
     assert_eq!(area.dotplot_ui.mode, DotplotMode::SelfReverseComplement);
     assert!(!area.dotplot_ui.dotplot_id.trim().is_empty());
     let view = area

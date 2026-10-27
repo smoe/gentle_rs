@@ -1044,8 +1044,16 @@ Primary map modes (linear topology):
     `mRNA`/`ncRNA`/`misc_RNA`/`transcript`/`exon`/`gene`/`CDS` features
 - `Dotplot map`
   - compact launcher/compute panel in sequence windows
+  - the launcher fills the remaining map-pane height and scrolls within that
+    pane at small sizes; its controls do not impose a 600-px minimum width
   - selecting `Dotplot map` opens a dedicated standalone `Dotplot` workspace
     window for full controls and rendering
+  - opening/focusing a dotplot or flexibility window from an analysis,
+    transcript/feature or construct-reasoning action preserves the current
+    `Standard map`, `Splicing map` or other primary view; only explicit mode
+    selection replaces it with this launcher
+  - an already saved `Dotplot map` preference is not reset automatically;
+    select `Standard map` to restore the sequence map while keeping Dotplot open
   - compact panel keeps quick operations in-window:
     - `Compute dotplot`
     - `Compute flexibility`

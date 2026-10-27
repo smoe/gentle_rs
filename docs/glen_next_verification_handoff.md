@@ -1,5 +1,36 @@
 # Glen: Next Verification And Return
 
+## DNA Map And Dotplot Separation, 2026-10-27
+
+The owner's screenshot shows the compact `Dotplot map` launcher in the main
+DNA pane after a reasoning inspection opened a separate dotplot. Source review
+found an explicit primary-mode assignment, not evidence of cross-window paint
+corruption. Auxiliary analysis/feature/reasoning routes now preserve the primary
+view; the explicit toolbar mode remains. The launcher fills its available
+height and scrolls within narrow/short panes. Existing saved mode choices are
+not migrated; select `Standard map` once if the old launcher is still selected.
+
+Run the following missing default-feature regressions on the ordinary integrated
+source, or reuse same-source CI results; local Rust execution remains prohibited:
+
+```sh
+cargo test --locked --lib -j1 dotplot_auxiliary_focus_preserves_the_selected_primary_map -- --test-threads=1
+cargo test --locked --lib -j1 dotplot_primary_launcher_fills_height_and_stays_inside_narrow_resized_body -- --test-threads=1
+cargo test --locked --lib -j1 open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request -- --test-threads=1
+cargo test --locked --lib -j1 open_construct_reasoning_dotplot_action_focuses_repeat_region -- --test-threads=1
+```
+
+The resize regression drives the actual launcher for two frames at each of
+1000x720, 360x180 and 780x940 logical body sizes; it must fill height without
+horizontal body growth. Native macOS and hosted-window follow-up: begin in
+Standard/Splicing, open a repeat/feature dotplot and focus stored analyses,
+verify separate content and unchanged primary mode, resize both windows,
+close/reopen Dotplot and toggle sequence text. Explicit `Dotplot map` must still
+work, scroll and use the full remaining pane; restore Standard without closing
+the auxiliary window. Retain existing repeat-region/provenance checks and
+project DNA. Return source/binary/platform/profile and results with the normal
+handoff; no private input, live-model run or new audit campaign is needed.
+
 ## Lifecycle Slice 3, 2026-10-27
 
 Owner-authorized implementation starts from `ce4d33b5`; integrate normally and

@@ -4764,7 +4764,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_primary_dotplot_map_ui(&mut self, ui: &mut egui::Ui) {
-        let panel_width = ui.available_width().max(600.0);
+        let panel_width = ui.available_width().max(1.0);
         self.last_linear_map_width_px = panel_width;
         self.ensure_dotplot_cache_current();
         let mut save_state = false;
@@ -4794,14 +4794,17 @@ impl MainAreaDna {
             .fill(egui::Color32::from_gray(249))
             .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
-                ui.set_width(panel_width);
+                egui::ScrollArea::both()
+                    .id_salt(("primary_dotplot_launcher", self.panel_scope_key()))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.label(egui::RichText::new("Dotplot map").strong())
                         .on_hover_text(
                             "Compact dotplot launcher for this sequence. Open the dedicated Dotplot window for full controls and rendering.",
                         );
                     ui.small(
-                        "This in-sequence panel is intentionally compact. Use 'Open Dotplot Window' for full parameter editing and plot inspection.",
+                        "Quick dotplot controls for this sequence. Use 'Open Dotplot Window' for full parameter editing and plot inspection.",
                     );
 
                     ui.horizontal_wrapped(|ui| {
@@ -5190,6 +5193,7 @@ impl MainAreaDna {
                     }
                     self.render_dotplot_status_ui(ui);
                 });
+                    });
             });
 
         if save_state {
