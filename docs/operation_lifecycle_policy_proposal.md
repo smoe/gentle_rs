@@ -244,6 +244,10 @@ already written files or infer that undo removes them.
 4. **Alias/collision and writer contract.** Separate owner decision; not a
    prerequisite for slices 1--3. Inspect existing portable helpers before any
    promises about symlinks, hard links, races, atomicity or no-clobber behavior.
+   The owner requested a [scoped Slice 4 plan](operation_lifecycle_slice4_plan.md)
+   and [forwardable Claude review prompt](operation_lifecycle_slice4_claude_review_prompt.md)
+   on 2026-10-27. Fresh-file-only Plan output and protected host binding are
+   proposed, not implemented or adopted; no new payload-resolution layer.
 
 Keep S1 regressions as a control, not a reason to repeat its scientific review.
 Do not expand this to every read-only operation before evidence warrants it.

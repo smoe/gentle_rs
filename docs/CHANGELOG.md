@@ -39,6 +39,22 @@
   warnings and separate the initial compile failure from the passing rerun;
   no full-suite, actual-process, VM, native or cross-platform acceptance.
 
+## 2026-10-27 - Prepare Lifecycle Slice 4 For Review
+
+- Inspect Plan's truncating JSON writer, existing staging/no-clobber and path
+  helpers, host project binding and cached tempfile guarantees. Record the
+  `f0b8371f` worktree and newer local main `a2637079`, including main's separate
+  Slice 3 history-test repair; source inspection predates the owner's later
+  commit/rebase request and does not claim execution of main's tests here.
+- Draft a scoped Plan-only fresh-file writer/protected-project proposal and a
+  forwardable read-only Claude prompt. Explicitly distinguish absent-project
+  binding, sidecar hydration, native aliases, final-name races, directory races,
+  cleanup and crash durability. No overwrite mode, global writer migration,
+  payload resolver, runtime/schema/tutorial behavior change or policy adoption.
+- Link the draft from the parent proposal and roadmap. Implementation remains
+  separately authorized; Rust/native verification stays Glen/CI's. No direct
+  Claude invocation, private input, local Rust build, push or goal resumption.
+
 ## 2026-10-27 - Preserve Covered Inspection Construction And Persistence
 
 - Implement the owner-authorized, Claude-revised Lifecycle Slice 3 without a
