@@ -11,7 +11,7 @@
 //! stays clear for future edits.
 
 use crate::{
-    app::{request_open_graphics_settings_from_native_menu, request_open_help_from_native_menu},
+    app::{help_topics, help_topics::HelpTopic, request_open_graphics_settings_from_native_menu},
     dna_sequence::DNAsequence,
     engine::GentleEngine,
     gui_profiler::startup_trace::{self, Phase, TraceContext},
@@ -384,13 +384,7 @@ impl WindowDna {
     fn render_nav_row(&mut self, ui: &mut egui::Ui) {
         let agent_help_window_title = self.name();
         ui.horizontal(|ui| {
-            if ui
-                .button(crate::i18n::tr("button.help"))
-                .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
-                .clicked()
-            {
-                request_open_help_from_native_menu();
-            }
+            help_topics::button(ui, HelpTopic::DnaViewer);
             if ui
                 .button(crate::i18n::tr("button.main"))
                 .on_hover_text("Bring the main project workspace to front")
@@ -446,7 +440,7 @@ impl WindowDna {
                 || ctx.input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
                 || ctx.input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
             {
-                request_open_help_from_native_menu();
+                help_topics::request(ctx, HelpTopic::DnaViewer);
             }
             let kind = if self.main_area.opened_from_pool_context() {
                 WindowBackdropKind::Pool
@@ -523,7 +517,7 @@ impl WindowDna {
                     .ctx()
                     .input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
             {
-                request_open_help_from_native_menu();
+                help_topics::request(ui.ctx(), HelpTopic::DnaViewer);
             }
             let kind = if self.main_area.opened_from_pool_context() {
                 WindowBackdropKind::Pool
@@ -704,6 +698,13 @@ impl WindowDna {
 
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         self.main_area.collect_open_auxiliary_window_entries()
+    }
+
+    pub(crate) fn collect_open_auxiliary_window_entries_with_help(
+        &self,
+    ) -> Vec<(egui::ViewportId, String, String, HelpTopic)> {
+        self.main_area
+            .collect_open_auxiliary_window_entries_with_help()
     }
 
     pub fn has_open_auxiliary_windows(&self) -> bool {

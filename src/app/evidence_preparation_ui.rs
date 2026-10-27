@@ -260,6 +260,7 @@ impl GENtleApp {
     fn render_evidence_preparation_contents(&mut self, ui: &mut Ui) {
         if self.render_specialist_window_nav_with_close(
             ui,
+            HelpTopic::EvidencePreparation,
             Some(("Close", "Close Evidence Preparation")),
         ) {
             self.evidence_preparation_panel.show_panel = false;

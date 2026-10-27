@@ -270,7 +270,7 @@ fn genome_edit_intent_large_genomic_origin_never_becomes_an_absolute_usize_index
 
 #[test]
 fn genome_edit_intent_documented_operation_is_the_tested_synthetic_request() {
-    let section = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli.md"))
+    let section = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli/snv-intent.md"))
         .split("## Read-Only SNV Intent")
         .nth(1)
         .unwrap();

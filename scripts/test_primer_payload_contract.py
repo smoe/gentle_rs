@@ -14,6 +14,7 @@ import tempfile
 import unittest
 
 from scripts import primer_payload_rehearsal as fixture
+from scripts import manual_docs
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = os.environ.get("GENTLE_PAYLOAD_CLI")
@@ -24,11 +25,11 @@ class PrimerPayloadSourceTests(unittest.TestCase):
         glossary = json.loads((ROOT / "docs/glossary.json").read_text())
         paths = [c["path"] for c in glossary["commands"]
                  if {"cli-shell", "cli-direct"}.intersection(c["interfaces"])]
-        manual = (ROOT / "docs/cli.md").read_text()
+        manual = manual_docs.book_text("cli", ROOT)
         for newline in ("\n", "\r\n"):
             text = manual.replace("\n", newline)
             missing = [path for path in paths if path not in text]
-            self.assertEqual(missing, [], "CLI glossary paths missing from docs/cli.md: " + ", ".join(missing))
+            self.assertEqual(missing, [], "CLI glossary paths missing from the CLI manual: " + ", ".join(missing))
         abbreviated = "rna-reads primer-payload-prepare|summarize|show|cancel"
         for suffix in ("summarize", "show", "cancel"):
             self.assertNotIn("rna-reads primer-payload-" + suffix, abbreviated)

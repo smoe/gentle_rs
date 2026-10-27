@@ -2396,7 +2396,11 @@ impl GENtleApp {
     pub(super) fn render_rack_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Rack");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::Rack,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         self.render_tube_model_controls(ui);

@@ -38,7 +38,7 @@ class ObservedTranscriptContractTests(unittest.TestCase):
         }
         for path, operation in routes.items():
             self.assertEqual(commands[path]["engine_operations"], [operation])
-            self.assertIn(path, (ROOT / "docs/cli.md").read_text())
+            self.assertIn(path, (ROOT / "docs/cli/observed-transcripts.md").read_text())
             self.assertIn(path, (ROOT / "src/mcp_server.rs").read_text())
             for surface in surfaces:
                 self.assertIn(operation, (ROOT / surface).read_text(), surface)

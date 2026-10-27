@@ -5202,6 +5202,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_dotplot_workspace_ui(&mut self, ui: &mut egui::Ui) {
+        crate::app::help_topics::button(ui, crate::app::help_topics::HelpTopic::Dotplot);
         crate::agent_help::render_agent_help_button(
             ui,
             format!(
@@ -7579,6 +7580,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &IsoformArchitectureExpertView,
     ) {
+        crate::app::help_topics::button(ui, crate::app::help_topics::HelpTopic::Isoforms);
         crate::agent_help::render_agent_help_button(
             ui,
             format!("Isoform Expert - {}", view.gene_symbol),
@@ -10291,6 +10293,7 @@ impl MainAreaDna {
         view: &SplicingExpertView,
         pending_initial_render: bool,
     ) {
+        crate::app::help_topics::button(ui, crate::app::help_topics::HelpTopic::RnaReads);
         crate::agent_help::render_agent_help_button(
             ui,
             format!("RNA-read Mapping - {}", view.group_label),
@@ -10532,6 +10535,16 @@ impl MainAreaDna {
     }
 
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
+        self.collect_open_auxiliary_window_entries_with_help()
+            .into_iter()
+            .map(|(id, title, detail, _)| (id, title, detail))
+            .collect()
+    }
+
+    pub(crate) fn collect_open_auxiliary_window_entries_with_help(
+        &self,
+    ) -> Vec<(egui::ViewportId, String, String, crate::app::help_topics::HelpTopic)> {
+        use crate::app::help_topics::HelpTopic;
         let mut entries = Vec::new();
         if self.show_dotplot_window
             && let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id()
@@ -10541,6 +10554,7 @@ impl MainAreaDna {
                 Self::dotplot_viewport_id(&viewport_seq_id),
                 Self::dotplot_window_title(&query_label),
                 format!("Dotplot workspace for '{query_label}'"),
+                HelpTopic::Dotplot,
             ));
         }
         if self.show_splicing_expert_window
@@ -10553,6 +10567,7 @@ impl MainAreaDna {
                     "Splicing expert for feature n-{} on '{}'",
                     view.target_feature_id, view.seq_id
                 ),
+                HelpTopic::Splicing,
             ));
         }
         if self.show_rna_read_mapping_window
@@ -10565,6 +10580,7 @@ impl MainAreaDna {
                     "RNA-read mapping workspace for feature n-{} on '{}'",
                     view.target_feature_id, view.seq_id
                 ),
+                HelpTopic::RnaReads,
             ));
         }
         if self.show_variant_followup_window {
@@ -10584,6 +10600,7 @@ impl MainAreaDna {
                             )
                         })
                         .unwrap_or_else(|| format!("Promoter design workspace on '{seq_id}'")),
+                    HelpTopic::PromoterDesign,
                 ));
             }
         }
@@ -10614,6 +10631,7 @@ impl MainAreaDna {
                         view.seq_id
                     )
                 },
+                HelpTopic::Isoforms,
             ));
         }
         entries

@@ -963,6 +963,7 @@ impl GENtleApp {
     fn render_external_services_contents(&mut self, ui: &mut Ui) {
         let close_requested = self.render_specialist_window_nav_with_close(
             ui,
+            HelpTopic::ExternalServices,
             Some(("Close", "Close the External Services window (Cmd/Ctrl+W)")),
         );
         if close_requested {

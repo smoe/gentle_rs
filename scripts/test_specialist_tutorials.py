@@ -520,7 +520,7 @@ class SpecialistSourceTests(unittest.TestCase):
                        if row.get("path") == "planning protein-expression-handoff")
         self.assertIn("[--provider PROVIDER]", command["usage"])
         self.assertIn("provider-neutral", command["summary"])
-        for path in ("docs/cli.md", "docs/protocol.md"):
+        for path in ("docs/cli/planning.md", "docs/protocol.md"):
             self.assertIn(command["usage"], (ROOT / path).read_text(encoding="utf-8"))
         for text in (guide, guide.replace("\n", "\r\n")):
             self.assertIn("gentle.protein_expression_handoff.v2", text)

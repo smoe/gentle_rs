@@ -9,6 +9,7 @@ No network, build, real checkout changes, or platform-specific tools are used.
 
 import hashlib
 import json
+import copy
 import re
 import os
 from pathlib import Path
@@ -22,6 +23,8 @@ import zlib
 
 from scripts import check_tutorial_checkouts as checker
 from scripts import check_documentation_status as doc_status
+from scripts import check_manual_migration as manual_migration
+from scripts import manual_docs
 from scripts import generate_capability_maturity as maturity_generator
 from scripts.test_capability_maturity import populate as populate_maturity_fixture
 
@@ -92,9 +95,117 @@ class DocumentationStatusTests(unittest.TestCase):
                 elif fragment:
                     self.assertIn(fragment, headings)
 
+    def test_gui_manual_starts_with_orientation_not_a_feature_appendix(self):
+        source = (checker.ROOT / "docs/gui.md").read_bytes().decode("utf-8")
+        for newline in ("\n", "\r\n"):
+            text = source.replace("\r\n", "\n").replace("\n", newline)
+            with self.subTest(newline=newline):
+                preamble = text.split("## Start Here", 1)[0]
+                blocks = re.split(r"\r?\n\s*\r?\n", preamble.strip())
+                self.assertEqual(len(blocks), 3, "Only title, orientation and navigation belong before Start Here")
+                self.assertEqual(blocks[0], "# GENtle GUI Manual")
+                self.assertTrue(blocks[1].startswith("Open a sequence, explore its annotations"))
+                self.assertTrue(blocks[2].startswith("**Quick navigation:**"))
+                self.assertLess(len(preamble), 1000)
+                self.assertGreater(text.index("## RNA Read Panel"), text.index("## Detailed Reference"))
+                catalog = manual_docs.read_catalog()
+                book = next(book for book in catalog["books"] if book["id"] == "gui")
+                layout = "\n".join((checker.ROOT / topic["path"]).read_text(encoding="utf-8") for topic in book["topics"])
+                for heading in ("Gene Set Inspector And Collection Operations", "Splicing Expert Workspace",
+                                "RNA-Read Mapping Workspace", "Gibson Workspace", "Lineage Node Actions"):
+                    self.assertIn(f"### {heading}", layout)
+
+    def test_manual_migration_preserves_occurrences_and_indentation(self):
+        # Synthetic text created here; no source-history access or Rust required.
+        original = "# Manual\n\nSame paragraph.\n\nSame paragraph.\n\n```python\n    work()\n```\n"
+        moved = ["# Index\r\n# Manual\r\nSame paragraph.\r\n", "Same paragraph.\n```python\n    work()\n```\n"]
+        self.assertEqual(manual_migration.compare(original, moved)["missing"], [])
+        duplicate_lost = manual_migration.compare(original, [moved[1]])["missing"]
+        self.assertIn({"text": "Same paragraph.", "occurrences": 1}, duplicate_lost)
+        changed_code = manual_migration.compare(original, [part.replace("    work()", "work()") for part in moved])["missing"]
+        self.assertEqual(changed_code, [{"text": "    work()", "occurrences": 1}])
+
+    def test_manual_migration_compares_relocated_links_without_weakening_text(self):
+        original = "Read [primers](cli.md#primers), [here](#details).\n\n```md\n[x](literal.md)\n```\n"
+        moved = original.replace("(cli.md#primers)", "(../cli.md#primers)").replace("(#details)", "(../gui.md#details)")
+        before = manual_migration.canonical_links(original, "docs/gui.md")
+        after = manual_migration.canonical_links(moved, "docs/gui/primers.md")
+        self.assertEqual(before, after)
+        self.assertIn("[x](literal.md)", after)
+        wrong_target = manual_migration.canonical_links(moved.replace("../cli.md#primers", "../cli.md#rna"), "docs/gui/primers.md")
+        self.assertTrue(manual_migration.compare(before, [wrong_target])["missing"])
+        self.assertTrue(manual_migration.compare(before, [after.replace("Read", "Run")])["missing"])
+
+    def test_manual_catalog_has_one_source_per_topic_and_current_projections(self):
+        for relative, expected in manual_docs.generated().items():
+            self.assertEqual((checker.ROOT / relative).read_bytes(), expected, relative)
+        self.assertEqual(manual_docs.link_errors(), [])
+
+    def test_manual_counterparts_are_reciprocal_and_missing_bindings_fail_closed(self):
+        catalog = manual_docs.read_catalog()
+        topics = {book["id"]: {t["id"]: t for t in book["topics"]} for book in catalog["books"]}
+        self.assertEqual(set(topics), {"gui", "cli"})
+        self.assertGreater(len(catalog["counterparts"]), 40)
+        for gui, cli in catalog["counterparts"]:
+            for book, topic, other in (("gui", gui, topics["cli"][cli]), ("cli", cli, topics["gui"][gui])):
+                text = (checker.ROOT / topics[book][topic]["path"]).read_text()
+                self.assertIn(f"../{'cli' if book == 'gui' else 'gui'}/{Path(other['path']).name}", text)
+        for defect in ("unknown", "duplicate", "missing"):
+            broken = copy.deepcopy(catalog)
+            if defect == "unknown":
+                broken["counterparts"][0][0] = "not-a-topic"
+            elif defect == "duplicate":
+                broken["counterparts"].append(broken["counterparts"][0])
+            else:
+                broken["counterparts"] = []
+            with self.subTest(defect=defect), self.assertRaises(ValueError):
+                manual_docs.validate(checker.ROOT, broken)
+
+    def test_manual_chapters_have_balanced_fences_and_no_orphaned_nested_lists(self):
+        for book in manual_docs.books(manual_docs.read_catalog()):
+            for relative in manual_docs.paths(book):
+                text = (checker.ROOT / relative).read_text()
+                fence = None
+                for line in text.splitlines():
+                    mark = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+                    if mark:
+                        token = mark[1]
+                        if fence is None:
+                            fence = token
+                        elif token[0] == fence[0] and len(token) >= len(fence):
+                            fence = None
+                self.assertIsNone(fence, relative)
+                self.assertTrue(list(manual_docs.heading_rows(text)), relative)
+                # Added CLI sections must give preserved nested command bullets
+                # parents, not turn their four-space indentation into code.
+                if book["id"] == "cli":
+                    self.assertNotRegex(text, r"(?m)^## [^\n]+\n\n    - ", relative)
+
+    def test_every_window_help_topic_has_a_catalogued_destination(self):
+        catalog = manual_docs.read_catalog()
+        gui = next(book for book in manual_docs.books(catalog) if book["id"] == "gui")
+        topics = {topic["id"]: topic["path"] for topic in gui["topics"]}
+        bindings = (checker.ROOT / "src/app/help_topics.rs").read_text(encoding="utf-8")
+        destinations = re.findall(r'\w+ => \("([^"]+)", "([^"]*)"\)', bindings)
+        self.assertGreaterEqual(len(destinations), 30)
+        for topic, fragment in destinations:
+            with self.subTest(topic=topic, fragment=fragment):
+                self.assertIn(topic, topics)
+                text = (checker.ROOT / topics[topic]).read_text(encoding="utf-8")
+                if fragment:
+                    self.assertIn(fragment, {row[3] for row in manual_docs.heading_rows(text)})
+
     def test_cli_manual_has_a_discovery_first_entry_and_task_index(self):
         text = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
-        intro = text.split("## Standalone Reference-Bound Primer Specificity", 1)[0]
+        intro = text.split("## Detailed Reference", 1)[0]
+        for newline in ("\n", "\r\n"):
+            preamble = text.replace("\n", newline).split("## Start Here", 1)[0]
+            blocks = re.split(r"\r?\n\s*\r?\n", preamble.strip())
+            self.assertEqual(len(blocks), 3, "Only title, orientation and navigation belong before Start Here")
+            self.assertEqual(blocks[0], "# GENtle CLI Manual")
+            self.assertTrue(blocks[1].startswith("Inspect a sequence project"))
+            self.assertTrue(blocks[2].startswith("**Quick navigation:**"))
+            self.assertLess(len(preamble), 1000)
         self.assertIn("## Start Here", intro)
         self.assertIn("## Work With A Saved Project", intro)
         commands = re.search(r"```sh\n(.*?)\n```", intro, re.S).group(1)
@@ -119,8 +230,8 @@ class DocumentationStatusTests(unittest.TestCase):
                     self.assertIn(fragment, headings)
 
     def test_screenshot_docs_distinguish_gui_capture_from_disabled_cli_export(self):
-        cli = (checker.ROOT / "docs/cli.md").read_text(encoding="utf-8")
-        gui = (checker.ROOT / "docs/gui.md").read_text(encoding="utf-8")
+        cli = (checker.ROOT / "docs/cli/screenshot-capture.md").read_text(encoding="utf-8")
+        gui = (checker.ROOT / "docs/gui/screenshot-capture-policy.md").read_text(encoding="utf-8")
         for newline in ("\n", "\r\n"):
             with self.subTest(newline=newline):
                 text = cli.replace("\n", newline)
@@ -277,6 +388,38 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual(checker.git(target, "log", "-1", "--format=%H", "--", "evidence.json")
                                  .decode().strip(), revision)
         self.assertEqual(checker.git(self.root, "status", "--porcelain"), before)
+
+    def test_manual_catalog_and_pages_survive_real_lf_crlf_checkouts(self):
+        # Copy only the maintained manual inputs/projections. No image decoding,
+        # GENtle binaries, Rust tools or personal runtime documentation are used.
+        catalog = manual_docs.read_catalog()
+        relative_paths = {manual_docs.CATALOG, manual_docs.EMBEDDED, ".gitattributes"}
+        for book in manual_docs.books(catalog):
+            relative_paths.update(manual_docs.paths(book))
+        for relative in relative_paths:
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((checker.ROOT / relative).read_bytes())
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "manual navigation inputs")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"manual-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, expected in manual_docs.generated(target).items():
+                self.assertEqual((target / relative).read_bytes(), expected, relative)
+                self.assertNotIn(b"\r", expected, relative)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        for number, (rule, relative) in enumerate((
+            (b"docs/gui/*.md text eol=lf", "docs/gui/rna-read-panel.md"),
+            (b"docs/cli/*.md text eol=lf", "docs/cli/rna-read-panel.md"),
+            (b"src/app/help_manual_sources.rs text eol=lf", manual_docs.EMBEDDED),
+        )):
+            unprotected = b"\n".join(line for line in attributes.split(b"\n") if line != rule)
+            self.assertNotEqual(unprotected, attributes)
+            target = Path(self.tmp.name) / f"manual-unprotected-{number}"
+            prepare_unprotected_checkout(self.root, target, unprotected)
+            generated = manual_docs.generated(target)
+            self.assertNotEqual((target / relative).read_bytes(), generated[relative], relative)
 
     def test_repository_lf_default_preserves_source_binary_and_verbatim_bytes(self):
         # Synthetic literal fixtures exercise ordinary, previously unpinned

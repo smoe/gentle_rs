@@ -6925,6 +6925,7 @@ impl MainAreaDna {
                 None,
             );
         }
+        crate::app::help_topics::button(ui, crate::app::help_topics::HelpTopic::PromoterDesign);
         crate::agent_help::render_agent_help_button(
             ui,
             format!("Promoter design - {}", source_seq_id),

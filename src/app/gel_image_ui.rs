@@ -703,6 +703,7 @@ impl GelImageEditor {
     }
 
     fn contents(&mut self, ui: &mut Ui, shared: &Arc<RwLock<GentleEngine>>) {
+        help_topics::button(ui, HelpTopic::GelImage);
         self.sync_draft(shared);
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_rect(

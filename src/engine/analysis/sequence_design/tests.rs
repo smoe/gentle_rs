@@ -197,7 +197,7 @@ fn sequence_design_tutorial_shared_commands_apply_undo_redo_in_one_session() {
 
 #[test]
 fn sequence_design_window_gc_documented_walkthrough_is_replayable() {
-    let docs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli.md"));
+    let docs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli/sequence-design.md"));
     let section = docs
         .split("### Sliding-Window GC Walkthrough")
         .nth(1)

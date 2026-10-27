@@ -51,6 +51,48 @@
   approval, new dependency/schema, Claude re-review or execution. Previous goal
   stays paused; unrelated outputs, Rust/native verification and push stay separate.
 
+## 2026-10-27 - Organize Complete GUI And CLI Manuals With Contextual Help
+
+- Advance this worktree to `1804605f` before the documentation move, preserving
+  the latest Dotplot additions (GUI text identical to `a6ba0da6`). Move the RNA/catalog preamble behind the general
+  introduction and add 29 named subtopics to Main window layout. The read-only
+  migration comparison retains all 7,164 original nonblank lines, including
+  duplicates and code/list indentation; it is not a Markdown-semantic proof.
+- Add a heading-backed GUI contents tree, ancestor links, bounded section
+  history and same-/cross-page GUI heading navigation. Preserve pagination,
+  whole-manual Find and complete-source copying. Small windows retain a
+  collapsible contents area; manual links never enter the capture/model path.
+- Split the full GUI reference into 73 authoritative topic files, with a
+  catalogued tree, generated embedding/navigation and 83 legacy anchor routes.
+  External books load from one complete compatible resource root, or use the
+  complete embedded text. Fix six pre-existing tutorial URLs with an explicit
+  repair map. Images and tutorial artifacts still need installed resources.
+- Bind ordinary Help to 40 stable window topics, separately from Agent Help.
+  Shared specialist bars and registry entries require typed destinations;
+  sequence auxiliary listings retain their existing public API. Add ordinary
+  Help to the analysis windows, and use active-window context for native Help.
+- Author duplicate/UTF-8 heading, LF/CRLF, pointer-click, history, missing-target,
+  file-scoped anchor, full-book fallback and no-capture regressions. Add the
+  Linux/Windows sibling-resource lookup and package inventory rejection of
+  missing/untracked chapters. All 17 targeted Python documentation/checkout
+  tests, 35 synthetic package tests and migration-loss controls pass. The
+  earlier 77-test checkout run retains two
+  pre-existing capability-maturity hash failures, isolated in the ledger.
+  Local Rust/Cargo and native rendering have not run.
+- Split the CLI manual into 69 authoritative topics in the same catalog,
+  retaining all 8,862 original nonblank lines at `1804605f`, including commands,
+  examples and limits. Add named subsections within long command lists and
+  preserve all 31 relocated legacy heading destinations. Keep operand
+  conventions and the discovery/task entry in the index; route feature-specific
+  tests to canonical chapters without weakening glossary-wide coverage.
+- Generate reciprocal GUI/CLI topic links, with explicit absence reasons for
+  unmatched topics. Extend the existing file-scoped reader, Find/Copy, cache,
+  fallback and Back/Forward to both books. Static counterpart/structure guards,
+  real LF/CRLF checkouts, source-contract checks and synthetic package tests
+  pass (100 tests). The authored cross-book click/search/cache and CLI fallback
+  Rust tests remain unexecuted. External acceptance is recorded in the
+  [implementation ledger](manual_navigation_plan.md).
+
 ## 2026-10-27 - Keep Dotplot Windows Separate From The DNA Map
 
 - Remove implicit primary-map switches when opening/focusing dotplot or

@@ -111,7 +111,11 @@ impl GENtleApp {
     }
 
     fn render_clawbio_contents(&mut self, ui: &mut Ui) {
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", "Close ClawBio"))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::ClawBio,
+            Some(("Close", "Close ClawBio")),
+        ) {
             self.clawbio_panel.show_panel = false;
         }
         ui.heading("ClawBio");

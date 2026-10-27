@@ -1691,7 +1691,11 @@ impl GENtleApp {
     pub(super) fn render_gibson_contents(&mut self, ui: &mut Ui) -> bool {
         let mut cancel_clicked = false;
         let close_hover = Self::specialist_window_close_hover_text("Gibson");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::Gibson,
+            Some(("Close", close_hover.as_str())),
+        ) {
             cancel_clicked = true;
         }
         ui.label(

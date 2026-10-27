@@ -9723,6 +9723,13 @@ fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows()
 
     let entries = area.collect_open_auxiliary_window_entries();
     assert_eq!(entries.len(), 2);
+    let help_entries = area.collect_open_auxiliary_window_entries_with_help();
+    assert_eq!(
+        help_entries.iter().map(|(id, title, detail, _)| (*id, title.clone(), detail.clone())).collect::<Vec<_>>(),
+        entries
+    );
+    assert_eq!(help_entries[0].3, crate::app::help_topics::HelpTopic::Splicing);
+    assert_eq!(help_entries[1].3, crate::app::help_topics::HelpTopic::Isoforms);
     assert!(
         entries
             .iter()

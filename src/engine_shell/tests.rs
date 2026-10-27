@@ -2690,7 +2690,19 @@ fn glossary_cli_usage_flags_parse_one_by_one() {
 #[test]
 fn cli_docs_mention_all_cli_glossary_paths() {
     let glossary = glossary_fixture();
-    let cli_docs = include_str!("../../docs/cli.md");
+    let catalog: serde_json::Value = serde_json::from_str(include_str!("../../docs/manuals.json"))
+        .expect("manual catalog");
+    let cli_book = catalog["books"].as_array().expect("books").iter()
+        .find(|book| book["id"] == "cli").expect("CLI book");
+    let topics = cli_book["topics"].as_array().expect("CLI topics");
+    assert!(!topics.is_empty(), "CLI coverage must include the canonical chapters");
+    let mut cli_docs = include_str!("../../docs/cli.md").to_string();
+    for topic in topics {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(topic["path"].as_str().expect("topic path"));
+        cli_docs.push('\n');
+        cli_docs.push_str(&std::fs::read_to_string(path).expect("canonical CLI topic"));
+    }
     let mut failures = Vec::new();
     for command in glossary
         .commands
@@ -2703,7 +2715,7 @@ fn cli_docs_mention_all_cli_glossary_paths() {
     }
     assert!(
         failures.is_empty(),
-        "docs/cli.md must mention every CLI glossary command path:\n{}",
+        "The complete CLI manual must mention every CLI glossary command path:\n{}",
         failures.join("\n")
     );
 }

@@ -4902,7 +4902,11 @@ impl GENtleApp {
     pub(super) fn render_routine_assistant_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Routine Assistant");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::RoutineAssistant,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label(
@@ -6880,6 +6884,7 @@ impl GENtleApp {
         let close_label = self.tr("button.close");
         if self.render_specialist_window_nav_with_close(
             ui,
+            HelpTopic::AgentAssistant,
             Some((close_label.as_str(), close_hover.as_str())),
         ) {
             close_requested = true;

@@ -600,6 +600,7 @@ impl GENtleApp {
     }
 
     fn render_rna_panel_contents(&mut self, ui: &mut egui::Ui) {
+        help_topics::button(ui, HelpTopic::RnaPanel);
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_rect(
             ui.ctx().clone(),

@@ -1,6 +1,13 @@
 # Use Unix line endings for text on every platform, including Windows Git
 # installations with core.autocrlf=true. Keep binary/verbatim overrides below.
 * text=auto eol=lf
+# Manual navigation projections and authoritative topic inputs are LF-bound.
+docs/manuals.json text eol=lf
+docs/gui.md text eol=lf
+docs/gui/*.md text eol=lf
+docs/cli.md text eol=lf
+docs/cli/*.md text eol=lf
+src/app/help_manual_sources.rs text eol=lf
 
 # Keep committed tutorial outputs visible in GitHub browsing, but exclude them
 # from source tarballs produced by `git archive`.

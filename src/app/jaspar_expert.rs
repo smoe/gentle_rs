@@ -908,6 +908,7 @@ impl GENtleApp {
                 .auto_shrink([false, false])
                 .scroll_source(egui::scroll_area::ScrollSource::ALL)
                 .show(ui, |ui| {
+                    help_topics::button(ui, HelpTopic::Jaspar);
                     crate::agent_help::render_agent_help_button(
                         ui,
                         "JASPAR Expert",

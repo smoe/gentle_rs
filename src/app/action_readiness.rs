@@ -38,6 +38,7 @@ impl GENtleApp {
         ui: &mut Ui,
         entries: &[CommandPaletteEntry],
     ) -> Option<CommandPaletteAction> {
+        help_topics::button(ui, HelpTopic::CommandPalette);
         crate::agent_help::render_agent_help_button(
             ui,
             "Command Palette",

@@ -108,6 +108,7 @@ impl GENtleApp {
     fn render_mirna_target_scan_contents(&mut self, ui: &mut Ui) {
         if self.render_specialist_window_nav_with_close(
             ui,
+            HelpTopic::MicroRna,
             Some(("Close", "Close microRNA Target Scan")),
         ) {
             self.mirna_panel.show_panel = false;

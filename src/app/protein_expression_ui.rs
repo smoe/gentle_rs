@@ -247,6 +247,7 @@ impl GENtleApp {
     }
 
     fn render_protein_expression_contents(&mut self, ui: &mut egui::Ui) {
+        help_topics::button(ui, HelpTopic::ProteinExpression);
         self.poll_protein_expression_report();
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_rect(

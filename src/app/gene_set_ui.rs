@@ -4767,7 +4767,11 @@ impl GENtleApp {
 
     fn render_gene_set_inspector_contents(&mut self, ui: &mut Ui) {
         let close_hover = Self::specialist_window_close_hover_text("Gene Set Inspector");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::GeneSets,
+            Some(("Close", close_hover.as_str())),
+        ) {
             self.gene_set_inspector.show_panel = false;
             return;
         }

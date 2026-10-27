@@ -46,6 +46,11 @@ mod help_docs;
 
 #[path = "app/help_manual.rs"]
 mod help_manual;
+#[path = "app/help_manual_sources.rs"]
+mod help_manual_sources;
+#[path = "app/help_topics.rs"]
+pub(crate) mod help_topics;
+use help_topics::HelpTopic;
 
 #[path = "app/tutorial_menus.rs"]
 mod tutorial_menus;
@@ -762,9 +767,17 @@ pub struct GENtleApp {
     help_markdown_cache: CommonMarkCache,
     help_rendered_markdown_cache: HashMap<String, RenderedHelpMarkdownEntry>,
     help_gui_markdown: String,
+    help_gui_book: Option<Arc<help_manual::ManualBook>>,
+    help_manual_load_notice: Option<String>,
     help_gui_pages: Option<Arc<help_manual::ManualPages>>,
     help_gui_page: usize,
+    help_manual_back: Vec<(HelpDoc, usize)>,
+    help_manual_forward: Vec<(HelpDoc, usize)>,
+    help_scroll_to_top: bool,
     help_cli_markdown: String,
+    help_cli_book: Option<Arc<help_manual::ManualBook>>,
+    help_cli_pages: Option<Arc<help_manual::ManualPages>>,
+    help_cli_page: usize,
     help_agent_interface_markdown: String,
     help_reviewer_preview_markdown: String,
     help_shell_markdown: String,
@@ -2683,6 +2696,8 @@ impl Default for PersistedLineageGraphWorkspace {
 
 impl Default for GENtleApp {
     fn default() -> Self {
+        let gui_book = Arc::new(help_manual::ManualBook::embedded(help_manual_sources::GUI_SOURCES));
+        let cli_book = Arc::new(help_manual::ManualBook::embedded(help_manual_sources::CLI_SOURCES));
         Self {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
             pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
@@ -2705,10 +2720,18 @@ impl Default for GENtleApp {
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
             help_rendered_markdown_cache: HashMap::new(),
-            help_gui_markdown: GUI_MANUAL_MD.to_string(),
+            help_gui_markdown: gui_book.markdown.clone(),
+            help_gui_book: Some(gui_book),
+            help_manual_load_notice: None,
             help_gui_pages: None,
             help_gui_page: 0,
-            help_cli_markdown: CLI_MANUAL_MD.to_string(),
+            help_manual_back: vec![],
+            help_manual_forward: vec![],
+            help_scroll_to_top: false,
+            help_cli_markdown: cli_book.markdown.clone(),
+            help_cli_book: Some(cli_book),
+            help_cli_pages: None,
+            help_cli_page: 0,
             help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
             help_reviewer_preview_markdown: REVIEWER_PREVIEW_MD.to_string(),
             help_shell_markdown: Self::generate_shell_help_markdown(),
@@ -3788,16 +3811,28 @@ impl GENtleApp {
     }
 
     fn resolve_runtime_doc_path(path: &str) -> Option<PathBuf> {
-        let direct = PathBuf::from(path);
-        if direct.exists() {
+        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let executable = env::current_exe().ok();
+        Self::resolve_runtime_doc_path_at(path, &cwd, executable.as_deref())
+    }
+
+    fn resolve_runtime_doc_path_at(
+        path: &str,
+        cwd: &Path,
+        executable: Option<&Path>,
+    ) -> Option<PathBuf> {
+        let direct = cwd.join(path);
+        if direct.is_file() {
             return Some(direct);
         }
-        if let Ok(exe_path) = env::current_exe()
-            && let Some(exe_dir) = exe_path.parent()
-        {
-            let bundled = exe_dir.join("../Resources").join(path);
-            if bundled.exists() {
-                return Some(bundled);
+        if let Some(exe_dir) = executable.and_then(Path::parent) {
+            // macOS uses Contents/{MacOS,Resources}; Linux/Windows use bin/
+            // next to docs/. Neither installed layout depends on the launch cwd.
+            for root in [exe_dir.join("../Resources"), exe_dir.join("..")] {
+                let bundled = root.join(path);
+                if bundled.is_file() {
+                    return Some(bundled);
+                }
             }
         }
         None
@@ -3859,7 +3894,7 @@ impl GENtleApp {
     fn help_render_cache_key(&self, doc: HelpDoc) -> String {
         match doc {
             HelpDoc::Gui => format!("gui:{}", self.help_gui_page),
-            HelpDoc::Cli => "cli".to_string(),
+            HelpDoc::Cli => format!("cli:{}", self.help_cli_page),
             HelpDoc::AgentInterface => "agent_interface".to_string(),
             HelpDoc::ReviewerPreview => "reviewer_preview".to_string(),
             HelpDoc::Shell => format!("shell:{}", self.help_shell_interface.label()),
@@ -3878,7 +3913,12 @@ impl GENtleApp {
                 .and_then(|index| index.pages.get(self.help_gui_page))
                 .map(|page| page.markdown.as_str())
                 .unwrap_or(self.help_gui_markdown.as_str()),
-            HelpDoc::Cli => self.help_cli_markdown.as_str(),
+            HelpDoc::Cli => self
+                .help_cli_pages
+                .as_ref()
+                .and_then(|index| index.pages.get(self.help_cli_page))
+                .map(|page| page.markdown.as_str())
+                .unwrap_or(self.help_cli_markdown.as_str()),
             HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
             HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
             HelpDoc::Shell => self.help_shell_markdown.as_str(),
@@ -3887,8 +3927,8 @@ impl GENtleApp {
     }
 
     fn rendered_help_markdown_for(&mut self, doc: HelpDoc) -> Arc<str> {
-        if doc == HelpDoc::Gui {
-            self.ensure_gui_manual_pages();
+        if matches!(doc, HelpDoc::Gui | HelpDoc::Cli) {
+            self.ensure_manual_pages(doc);
         }
         let cache_key = self.help_render_cache_key(doc);
         let source_hash = Self::help_markdown_hash(self.help_source_markdown(doc));
@@ -3898,8 +3938,15 @@ impl GENtleApp {
             .map(|entry| entry.source_hash != source_hash)
             .unwrap_or(true);
         if needs_refresh {
-            let rendered =
-                Arc::<str>::from(Self::help_display_markdown(self.help_source_markdown(doc)));
+            let source = self.help_source_markdown(doc);
+            let prepared = if matches!(doc, HelpDoc::Gui | HelpDoc::Cli) {
+                self.help_document_path().and_then(|path| path.parent().map(Path::to_path_buf))
+                    .map(|base| Self::rewrite_markdown_relative_image_links(source, &base))
+                    .unwrap_or_else(|| source.to_string())
+            } else {
+                source.to_string()
+            };
+            let rendered = Arc::<str>::from(Self::help_display_markdown(&prepared));
             self.help_rendered_markdown_cache.insert(
                 cache_key.clone(),
                 RenderedHelpMarkdownEntry {
@@ -3940,8 +3987,7 @@ Error: `{err}`"
     fn refresh_help_docs(&mut self) {
         use crate::gui_profiler::startup_trace::{Phase, measure};
         measure(Phase::HelpManuals, || {
-            self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
-            self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+            self.load_manual_books();
             self.help_agent_interface_markdown =
                 Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
             self.help_reviewer_preview_markdown =
@@ -3952,6 +3998,7 @@ Error: `{err}`"
         });
         self.help_rendered_markdown_cache.clear();
         self.help_gui_pages = None;
+        self.help_cli_pages = None;
         self.help_tutorial_entries = measure(Phase::HelpTutorialDiscovery, || {
             Self::discover_help_tutorial_entries()
         });
@@ -3979,7 +4026,7 @@ Error: `{err}`"
                 let dispatch_elapsed_ms = now_ms.saturating_sub(requested_at_ms) as u128;
                 self.note_slow_phase("Native Help menu dispatch", dispatch_elapsed_ms);
             }
-            self.open_help_doc(HelpDoc::Gui);
+            self.open_help_for_active_window();
         }
     }
 
@@ -6025,9 +6072,12 @@ Error: `{err}`"
         self.ensure_help_docs_loaded();
         self.note_slow_phase("Help payload load", help_load_started.elapsed().as_millis());
         let help_doc_changed = self.help_doc != doc;
+        if help_doc_changed && matches!(doc, HelpDoc::Gui | HelpDoc::Cli) {
+            self.select_manual_location(doc, self.manual_page(doc), true);
+        }
         self.help_doc = doc;
         if opening_from_closed_state || help_doc_changed {
-            self.refresh_help_search_matches();
+            self.update_help_search_matches();
         }
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
@@ -6238,6 +6288,11 @@ Error: `{err}`"
     }
 
     fn refresh_help_search_matches(&mut self) {
+        self.update_help_search_matches();
+        self.show_manual_search_match();
+    }
+
+    fn update_help_search_matches(&mut self) {
         let needle = self.help_search_query.trim();
         if needle.is_empty() {
             self.help_search_matches.clear();
@@ -6270,7 +6325,6 @@ Error: `{err}`"
         } else if self.help_search_selected >= self.help_search_matches.len() {
             self.help_search_selected = self.help_search_matches.len() - 1;
         }
-        self.show_gui_manual_search_match();
     }
 
     fn select_next_help_match(&mut self) {
@@ -6279,7 +6333,7 @@ Error: `{err}`"
         }
         self.help_search_selected =
             (self.help_search_selected + 1) % self.help_search_matches.len();
-        self.show_gui_manual_search_match();
+        self.show_manual_search_match();
     }
 
     fn select_prev_help_match(&mut self) {
@@ -6291,7 +6345,7 @@ Error: `{err}`"
         } else {
             self.help_search_selected -= 1;
         }
-        self.show_gui_manual_search_match();
+        self.show_manual_search_match();
     }
 
     pub fn new() -> Self {
@@ -14512,7 +14566,11 @@ Error: `{err}`"
     fn render_arrangement_gel_preview_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Arrangement Gel");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::SerialGel,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label("Preview one serial arrangement inside GENtle, tune left/right DNA ladders, then save or export the chosen setup.");
@@ -14806,6 +14864,7 @@ Error: `{err}`"
     fn render_rack_labels_preview_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         ui.horizontal(|ui| {
+            help_topics::button(ui, HelpTopic::RackLabels);
             if ui
                 .button("Close")
                 .on_hover_text("Close the rack labels preview")
@@ -14999,7 +15058,11 @@ Error: `{err}`"
     fn render_pcr_design_contents(&mut self, ui: &mut Ui, ctx: &egui::Context) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("PCR Designer");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::PcrDesign,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label("Selection-first pair-PCR specialist. Paint ROI/windows on the map and run deterministic primer-pair design queue operations.");
@@ -15138,7 +15201,11 @@ Error: `{err}`"
     ) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Sequencing Confirmation");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::SequencingConfirmation,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label("Construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence using called reads and/or imported sequencing traces.");
@@ -15272,7 +15339,11 @@ Error: `{err}`"
     fn render_planning_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Planning");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::Planning,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label(
@@ -16651,13 +16722,14 @@ Error: `{err}`"
         format!("Close this {window_title} window (Cmd/Ctrl+W)")
     }
 
-    fn render_specialist_window_nav(&mut self, ui: &mut Ui) {
-        let _ = self.render_specialist_window_nav_with_close(ui, None);
+    fn render_specialist_window_nav(&mut self, ui: &mut Ui, topic: HelpTopic) {
+        let _ = self.render_specialist_window_nav_with_close(ui, topic, None);
     }
 
     fn render_specialist_window_nav_with_close(
         &mut self,
         ui: &mut Ui,
+        topic: HelpTopic,
         close_button: Option<(&str, &str)>,
     ) -> bool {
         let mut close_requested = false;
@@ -16671,13 +16743,7 @@ Error: `{err}`"
             .map(|entry| entry.title.clone())
             .unwrap_or_else(|| "GENtle specialist window".to_string());
         ui.horizontal(|ui| {
-            if ui
-                .button(self.tr("button.help"))
-                .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
-                .clicked()
-            {
-                self.open_help_doc(HelpDoc::Gui);
-            }
+            help_topics::button(ui, topic);
             if ui
                 .button(self.tr("button.main"))
                 .on_hover_text("Bring the main project window to front")
@@ -22791,6 +22857,7 @@ Error: `{err}`"
         .default_size(Vec2::new(460.0, 520.0))
         .min_size(Vec2::new(420.0, 460.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            help_topics::button(ui, HelpTopic::About);
             crate::agent_help::render_agent_help_button(ui, self.tr("about.title"), "window.about");
             ui.separator();
             ui.set_min_width(390.0);
@@ -22892,6 +22959,7 @@ Error: `{err}`"
         .min_size(Vec2::new(620.0, 460.0))
         .resizable(true);
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            help_topics::button(ui, HelpTopic::About);
             crate::agent_help::render_agent_help_button(
                 ui,
                 self.tr("about.details.title"),
@@ -23090,6 +23158,7 @@ Error: `{err}`"
             Vec2::new(520.0, 320.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            help_topics::button(ui, HelpTopic::Jobs);
             crate::agent_help::render_agent_help_button(
                 ui,
                 "Background Jobs",
@@ -24257,8 +24326,8 @@ Error: `{err}`"
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
-        if self.help_doc == HelpDoc::Gui {
-            self.ensure_gui_manual_pages();
+        if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+            self.ensure_manual_pages(self.help_doc);
         }
         window_backdrop::paint_window_backdrop(
             ui,
@@ -24266,6 +24335,7 @@ Error: `{err}`"
             &self.window_backdrops,
         );
         with_window_content_inset(ui, |ui| {
+            help_topics::button(ui, HelpTopic::Help);
             crate::agent_help::render_agent_help_button(
                 ui,
                 format!("Help - {}", self.active_help_title()),
@@ -24283,14 +24353,14 @@ Error: `{err}`"
                     .selectable_label(self.help_doc == HelpDoc::Gui, "GUI Manual")
                     .clicked()
                 {
-                    self.help_doc = HelpDoc::Gui;
+                    self.select_manual_location(HelpDoc::Gui, self.help_gui_page, true);
                     active_doc_changed = true;
                 }
                 if ui
                     .selectable_label(self.help_doc == HelpDoc::Cli, "CLI Manual")
                     .clicked()
                 {
-                    self.help_doc = HelpDoc::Cli;
+                    self.select_manual_location(HelpDoc::Cli, self.help_cli_page, true);
                     active_doc_changed = true;
                 }
                 if ui
@@ -24369,7 +24439,7 @@ Error: `{err}`"
                     active_doc_changed = true;
                 }
                 if ui
-                    .button(if self.help_doc == HelpDoc::Gui { "Copy Manual" } else { "Copy Page" })
+                    .button(if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) { "Copy Manual" } else { "Copy Page" })
                     .on_hover_text("Copy the complete current help/tutorial markdown source to the clipboard")
                     .clicked()
                 {
@@ -24403,9 +24473,16 @@ Error: `{err}`"
             });
 
             ui.horizontal_wrapped(|ui| {
-                if self.help_doc == HelpDoc::Gui {
-                    let pages = self.ensure_gui_manual_pages();
-                    let mut selected = self.help_gui_page;
+                if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+                    if ui.add_enabled(!self.help_manual_back.is_empty(), egui::Button::new("Back")).clicked() {
+                        self.navigate_manual_history(false);
+                    }
+                    if ui.add_enabled(!self.help_manual_forward.is_empty(), egui::Button::new("Forward")).clicked() {
+                        self.navigate_manual_history(true);
+                    }
+                    let doc = self.help_doc;
+                    let pages = self.ensure_manual_pages(doc);
+                    let mut selected = self.manual_page(doc);
                     ui.label("Section:");
                     egui::ComboBox::from_id_salt("help_gui_section")
                         .width(Self::clamp_help_topic_combo_width(ui.available_width()))
@@ -24423,7 +24500,7 @@ Error: `{err}`"
                         selected += 1;
                     }
                     ui.small(format!("{}/{}", selected + 1, pages.pages.len()));
-                    self.select_gui_manual_page(selected);
+                    self.select_manual_location(doc, selected, true);
                     ui.separator();
                 }
                 if self.help_doc == HelpDoc::Tutorial {
@@ -24601,8 +24678,28 @@ Error: `{err}`"
             if let Some(notice) = &self.help_link_notice {
                 ui.colored_label(ui.visuals().warn_fg_color, notice);
             }
+            if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli)
+                && let Some(notice) = &self.help_manual_load_notice
+            {
+                ui.colored_label(ui.visuals().warn_fg_color, notice);
+            }
 
             ui.separator();
+            if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+                let doc = self.help_doc;
+                let pages = self.ensure_manual_pages(doc);
+                ui.horizontal_wrapped(|ui| {
+                    for (position, index) in pages.breadcrumbs(self.manual_page(doc)).into_iter().enumerate() {
+                        if position > 0 {
+                            ui.label(">");
+                        }
+                        if ui.link(&pages.pages[index].title).clicked() {
+                            self.select_manual_location(doc, index, true);
+                            self.help_scroll_to_top = true;
+                        }
+                    }
+                });
+            }
             let help_body_size = Self::bounded_help_body_size(
                 ui.available_size_before_wrap(),
                 ui.ctx().viewport_rect().size(),
@@ -24611,68 +24708,7 @@ Error: `{err}`"
                 help_body_size,
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    let content_width = ui.available_width().max(HELP_BODY_MIN_WIDTH_PX);
-                    if Self::help_content_width_requires_relayout(
-                        self.help_last_content_width,
-                        content_width,
-                    ) {
-                        self.help_markdown_cache = CommonMarkCache::default();
-                    }
-                    self.help_last_content_width = content_width;
-                    let max_image_width = Self::help_markdown_max_image_width(content_width);
-                    let active_doc = self.help_doc;
-                    let source_hash =
-                        Self::help_markdown_hash(self.help_source_markdown(active_doc));
-                    let scroll_source_id = (
-                        "help_body_scroll",
-                        self.help_render_cache_key(active_doc),
-                        source_hash,
-                    );
-                    ui.set_width(content_width);
-                    ui.set_max_width(content_width);
-                    ui.set_min_height(help_body_size.y);
-                    if self.help_selectable_text_mode {
-                        egui::ScrollArea::vertical()
-                            .id_salt("help_body_text_scroll")
-                            .auto_shrink([false, false])
-                            .max_height(help_body_size.y)
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                let mut copyable_text =
-                                    self.help_source_markdown(active_doc).to_string();
-                                ui.add_sized(
-                                    [content_width, help_body_size.y.max(320.0)],
-                                    egui::TextEdit::multiline(&mut copyable_text)
-                                        .font(egui::TextStyle::Monospace)
-                                        .desired_width(content_width)
-                                        .lock_focus(true),
-                                );
-                            });
-                    } else {
-                        egui::ScrollArea::vertical()
-                            .id_salt(scroll_source_id)
-                            .auto_shrink([false, false])
-                            .max_height(help_body_size.y)
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                let rendered_markdown = self.rendered_help_markdown_for(active_doc);
-                                let command_start = ui.ctx().output(|output| output.commands.len());
-                                CommonMarkViewer::new()
-                                    .max_image_width(Some(max_image_width))
-                                    .show(
-                                        ui,
-                                        &mut self.help_markdown_cache,
-                                        rendered_markdown.as_ref(),
-                                    );
-                                self.follow_help_markdown_links(ui.ctx(), command_start);
-                            });
-                    }
+                    self.render_help_navigation_and_page(ui, help_body_size);
                 },
             );
         });
@@ -25812,6 +25848,7 @@ impl GENtleApp {
                 window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
             }
             self.consume_native_help_request();
+            self.consume_manual_help_request(ctx);
             self.consume_native_about_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();

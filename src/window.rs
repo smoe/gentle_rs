@@ -310,6 +310,14 @@ impl Window {
         }
     }
 
+    pub(crate) fn collect_open_auxiliary_window_entries_with_help(
+        &self,
+    ) -> Vec<(egui::ViewportId, String, String, crate::app::help_topics::HelpTopic)> {
+        match self {
+            Self::Dna(window) => window.collect_open_auxiliary_window_entries_with_help(),
+        }
+    }
+
     pub fn has_open_auxiliary_windows(&self) -> bool {
         match self {
             Self::Dna(window) => window.has_open_auxiliary_windows(),

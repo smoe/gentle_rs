@@ -737,7 +737,11 @@ impl GENtleApp {
         let scope = self.genome_dialog_scope;
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text(scope.prepare_title());
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::GenomePrepare,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         let mut prepare_context_changed = false;
@@ -1868,7 +1872,7 @@ impl GENtleApp {
             let scope = self.genome_dialog_scope;
             let close_hover = Self::specialist_window_close_hover_text(scope.retrieve_title());
             if self
-                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+                .render_specialist_window_nav_with_close(ui, HelpTopic::GenomeRetrieve, Some(("Close", close_hover.as_str())))
             {
                 close_requested = true;
             }
@@ -2439,7 +2443,11 @@ impl GENtleApp {
         let scope = self.genome_dialog_scope;
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text(scope.blast_title());
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::GenomeBlast,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         let sequence_ids = self.project_sequence_ids_for_blast();
@@ -3049,7 +3057,7 @@ impl GENtleApp {
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let close_hover = Self::specialist_window_close_hover_text(title);
             if self
-                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+                .render_specialist_window_nav_with_close(ui, HelpTopic::GenomeInspector, Some(("Close", close_hover.as_str())))
             {
                 close_requested = true;
             }
@@ -3378,7 +3386,11 @@ impl GENtleApp {
     pub(super) fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) -> bool {
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Import Genome Tracks");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::GenomeTracks,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         let anchor_summaries = self.anchored_sequence_anchor_summaries_for_tracks();
@@ -3929,7 +3941,7 @@ impl GENtleApp {
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
             let close_hover = Self::specialist_window_close_hover_text("Genome > Clear Caches");
             if self
-                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+                .render_specialist_window_nav_with_close(ui, HelpTopic::GenomeCaches, Some(("Close", close_hover.as_str())))
             {
                 close_requested = true;
                 return;

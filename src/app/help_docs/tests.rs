@@ -5,6 +5,249 @@ use super::*;
 use crate::gui_profiler::startup_trace;
 
 #[test]
+fn every_window_manual_button_dispatches_its_topic_without_capture_or_mutation() {
+    let mut app = GENtleApp::default();
+    app.show_help_dialog = true;
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    for &topic in HelpTopic::ALL {
+        let ctx = egui::Context::default();
+        let mut center = egui::Pos2::ZERO;
+        let mut frame = |events| {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640.0, 480.0))),
+                events,
+                ..Default::default()
+            });
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx, egui::CentralPanel::default(), |ui| {
+                    center = super::super::help_topics::button(ui, topic).rect.center();
+                },
+            );
+            let output = crate::egui_compat::end_test_pass(&ctx);
+            assert!(output.commands.is_empty(), "manual button must not open a browser");
+            assert!(output.viewport_output.values().all(|viewport| viewport.commands.iter()
+                .all(|command| !matches!(command, egui::ViewportCommand::Screenshot(_)))));
+            output.drop_without_applying_deltas();
+            center
+        };
+        let _ = frame(vec![]);
+        let center = frame(vec![]);
+        frame(vec![egui::Event::PointerMoved(center), egui::Event::PointerButton {
+            pos: center, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE,
+        }]);
+        frame(vec![egui::Event::PointerButton {
+            pos: center, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(ctx.data(|data| data.get_temp::<HelpTopic>(egui::Id::new("gentle.manual_help_request"))), Some(topic));
+        app.consume_manual_help_request(&ctx);
+        assert!(super::super::help_topics::take_request(&ctx).is_none());
+        let (id, fragment) = topic.destination();
+        let source = super::super::help_manual_sources::GUI_SOURCES.iter()
+            .find(|source| source.id == id).expect("catalogued window topic");
+        let pages = app.ensure_gui_manual_pages();
+        assert_eq!(pages.page_for_document(source.path, fragment), Some(app.help_gui_page), "{topic:?}");
+        assert!(app.help_link_notice.is_none(), "{topic:?}: {:?}", app.help_link_notice);
+        assert!(!app.show_agent_assistant_dialog);
+    }
+    assert_eq!(serde_json::to_value(app.engine.read().unwrap().state()).unwrap(), before);
+}
+
+#[test]
+fn registered_window_help_targets_resolve_and_native_help_uses_active_window() {
+    let mut app = GENtleApp::default();
+    app.show_configuration_dialog = true;
+    app.show_help_dialog = true;
+    app.show_command_palette_dialog = true;
+    app.external_services_ui.show_panel = true;
+    app.protein_expression_ui.open = true;
+    app.rna_panel_ui.open = true;
+    app.gene_set_inspector.show_panel = true;
+    app.evidence_preparation_panel.show_panel = true;
+    app.history_ui.show_panel = true;
+    app.show_jobs_panel = true;
+    app.show_reference_genome_prepare_dialog = true;
+    app.show_reference_genome_retrieve_dialog = true;
+    app.show_reference_genome_blast_dialog = true;
+    app.show_genome_bed_track_dialog = true;
+    app.show_gibson_dialog = true;
+    app.show_arrangement_gel_preview_dialog = true;
+    app.gel_image_editor.open = true;
+    app.show_pcr_design_dialog = true;
+    app.show_sequencing_confirmation_dialog = true;
+    app.show_planning_dialog = true;
+    app.show_routine_assistant_dialog = true;
+    app.show_agent_assistant_dialog = true;
+    app.show_jaspar_expert_dialog = true;
+    app.show_new_sequence_dialog = true;
+    app.show_uniprot_dialog = true;
+    app.show_genbank_dialog = true;
+    app.refresh_open_window_model_cache();
+    let entries = app.collect_open_window_entries();
+    assert!(entries.len() >= 25);
+    for entry in entries {
+        app.active_window_menu_key = Some(entry.native_menu_key);
+        app.open_help_for_active_window();
+        let (id, fragment) = entry.help_topic.destination();
+        let source = super::super::help_manual_sources::GUI_SOURCES.iter()
+            .find(|source| source.id == id).unwrap();
+        assert_eq!(app.ensure_gui_manual_pages().page_for_document(source.path, fragment), Some(app.help_gui_page));
+    }
+}
+
+#[test]
+fn manual_book_fallback_is_complete_and_never_mixes_external_chapters() {
+    let sources = super::super::help_manual_sources::GUI_SOURCES;
+    let temp = tempfile::tempdir().unwrap();
+    let (embedded, notice) = GENtleApp::manual_book_at(HelpDoc::Gui, None);
+    assert!(notice.is_none());
+    fs::create_dir_all(temp.path().join("docs")).unwrap();
+    fs::write(temp.path().join("docs/manuals.json"), super::super::help_manual_sources::CATALOG_JSON).unwrap();
+    for source in sources {
+        let path = temp.path().join(source.path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source.markdown).unwrap();
+    }
+    let (external, notice) = GENtleApp::manual_book_at(HelpDoc::Gui, Some(temp.path()));
+    assert!(notice.is_none());
+    assert_eq!(external.root.as_deref(), Some(temp.path()));
+    assert_eq!(external.markdown, embedded.markdown);
+    fs::write(temp.path().join(sources[1].path), "# EXTERNAL_ONLY_SENTINEL\n").unwrap();
+    fs::remove_file(temp.path().join(sources[2].path)).unwrap();
+    let (fallback, notice) = GENtleApp::manual_book_at(HelpDoc::Gui, Some(temp.path()));
+    assert!(notice.is_some());
+    assert!(fallback.root.is_none());
+    assert_eq!(fallback.markdown, embedded.markdown);
+    assert!(!fallback.markdown.contains("EXTERNAL_ONLY_SENTINEL"));
+    fs::write(temp.path().join("docs/manuals.json"), "{}").unwrap();
+    let (fallback, notice) = GENtleApp::manual_book_at(HelpDoc::Gui, Some(temp.path()));
+    assert!(notice.is_some());
+    assert_eq!(fallback.markdown, embedded.markdown);
+}
+
+#[test]
+fn embedded_manual_child_and_legacy_links_work_without_source_files() {
+    let mut app = GENtleApp::default();
+    let book = super::super::help_manual::ManualBook::embedded(super::super::help_manual_sources::GUI_SOURCES);
+    app.help_gui_markdown.clone_from(&book.markdown);
+    app.help_gui_book = Some(Arc::new(book));
+    app.show_help_dialog = true;
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    app.open_help_markdown_link("gui.md#rna-read-panel").unwrap();
+    assert!(app.help_document_path().is_none());
+    assert_eq!(app.logical_help_document_path().as_deref(), Some("docs/gui/rna-read-panel.md"));
+    app.open_help_markdown_link("start-the-gui.md").unwrap();
+    click_help_link(&mut app, "Next: Documentation automation status");
+    assert_eq!(app.logical_help_document_path().as_deref(), Some("docs/gui/documentation-automation-status.md"));
+    app.open_help_markdown_link("../gui.md").unwrap();
+    assert_eq!(app.logical_help_document_path().as_deref(), Some("docs/gui.md"));
+    app.open_help_markdown_link("gui/primer-qpcr-and-sequence-specific-rt-design.md").unwrap();
+    assert!(app.help_source_markdown(HelpDoc::Gui).starts_with("## Primer, qPCR"));
+    assert_eq!(serde_json::to_value(app.engine.read().unwrap().state()).unwrap(), before);
+    assert!(!app.show_agent_assistant_dialog);
+}
+
+#[test]
+fn manual_counterpart_clicks_and_history_cross_books_without_capture() {
+    let mut app = GENtleApp::default();
+    app.open_help_markdown_link("gui.md#primer-qpcr-and-sequence-specific-rt-design").unwrap();
+    let gui_page = app.help_gui_page;
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    click_help_link(&mut app, "Primer Design and Handoff");
+    assert_eq!(app.help_doc, HelpDoc::Cli);
+    assert_eq!(app.logical_help_document_path().as_deref(), Some("docs/cli/primers.md"));
+    assert!(app.help_document_path().is_none(), "Complete embedded books do not borrow external chapters");
+    let cli_page = app.help_cli_page;
+    app.navigate_manual_history(false);
+    assert_eq!((app.help_doc, app.help_gui_page), (HelpDoc::Gui, gui_page));
+    app.navigate_manual_history(true);
+    assert_eq!((app.help_doc, app.help_cli_page), (HelpDoc::Cli, cli_page));
+    click_help_link(&mut app, "Primer, qPCR, and Sequence-Specific RT Design");
+    assert_eq!((app.help_doc, app.help_gui_page), (HelpDoc::Gui, gui_page));
+    assert_eq!(serde_json::to_value(app.engine.read().unwrap().state()).unwrap(), before);
+    assert!(!app.show_agent_assistant_dialog);
+    assert!(app.help_manual_forward.is_empty());
+}
+
+#[test]
+fn cli_manual_search_copy_and_legacy_anchors_use_the_complete_book() {
+    let mut app = GENtleApp::default();
+    app.open_help_doc(HelpDoc::Cli);
+    let pages = app.ensure_manual_pages(HelpDoc::Cli);
+    assert!(pages.pages.len() > 70);
+    assert!(app.active_help_copyable_text().contains("rna-reads transcript-structures-cancel"));
+    app.help_search_query = "rna-reads transcript-structures-cancel".into();
+    app.refresh_help_search_matches();
+    assert!(!app.help_search_matches.is_empty());
+    assert!(app.help_source_markdown(HelpDoc::Cli).contains(&app.help_search_query));
+    let rendered = app.rendered_help_markdown_for(HelpDoc::Cli);
+    assert!(Arc::ptr_eq(&rendered, &app.rendered_help_markdown_for(HelpDoc::Cli)));
+    for alias in super::super::help_manual_sources::CLI_ALIASES {
+        // Keep the query active: explicit navigation must win over a stale hit.
+        app.open_manual_target(HelpDoc::Cli, "docs/cli.md", alias.anchor).unwrap();
+        assert_eq!(Some(app.help_cli_page), pages.page_for_document(alias.path, alias.fragment));
+    }
+    app.help_cli_markdown = "# Replacement\n\n## New CLI\n\nNEW_CLI_BODY\n".into();
+    app.open_manual_target(HelpDoc::Cli, "docs/cli.md", "new-cli").unwrap();
+    assert_eq!(app.help_cli_page, 1);
+    assert!(app.help_manual_forward.is_empty());
+    assert!(app.help_source_markdown(HelpDoc::Cli).contains("NEW_CLI_BODY"));
+    assert!(!Arc::ptr_eq(&pages, &app.ensure_manual_pages(HelpDoc::Cli)));
+}
+
+#[test]
+fn cli_manual_missing_external_chapter_falls_back_as_one_complete_book() {
+    let sources = super::super::help_manual_sources::CLI_SOURCES;
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("docs")).unwrap();
+    fs::write(temp.path().join("docs/manuals.json"), super::super::help_manual_sources::CATALOG_JSON).unwrap();
+    for source in sources {
+        let path = temp.path().join(source.path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source.markdown).unwrap();
+    }
+    let (external, notice) = GENtleApp::manual_book_at(HelpDoc::Cli, Some(temp.path()));
+    assert!(notice.is_none());
+    assert_eq!(external.documents.len(), sources.len());
+    fs::remove_file(temp.path().join(sources.last().unwrap().path)).unwrap();
+    let (fallback, notice) = GENtleApp::manual_book_at(HelpDoc::Cli, Some(temp.path()));
+    assert!(notice.is_some());
+    assert!(fallback.root.is_none());
+    assert_eq!(fallback.markdown, super::super::help_manual::ManualBook::embedded(sources).markdown);
+}
+
+#[test]
+fn help_documents_resolve_from_all_package_layouts_outside_launch_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let unrelated = temp.path().join("unrelated working directory");
+    fs::create_dir_all(&unrelated).unwrap();
+    for (binary, resources) in [
+        ("linux/bin/gentle", "linux"),
+        ("windows/bin/gentle.exe", "windows"),
+        ("macos/GENtle.app/Contents/MacOS/gentle", "macos/GENtle.app/Contents/Resources"),
+    ] {
+        let executable = temp.path().join(binary);
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        let resource_root = temp.path().join(resources);
+        for relative in ["docs/gui.md", "docs/gui/primers.md", "docs/screenshots/example.png"] {
+            let document = resource_root.join(relative);
+            fs::create_dir_all(document.parent().unwrap()).unwrap();
+            fs::write(&document, b"synthetic resource").unwrap();
+            let resolved = GENtleApp::resolve_runtime_doc_path_at(
+                relative, &unrelated, Some(&executable),
+            ).expect("packaged resource independent of cwd");
+            assert_eq!(resolved.canonicalize().unwrap(), document.canonicalize().unwrap());
+        }
+        assert!(GENtleApp::resolve_runtime_doc_path_at(
+            "docs/missing.md", &unrelated, Some(&executable),
+        ).is_none());
+        fs::create_dir_all(resource_root.join("docs/directory.md")).unwrap();
+        assert!(GENtleApp::resolve_runtime_doc_path_at(
+            "docs/directory.md", &unrelated, Some(&executable),
+        ).is_none());
+    }
+}
+
+#[test]
 fn gui_manual_pages_reuse_index_and_render_cache_until_source_changes() {
     let mut app = GENtleApp::default();
     app.help_gui_markdown =
@@ -59,6 +302,43 @@ fn gui_manual_pages_search_whole_manual_and_navigate_to_matching_section() {
         serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
         before
     );
+}
+
+#[test]
+fn gui_manual_anchor_clicks_navigate_without_capture_or_project_changes() {
+    let mut app = GENtleApp::default();
+    app.help_gui_markdown = "# Manual\n\n[Open primers](#primer-design)\n\n## RNA\n\nOther content.\n\n## Primer Design\n\nPrimer body.\n".into();
+    app.help_doc = HelpDoc::Gui;
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    click_help_link(&mut app, "Open primers");
+    assert_eq!(app.help_gui_page, 2);
+    assert!(app.help_source_markdown(HelpDoc::Gui).starts_with("## Primer Design"));
+    assert!(app.help_link_notice.is_none());
+    assert_eq!(serde_json::to_value(app.engine.read().unwrap().state()).unwrap(), before);
+    assert!(!app.show_agent_assistant_dialog);
+    app.navigate_manual_history(false);
+    assert_eq!(app.help_gui_page, 0);
+    app.navigate_manual_history(true);
+    assert_eq!(app.help_gui_page, 2);
+    app.open_help_markdown_link("#").unwrap();
+    assert_eq!(app.help_gui_page, 0);
+    assert!(app.open_help_markdown_link("#missing").is_err());
+    assert_eq!(app.help_gui_page, 0);
+}
+
+#[test]
+fn gui_manual_cross_document_anchor_and_reload_use_current_index() {
+    let mut app = GENtleApp::default();
+    app.open_help_doc(HelpDoc::Cli);
+    app.open_help_markdown_link("gui.md#primer-qpcr-and-sequence-specific-rt-design").unwrap();
+    assert_eq!(app.help_doc, HelpDoc::Gui);
+    assert!(app.help_source_markdown(HelpDoc::Gui).starts_with("## Primer, qPCR"));
+    assert!(app.help_scroll_to_top);
+    app.help_gui_markdown = "# Replacement\n\n## New\n\nNew source.\n".into();
+    app.open_help_markdown_link("#new").unwrap();
+    assert_eq!(app.help_gui_page, 1);
+    assert!(app.help_manual_forward.is_empty());
+    assert!(app.open_help_markdown_link("#primer-qpcr-and-sequence-specific-rt-design").is_err());
 }
 
 #[test]
@@ -249,6 +529,11 @@ fn click_help_link(app: &mut GENtleApp, label: &str) {
                 .any(|command| matches!(command, egui::OutputCommand::OpenUrl(_))),
             "a local chapter click must not launch a browser"
         );
+        assert!(output.viewport_output.values().all(|viewport| {
+            viewport.commands.iter().all(|command| {
+                !matches!(command, egui::ViewportCommand::Screenshot(_))
+            })
+        }), "manual navigation must not request a capture");
         output.drop_without_applying_deltas();
     }
 }
@@ -367,6 +652,19 @@ fn help_markdown_links_reuse_manual_tabs_and_discover_unlisted_documents() {
     app.open_help_markdown_link("../cli.md").unwrap();
     assert_eq!(app.help_doc, HelpDoc::Cli);
     assert!(app.show_help_dialog);
+    for (link, doc, path, fragment) in [
+        ("../cli.md#synthetic-sequence-design", HelpDoc::Cli, "docs/cli/sequence-design.md", "synthetic-sequence-design-1"),
+        ("../cli/sequence-design.md#sliding-window-gc-walkthrough", HelpDoc::Cli, "docs/cli/sequence-design.md", "sliding-window-gc-walkthrough"),
+        ("../gui.md#rna-read-panel", HelpDoc::Gui, "docs/gui/rna-read-panel.md", "rna-read-panel"),
+    ] {
+        app.help_doc = HelpDoc::Tutorial;
+        assert!(Path::new(&app.help_tutorial_entries[0].path).is_absolute());
+        app.open_help_markdown_link(link).unwrap();
+        assert_eq!(app.help_doc, doc);
+        assert_eq!(app.logical_help_document_path().as_deref(), Some(path));
+        assert_eq!(app.ensure_manual_pages(doc).page_for_document(path, fragment), Some(app.manual_page(doc)));
+        assert!(app.help_link_notice.is_none());
+    }
     let temp = tempfile::tempdir().unwrap();
     let mut app = help_link_test_app(temp.path(), "\n");
     let source_dir = app
@@ -393,7 +691,6 @@ fn help_markdown_links_do_not_intercept_external_or_absolute_targets() {
         "/tmp/guide.md",
         "C:\\docs\\guide.md",
         "C:/docs/guide.md",
-        "#section",
         "figure.svg",
     ] {
         assert!(
@@ -405,6 +702,7 @@ fn help_markdown_links_do_not_intercept_external_or_absolute_targets() {
         GENtleApp::help_relative_markdown_link("../guide.md#section"),
         Some("../guide.md")
     );
+    assert_eq!(GENtleApp::help_relative_markdown_link("#section"), Some(""));
 }
 
 fn catalog_entry(path: &Path, title: &str) -> crate::workflow_examples::TutorialCatalogEntry {

@@ -582,6 +582,19 @@ Discoverability rule:
   - the help viewer should support interface/language filtering (GUI shell,
     GUI menu, CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated
     manuals while keeping context-specific views.
+- GUI and CLI manual topic files are authoritative. `docs/manuals.json` owns their
+  ordering/groups, reciprocal topic links and legacy aliases; `scripts/manual_docs.py` projects the
+  index links and embedded source inventory, not another maintained prose copy.
+  The native reader paginates within each source file and searches the complete
+  book. Runtime chapters must come from one complete, compatible resource root;
+  otherwise use the whole embedded book, never an index-only or mixed fallback.
+  Stable window Help topics are presentation metadata, separate from Agent Help,
+  capture IDs, translated titles and engine/UI-intent operations. Registered
+  windows must carry a documentation target. Images/tutorial artifacts remain
+  installed resources, not embedded text assets.
+  Both books share file-scoped anchors, whole-book Find/Copy and navigation
+  history. Every topic either declares counterpart links or an explicit absence
+  reason; related-topic links do not imply identical interface capabilities.
 - Menu information architecture should separate sequence ingress from reference
   lifecycle:
   - `File` may include sequence ingress/start actions (for example local open,

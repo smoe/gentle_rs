@@ -84,7 +84,7 @@ impl GENtleApp {
             || ctx.input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
             || ctx.input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
         {
-            self.open_help_doc(HelpDoc::Gui);
+            self.open_help_topic(HelpTopic::MainWindow);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&undo_shortcut)) {
             self.undo_last_operation();

@@ -413,6 +413,7 @@ pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] 
 
 #[derive(Clone, Debug)]
 pub(super) struct OpenWindowEntry {
+    pub(super) help_topic: HelpTopic,
     pub(super) native_menu_key: u64,
     pub(super) viewport_id: ViewportId,
     pub(super) title: String,
@@ -654,6 +655,7 @@ impl GENtleApp {
         let mut entries = vec![OpenWindowEntry {
             native_menu_key: Self::native_menu_key_for_viewport(ViewportId::ROOT),
             viewport_id: ViewportId::ROOT,
+            help_topic: HelpTopic::MainWindow,
             title: format!("Main Window — {}", self.current_project_name()),
             detail: "Project workspace".to_string(),
         }];
@@ -664,6 +666,7 @@ impl GENtleApp {
                     Self::configuration_viewport_id(),
                 ),
                 viewport_id: Self::configuration_viewport_id(),
+                help_topic: HelpTopic::Configuration,
                 title: "Configuration".to_string(),
                 detail: "External tools and graphics defaults".to_string(),
             });
@@ -672,6 +675,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::help_viewport_id()),
                 viewport_id: Self::help_viewport_id(),
+                help_topic: HelpTopic::Help,
                 title: format!("Help — {}", self.active_help_title()),
                 detail: "GUI/CLI manual".to_string(),
             });
@@ -682,6 +686,7 @@ impl GENtleApp {
                     Self::command_palette_viewport_id(),
                 ),
                 viewport_id: Self::command_palette_viewport_id(),
+                help_topic: HelpTopic::CommandPalette,
                 title: "Command Palette".to_string(),
                 detail: "Action launcher".to_string(),
             });
@@ -692,6 +697,7 @@ impl GENtleApp {
                     Self::protein_expression_viewport_id(),
                 ),
                 viewport_id: Self::protein_expression_viewport_id(),
+                help_topic: HelpTopic::ProteinExpression,
                 title: "Protein Expression Handoff".into(),
                 detail: "Read-only product, requirements and provider-binding review".into(),
             });
@@ -700,6 +706,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::rna_panel_viewport_id()),
                 viewport_id: Self::rna_panel_viewport_id(),
+                help_topic: HelpTopic::RnaPanel,
                 title: "RNA Read Panel".into(),
                 detail: "Multi-locus annotated reference panel preparation".into(),
             });
@@ -710,6 +717,7 @@ impl GENtleApp {
                     Self::external_services_viewport_id(),
                 ),
                 viewport_id: Self::external_services_viewport_id(),
+                help_topic: HelpTopic::ExternalServices,
                 title: "External Services".to_string(),
                 detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
             });
@@ -720,6 +728,7 @@ impl GENtleApp {
                     Self::gene_set_inspector_viewport_id(),
                 ),
                 viewport_id: Self::gene_set_inspector_viewport_id(),
+                help_topic: HelpTopic::GeneSets,
                 title: "Gene Set Inspector".to_string(),
                 detail: "Gene-set resolution, audit, and collection operations".to_string(),
             });
@@ -730,6 +739,7 @@ impl GENtleApp {
                     Self::evidence_preparation_viewport_id(),
                 ),
                 viewport_id: Self::evidence_preparation_viewport_id(),
+                help_topic: HelpTopic::EvidencePreparation,
                 title: "Evidence Preparation".to_string(),
                 detail: "TP73 evidence-viewer proof material preparation".to_string(),
             });
@@ -738,6 +748,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
                 viewport_id: Self::history_viewport_id(),
+                help_topic: HelpTopic::History,
                 title: "Operation History".to_string(),
                 detail: "Undo/redo operation log".to_string(),
             });
@@ -748,6 +759,7 @@ impl GENtleApp {
                     Self::background_jobs_viewport_id(),
                 ),
                 viewport_id: Self::background_jobs_viewport_id(),
+                help_topic: HelpTopic::Jobs,
                 title: "Background Jobs".to_string(),
                 detail: "Progress, cancellation, and retry snapshots".to_string(),
             });
@@ -759,6 +771,7 @@ impl GENtleApp {
                     Self::prepare_genome_viewport_id(),
                 ),
                 viewport_id: Self::prepare_genome_viewport_id(),
+                help_topic: HelpTopic::GenomePrepare,
                 title: scope.prepare_title().to_string(),
                 detail: format!("{} preparation", scope.description()),
             });
@@ -770,6 +783,7 @@ impl GENtleApp {
                     Self::retrieve_genome_viewport_id(),
                 ),
                 viewport_id: Self::retrieve_genome_viewport_id(),
+                help_topic: HelpTopic::GenomeRetrieve,
                 title: scope.retrieve_title().to_string(),
                 detail: format!(
                     "Gene/region extraction from prepared {} indices",
@@ -784,6 +798,7 @@ impl GENtleApp {
                     Self::blast_genome_viewport_id(),
                 ),
                 viewport_id: Self::blast_genome_viewport_id(),
+                help_topic: HelpTopic::GenomeBlast,
                 title: scope.blast_title().to_string(),
                 detail: format!("BLAST against prepared {} indices", scope.description()),
             });
@@ -792,6 +807,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::bed_track_viewport_id()),
                 viewport_id: Self::bed_track_viewport_id(),
+                help_topic: HelpTopic::GenomeTracks,
                 title: "Import Genome Tracks".to_string(),
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
             });
@@ -800,6 +816,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::gibson_viewport_id()),
                 viewport_id: Self::gibson_viewport_id(),
+                help_topic: HelpTopic::Gibson,
                 title: "Gibson".to_string(),
                 detail: "Destination-first Gibson planning with primer and cartoon preview"
                     .to_string(),
@@ -811,6 +828,7 @@ impl GENtleApp {
                     Self::arrangement_gel_preview_viewport_id(),
                 ),
                 viewport_id: Self::arrangement_gel_preview_viewport_id(),
+                help_topic: HelpTopic::SerialGel,
                 title: self.arrangement_gel_preview_title(),
                 detail: "Serial gel preview with live ladder selection".to_string(),
             });
@@ -819,6 +837,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::gel_image_viewport_id()),
                 viewport_id: Self::gel_image_viewport_id(),
+                help_topic: HelpTopic::GelImage,
                 title: "Gel Image Analysis".into(),
                 detail: "Measured gel lanes, confirmed ladder calibration and band sizing".into(),
             });
@@ -827,6 +846,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::pcr_design_viewport_id()),
                 viewport_id: Self::pcr_design_viewport_id(),
+                help_topic: HelpTopic::PcrDesign,
                 title: if self.pcr_design_seq_id.trim().is_empty() {
                     "PCR Designer".to_string()
                 } else {
@@ -841,6 +861,7 @@ impl GENtleApp {
                     Self::sequencing_confirmation_viewport_id(),
                 ),
                 viewport_id: Self::sequencing_confirmation_viewport_id(),
+                help_topic: HelpTopic::SequencingConfirmation,
                 title: if self.sequencing_confirmation_seq_id.trim().is_empty() {
                     "Sequencing Confirmation".to_string()
                 } else {
@@ -856,6 +877,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::planning_viewport_id()),
                 viewport_id: Self::planning_viewport_id(),
+                help_topic: HelpTopic::Planning,
                 title: "Planning".to_string(),
                 detail: "Planning profiles/objectives and sync suggestions".to_string(),
             });
@@ -866,6 +888,7 @@ impl GENtleApp {
                     Self::routine_assistant_viewport_id(),
                 ),
                 viewport_id: Self::routine_assistant_viewport_id(),
+                help_topic: HelpTopic::RoutineAssistant,
                 title: "Routine Assistant".to_string(),
                 detail: "Staged routine selection, preflight, and execution".to_string(),
             });
@@ -876,6 +899,7 @@ impl GENtleApp {
                     Self::agent_assistant_viewport_id(),
                 ),
                 viewport_id: Self::agent_assistant_viewport_id(),
+                help_topic: HelpTopic::AgentAssistant,
                 title: "Agent Assistant".to_string(),
                 detail: "Agent chat and per-reply command execution".to_string(),
             });
@@ -886,6 +910,7 @@ impl GENtleApp {
                     Self::jaspar_expert_viewport_id(),
                 ),
                 viewport_id: Self::jaspar_expert_viewport_id(),
+                help_topic: HelpTopic::Jaspar,
                 title: "JASPAR Expert".to_string(),
                 detail: "Motif registry, sequence-logo, and scoring diagnostics".to_string(),
             });
@@ -896,6 +921,7 @@ impl GENtleApp {
                     Self::new_sequence_viewport_id(),
                 ),
                 viewport_id: Self::new_sequence_viewport_id(),
+                help_topic: HelpTopic::NewSequence,
                 title: "New Sequence".to_string(),
                 detail: "Typed/clipboard sequence creation".to_string(),
             });
@@ -904,6 +930,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::uniprot_viewport_id()),
                 viewport_id: Self::uniprot_viewport_id(),
+                help_topic: HelpTopic::ProteinEvidence,
                 title: "Protein Evidence".to_string(),
                 detail: "UniProt/Ensembl protein evidence fetch, import, and compare tools"
                     .to_string(),
@@ -913,6 +940,7 @@ impl GENtleApp {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::genbank_viewport_id()),
                 viewport_id: Self::genbank_viewport_id(),
+                help_topic: HelpTopic::Genbank,
                 title: "GenBank / dbSNP Fetch".to_string(),
                 detail: "GenBank accession and dbSNP retrieval tool".to_string(),
             });
@@ -927,12 +955,15 @@ impl GENtleApp {
             sequence_windows.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
                 viewport_id: *viewport_id,
+                help_topic: HelpTopic::DnaViewer,
                 title: window_guard.name(),
                 detail: "Sequence map window".to_string(),
             });
-            for (viewport_id, title, detail) in window_guard.collect_open_auxiliary_window_entries()
+            for (viewport_id, title, detail, help_topic) in
+                window_guard.collect_open_auxiliary_window_entries_with_help()
             {
                 auxiliary_windows.push(OpenWindowEntry {
+                    help_topic,
                     native_menu_key: Self::native_menu_key_for_viewport(viewport_id),
                     viewport_id,
                     title,
@@ -947,9 +978,11 @@ impl GENtleApp {
             let Ok(window_guard) = window.read() else {
                 continue;
             };
-            for (viewport_id, title, detail) in window_guard.collect_open_auxiliary_window_entries()
+            for (viewport_id, title, detail, help_topic) in
+                window_guard.collect_open_auxiliary_window_entries_with_help()
             {
                 auxiliary_windows.push(OpenWindowEntry {
+                    help_topic,
                     native_menu_key: Self::native_menu_key_for_viewport(viewport_id),
                     viewport_id,
                     title,

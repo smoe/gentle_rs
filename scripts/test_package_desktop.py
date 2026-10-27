@@ -43,6 +43,15 @@ class DesktopPackageTests(unittest.TestCase):
             "icons/icon.png": "synthetic icon",
             "docs/tutorial/manifest.json": '{"chapters": []}',
             "docs/linux_tarball.md": "Synthetic quick start",
+            "docs/manuals.json": json.dumps({"version": 1, "books": [{
+                "id": "gui", "index": "docs/gui.md", "topics": [{"path": "docs/gui/sequence.md"}],
+            }, {
+                "id": "cli", "index": "docs/cli.md", "topics": [{"path": "docs/cli/sequence.md"}],
+            }]}),
+            "docs/gui.md": "# Manual\n\n[Sequence](gui/sequence.md)\n",
+            "docs/gui/sequence.md": "# Sequence\n\nSynthetic manual chapter.\n",
+            "docs/cli.md": "# CLI Manual\n\n[Sequence](cli/sequence.md)\n",
+            "docs/cli/sequence.md": "# Sequence Commands\n\nSynthetic CLI chapter.\n",
             "test_files/tiny.fa": ">synthetic\nACGT\n",
             "integrations/python/gentle_py/__init__.py": "# synthetic adapter\n",
             "data/resources/affymetrix/platform_registry.json": "{}",
@@ -105,6 +114,8 @@ class DesktopPackageTests(unittest.TestCase):
                 for name in package.BINARIES:
                     self.assertTrue((binary_root / (name + suffix)).is_file())
                 self.assertTrue((resource_root / "docs/tutorial/manifest.json").is_file())
+                self.assertTrue((resource_root / "docs/gui/sequence.md").is_file())
+                self.assertTrue((resource_root / "docs/cli/sequence.md").is_file())
                 self.assertTrue((resource_root / "test_files/tiny.fa").is_file())
                 self.assertFalse((resource_root / "assets/private-cache.txt").exists())
                 self.assertFalse((resource_root / "private-cache.txt").exists())
@@ -131,6 +142,29 @@ class DesktopPackageTests(unittest.TestCase):
                     self.assertEqual(call.kwargs["timeout"], 120)
                 for name in package.BINARIES:
                     self.assertIn([str(binary_root / (name + suffix)), "--version"], calls)
+
+    def test_manual_inventory_rejects_untracked_and_missing_chapters(self) -> None:
+        self.git("rm", "--cached", "docs/gui/sequence.md")
+        with self.assertRaisesRegex(ValueError, "untracked.*docs/gui/sequence.md"):
+            self.stage("windows")
+        self.git("add", "docs/gui/sequence.md")
+        for platform in ("macos", "windows", "linux"):
+            with self.subTest(platform=platform):
+                root = self.stage(platform)
+                _, resources = package.layout(root, platform)
+                for book in ("gui", "cli"):
+                    chapter = resources / f"docs/{book}/sequence.md"
+                    original = chapter.read_bytes()
+                    chapter.unlink()
+                    (root / "SHA256SUMS").write_text("".join(
+                        f"{package.digest(path)}  {path.relative_to(root).as_posix()}\n"
+                        for path in package.files(root)
+                    ), encoding="utf-8")
+                    with patch.object(package.subprocess, "run") as run:
+                        with self.assertRaisesRegex(ValueError, f"manual resource.*docs/{book}/sequence.md"):
+                            self.smoke(root, platform)
+                        run.assert_not_called()
+                    chapter.write_bytes(original)
 
     def test_staging_excludes_scripting_and_reproduction_binaries(self) -> None:
         extras = ("gentle_js", "gentle_lua", "gentle_dna_viewer_repro", "gentle_egui_window_repro")

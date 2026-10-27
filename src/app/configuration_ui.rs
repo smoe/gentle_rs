@@ -15,7 +15,7 @@ impl GENtleApp {
             &self.window_backdrops,
         );
         with_window_content_inset(ui, |ui| {
-            self.render_specialist_window_nav(ui);
+            self.render_specialist_window_nav(ui, HelpTopic::Configuration);
             let external_tab_label = self.tr("configuration.tab.external_applications");
             let agent_tab_label = self.tr("configuration.tab.agent_systems");
             let microarray_tab_label = self.tr("configuration.tab.microarrays");

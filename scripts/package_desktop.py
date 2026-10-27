@@ -41,6 +41,24 @@ def files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*") if p.is_file() and p != root / "SHA256SUMS")
 
 
+def verify_manual_resources(root: Path, inventory: set[str] | None = None) -> None:
+    """Reject index-only packages, even when their checksum inventory agrees."""
+    catalog_path = "docs/manuals.json"
+    catalog = json.loads((root / catalog_path).read_text(encoding="utf-8"))
+    if catalog.get("version") != 1 or not catalog.get("books"):
+        raise ValueError("Missing or unsupported manual catalog")
+    paths = [catalog_path]
+    for book in catalog["books"]:
+        paths.extend([book["index"], *(topic["path"] for topic in book["topics"])])
+    for relative in paths:
+        path = root / relative
+        if (not relative.startswith("docs/") or ".." in Path(relative).parts
+                or not path.resolve().is_relative_to(root.resolve())
+                or not path.is_file() or path.stat().st_size == 0
+                or (inventory is not None and relative not in inventory)):
+            raise ValueError(f"Missing, untracked or unsafe manual resource: {relative}")
+
+
 def verify_macos_bundle(repo: Path, app_bundle: Path, binary: Path) -> None:
     """Check real cargo-bundle output, using either a preflight or built binary."""
     manifest = tomllib.loads((repo / "Cargo.toml").read_text(encoding="utf-8"))
@@ -98,6 +116,7 @@ def stage(repo: Path, binaries: Path, destination: Path, platform: str,
         ["git", "ls-files", "-z", "--", *RESOURCE_PATHS], cwd=repo,
     ).decode("utf-8").split("\0")
     resources = [Path(p) for p in tracked if p]
+    verify_manual_resources(repo, {path.as_posix() for path in resources})
     for relative in resources:
         source = repo / relative
         if not source.resolve().is_relative_to(repo) or not source.is_file():
@@ -210,6 +229,7 @@ def smoke(root: Path, platform: str, revision: str, checkout: Path, tag: str,
         raise ValueError("Package file inventory differs from SHA256SUMS")
 
     binary_root, resource_root = layout(root, platform)
+    verify_manual_resources(resource_root)
     suffix = ".exe" if platform == "windows" else ""
     for name in ("gentle_js", "gentle_lua"):
         if (binary_root / (name + suffix)).exists():

@@ -148,7 +148,7 @@ impl GENtleApp {
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
             if self
-                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+                .render_specialist_window_nav_with_close(ui, HelpTopic::NewSequence, Some(("Close", close_hover.as_str())))
             {
                 close_requested = true;
             }
@@ -2523,7 +2523,7 @@ impl GENtleApp {
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
             if self
-                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+                .render_specialist_window_nav_with_close(ui, HelpTopic::Genbank, Some(("Close", close_hover.as_str())))
             {
                 close_requested = true;
             }
@@ -2675,7 +2675,11 @@ impl GENtleApp {
         }
 
         let close_hover = Self::specialist_window_close_hover_text("Protein Evidence");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            HelpTopic::ProteinEvidence,
+            Some(("Close", close_hover.as_str())),
+        ) {
             close_requested = true;
         }
         ui.label(

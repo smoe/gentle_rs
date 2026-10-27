@@ -24,44 +24,394 @@ status: manual/reference\n\
 Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
 
 impl GENtleApp {
-    pub(super) fn ensure_gui_manual_pages(&mut self) -> Arc<super::help_manual::ManualPages> {
-        let source_hash = Self::help_markdown_hash(&self.help_gui_markdown);
-        if self
-            .help_gui_pages
-            .as_ref()
-            .is_none_or(|index| index.source_hash != source_hash)
-        {
-            let index = super::help_manual::ManualPages::new(&self.help_gui_markdown, source_hash);
-            self.help_gui_page = self.help_gui_page.min(index.pages.len() - 1);
-            self.help_gui_pages = Some(Arc::new(index));
-            self.help_rendered_markdown_cache
-                .retain(|key, _| !key.starts_with("gui:"));
-            self.help_markdown_cache = CommonMarkCache::default();
-        }
-        self.help_gui_pages.as_ref().unwrap().clone()
+    pub(super) fn open_help_for_active_window(&mut self) {
+        let topic = self
+            .open_window_model_cache
+            .model
+            .entries
+            .iter()
+            .find(|entry| Some(entry.native_menu_key) == self.active_window_menu_key)
+            .map_or(HelpTopic::MainWindow, |entry| entry.help_topic);
+        self.open_help_topic(topic);
     }
 
+    pub(super) fn open_help_topic(&mut self, topic: HelpTopic) {
+        let (id, fragment) = topic.destination();
+        self.ensure_help_docs_loaded();
+        let result = super::help_manual_sources::GUI_SOURCES
+            .iter()
+            .find(|source| source.id == id)
+            .ok_or_else(|| format!("No GUI manual topic for '{id}'."))
+            .and_then(|source| self.open_gui_manual_target(source.path, fragment));
+        if let Err(message) = result {
+            self.open_help_doc(HelpDoc::Gui);
+            self.help_link_notice = Some(message);
+        }
+    }
+
+    pub(super) fn consume_manual_help_request(&mut self, ctx: &egui::Context) {
+        if let Some(topic) = super::help_topics::take_request(ctx) {
+            self.open_help_topic(topic);
+        }
+    }
+
+    fn manual_book_at(doc: HelpDoc, root: Option<&Path>) -> (super::help_manual::ManualBook, Option<String>) {
+        let sources = match doc {
+            HelpDoc::Gui => super::help_manual_sources::GUI_SOURCES,
+            HelpDoc::Cli => super::help_manual_sources::CLI_SOURCES,
+            _ => unreachable!("Only GUI and CLI are catalogued manuals"),
+        };
+        let Some(root) = root else {
+            return (super::help_manual::ManualBook::embedded(sources), None);
+        };
+        let load = || -> Option<super::help_manual::ManualBook> {
+            let catalog = fs::read_to_string(root.join("docs/manuals.json")).ok()?;
+            let actual: serde_json::Value = serde_json::from_str(&catalog).ok()?;
+            let expected: serde_json::Value = serde_json::from_str(super::help_manual_sources::CATALOG_JSON).ok()?;
+            if actual != expected {
+                return None;
+            }
+            let texts = sources.iter().map(|source| fs::read_to_string(root.join(source.path)).ok())
+                .collect::<Option<Vec<_>>>()?;
+            Some(super::help_manual::ManualBook::from_texts(sources, texts, Some(root.to_path_buf())))
+        };
+        match load() {
+            Some(book) => (book, None),
+            None => (
+                super::help_manual::ManualBook::embedded(sources),
+                Some(format!("External {doc:?} manual is incomplete or has a different catalog. Using the complete embedded manual; no external and embedded chapters were mixed.")),
+            ),
+        }
+    }
+
+    pub(super) fn load_manual_books(&mut self) {
+        let root = Self::resolve_runtime_doc_path("docs/manuals.json")
+            .and_then(|path| path.canonicalize().ok())
+            .and_then(|path| path.parent()?.parent().map(Path::to_path_buf));
+        let (book, gui_notice) = Self::manual_book_at(HelpDoc::Gui, root.as_deref());
+        self.help_gui_markdown.clone_from(&book.markdown);
+        self.help_gui_book = Some(Arc::new(book));
+        let (book, cli_notice) = Self::manual_book_at(HelpDoc::Cli, root.as_deref());
+        self.help_cli_markdown.clone_from(&book.markdown);
+        self.help_cli_book = Some(Arc::new(book));
+        let notices: Vec<_> = [gui_notice, cli_notice].into_iter().flatten().collect();
+        self.help_manual_load_notice = (!notices.is_empty()).then(|| notices.join("\n"));
+        self.help_gui_pages = None;
+        self.help_cli_pages = None;
+        self.help_manual_back.clear();
+        self.help_manual_forward.clear();
+        self.help_rendered_markdown_cache.retain(|key, _| !key.starts_with("gui:") && !key.starts_with("cli:"));
+        self.help_markdown_cache = CommonMarkCache::default();
+    }
+
+    fn render_manual_groups(
+        ui: &mut Ui,
+        pages: &super::help_manual::ManualPages,
+        selected: &mut usize,
+        reveal: bool,
+    ) {
+        let mut start = 0;
+        while start < pages.pages.len() {
+            let group = &pages.pages[start].group;
+            let end = (start + 1..pages.pages.len())
+                .find(|&index| pages.pages[index].group != *group)
+                .unwrap_or(pages.pages.len());
+            if group.is_empty() {
+                Self::render_manual_tree(ui, pages, start..end, selected, reveal);
+            } else {
+                let id = ui.make_persistent_id(("manual_group", group));
+                let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(), id, (start..end).contains(selected),
+                );
+                if reveal && (start..end).contains(selected) {
+                    state.set_open(true);
+                }
+                state.show_header(ui, |ui| { ui.label(group); }).body(|ui| {
+                    Self::render_manual_tree(ui, pages, start..end, selected, reveal);
+                });
+            }
+            start = end;
+        }
+    }
+
+    fn render_manual_tree(
+        ui: &mut Ui,
+        pages: &super::help_manual::ManualPages,
+        range: std::ops::Range<usize>,
+        selected: &mut usize,
+        reveal: bool,
+    ) {
+        let mut index = range.start;
+        while index < range.end {
+            let page = &pages.pages[index];
+            let level = page.heading_level + u8::from(page.anchor.is_none());
+            let end = (index + 1..range.end)
+                .find(|&next| {
+                    let next = &pages.pages[next];
+                    next.heading_level + u8::from(next.anchor.is_none()) <= level
+                })
+                .unwrap_or(range.end);
+            if end > index + 1 {
+                let id = ui.make_persistent_id(("manual_tree", pages.source_hash, index));
+                let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(), id, level == 1,
+                );
+                if reveal && (index..end).contains(selected) {
+                    state.set_open(true);
+                }
+                state.show_header(ui, |ui| {
+                    if ui.add(egui::Button::new(&page.title).selected(*selected == index).wrap()).clicked() {
+                        *selected = index;
+                    }
+                }).body(|ui| Self::render_manual_tree(ui, pages, index + 1..end, selected, reveal));
+            } else if ui.add(egui::Button::new(&page.title).selected(*selected == index).wrap()).clicked() {
+                *selected = index;
+            }
+            index = end;
+        }
+    }
+
+    pub(super) fn render_help_navigation_and_page(&mut self, ui: &mut Ui, size: Vec2) {
+        if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+            let doc = self.help_doc;
+            let pages = self.ensure_manual_pages(doc);
+            let mut selected = self.manual_page(doc);
+            let reveal = self.help_scroll_to_top;
+            if size.x >= 720.0 {
+                ui.horizontal_top(|ui| {
+                    let tree_width = (size.x * 0.28).clamp(180.0, 280.0);
+                    ui.allocate_ui_with_layout(Vec2::new(tree_width, size.y), egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.set_max_width(tree_width);
+                        egui::ScrollArea::vertical().id_salt("manual_tree_scroll").max_height(size.y).show(ui, |ui| {
+                            Self::render_manual_groups(ui, &pages, &mut selected, reveal);
+                        });
+                    });
+                    ui.separator();
+                    self.select_manual_location(doc, selected, true);
+                    self.render_help_page(ui, Vec2::new(ui.available_width(), size.y));
+                });
+                return;
+            }
+            egui::CollapsingHeader::new("Contents").id_salt("manual_tree_compact").default_open(true).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("manual_tree_compact_scroll").max_height(size.y * 0.3).show(ui, |ui| {
+                    Self::render_manual_groups(ui, &pages, &mut selected, reveal);
+                });
+            });
+            self.select_manual_location(doc, selected, true);
+        }
+        let height = ui.available_height().min(size.y).max(40.0);
+        self.render_help_page(ui, Vec2::new(ui.available_width(), height));
+    }
+
+    fn render_help_page(&mut self, ui: &mut Ui, size: Vec2) {
+        let content_width = size.x.max(HELP_BODY_MIN_WIDTH_PX);
+        if Self::help_content_width_requires_relayout(self.help_last_content_width, content_width) {
+            self.help_markdown_cache = CommonMarkCache::default();
+        }
+        self.help_last_content_width = content_width;
+        let active_doc = self.help_doc;
+        let source_hash = Self::help_markdown_hash(self.help_source_markdown(active_doc));
+        let scroll_source_id = ("help_body_scroll", self.help_render_cache_key(active_doc), source_hash);
+        let mut scroll = egui::ScrollArea::vertical().id_salt(scroll_source_id)
+            .auto_shrink([false, false]).max_height(size.y);
+        if std::mem::take(&mut self.help_scroll_to_top) {
+            scroll = scroll.vertical_scroll_offset(0.0);
+        }
+        ui.set_width(content_width);
+        ui.set_max_width(content_width);
+        scroll.show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui, scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
+            if self.help_selectable_text_mode {
+                let mut text = self.help_source_markdown(active_doc).to_string();
+                ui.add(egui::TextEdit::multiline(&mut text).font(egui::TextStyle::Monospace)
+                    .desired_width(content_width).lock_focus(true));
+            } else {
+                let rendered = self.rendered_help_markdown_for(active_doc);
+                let command_start = ui.ctx().output(|output| output.commands.len());
+                CommonMarkViewer::new()
+                    .max_image_width(Some(Self::help_markdown_max_image_width(content_width)))
+                    .show(ui, &mut self.help_markdown_cache, rendered.as_ref());
+                self.follow_help_markdown_links(ui.ctx(), command_start);
+            }
+        });
+    }
+
+    #[cfg(test)]
+    pub(super) fn ensure_gui_manual_pages(&mut self) -> Arc<super::help_manual::ManualPages> {
+        self.ensure_manual_pages(HelpDoc::Gui)
+    }
+
+    pub(super) fn ensure_manual_pages(&mut self, doc: HelpDoc) -> Arc<super::help_manual::ManualPages> {
+        let (text, book, pages, selected) = match doc {
+            HelpDoc::Gui => (&self.help_gui_markdown, &self.help_gui_book, &mut self.help_gui_pages, &mut self.help_gui_page),
+            HelpDoc::Cli => (&self.help_cli_markdown, &self.help_cli_book, &mut self.help_cli_pages, &mut self.help_cli_page),
+            _ => unreachable!("Only GUI and CLI are catalogued manuals"),
+        };
+        let source_hash = Self::help_markdown_hash(text);
+        if pages.as_ref().is_none_or(|index| index.source_hash != source_hash) {
+            let changed = pages.is_some();
+            let index = match book.as_ref().filter(|book| book.source_hash == source_hash) {
+                Some(book) => super::help_manual::ManualPages::from_book(book),
+                None => {
+                    let mut index = super::help_manual::ManualPages::new(text, source_hash);
+                    if doc == HelpDoc::Cli {
+                        for page in &mut index.pages {
+                            page.document_path = "docs/cli.md".to_string();
+                        }
+                    }
+                    index
+                }
+            };
+            *selected = (*selected).min(index.pages.len() - 1);
+            *pages = Some(Arc::new(index));
+            if changed {
+                self.help_manual_back.clear();
+                self.help_manual_forward.clear();
+            }
+            self.help_rendered_markdown_cache
+                .retain(|key, _| !key.starts_with(if doc == HelpDoc::Gui { "gui:" } else { "cli:" }));
+            self.help_markdown_cache = CommonMarkCache::default();
+        }
+        pages.as_ref().unwrap().clone()
+    }
+
+    #[cfg(test)]
     pub(super) fn select_gui_manual_page(&mut self, index: usize) {
-        let pages = self.ensure_gui_manual_pages();
+        self.select_manual_location(HelpDoc::Gui, index, true);
+    }
+
+    pub(super) fn manual_page(&self, doc: HelpDoc) -> usize {
+        if doc == HelpDoc::Cli { self.help_cli_page } else { self.help_gui_page }
+    }
+
+    pub(super) fn select_manual_location(&mut self, doc: HelpDoc, index: usize, record_history: bool) {
+        let pages = self.ensure_manual_pages(doc);
         let index = index.min(pages.pages.len() - 1);
-        if self.help_gui_page != index {
-            self.help_gui_page = index;
+        if self.help_doc != doc || self.manual_page(doc) != index {
+            if record_history && matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+                self.help_manual_back.push((self.help_doc, self.manual_page(self.help_doc)));
+                if self.help_manual_back.len() > 128 {
+                    self.help_manual_back.remove(0);
+                }
+                self.help_manual_forward.clear();
+            }
+            let changed_doc = self.help_doc != doc;
+            self.help_doc = doc;
+            if doc == HelpDoc::Cli {
+                self.help_cli_page = index;
+            } else {
+                self.help_gui_page = index;
+            }
+            if changed_doc {
+                self.update_help_search_matches();
+            }
             self.help_markdown_cache = CommonMarkCache::default();
             self.help_last_content_width = 0.0;
+            self.help_scroll_to_top = true;
         }
     }
 
-    pub(super) fn show_gui_manual_search_match(&mut self) {
-        if self.help_doc == HelpDoc::Gui
+    fn navigate_manual_history(&mut self, forward: bool) {
+        self.ensure_manual_pages(self.help_doc);
+        let target = if forward {
+            self.help_manual_forward.pop()
+        } else {
+            self.help_manual_back.pop()
+        };
+        if let Some((doc, target)) = target {
+            let current = (self.help_doc, self.manual_page(self.help_doc));
+            if forward {
+                self.help_manual_back.push(current);
+            } else {
+                self.help_manual_forward.push(current);
+            }
+            self.select_manual_location(doc, target, false);
+        }
+    }
+
+    fn open_help_fragment(&mut self, fragment: &str) -> Result<(), String> {
+        if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+            let pages = self.ensure_manual_pages(self.help_doc);
+            let path = pages.pages[self.manual_page(self.help_doc)].document_path.clone();
+            self.open_manual_target(self.help_doc, &path, fragment)?;
+        } else {
+            self.help_link_notice = Some(format!(
+                "Page opened. Use Find for section '{fragment}'; automatic section scrolling is not supported."
+            ));
+        }
+        Ok(())
+    }
+
+    fn open_gui_manual_target(&mut self, path: &str, fragment: &str) -> Result<(), String> {
+        self.open_manual_target(HelpDoc::Gui, path, fragment)
+    }
+
+    fn open_manual_target(&mut self, doc: HelpDoc, path: &str, fragment: &str) -> Result<(), String> {
+        let pages = self.ensure_manual_pages(doc);
+        let (book, root, aliases) = if doc == HelpDoc::Gui {
+            (&self.help_gui_book, "docs/gui.md", super::help_manual_sources::GUI_ALIASES)
+        } else {
+            (&self.help_cli_book, "docs/cli.md", super::help_manual_sources::CLI_ALIASES)
+        };
+        let has_book = book.as_ref().is_some_and(|book| book.source_hash == pages.source_hash);
+        let alias = if path == root && has_book {
+            let decoded = super::help_manual::decoded_fragment(fragment);
+            aliases.iter().find(|alias| Some(alias.anchor) == decoded.as_deref())
+        } else {
+            None
+        };
+        let (path, fragment) = alias.map_or((path, fragment), |alias| (alias.path, alias.fragment));
+        let target = pages.page_for_document(path, fragment)
+            .ok_or_else(|| format!("Help section '{path}#{fragment}' could not be found."))?;
+        self.select_manual_location(doc, target, true);
+        self.open_help_doc(doc);
+        self.help_scroll_to_top = true;
+        self.help_link_notice = None;
+        Ok(())
+    }
+
+    fn logical_help_document_path(&self) -> Option<String> {
+        Some(match self.help_doc {
+            HelpDoc::Gui => self.help_gui_pages.as_ref()
+                .and_then(|pages| pages.pages.get(self.help_gui_page))
+                .map(|page| page.document_path.clone()).unwrap_or_else(|| "docs/gui.md".to_string()),
+            HelpDoc::Cli => self.help_cli_pages.as_ref()
+                .and_then(|pages| pages.pages.get(self.help_cli_page))
+                .map(|page| page.document_path.clone()).unwrap_or_else(|| "docs/cli.md".to_string()),
+            HelpDoc::AgentInterface => "docs/agent_interface.md".to_string(),
+            HelpDoc::ReviewerPreview => "docs/reviewer_preview.md".to_string(),
+            HelpDoc::Shell => "docs/glossary.json".to_string(),
+            HelpDoc::Tutorial => self.help_tutorial_entries.get(self.help_tutorial_selected)?.path.clone(),
+        })
+    }
+
+    pub(super) fn show_manual_search_match(&mut self) {
+        if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli)
             && let Some(hit) = self.help_search_matches.get(self.help_search_selected)
         {
             let line = hit.line_number;
-            let pages = self.ensure_gui_manual_pages();
-            self.select_gui_manual_page(pages.page_for_line(line));
+            let pages = self.ensure_manual_pages(self.help_doc);
+            self.select_manual_location(self.help_doc, pages.page_for_line(line), true);
         }
     }
 
-    fn help_document_path(&self) -> Option<PathBuf> {
+    pub(super) fn help_document_path(&self) -> Option<PathBuf> {
+        if matches!(self.help_doc, HelpDoc::Gui | HelpDoc::Cli) {
+            let path = self.logical_help_document_path()?;
+            let (book, text) = if self.help_doc == HelpDoc::Gui {
+                (&self.help_gui_book, &self.help_gui_markdown)
+            } else {
+                (&self.help_cli_book, &self.help_cli_markdown)
+            };
+            if let Some(book) = book
+                && book.source_hash == Self::help_markdown_hash(text)
+            {
+                return book.root.as_ref().map(|root| root.join(path));
+            }
+            return Self::resolve_runtime_doc_path(&path);
+        }
         let path = match self.help_doc {
             HelpDoc::Gui => "docs/gui.md",
             HelpDoc::Cli => "docs/cli.md",
@@ -79,6 +429,9 @@ impl GENtleApp {
     }
 
     fn help_relative_markdown_link(destination: &str) -> Option<&str> {
+        if destination.starts_with('#') {
+            return Some("");
+        }
         let path = destination.split(['#', '?']).next()?;
         if path.is_empty()
             || path.starts_with('/')
@@ -97,6 +450,31 @@ impl GENtleApp {
     fn open_help_markdown_link(&mut self, destination: &str) -> Result<(), String> {
         let relative = Self::help_relative_markdown_link(destination)
             .ok_or_else(|| "Not a relative Help Markdown link".to_string())?;
+        if relative.is_empty() {
+            return self.open_help_fragment(destination.trim_start_matches('#'));
+        }
+        if let Some(source) = self.logical_help_document_path()
+            && let Some(target) = super::help_manual::relative_document_path(&source, relative)
+        {
+            for (doc, sources) in [(HelpDoc::Gui, super::help_manual_sources::GUI_SOURCES),
+                                   (HelpDoc::Cli, super::help_manual_sources::CLI_SOURCES)] {
+                if sources.iter().any(|source| source.path == target) {
+                    let fragment = destination.split_once('#').map_or("", |(_, fragment)| fragment);
+                    return self.open_manual_target(doc, &target, fragment);
+                }
+            }
+            // These manuals have embedded single-document fallbacks as well.
+            for (path, doc) in [("docs/agent_interface.md", HelpDoc::AgentInterface),
+                                ("docs/reviewer_preview.md", HelpDoc::ReviewerPreview)] {
+                if target == path {
+                    self.open_help_doc(doc);
+                    if let Some((_, fragment)) = destination.split_once('#') {
+                        self.open_help_fragment(fragment)?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
         let source = self
             .help_document_path()
             .ok_or_else(|| "The current Help page has no source path".to_string())?;
@@ -109,9 +487,25 @@ impl GENtleApp {
         if !target.is_file() {
             return Err(format!("Help link '{destination}' is not a document."));
         }
+        // Tutorial entries can carry absolute installed paths. Resolve those
+        // back to a known book/file before applying legacy fragments, rather
+        // than interpreting the fragment against the last selected page.
+        let book_target = [
+            (HelpDoc::Gui, super::help_manual_sources::GUI_SOURCES, &self.help_gui_book),
+            (HelpDoc::Cli, super::help_manual_sources::CLI_SOURCES, &self.help_cli_book),
+        ].into_iter().find_map(|(doc, sources, book)| {
+            sources.iter().find(|source| {
+                book.as_ref().and_then(|book| book.root.as_ref())
+                    .map(|root| root.join(source.path))
+                    .or_else(|| Self::resolve_runtime_doc_path(source.path))
+                    .and_then(|path| path.canonicalize().ok()).as_ref() == Some(&target)
+            }).map(|source| (doc, source.path))
+        });
+        if let Some((doc, path)) = book_target {
+            let fragment = destination.split_once('#').map_or("", |(_, fragment)| fragment);
+            return self.open_manual_target(doc, path, fragment);
+        }
         let manual = [
-            (HelpDoc::Gui, "docs/gui.md"),
-            (HelpDoc::Cli, "docs/cli.md"),
             (HelpDoc::AgentInterface, "docs/agent_interface.md"),
             (HelpDoc::ReviewerPreview, "docs/reviewer_preview.md"),
         ]
@@ -138,12 +532,12 @@ impl GENtleApp {
         }
         self.help_markdown_cache = CommonMarkCache::default();
         self.help_last_content_width = 0.0;
-        self.help_link_notice = destination
-            .split_once('#')
-            .filter(|(_, fragment)| !fragment.is_empty())
-            .map(|(_, fragment)| {
-                format!("Page opened. Use Find for section '{fragment}'; automatic section scrolling is not supported.")
-            });
+        self.help_link_notice = None;
+        if let Some((_, fragment)) = destination.split_once('#')
+            && !fragment.is_empty()
+        {
+            self.open_help_fragment(fragment)?;
+        }
         Ok(())
     }
 

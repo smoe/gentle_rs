@@ -1,0 +1,1889 @@
+{
+  "version": 1,
+  "legacy_resources": {
+    "docs/tutorial/protein_transcript_native_expert_gui.md": "docs/tutorial/06-02_protein_transcript_native_expert_gui.md",
+    "docs/tutorial/protein_reverse_translation_gui.md": "docs/tutorial/06-01_protein_reverse_translation_gui.md",
+    "docs/tutorial/simple_pcr_selection_gui.md": "docs/tutorial/04-01_simple_pcr_selection_gui.md",
+    "docs/tutorial/sequencing_confirmation_gui.md": "docs/tutorial/10-02_sequencing_confirmation_gui.md",
+    "docs/tutorial/gibson_arrangements_gui.md": "docs/tutorial/03-07_gibson_arrangements_gui.md",
+    "docs/tutorial/metabion_external_service_handoff_gui_cli.md": "docs/tutorial/09-01_metabion_external_service_handoff_gui_cli.md"
+  },
+  "books": [
+    {
+      "id": "gui",
+      "title": "GUI Manual",
+      "index": "docs/gui.md",
+      "topics": [
+        {
+          "id": "detailed-reference",
+          "title": "Detailed Reference",
+          "group": "Getting started",
+          "path": "docs/gui/detailed-reference.md"
+        },
+        {
+          "id": "what-to-trust-today",
+          "title": "What To Trust Today",
+          "group": "Getting started",
+          "path": "docs/gui/what-to-trust-today.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "start-the-gui",
+          "title": "Start the GUI",
+          "group": "Getting started",
+          "path": "docs/gui/start-the-gui.md"
+        },
+        {
+          "id": "documentation-automation-status",
+          "title": "Documentation automation status",
+          "group": "Getting started",
+          "path": "docs/gui/documentation-automation-status.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "notes-and-limitations",
+          "title": "Notes and limitations",
+          "group": "Getting started",
+          "path": "docs/gui/notes-and-limitations.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "main-window-layout",
+          "title": "Main window layout",
+          "group": "Projects and navigation",
+          "path": "docs/gui/main-window-layout.md"
+        },
+        {
+          "id": "project-overview-and-collections",
+          "title": "Project Overview And Collections",
+          "group": "Projects and navigation",
+          "path": "docs/gui/project-overview-and-collections.md"
+        },
+        {
+          "id": "physical-arrangements-and-project-layout",
+          "title": "Physical Arrangements And Project Layout",
+          "group": "Projects and navigation",
+          "path": "docs/gui/physical-arrangements-and-project-layout.md"
+        },
+        {
+          "id": "project-and-sequence-window-examples",
+          "title": "Project And Sequence Window Examples",
+          "group": "Projects and navigation",
+          "path": "docs/gui/project-and-sequence-window-examples.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "status-history-and-background-jobs",
+          "title": "Status History And Background Jobs",
+          "group": "Projects and navigation",
+          "path": "docs/gui/status-history-and-background-jobs.md"
+        },
+        {
+          "id": "lineage-node-actions",
+          "title": "Lineage Node Actions",
+          "group": "Projects and navigation",
+          "path": "docs/gui/lineage-node-actions.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "lineage-node-groups",
+          "title": "Lineage Node Groups",
+          "group": "Projects and navigation",
+          "path": "docs/gui/lineage-node-groups.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "open-windows-and-focus",
+          "title": "Open windows and focus",
+          "group": "Projects and navigation",
+          "path": "docs/gui/open-windows-and-focus.md"
+        },
+        {
+          "id": "help-manuals",
+          "title": "Help manuals",
+          "group": "Projects and navigation",
+          "path": "docs/gui/help-manuals.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "command-palette-and-historyjobs-panels",
+          "title": "Command Palette and History/Jobs Panels",
+          "group": "Projects and navigation",
+          "path": "docs/gui/command-palette-and-historyjobs-panels.md"
+        },
+        {
+          "id": "engine-ops-state-persistence",
+          "title": "Engine Ops State Persistence",
+          "group": "Projects and navigation",
+          "path": "docs/gui/engine-ops-state-persistence.md"
+        },
+        {
+          "id": "loading-and-creating-sequences",
+          "title": "Loading and creating sequences",
+          "group": "Projects and navigation",
+          "path": "docs/gui/loading-and-creating-sequences.md"
+        },
+        {
+          "id": "dna-window-panels",
+          "title": "DNA Window Panels",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/dna-window-panels.md"
+        },
+        {
+          "id": "strand-placement",
+          "title": "Strand Placement",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/strand-placement.md"
+        },
+        {
+          "id": "map-modes-and-dotplot-workspace",
+          "title": "Map Modes And Dotplot Workspace",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/map-modes-and-dotplot-workspace.md"
+        },
+        {
+          "id": "dna-letters-and-zoom",
+          "title": "DNA Letters And Zoom",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/dna-letters-and-zoom.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "feature-tree-and-selection",
+          "title": "Feature Tree And Selection",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/feature-tree-and-selection.md"
+        },
+        {
+          "id": "restriction-site-inspection",
+          "title": "Restriction-Site Inspection",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/restriction-site-inspection.md"
+        },
+        {
+          "id": "circular-map-labels",
+          "title": "Circular Map Labels",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/circular-map-labels.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "toolbar-buttons",
+          "title": "Toolbar buttons",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/toolbar-buttons.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "map-interactions",
+          "title": "Map interactions",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/map-interactions.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "linear-map-conventions",
+          "title": "Linear map conventions",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/linear-map-conventions.md"
+        },
+        {
+          "id": "circular-map-conventions",
+          "title": "Circular map conventions",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/circular-map-conventions.md"
+        },
+        {
+          "id": "anchored-region-extraction-engine-ops",
+          "title": "Anchored Region Extraction (Engine Ops)",
+          "group": "Sequences and annotation",
+          "path": "docs/gui/anchored-region-extraction-engine-ops.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "gene-set-inspector-and-collection-operations",
+          "title": "Gene Set Inspector And Collection Operations",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/gene-set-inspector-and-collection-operations.md"
+        },
+        {
+          "id": "splicing-expert-workspace",
+          "title": "Splicing Expert Workspace",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/splicing-expert-workspace.md"
+        },
+        {
+          "id": "splicing-support-and-transcript-actions",
+          "title": "Splicing Support And Transcript Actions",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/splicing-support-and-transcript-actions.md"
+        },
+        {
+          "id": "splicing-structure-and-evidence-views",
+          "title": "Splicing Structure And Evidence Views",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/splicing-structure-and-evidence-views.md"
+        },
+        {
+          "id": "locus-figure-and-evidence-tracks",
+          "title": "Locus Figure And Evidence Tracks",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/locus-figure-and-evidence-tracks.md"
+        },
+        {
+          "id": "saved-genomic-regions",
+          "title": "Saved Genomic Regions",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/saved-genomic-regions.md"
+        },
+        {
+          "id": "conservation-workspace",
+          "title": "Conservation Workspace",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/conservation-workspace.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "cryptic-splicing-screen",
+          "title": "Cryptic Splicing Screen",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/cryptic-splicing-screen.md"
+        },
+        {
+          "id": "isoform-architecture-panels-engine-ops",
+          "title": "Isoform Architecture Panels (Engine Ops)",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/isoform-architecture-panels-engine-ops.md"
+        },
+        {
+          "id": "reference-genomes-main-menu",
+          "title": "Reference Genomes (Main Menu)",
+          "group": "References genes and transcripts",
+          "path": "docs/gui/reference-genomes-main-menu.md"
+        },
+        {
+          "id": "protein-expression-handoff",
+          "title": "Protein Expression Handoff",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/protein-expression-handoff.md"
+        },
+        {
+          "id": "patterns-and-grna-setup",
+          "title": "Patterns And gRNA Setup",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/patterns-and-grna-setup.md"
+        },
+        {
+          "id": "routine-assistant",
+          "title": "Routine Assistant",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/routine-assistant.md"
+        },
+        {
+          "id": "gibson-workspace",
+          "title": "Gibson Workspace",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/gibson-workspace.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "sequencing-confirmation-workspace",
+          "title": "Sequencing Confirmation Workspace",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/sequencing-confirmation-workspace.md"
+        },
+        {
+          "id": "experiment-planning",
+          "title": "Experiment Planning",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/experiment-planning.md"
+        },
+        {
+          "id": "candidate-set-workflow-engine-ops--gui-shell",
+          "title": "Candidate-Set Workflow (Engine Ops + GUI Shell)",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/candidate-set-workflow-engine-ops--gui-shell.md"
+        },
+        {
+          "id": "design-constraints-filter-engine-ops",
+          "title": "Design Constraints Filter (Engine Ops)",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/design-constraints-filter-engine-ops.md"
+        },
+        {
+          "id": "primer-qpcr-and-sequence-specific-rt-design",
+          "title": "Primer, qPCR, and Sequence-Specific RT Design",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/primer-qpcr-and-sequence-specific-rt-design.md"
+        },
+        {
+          "id": "sequencing-confirmation",
+          "title": "Sequencing Confirmation",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/gui/sequencing-confirmation.md"
+        },
+        {
+          "id": "promoter-cofactors",
+          "title": "Promoter Cofactors",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/promoter-cofactors.md"
+        },
+        {
+          "id": "accession-pinned-tss-profiles",
+          "title": "Accession-Pinned TSS Profiles",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/accession-pinned-tss-profiles.md"
+        },
+        {
+          "id": "tata-box-evidence-in-the-dna-viewer",
+          "title": "TATA-Box Evidence In The DNA Viewer",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/tata-box-evidence-in-the-dna-viewer.md"
+        },
+        {
+          "id": "array-tracks-in-dna-viewer",
+          "title": "Array Tracks In DNA Viewer",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/array-tracks-in-dna-viewer.md"
+        },
+        {
+          "id": "tfbs-annotation-engine-ops",
+          "title": "TFBS Annotation (Engine Ops)",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/tfbs-annotation-engine-ops.md"
+        },
+        {
+          "id": "tss--regulatory-dna-display",
+          "title": "TSS / Regulatory DNA Display",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/gui/tss--regulatory-dna-display.md"
+        },
+        {
+          "id": "rna-read-panel",
+          "title": "RNA Read Panel",
+          "group": "RNA and sequencing reads",
+          "path": "docs/gui/rna-read-panel.md"
+        },
+        {
+          "id": "rna-binding-protein-evidence",
+          "title": "RNA-Binding Protein Evidence",
+          "group": "RNA and sequencing reads",
+          "path": "docs/gui/rna-binding-protein-evidence.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "rna-read-mapping-workspace",
+          "title": "RNA-Read Mapping Workspace",
+          "group": "RNA and sequencing reads",
+          "path": "docs/gui/rna-read-mapping-workspace.md"
+        },
+        {
+          "id": "rna-structure-ssrna",
+          "title": "RNA Structure (ssRNA)",
+          "group": "RNA and sequencing reads",
+          "path": "docs/gui/rna-structure-ssrna.md"
+        },
+        {
+          "id": "microrna-target-scan",
+          "title": "microRNA Target Scan",
+          "group": "RNA and sequencing reads",
+          "path": "docs/gui/microrna-target-scan.md"
+        },
+        {
+          "id": "measured-gel-images-11-development",
+          "title": "Measured Gel Images (`.11` Development)",
+          "group": "Gels pools and physical racks",
+          "path": "docs/gui/measured-gel-images-11-development.md"
+        },
+        {
+          "id": "pool-distribution-engine-ops",
+          "title": "Pool Distribution (Engine Ops)",
+          "group": "Gels pools and physical racks",
+          "path": "docs/gui/pool-distribution-engine-ops.md"
+        },
+        {
+          "id": "serial-gel-ladder-view",
+          "title": "Serial Gel (Ladder View)",
+          "group": "Gels pools and physical racks",
+          "path": "docs/gui/serial-gel-ladder-view.md"
+        },
+        {
+          "id": "rack-view",
+          "title": "Rack View",
+          "group": "Gels pools and physical racks",
+          "path": "docs/gui/rack-view.md"
+        },
+        {
+          "id": "catalog-inspection-and-provider-imports",
+          "title": "Catalog Inspection And Provider Imports",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/catalog-inspection-and-provider-imports.md"
+        },
+        {
+          "id": "screenshot-capture-policy",
+          "title": "Screenshot Capture Policy",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/screenshot-capture-policy.md"
+        },
+        {
+          "id": "external-services-window",
+          "title": "External Services Window",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/external-services-window.md"
+        },
+        {
+          "id": "configuration-window",
+          "title": "Configuration Window",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/configuration-window.md"
+        },
+        {
+          "id": "workspace-latency-diagnostics",
+          "title": "Workspace Latency Diagnostics",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/workspace-latency-diagnostics.md"
+        },
+        {
+          "id": "gentle-shell-gui",
+          "title": "GENtle Shell (GUI)",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/gentle-shell-gui.md"
+        },
+        {
+          "id": "agent-assistant",
+          "title": "Agent Assistant",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/agent-assistant.md"
+        },
+        {
+          "id": "about-gentle",
+          "title": "About GENtle",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/about-gentle.md",
+          "no_counterpart_reason": "This chapter describes desktop presentation or interaction; no dedicated command reference is paired with it."
+        },
+        {
+          "id": "engine-settings-engine-ops",
+          "title": "Engine Settings (Engine Ops)",
+          "group": "Configuration services and agents",
+          "path": "docs/gui/engine-settings-engine-ops.md"
+        }
+      ],
+      "legacy": [
+        {
+          "anchor": "promoter-cofactors",
+          "heading": "### Promoter Cofactors",
+          "path": "docs/gui/promoter-cofactors.md",
+          "fragment": "promoter-cofactors"
+        },
+        {
+          "anchor": "accession-pinned-tss-profiles",
+          "heading": "### Accession-Pinned TSS Profiles",
+          "path": "docs/gui/accession-pinned-tss-profiles.md",
+          "fragment": "accession-pinned-tss-profiles"
+        },
+        {
+          "anchor": "measured-gel-images-11-development",
+          "heading": "### Measured Gel Images (`.11` Development)",
+          "path": "docs/gui/measured-gel-images-11-development.md",
+          "fragment": "measured-gel-images-11-development"
+        },
+        {
+          "anchor": "rna-read-panel",
+          "heading": "## RNA Read Panel",
+          "path": "docs/gui/rna-read-panel.md",
+          "fragment": "rna-read-panel"
+        },
+        {
+          "anchor": "catalog-inspection-and-provider-imports",
+          "heading": "## Catalog Inspection And Provider Imports",
+          "path": "docs/gui/catalog-inspection-and-provider-imports.md",
+          "fragment": "catalog-inspection-and-provider-imports"
+        },
+        {
+          "anchor": "what-to-trust-today",
+          "heading": "## What To Trust Today",
+          "path": "docs/gui/what-to-trust-today.md",
+          "fragment": "what-to-trust-today"
+        },
+        {
+          "anchor": "recommended-now",
+          "heading": "### Recommended now",
+          "path": "docs/gui/what-to-trust-today.md",
+          "fragment": "recommended-now"
+        },
+        {
+          "anchor": "works-with-caveats",
+          "heading": "### Works with caveats",
+          "path": "docs/gui/what-to-trust-today.md",
+          "fragment": "works-with-caveats"
+        },
+        {
+          "anchor": "exploratory--not-yet-first-choice",
+          "heading": "### Exploratory / not yet first choice",
+          "path": "docs/gui/what-to-trust-today.md",
+          "fragment": "exploratory--not-yet-first-choice"
+        },
+        {
+          "anchor": "start-the-gui",
+          "heading": "## Start the GUI",
+          "path": "docs/gui/start-the-gui.md",
+          "fragment": "start-the-gui"
+        },
+        {
+          "anchor": "tata-box-evidence-in-the-dna-viewer",
+          "heading": "### TATA-Box Evidence In The DNA Viewer",
+          "path": "docs/gui/tata-box-evidence-in-the-dna-viewer.md",
+          "fragment": "tata-box-evidence-in-the-dna-viewer"
+        },
+        {
+          "anchor": "screenshot-capture-policy",
+          "heading": "### Screenshot Capture Policy",
+          "path": "docs/gui/screenshot-capture-policy.md",
+          "fragment": "screenshot-capture-policy"
+        },
+        {
+          "anchor": "protein-expression-handoff",
+          "heading": "## Protein Expression Handoff",
+          "path": "docs/gui/protein-expression-handoff.md",
+          "fragment": "protein-expression-handoff"
+        },
+        {
+          "anchor": "external-services-window",
+          "heading": "## External Services Window",
+          "path": "docs/gui/external-services-window.md",
+          "fragment": "external-services-window"
+        },
+        {
+          "anchor": "configuration-window",
+          "heading": "## Configuration Window",
+          "path": "docs/gui/configuration-window.md",
+          "fragment": "configuration-window"
+        },
+        {
+          "anchor": "main-window-layout",
+          "heading": "## Main window layout",
+          "path": "docs/gui/main-window-layout.md",
+          "fragment": "main-window-layout"
+        },
+        {
+          "anchor": "dna-window-panels",
+          "heading": "### DNA Window Panels",
+          "path": "docs/gui/dna-window-panels.md",
+          "fragment": "dna-window-panels"
+        },
+        {
+          "anchor": "project-overview-and-collections",
+          "heading": "### Project Overview And Collections",
+          "path": "docs/gui/project-overview-and-collections.md",
+          "fragment": "project-overview-and-collections"
+        },
+        {
+          "anchor": "gene-set-inspector-and-collection-operations",
+          "heading": "### Gene Set Inspector And Collection Operations",
+          "path": "docs/gui/gene-set-inspector-and-collection-operations.md",
+          "fragment": "gene-set-inspector-and-collection-operations"
+        },
+        {
+          "anchor": "physical-arrangements-and-project-layout",
+          "heading": "### Physical Arrangements And Project Layout",
+          "path": "docs/gui/physical-arrangements-and-project-layout.md",
+          "fragment": "physical-arrangements-and-project-layout"
+        },
+        {
+          "anchor": "project-and-sequence-window-examples",
+          "heading": "### Project And Sequence Window Examples",
+          "path": "docs/gui/project-and-sequence-window-examples.md",
+          "fragment": "project-and-sequence-window-examples"
+        },
+        {
+          "anchor": "strand-placement",
+          "heading": "### Strand Placement",
+          "path": "docs/gui/strand-placement.md",
+          "fragment": "strand-placement"
+        },
+        {
+          "anchor": "map-modes-and-dotplot-workspace",
+          "heading": "### Map Modes And Dotplot Workspace",
+          "path": "docs/gui/map-modes-and-dotplot-workspace.md",
+          "fragment": "map-modes-and-dotplot-workspace"
+        },
+        {
+          "anchor": "dna-letters-and-zoom",
+          "heading": "### DNA Letters And Zoom",
+          "path": "docs/gui/dna-letters-and-zoom.md",
+          "fragment": "dna-letters-and-zoom"
+        },
+        {
+          "anchor": "feature-tree-and-selection",
+          "heading": "### Feature Tree And Selection",
+          "path": "docs/gui/feature-tree-and-selection.md",
+          "fragment": "feature-tree-and-selection"
+        },
+        {
+          "anchor": "restriction-site-inspection",
+          "heading": "### Restriction-Site Inspection",
+          "path": "docs/gui/restriction-site-inspection.md",
+          "fragment": "restriction-site-inspection"
+        },
+        {
+          "anchor": "splicing-expert-workspace",
+          "heading": "### Splicing Expert Workspace",
+          "path": "docs/gui/splicing-expert-workspace.md",
+          "fragment": "splicing-expert-workspace"
+        },
+        {
+          "anchor": "workspace-latency-diagnostics",
+          "heading": "### Workspace Latency Diagnostics",
+          "path": "docs/gui/workspace-latency-diagnostics.md",
+          "fragment": "workspace-latency-diagnostics"
+        },
+        {
+          "anchor": "splicing-support-and-transcript-actions",
+          "heading": "### Splicing Support And Transcript Actions",
+          "path": "docs/gui/splicing-support-and-transcript-actions.md",
+          "fragment": "splicing-support-and-transcript-actions"
+        },
+        {
+          "anchor": "splicing-structure-and-evidence-views",
+          "heading": "### Splicing Structure And Evidence Views",
+          "path": "docs/gui/splicing-structure-and-evidence-views.md",
+          "fragment": "splicing-structure-and-evidence-views"
+        },
+        {
+          "anchor": "locus-figure-and-evidence-tracks",
+          "heading": "### Locus Figure And Evidence Tracks",
+          "path": "docs/gui/locus-figure-and-evidence-tracks.md",
+          "fragment": "locus-figure-and-evidence-tracks"
+        },
+        {
+          "anchor": "saved-genomic-regions",
+          "heading": "### Saved Genomic Regions",
+          "path": "docs/gui/saved-genomic-regions.md",
+          "fragment": "saved-genomic-regions"
+        },
+        {
+          "anchor": "conservation-workspace",
+          "heading": "### Conservation Workspace",
+          "path": "docs/gui/conservation-workspace.md",
+          "fragment": "conservation-workspace"
+        },
+        {
+          "anchor": "cryptic-splicing-screen",
+          "heading": "### Cryptic Splicing Screen",
+          "path": "docs/gui/cryptic-splicing-screen.md",
+          "fragment": "cryptic-splicing-screen"
+        },
+        {
+          "anchor": "rna-binding-protein-evidence",
+          "heading": "### RNA-Binding Protein Evidence",
+          "path": "docs/gui/rna-binding-protein-evidence.md",
+          "fragment": "rna-binding-protein-evidence"
+        },
+        {
+          "anchor": "rna-read-mapping-workspace",
+          "heading": "### RNA-Read Mapping Workspace",
+          "path": "docs/gui/rna-read-mapping-workspace.md",
+          "fragment": "rna-read-mapping-workspace"
+        },
+        {
+          "anchor": "circular-map-labels",
+          "heading": "### Circular Map Labels",
+          "path": "docs/gui/circular-map-labels.md",
+          "fragment": "circular-map-labels"
+        },
+        {
+          "anchor": "status-history-and-background-jobs",
+          "heading": "### Status History And Background Jobs",
+          "path": "docs/gui/status-history-and-background-jobs.md",
+          "fragment": "status-history-and-background-jobs"
+        },
+        {
+          "anchor": "patterns-and-grna-setup",
+          "heading": "### Patterns And gRNA Setup",
+          "path": "docs/gui/patterns-and-grna-setup.md",
+          "fragment": "patterns-and-grna-setup"
+        },
+        {
+          "anchor": "routine-assistant",
+          "heading": "### Routine Assistant",
+          "path": "docs/gui/routine-assistant.md",
+          "fragment": "routine-assistant"
+        },
+        {
+          "anchor": "gibson-workspace",
+          "heading": "### Gibson Workspace",
+          "path": "docs/gui/gibson-workspace.md",
+          "fragment": "gibson-workspace"
+        },
+        {
+          "anchor": "sequencing-confirmation-workspace",
+          "heading": "### Sequencing Confirmation Workspace",
+          "path": "docs/gui/sequencing-confirmation-workspace.md",
+          "fragment": "sequencing-confirmation-workspace"
+        },
+        {
+          "anchor": "experiment-planning",
+          "heading": "### Experiment Planning",
+          "path": "docs/gui/experiment-planning.md",
+          "fragment": "experiment-planning"
+        },
+        {
+          "anchor": "lineage-node-actions",
+          "heading": "### Lineage Node Actions",
+          "path": "docs/gui/lineage-node-actions.md",
+          "fragment": "lineage-node-actions"
+        },
+        {
+          "anchor": "lineage-node-groups",
+          "heading": "### Lineage Node Groups",
+          "path": "docs/gui/lineage-node-groups.md",
+          "fragment": "lineage-node-groups"
+        },
+        {
+          "anchor": "toolbar-buttons",
+          "heading": "## Toolbar buttons",
+          "path": "docs/gui/toolbar-buttons.md",
+          "fragment": "toolbar-buttons"
+        },
+        {
+          "anchor": "rna-structure-ssrna",
+          "heading": "## RNA Structure (ssRNA)",
+          "path": "docs/gui/rna-structure-ssrna.md",
+          "fragment": "rna-structure-ssrna"
+        },
+        {
+          "anchor": "gentle-shell-gui",
+          "heading": "## GENtle Shell (GUI)",
+          "path": "docs/gui/gentle-shell-gui.md",
+          "fragment": "gentle-shell-gui"
+        },
+        {
+          "anchor": "agent-assistant",
+          "heading": "## Agent Assistant",
+          "path": "docs/gui/agent-assistant.md",
+          "fragment": "agent-assistant"
+        },
+        {
+          "anchor": "background-commands",
+          "heading": "### Background Commands",
+          "path": "docs/gui/agent-assistant.md",
+          "fragment": "background-commands"
+        },
+        {
+          "anchor": "candidate-set-workflow-engine-ops--gui-shell",
+          "heading": "## Candidate-Set Workflow (Engine Ops + GUI Shell)",
+          "path": "docs/gui/candidate-set-workflow-engine-ops--gui-shell.md",
+          "fragment": "candidate-set-workflow-engine-ops--gui-shell"
+        },
+        {
+          "anchor": "documentation-automation-status",
+          "heading": "## Documentation automation status",
+          "path": "docs/gui/documentation-automation-status.md",
+          "fragment": "documentation-automation-status"
+        },
+        {
+          "anchor": "about-gentle",
+          "heading": "## About GENtle",
+          "path": "docs/gui/about-gentle.md",
+          "fragment": "about-gentle"
+        },
+        {
+          "anchor": "open-windows-and-focus",
+          "heading": "## Open windows and focus",
+          "path": "docs/gui/open-windows-and-focus.md",
+          "fragment": "open-windows-and-focus"
+        },
+        {
+          "anchor": "help-manuals",
+          "heading": "## Help manuals",
+          "path": "docs/gui/help-manuals.md",
+          "fragment": "help-manuals"
+        },
+        {
+          "anchor": "array-tracks-in-dna-viewer",
+          "heading": "## Array Tracks In DNA Viewer",
+          "path": "docs/gui/array-tracks-in-dna-viewer.md",
+          "fragment": "array-tracks-in-dna-viewer"
+        },
+        {
+          "anchor": "microrna-target-scan",
+          "heading": "## microRNA Target Scan",
+          "path": "docs/gui/microrna-target-scan.md",
+          "fragment": "microrna-target-scan"
+        },
+        {
+          "anchor": "map-interactions",
+          "heading": "## Map interactions",
+          "path": "docs/gui/map-interactions.md",
+          "fragment": "map-interactions"
+        },
+        {
+          "anchor": "unified-scrollzoom-policy",
+          "heading": "### Unified scroll/zoom policy",
+          "path": "docs/gui/map-interactions.md",
+          "fragment": "unified-scrollzoom-policy"
+        },
+        {
+          "anchor": "linear-dna-map-zoom-and-pan-mousetouchpad",
+          "heading": "### Linear DNA map: zoom and pan (mouse/touchpad)",
+          "path": "docs/gui/map-interactions.md",
+          "fragment": "linear-dna-map-zoom-and-pan-mousetouchpad"
+        },
+        {
+          "anchor": "lineage-graph-zoom-and-pan-mousetouchpad",
+          "heading": "### Lineage graph: zoom and pan (mouse/touchpad)",
+          "path": "docs/gui/map-interactions.md",
+          "fragment": "lineage-graph-zoom-and-pan-mousetouchpad"
+        },
+        {
+          "anchor": "command-palette-and-historyjobs-panels",
+          "heading": "## Command Palette and History/Jobs Panels",
+          "path": "docs/gui/command-palette-and-historyjobs-panels.md",
+          "fragment": "command-palette-and-historyjobs-panels"
+        },
+        {
+          "anchor": "linear-map-conventions",
+          "heading": "## Linear map conventions",
+          "path": "docs/gui/linear-map-conventions.md",
+          "fragment": "linear-map-conventions"
+        },
+        {
+          "anchor": "circular-map-conventions",
+          "heading": "## Circular map conventions",
+          "path": "docs/gui/circular-map-conventions.md",
+          "fragment": "circular-map-conventions"
+        },
+        {
+          "anchor": "pool-distribution-engine-ops",
+          "heading": "## Pool Distribution (Engine Ops)",
+          "path": "docs/gui/pool-distribution-engine-ops.md",
+          "fragment": "pool-distribution-engine-ops"
+        },
+        {
+          "anchor": "serial-gel-ladder-view",
+          "heading": "## Serial Gel (Ladder View)",
+          "path": "docs/gui/serial-gel-ladder-view.md",
+          "fragment": "serial-gel-ladder-view"
+        },
+        {
+          "anchor": "rack-view",
+          "heading": "## Rack View",
+          "path": "docs/gui/rack-view.md",
+          "fragment": "rack-view"
+        },
+        {
+          "anchor": "engine-settings-engine-ops",
+          "heading": "## Engine Settings (Engine Ops)",
+          "path": "docs/gui/engine-settings-engine-ops.md",
+          "fragment": "engine-settings-engine-ops"
+        },
+        {
+          "anchor": "design-constraints-filter-engine-ops",
+          "heading": "## Design Constraints Filter (Engine Ops)",
+          "path": "docs/gui/design-constraints-filter-engine-ops.md",
+          "fragment": "design-constraints-filter-engine-ops"
+        },
+        {
+          "anchor": "primer-qpcr-and-sequence-specific-rt-design",
+          "heading": "## Primer, qPCR, and Sequence-Specific RT Design",
+          "path": "docs/gui/primer-qpcr-and-sequence-specific-rt-design.md",
+          "fragment": "primer-qpcr-and-sequence-specific-rt-design"
+        },
+        {
+          "anchor": "sequencing-confirmation",
+          "heading": "## Sequencing Confirmation",
+          "path": "docs/gui/sequencing-confirmation.md",
+          "fragment": "sequencing-confirmation"
+        },
+        {
+          "anchor": "anchored-region-extraction-engine-ops",
+          "heading": "## Anchored Region Extraction (Engine Ops)",
+          "path": "docs/gui/anchored-region-extraction-engine-ops.md",
+          "fragment": "anchored-region-extraction-engine-ops"
+        },
+        {
+          "anchor": "tfbs-annotation-engine-ops",
+          "heading": "## TFBS Annotation (Engine Ops)",
+          "path": "docs/gui/tfbs-annotation-engine-ops.md",
+          "fragment": "tfbs-annotation-engine-ops"
+        },
+        {
+          "anchor": "isoform-architecture-panels-engine-ops",
+          "heading": "## Isoform Architecture Panels (Engine Ops)",
+          "path": "docs/gui/isoform-architecture-panels-engine-ops.md",
+          "fragment": "isoform-architecture-panels-engine-ops"
+        },
+        {
+          "anchor": "reference-genomes-main-menu",
+          "heading": "## Reference Genomes (Main Menu)",
+          "path": "docs/gui/reference-genomes-main-menu.md",
+          "fragment": "reference-genomes-main-menu"
+        },
+        {
+          "anchor": "engine-ops-state-persistence",
+          "heading": "## Engine Ops State Persistence",
+          "path": "docs/gui/engine-ops-state-persistence.md",
+          "fragment": "engine-ops-state-persistence"
+        },
+        {
+          "anchor": "loading-and-creating-sequences",
+          "heading": "## Loading and creating sequences",
+          "path": "docs/gui/loading-and-creating-sequences.md",
+          "fragment": "loading-and-creating-sequences"
+        },
+        {
+          "anchor": "notes-and-limitations",
+          "heading": "## Notes and limitations",
+          "path": "docs/gui/notes-and-limitations.md",
+          "fragment": "notes-and-limitations"
+        },
+        {
+          "anchor": "tss--regulatory-dna-display",
+          "heading": "# TSS / Regulatory DNA Display",
+          "path": "docs/gui/tss--regulatory-dna-display.md",
+          "fragment": "tss--regulatory-dna-display"
+        },
+        {
+          "anchor": "attach-the-quantitative-report",
+          "heading": "### Attach the Quantitative Report",
+          "path": "docs/gui/tss--regulatory-dna-display.md",
+          "fragment": "attach-the-quantitative-report"
+        },
+        {
+          "anchor": "compute-local-tss-scores",
+          "heading": "### Compute Local TSS Scores",
+          "path": "docs/gui/tss--regulatory-dna-display.md",
+          "fragment": "compute-local-tss-scores"
+        },
+        {
+          "anchor": "agent-and-headless-routes",
+          "heading": "### Agent and Headless Routes",
+          "path": "docs/gui/tss--regulatory-dna-display.md",
+          "fragment": "agent-and-headless-routes"
+        },
+        {
+          "anchor": "export-the-native-tss-view",
+          "heading": "### Export the Native TSS View",
+          "path": "docs/gui/tss--regulatory-dna-display.md",
+          "fragment": "export-the-native-tss-view"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "title": "CLI Manual",
+      "index": "docs/cli.md",
+      "topics": [
+        {
+          "id": "interfaces",
+          "title": "Interfaces and Command Discovery",
+          "group": "Getting started",
+          "path": "docs/cli/interfaces.md"
+        },
+        {
+          "id": "build",
+          "title": "Build and Run",
+          "group": "Getting started",
+          "path": "docs/cli/build.md"
+        },
+        {
+          "id": "gui-launcher",
+          "title": "GUI Launcher",
+          "group": "Getting started",
+          "path": "docs/cli/gui-launcher.md"
+        },
+        {
+          "id": "cli-adapter",
+          "title": "CLI Options and Progress",
+          "group": "Getting started",
+          "path": "docs/cli/cli-adapter.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "file-formats",
+          "title": "File Formats",
+          "group": "Getting started",
+          "path": "docs/cli/file-formats.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "shell",
+          "title": "Shared Shell",
+          "group": "Getting started",
+          "path": "docs/cli/shell.md"
+        },
+        {
+          "id": "discovery",
+          "title": "Introspection, Facts and Readiness",
+          "group": "Getting started",
+          "path": "docs/cli/discovery.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "examples",
+          "title": "Protocol Examples and Tutorials",
+          "group": "Getting started",
+          "path": "docs/cli/examples.md"
+        },
+        {
+          "id": "command-examples",
+          "title": "Independent Command Examples",
+          "group": "Getting started",
+          "path": "docs/cli/command-examples.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "operation-examples",
+          "title": "Operation JSON Examples",
+          "group": "Getting started",
+          "path": "docs/cli/operation-examples.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "limitations",
+          "title": "Operation Limitations",
+          "group": "Getting started",
+          "path": "docs/cli/limitations.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "errors",
+          "title": "Error Behavior",
+          "group": "Getting started",
+          "path": "docs/cli/errors.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "projects",
+          "title": "Project and Sequence State",
+          "group": "Projects and navigation",
+          "path": "docs/cli/projects.md"
+        },
+        {
+          "id": "collections",
+          "title": "Collections",
+          "group": "Projects and navigation",
+          "path": "docs/cli/collections.md"
+        },
+        {
+          "id": "history",
+          "title": "Operation History",
+          "group": "Projects and navigation",
+          "path": "docs/cli/history.md"
+        },
+        {
+          "id": "display",
+          "title": "Window and Display Intents",
+          "group": "Projects and navigation",
+          "path": "docs/cli/display.md"
+        },
+        {
+          "id": "batch",
+          "title": "Batch Workflows",
+          "group": "Projects and navigation",
+          "path": "docs/cli/batch.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "macros-routines",
+          "title": "Macros and Routines",
+          "group": "Projects and navigation",
+          "path": "docs/cli/macros-routines.md"
+        },
+        {
+          "id": "features",
+          "title": "Feature Annotation",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/features.md"
+        },
+        {
+          "id": "dotplot",
+          "title": "Dotplots, Flexibility and Alignment",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/dotplot.md"
+        },
+        {
+          "id": "rendering",
+          "title": "Figure and Layout Exports",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/rendering.md"
+        },
+        {
+          "id": "construct-reasoning",
+          "title": "Construct Reasoning",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/construct-reasoning.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "variants-reporters",
+          "title": "Variant and Reporter Evidence",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/variants-reporters.md"
+        },
+        {
+          "id": "sequence-design",
+          "title": "Synthetic Sequence Design",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/sequence-design.md"
+        },
+        {
+          "id": "snv-intent",
+          "title": "Read-Only SNV Intent",
+          "group": "Sequences and annotation",
+          "path": "docs/cli/snv-intent.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "genomes",
+          "title": "Reference Genomes",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/genomes.md"
+        },
+        {
+          "id": "helpers",
+          "title": "Helper Sequences",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/helpers.md"
+        },
+        {
+          "id": "hosts",
+          "title": "Host Profiles",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/hosts.md"
+        },
+        {
+          "id": "gene-sets",
+          "title": "Gene Groups and Gene Sets",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/gene-sets.md"
+        },
+        {
+          "id": "transcripts",
+          "title": "Source-Coherent Transcripts",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/transcripts.md"
+        },
+        {
+          "id": "splicing",
+          "title": "Cryptic Splicing",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/splicing.md"
+        },
+        {
+          "id": "isoform-architecture",
+          "title": "Isoform Architecture and Genomic Regions",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/isoform-architecture.md"
+        },
+        {
+          "id": "protein-evidence",
+          "title": "Protein and Structure Evidence",
+          "group": "References genes and transcripts",
+          "path": "docs/cli/protein-evidence.md"
+        },
+        {
+          "id": "primers",
+          "title": "Primer Design and Handoff",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/primers.md"
+        },
+        {
+          "id": "primer-specificity",
+          "title": "Reference-Bound Primer Specificity",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/primer-specificity.md"
+        },
+        {
+          "id": "transcript-assays",
+          "title": "Transcript Assay Panels",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/transcript-assays.md"
+        },
+        {
+          "id": "restriction-cloning",
+          "title": "Restriction Cloning",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/restriction-cloning.md"
+        },
+        {
+          "id": "planning",
+          "title": "Experiment Planning",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/planning.md"
+        },
+        {
+          "id": "candidates",
+          "title": "Candidate Sets",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/candidates.md"
+        },
+        {
+          "id": "guides",
+          "title": "Guide Design",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/guides.md"
+        },
+        {
+          "id": "sequencing-confirmation",
+          "title": "Sequencing Confirmation",
+          "group": "Primers cloning and experiment planning",
+          "path": "docs/cli/sequencing-confirmation.md"
+        },
+        {
+          "id": "promoters",
+          "title": "Promoter Design",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/promoters.md"
+        },
+        {
+          "id": "promoter-cofactors",
+          "title": "Promoter Cofactors",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/promoter-cofactors.md"
+        },
+        {
+          "id": "tss-profiles",
+          "title": "Accession-Pinned TSS Profiles",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/tss-profiles.md"
+        },
+        {
+          "id": "tfbs",
+          "title": "TFBS and JASPAR Scans",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/tfbs.md"
+        },
+        {
+          "id": "repeats-regulation",
+          "title": "Repeats and Regulatory Annotations",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/repeats-regulation.md"
+        },
+        {
+          "id": "tracks-arrays",
+          "title": "Tracks and Arrays",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/tracks-arrays.md"
+        },
+        {
+          "id": "publication-bundle",
+          "title": "Multi-Gene Publication Bundles",
+          "group": "Promoters and regulatory evidence",
+          "path": "docs/cli/publication-bundle.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "rna-read-panel",
+          "title": "RNA Read Panel",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/rna-read-panel.md"
+        },
+        {
+          "id": "rna-reads",
+          "title": "RNA Read Interpretation",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/rna-reads.md"
+        },
+        {
+          "id": "primer-trace",
+          "title": "Primer-Anchored Read Trace",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/primer-trace.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "primer-payload",
+          "title": "Primer-Free Payload Evidence",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/primer-payload.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "observed-transcripts",
+          "title": "Observed Transcript Structures",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/observed-transcripts.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "rescue-screen",
+          "title": "Target Rescue Screen",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/rescue-screen.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "rna-structure",
+          "title": "RNA Secondary Structure",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/rna-structure.md"
+        },
+        {
+          "id": "microrna",
+          "title": "MicroRNA Target Scans",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/microrna.md"
+        },
+        {
+          "id": "gel-images",
+          "title": "Measured Gel Images",
+          "group": "Gels pools and physical racks",
+          "path": "docs/cli/gel-images.md"
+        },
+        {
+          "id": "racks-pools",
+          "title": "Racks, Pools and Ladders",
+          "group": "Gels pools and physical racks",
+          "path": "docs/cli/racks-pools.md"
+        },
+        {
+          "id": "panels",
+          "title": "Panel Workflows",
+          "group": "Gels pools and physical racks",
+          "path": "docs/cli/panels.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "catalogs",
+          "title": "Services and Resource Catalogs",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/catalogs.md"
+        },
+        {
+          "id": "settings",
+          "title": "Engine Settings",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/settings.md"
+        },
+        {
+          "id": "diagnostics",
+          "title": "Latency Diagnostics",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/diagnostics.md"
+        },
+        {
+          "id": "screenshot-capture",
+          "title": "Screenshot Capture Policy",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/screenshot-capture.md"
+        },
+        {
+          "id": "agents",
+          "title": "Agent Bridge",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/agents.md"
+        },
+        {
+          "id": "clawbio",
+          "title": "ClawBio and OpenClaw",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/clawbio.md"
+        },
+        {
+          "id": "javascript",
+          "title": "JavaScript Shell",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/javascript.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "lua",
+          "title": "Lua Shell",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/lua.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "python",
+          "title": "Python Wrapper",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/python.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        },
+        {
+          "id": "mcp",
+          "title": "MCP Server",
+          "group": "Configuration services and agents",
+          "path": "docs/cli/mcp.md",
+          "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
+        }
+      ],
+      "legacy": [
+        {
+          "anchor": "standalone-reference-bound-primer-specificity",
+          "heading": "## Standalone Reference-Bound Primer Specificity",
+          "path": "docs/cli/primer-specificity.md",
+          "fragment": "standalone-reference-bound-primer-specificity"
+        },
+        {
+          "anchor": "inspect-retained-panel-specificity",
+          "heading": "### Inspect Retained Panel Specificity",
+          "path": "docs/cli/primer-specificity.md",
+          "fragment": "inspect-retained-panel-specificity"
+        },
+        {
+          "anchor": "read-only-snv-intent",
+          "heading": "## Read-Only SNV Intent",
+          "path": "docs/cli/snv-intent.md",
+          "fragment": "read-only-snv-intent-1"
+        },
+        {
+          "anchor": "synthetic-sequence-design",
+          "heading": "## Synthetic Sequence Design",
+          "path": "docs/cli/sequence-design.md",
+          "fragment": "synthetic-sequence-design-1"
+        },
+        {
+          "anchor": "explicit-conflict-search",
+          "heading": "### Explicit Conflict Search",
+          "path": "docs/cli/sequence-design.md",
+          "fragment": "explicit-conflict-search"
+        },
+        {
+          "anchor": "cds-wide-gc-walkthrough",
+          "heading": "### CDS-Wide GC Walkthrough",
+          "path": "docs/cli/sequence-design.md",
+          "fragment": "cds-wide-gc-walkthrough"
+        },
+        {
+          "anchor": "sliding-window-gc-walkthrough",
+          "heading": "### Sliding-Window GC Walkthrough",
+          "path": "docs/cli/sequence-design.md",
+          "fragment": "sliding-window-gc-walkthrough"
+        },
+        {
+          "anchor": "source-coherent-transcripts",
+          "heading": "## Source-Coherent Transcripts",
+          "path": "docs/cli/transcripts.md",
+          "fragment": "source-coherent-transcripts-1"
+        },
+        {
+          "anchor": "promoter-cofactors",
+          "heading": "## Promoter Cofactors",
+          "path": "docs/cli/promoter-cofactors.md",
+          "fragment": "promoter-cofactors-1"
+        },
+        {
+          "anchor": "accession-pinned-tss-profiles",
+          "heading": "## Accession-Pinned TSS Profiles",
+          "path": "docs/cli/tss-profiles.md",
+          "fragment": "accession-pinned-tss-profiles-1"
+        },
+        {
+          "anchor": "measured-gel-images-11-development",
+          "heading": "## Measured Gel Images (`.11` Development)",
+          "path": "docs/cli/gel-images.md",
+          "fragment": "measured-gel-images-11-development"
+        },
+        {
+          "anchor": "multi-gene-publication-bundle",
+          "heading": "## Multi-gene publication bundle",
+          "path": "docs/cli/publication-bundle.md",
+          "fragment": "multi-gene-publication-bundle"
+        },
+        {
+          "anchor": "overview",
+          "heading": "## Overview",
+          "path": "docs/cli/interfaces.md",
+          "fragment": "overview"
+        },
+        {
+          "anchor": "clawbioopenclaw-skill-scaffold",
+          "heading": "## ClawBio/OpenClaw skill scaffold",
+          "path": "docs/cli/clawbio.md",
+          "fragment": "clawbioopenclaw-skill-scaffold"
+        },
+        {
+          "anchor": "python-module-wrapper-gentle_py",
+          "heading": "## Python module wrapper (`gentle_py`)",
+          "path": "docs/cli/python.md",
+          "fragment": "python-module-wrapper-gentle_py"
+        },
+        {
+          "anchor": "build-and-run",
+          "heading": "## Build and run",
+          "path": "docs/cli/build.md",
+          "fragment": "build-and-run-1"
+        },
+        {
+          "anchor": "protocol-first-example-source",
+          "heading": "## Protocol-first example source",
+          "path": "docs/cli/examples.md",
+          "fragment": "protocol-first-example-source"
+        },
+        {
+          "anchor": "gentle-gui-launcher",
+          "heading": "## `gentle` (GUI launcher)",
+          "path": "docs/cli/gui-launcher.md",
+          "fragment": "gentle-gui-launcher"
+        },
+        {
+          "anchor": "gentle_js-javascript-shell",
+          "heading": "## `gentle_js` (JavaScript shell)",
+          "path": "docs/cli/javascript.md",
+          "fragment": "gentle_js-javascript-shell"
+        },
+        {
+          "anchor": "javascript-shell-functions",
+          "heading": "### JavaScript shell functions",
+          "path": "docs/cli/javascript.md",
+          "fragment": "javascript-shell-functions"
+        },
+        {
+          "anchor": "javascript-example",
+          "heading": "### JavaScript example",
+          "path": "docs/cli/javascript.md",
+          "fragment": "javascript-example"
+        },
+        {
+          "anchor": "gentle_mcp-mcp-stdio-server",
+          "heading": "## `gentle_mcp` (MCP stdio server)",
+          "path": "docs/cli/mcp.md",
+          "fragment": "gentle_mcp-mcp-stdio-server"
+        },
+        {
+          "anchor": "gentle_lua-lua-shell",
+          "heading": "## `gentle_lua` (Lua shell)",
+          "path": "docs/cli/lua.md",
+          "fragment": "gentle_lua-lua-shell"
+        },
+        {
+          "anchor": "lua-shell-functions",
+          "heading": "### Lua shell functions",
+          "path": "docs/cli/lua.md",
+          "fragment": "lua-shell-functions"
+        },
+        {
+          "anchor": "lua-example",
+          "heading": "### Lua example",
+          "path": "docs/cli/lua.md",
+          "fragment": "lua-example"
+        },
+        {
+          "anchor": "file-format-expectations",
+          "heading": "## File format expectations",
+          "path": "docs/cli/file-formats.md",
+          "fragment": "file-format-expectations"
+        },
+        {
+          "anchor": "gentle_cli-automationagent-cli",
+          "heading": "## `gentle_cli` (automation/agent CLI)",
+          "path": "docs/cli/cli-adapter.md",
+          "fragment": "gentle_cli-automationagent-cli"
+        },
+        {
+          "anchor": "rna-seq-target-rescue-screen",
+          "heading": "### RNA-seq target rescue screen",
+          "path": "docs/cli/rescue-screen.md",
+          "fragment": "rna-seq-target-rescue-screen"
+        },
+        {
+          "anchor": "example-operations",
+          "heading": "### Example operations",
+          "path": "docs/cli/operation-examples.md",
+          "fragment": "example-operations"
+        },
+        {
+          "anchor": "current-limitations-in-the-new-operation-layer",
+          "heading": "### Current limitations in the new operation layer",
+          "path": "docs/cli/limitations.md",
+          "fragment": "current-limitations-in-the-new-operation-layer"
+        },
+        {
+          "anchor": "error-behavior",
+          "heading": "## Error behavior",
+          "path": "docs/cli/errors.md",
+          "fragment": "error-behavior-1"
+        }
+      ]
+    }
+  ],
+  "counterparts": [
+    [
+      "detailed-reference",
+      "interfaces"
+    ],
+    [
+      "gentle-shell-gui",
+      "interfaces"
+    ],
+    [
+      "start-the-gui",
+      "build"
+    ],
+    [
+      "start-the-gui",
+      "gui-launcher"
+    ],
+    [
+      "gentle-shell-gui",
+      "shell"
+    ],
+    [
+      "detailed-reference",
+      "examples"
+    ],
+    [
+      "engine-ops-state-persistence",
+      "projects"
+    ],
+    [
+      "loading-and-creating-sequences",
+      "projects"
+    ],
+    [
+      "project-overview-and-collections",
+      "collections"
+    ],
+    [
+      "gene-set-inspector-and-collection-operations",
+      "collections"
+    ],
+    [
+      "status-history-and-background-jobs",
+      "history"
+    ],
+    [
+      "command-palette-and-historyjobs-panels",
+      "history"
+    ],
+    [
+      "open-windows-and-focus",
+      "display"
+    ],
+    [
+      "main-window-layout",
+      "display"
+    ],
+    [
+      "dna-window-panels",
+      "display"
+    ],
+    [
+      "routine-assistant",
+      "macros-routines"
+    ],
+    [
+      "feature-tree-and-selection",
+      "features"
+    ],
+    [
+      "strand-placement",
+      "features"
+    ],
+    [
+      "map-modes-and-dotplot-workspace",
+      "dotplot"
+    ],
+    [
+      "linear-map-conventions",
+      "rendering"
+    ],
+    [
+      "circular-map-conventions",
+      "rendering"
+    ],
+    [
+      "locus-figure-and-evidence-tracks",
+      "rendering"
+    ],
+    [
+      "promoter-cofactors",
+      "variants-reporters"
+    ],
+    [
+      "detailed-reference",
+      "sequence-design"
+    ],
+    [
+      "reference-genomes-main-menu",
+      "genomes"
+    ],
+    [
+      "reference-genomes-main-menu",
+      "helpers"
+    ],
+    [
+      "protein-expression-handoff",
+      "hosts"
+    ],
+    [
+      "gene-set-inspector-and-collection-operations",
+      "gene-sets"
+    ],
+    [
+      "splicing-support-and-transcript-actions",
+      "transcripts"
+    ],
+    [
+      "cryptic-splicing-screen",
+      "splicing"
+    ],
+    [
+      "splicing-expert-workspace",
+      "splicing"
+    ],
+    [
+      "splicing-structure-and-evidence-views",
+      "splicing"
+    ],
+    [
+      "isoform-architecture-panels-engine-ops",
+      "isoform-architecture"
+    ],
+    [
+      "saved-genomic-regions",
+      "isoform-architecture"
+    ],
+    [
+      "loading-and-creating-sequences",
+      "protein-evidence"
+    ],
+    [
+      "primer-qpcr-and-sequence-specific-rt-design",
+      "primers"
+    ],
+    [
+      "primer-qpcr-and-sequence-specific-rt-design",
+      "primer-specificity"
+    ],
+    [
+      "primer-qpcr-and-sequence-specific-rt-design",
+      "transcript-assays"
+    ],
+    [
+      "restriction-site-inspection",
+      "restriction-cloning"
+    ],
+    [
+      "experiment-planning",
+      "planning"
+    ],
+    [
+      "protein-expression-handoff",
+      "planning"
+    ],
+    [
+      "candidate-set-workflow-engine-ops--gui-shell",
+      "candidates"
+    ],
+    [
+      "design-constraints-filter-engine-ops",
+      "candidates"
+    ],
+    [
+      "patterns-and-grna-setup",
+      "guides"
+    ],
+    [
+      "sequencing-confirmation",
+      "sequencing-confirmation"
+    ],
+    [
+      "sequencing-confirmation-workspace",
+      "sequencing-confirmation"
+    ],
+    [
+      "loading-and-creating-sequences",
+      "promoters"
+    ],
+    [
+      "tss--regulatory-dna-display",
+      "promoters"
+    ],
+    [
+      "promoter-cofactors",
+      "promoter-cofactors"
+    ],
+    [
+      "accession-pinned-tss-profiles",
+      "tss-profiles"
+    ],
+    [
+      "tata-box-evidence-in-the-dna-viewer",
+      "tss-profiles"
+    ],
+    [
+      "tfbs-annotation-engine-ops",
+      "tfbs"
+    ],
+    [
+      "locus-figure-and-evidence-tracks",
+      "repeats-regulation"
+    ],
+    [
+      "array-tracks-in-dna-viewer",
+      "tracks-arrays"
+    ],
+    [
+      "rna-read-panel",
+      "rna-read-panel"
+    ],
+    [
+      "rna-read-mapping-workspace",
+      "rna-reads"
+    ],
+    [
+      "rna-structure-ssrna",
+      "rna-structure"
+    ],
+    [
+      "microrna-target-scan",
+      "microrna"
+    ],
+    [
+      "measured-gel-images-11-development",
+      "gel-images"
+    ],
+    [
+      "rack-view",
+      "racks-pools"
+    ],
+    [
+      "pool-distribution-engine-ops",
+      "racks-pools"
+    ],
+    [
+      "serial-gel-ladder-view",
+      "racks-pools"
+    ],
+    [
+      "physical-arrangements-and-project-layout",
+      "racks-pools"
+    ],
+    [
+      "catalog-inspection-and-provider-imports",
+      "catalogs"
+    ],
+    [
+      "external-services-window",
+      "catalogs"
+    ],
+    [
+      "engine-settings-engine-ops",
+      "settings"
+    ],
+    [
+      "configuration-window",
+      "settings"
+    ],
+    [
+      "workspace-latency-diagnostics",
+      "diagnostics"
+    ],
+    [
+      "screenshot-capture-policy",
+      "screenshot-capture"
+    ],
+    [
+      "agent-assistant",
+      "agents"
+    ],
+    [
+      "gentle-shell-gui",
+      "clawbio"
+    ]
+  ]
+}

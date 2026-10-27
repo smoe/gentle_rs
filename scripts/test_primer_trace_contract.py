@@ -95,7 +95,7 @@ class PrimerTraceContractTests(unittest.TestCase):
         registry = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text()
         handlers = (ROOT / "src/engine/ops/operation_handlers.rs").read_text()
         shell = (ROOT / "src/engine_shell.rs").read_text()
-        cli = (ROOT / "docs/cli.md").read_text()
+        cli = (ROOT / "docs/cli/primer-trace.md").read_text()
         for route, operations in expected.items():
             self.assertEqual(commands[route]["engine_operations"], operations)
             self.assertNotIn("gui-menu", commands[route]["interfaces"])
