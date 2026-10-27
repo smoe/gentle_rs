@@ -2802,6 +2802,9 @@ fn run_non_mutating_shell_tool(
     let state = load_state(&state_path)
         .map_err(|err| format!("Could not load state from '{state_path}': {err}"))?;
     let mut engine = GentleEngine::from_state(state);
+    engine
+        .set_host_project_path(Some(Path::new(&state_path)))
+        .map_err(|e| e.to_string())?;
     let command = parse_shell_tokens(&tokens).map_err(|err| {
         format!("Could not parse shared shell command for MCP tool '{tool_name}': {err}")
     })?;
@@ -2831,6 +2834,9 @@ fn run_shell_tool_with_optional_persist(
     let state = load_state(&state_path)
         .map_err(|err| format!("Could not load state from '{state_path}': {err}"))?;
     let mut engine = GentleEngine::from_state(state);
+    engine
+        .set_host_project_path(Some(Path::new(&state_path)))
+        .map_err(|e| e.to_string())?;
     let command = parse_shell_tokens(&tokens).map_err(|err| {
         format!("Could not parse shared shell command for MCP tool '{tool_name}': {err}")
     })?;
@@ -3612,6 +3618,9 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         }
     };
     let mut engine = GentleEngine::from_state_for(state, lifecycle);
+    if let Err(error) = engine.set_host_project_path(Some(Path::new(&state_path))) {
+        return tool_result_json(json!({"state_path":state_path,"error":error}), true);
+    }
     let result = match engine.apply(operation) {
         Ok(result) => result,
         Err(err) => {
@@ -3701,6 +3710,9 @@ fn workflow_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let lifecycle = LifecycleRequest::Workflow(&workflow);
     let preserves_state_file = lifecycle.preserves_project_content();
     let mut engine = GentleEngine::from_state_for(state, lifecycle);
+    if let Err(error) = engine.set_host_project_path(Some(Path::new(&state_path))) {
+        return tool_result_json(json!({"state_path":state_path,"error":error}), true);
+    }
     let results = match engine.apply_workflow(workflow) {
         Ok(results) => results,
         Err(err) => {
@@ -5816,6 +5828,70 @@ mod tests {
         }
     }
 
+    #[test]
+    fn lifecycle_slice4_mcp_confirms_before_io_and_protects_missing_state_and_sidecar() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let td = tempdir().unwrap();
+        let state = td.path().join("state.json");
+        for workflow in [false, true] {
+            let operation = fixture::plan(Some(state.display().to_string()), false);
+            let mut args = json!({"state_path":state.to_string_lossy(),"confirm":false});
+            let tool = if workflow { "workflow" } else { "op" };
+            if workflow {
+                args["workflow"] = json!(Workflow {
+                    run_id: "synthetic-protection".into(),
+                    ops: vec![operation]
+                });
+            } else {
+                args["operation"] = json!(operation);
+            }
+            let denied = run_tool(DEFAULT_MCP_STATE_PATH, tool, args.clone());
+            assert!(denied.to_string().contains("confirm=true"));
+            assert!(!state.exists());
+            args["confirm"] = json!(true);
+            let refused = run_tool(DEFAULT_MCP_STATE_PATH, tool, args);
+            assert!(
+                refused
+                    .to_string()
+                    .contains("sequence_design_report.protected_path"),
+                "{refused}"
+            );
+            assert!(!state.exists());
+        }
+        let sidecar = td.path().join("state.json.candidates");
+        std::fs::create_dir(&sidecar).unwrap();
+        let output = sidecar.join("new.json");
+        let refused = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":state.to_string_lossy(),"confirm":true,
+            "operation":fixture::plan(Some(output.display().to_string()),false)}),
+        );
+        assert!(
+            refused
+                .to_string()
+                .contains("sequence_design_report.protected_path")
+        );
+        assert!(!output.exists());
+        let args = json!({"state_path":state.to_string_lossy()})
+            .as_object()
+            .unwrap()
+            .clone();
+        let error = run_shell_tool_with_optional_persist(
+            DEFAULT_MCP_STATE_PATH,
+            &args,
+            vec![
+                "op".into(),
+                serde_json::to_string(&fixture::plan(Some(state.display().to_string()), false))
+                    .unwrap(),
+            ],
+            "synthetic-preview",
+        )
+        .unwrap_err();
+        assert!(error.contains("sequence_design_report.protected_path"));
+        assert!(!state.exists());
+    }
+
     fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool, window: bool) {
         // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
         let temp = tempdir().unwrap();
@@ -5889,13 +5965,17 @@ mod tests {
             );
         }
         let mut direct = GentleEngine::new();
+        let direct_path = temp.path().join("direct-preview.json");
+        let mut direct_operation = request["params"]["arguments"]["operation"].clone();
+        direct_operation["PlanDnaSequenceDesign"]["path"] = json!(direct_path.to_string_lossy());
         let direct_result = direct
-            .apply(
-                serde_json::from_value(request["params"]["arguments"]["operation"].clone())
-                    .unwrap(),
-            )
+            .apply(serde_json::from_value(direct_operation).unwrap())
             .unwrap();
         assert_eq!(direct_result.dna_sequence_design.as_deref(), Some(&preview));
+        assert_eq!(
+            std::fs::read(direct_path).unwrap(),
+            std::fs::read(&preview_path).unwrap()
+        );
         assert!(
             !state_path.exists(),
             "preview must not create project state"

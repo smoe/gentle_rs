@@ -80,11 +80,13 @@ fn sequence_design_tutorial_shared_commands_apply_undo_redo_in_one_session() {
     assert_eq!(documented, serde_json::from_str(fixture).unwrap());
     let directory = tempfile::tempdir().unwrap();
     let request_path = directory.path().join("tutorial's request.json");
-    let preview_path = directory.path().join("tutorial's preview.json");
     for strategy in [
         DnaDesignSearchStrategy::FullEnumeration,
         DnaDesignSearchStrategy::ConflictDirected,
     ] {
+        let preview_path = directory
+            .path()
+            .join(format!("tutorial's {strategy:?} preview.json"));
         let mut request = documented.clone();
         request.search_strategy = strategy;
         std::fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();

@@ -3,6 +3,17 @@
 Prepared 2026-10-27 for Steffen to forward manually. **Read-only review, not
 implementation. No direct Claude invocation or verdict is claimed.**
 
+Historical prompt: the owner has now supplied Claude's review. Its accepted
+simplifications, Codex's source-verified snapshot/live-binding correction and
+the unresolved Unicode support qualification are recorded in the
+[reconciled plan](operation_lifecycle_slice4_plan.md#review-reconciliation-2026-10-27).
+The original proposal/questions below are not a fresh implementation request.
+No runtime change is authorized by the positive review, and Claude has not
+reviewed Codex's later qualifications.
+The owner subsequently authorized the revised implementation on 2026-10-27.
+The [active contract/status](operation_lifecycle_slice4_plan.md) records authored
+code and pending Glen/CI verification; the request below remains historical.
+
 ---
 
 Please review the scoped Plan preview destination/writer proposal in

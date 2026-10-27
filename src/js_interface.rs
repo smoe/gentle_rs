@@ -1474,6 +1474,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn lifecycle_slice4_js_runtime_state_only_writer_is_fresh_only() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let td = tempdir().unwrap();
+        let output = td.path().join("script-state.json");
+        let operation = fixture::plan(Some(output.display().to_string()), false);
+        let state = serde_json::to_value(fixture::state()).unwrap();
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(r#"
+            const input = {state};
+            const operation = {operation};
+            const result = apply_operation(input, operation);
+            if (result.result.dna_sequence_design.output_sequence !== 'ATGTTTAAGTAA') throw Error('wrong preview');
+            let refused = false;
+            try {{ apply_operation(input, operation); }} catch (error) {{ refused = String(error).includes('destination_exists'); }}
+            if (!refused) throw Error('script overwrote a report');
+        "#,operation=serde_json::to_string(&operation).unwrap())).unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
+        assert_eq!(report["output_sequence"], "ATGTTTAAGTAA");
+    }
+
     fn normalize_construct_reasoning_status_output(
         mut value: serde_json::Value,
     ) -> serde_json::Value {

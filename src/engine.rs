@@ -1324,6 +1324,8 @@ mod read_acquisition;
 mod region_homology;
 #[path = "engine/analysis/regulatory_fragment_panel.rs"]
 mod regulatory_fragment_panel;
+#[path = "engine/io/sequence_design_preview.rs"]
+mod sequence_design_preview;
 #[path = "engine/analysis/tata_boxes.rs"]
 mod tata_boxes;
 #[path = "engine/analysis/tss_profiles.rs"]
@@ -7080,6 +7082,8 @@ pub trait Engine {
 pub struct GentleEngine {
     #[serde(skip)]
     instance_id: EngineInstanceId,
+    #[serde(skip)]
+    host_project_path: Option<PathBuf>,
     state: ProjectState,
     journal: Vec<OperationRecord>,
     op_counter: u64,
@@ -7180,6 +7184,7 @@ impl DetachedEngineExecution {
     /// optimistic commit remains the only mutation of the live engine.
     pub(crate) fn import_checkpoint_engine(&mut self, mut checkpoint: GentleEngine) {
         checkpoint.instance_id = self.engine.instance_id;
+        checkpoint.host_project_path = self.engine.host_project_path.clone();
         checkpoint.reconcile_lineage_nodes();
         checkpoint.reconcile_containers();
         checkpoint.reseed_op_counter_from_state();
@@ -7237,6 +7242,24 @@ impl GentleEngine {
         engine.state = state;
         engine.reseed_op_counter_from_state();
         engine
+    }
+
+    /// Bind the host's output project filename without changing portable state,
+    /// dirty revisions or history. Missing files are valid; no file is opened.
+    /// Pure state-in/state-out scripting leaves this session-only binding unset.
+    pub fn set_host_project_path(&mut self, path: Option<&Path>) -> Result<(), EngineError> {
+        self.host_project_path = path.map(std::path::absolute).transpose().map_err(|error| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!("sequence_design_report.host_path: {error}"),
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Host-local binding, never project/operation metadata or scientific identity.
+    pub(crate) fn host_project_path(&self) -> Option<&Path> {
+        self.host_project_path.as_deref()
     }
 
     fn parse_op_counter_from_id(op_id: &str) -> Option<u64> {
@@ -7325,6 +7348,7 @@ impl GentleEngine {
     pub(crate) fn clone_without_history(&self) -> Self {
         Self {
             instance_id: self.instance_id,
+            host_project_path: self.host_project_path.clone(),
             state: self.state.clone(),
             journal: self.journal.clone(),
             op_counter: self.op_counter,
@@ -7516,6 +7540,9 @@ impl GentleEngine {
         structural_changed: bool,
         persisted_state_changed: bool,
     ) -> Result<(), EngineError> {
+        // Save As may update the live host binding during computation. It is
+        // session context, not a stale predicate or a detached project mutation.
+        self.host_project_path = live.host_project_path.clone();
         let metadata_keys = base_metadata
             .keys()
             .chain(live.state.metadata.keys())

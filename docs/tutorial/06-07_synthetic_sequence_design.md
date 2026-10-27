@@ -89,9 +89,26 @@ gentle_cli --state tutorial.gentle.json sequence-design plan @request.json --pat
 
 This writes `preview.json` but creates no project sequence or container.
 It also leaves a missing `tutorial.gentle.json` missing, and does not implicitly
-rewrite an existing project or its candidate sidecars. Keep `preview.json`
-separate from project/sidecar paths: an explicitly selected report destination
-is still a write, and alias/overwrite safety is not supplied by this guarantee.
+rewrite an existing project or its candidate sidecars. Use a **fresh filename**
+in an **existing directory**. GENtle refuses an existing destination, including
+an identical earlier preview, an empty file, a directory or a symlink. It does
+not create folders, overwrite a report or offer an overwrite flag. Keep the
+first preview: for a repeated run choose, for example, `preview-run2.json` and
+review the changed write command again. Do not delete earlier evidence to retry.
+
+CLI/MCP protect the active/default project filename even before it exists and
+the whole derived `<project filename>.candidates` sidecar tree. The GUI protects
+its currently bound project and that tree. Generic JavaScript/Lua state-only
+calls have no backing filename to infer, but still cannot overwrite any existing
+destination. Unicode folder paths are supported; ambiguous non-ASCII report/
+project names in the same directory are conservatively refused. Choose a
+different existing output directory if that protection rejects the name.
+
+Publication stages complete JSON and refuses a competing destination that
+appears during the run. It is not a parent-directory sandbox or a crash-durability
+guarantee. A later explicit **Save As** can replace a report, and an already
+written report can survive later cancellation or a stale managed-job commit.
+Report files and command/scientific completion are separate facts.
 The raw CLI/MCP op and nonempty all-inspection workflow routes share this rule;
 MCP still requires `confirm=true`. Empty/mixed workflows and opaque agent-plan
 wrappers retain legacy construction/save behavior. In-memory undo/redo and dirty
@@ -199,7 +216,8 @@ three requests. This table is independently checked in the fast tutorial tests.
 
 As an optional second preview, omit `search_strategy` to select enumeration.
 It should return the same tiny-case DNA and edit, not the same search history
-or approval digest. Keep previews in separate files, review them separately,
+or approval digest. Use a fresh output such as `preview-enumeration.json` in the
+same existing directory. Keep previews in separate files, review them separately,
 and do not reuse an existing output ID for another apply. Neither the teaching
 table nor this small example establishes runtime performance on long inserts.
 

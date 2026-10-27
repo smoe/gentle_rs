@@ -1,5 +1,56 @@
 # GENtle Changelog
 
+## 2026-10-27 - Author Lifecycle Slice 4 Preview Writer Safety
+
+- Implement the owner-authorized revised Plan-only report contract: preflight
+  after approval, existing parent, no overwrite/mkdir/retry, exact pretty JSON
+  staged/synced and published with no-clobber. Keep unrelated exporters and
+  scientific requests/reports/digests unchanged; cancelled reports retain status.
+- Add serde-skipped host project binding through CLI/MCP and GUI current-file
+  paths, explicit history-free clones, checkpoint imports and guarded commits.
+  Shell load/pool reconstruction retains host output semantics. Protect absent
+  project names and the derived save-owned candidate tree. Stateless JS/Lua
+  infers no filename. Use native directory identity and conservative ASCII
+  comparison, refusing ambiguous same-parent non-ASCII names. Add the existing
+  locked same-file 1.0.6 package as a direct root dependency; no version refresh.
+- Author synthetic refusal/link/fault/race/history/serialization, managed/GUI,
+  MCP and optional JS/Lua VM regressions. Extend the supplied-binary CLI/MCP/
+  Python companion; retain distinct repeated previews and both strategies.
+  Update tutorial 06.07, provenance, discovery/inner-agent guidance and contracts.
+  No payload-resolution layer, context registry, new schema or stale predicate.
+- Rust, actual-process/VM and native verification remains Glen/CI's. No local
+  Rust build, model call, screenshot, push or goal resumption. Parent-directory
+  swaps, crash durability and report survival against later explicit Save As
+  remain unclaimed; retain original publication errors and best-effort cleanup.
+- On the owner's mid-implementation request, rebase onto main `1804605f` using
+  only a path-scoped Slice 4 stash, then restore all changes without conflict.
+  Preserve RNA S1 and unrelated outputs/older stashes; retain recovery stash
+  `617a89ee`. No WIP commit or new acceptance result is implied.
+- Post-rebase freshness checks expose main's stale glossary-source hash after
+  RNA S1. Refresh only that hash in the four generated maturity projections;
+  capability definitions, maturity verdicts and evidence remain unchanged.
+- Non-Rust checks pass: 22 focused lifecycle/tutorial/maturity checks, with 12
+  explicit actual-process skips (34 total); all 75 checkout tests, including
+  LF/CRLF; generated maturity freshness, documentation status, scoped rustfmt
+  and whitespace. No Rust/VM/native acceptance follows from these checks.
+
+## 2026-10-27 - Reconcile The Supplied Lifecycle Slice 4 Review
+
+- Accept Claude's smaller fresh-only writer and single session host-path
+  proposal: protect the derived save-owned candidate tree, drop loader-reference
+  capture/context machinery, use the existing error surface and make no hostile-
+  parent/crash-durability claim. Trace the actual sidecar save/remove body.
+- Correct the automatic-clone assumption: managed forks use explicit
+  `clone_without_history`; a new field must be copied there and retain the newer
+  live binding across detached commit. Keep case-insensitive matching separate
+  from Unicode normalization, with conservative refusal/support as an owner
+  decision rather than a universal native alias guarantee. A locked transitive
+  identity helper is not automatically a zero-effect direct dependency.
+- Reconcile the plan, preserve the original prompt as historical and update
+  parent/roadmap status. This is documentation only, not writer implementation,
+  approval, new dependency/schema, Claude re-review or execution. Previous goal
+  stays paused; unrelated outputs, Rust/native verification and push stay separate.
+
 ## 2026-10-27 - Keep Dotplot Windows Separate From The DNA Map
 
 - Remove implicit primary-map switches when opening/focusing dotplot or

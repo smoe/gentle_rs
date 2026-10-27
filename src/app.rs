@@ -7585,6 +7585,16 @@ Error: `{err}`"
 
     fn set_current_project_path(&mut self, path: &str, track_recent: bool) {
         let normalized = Self::normalize_project_path(path);
+        let binding = (!normalized.is_empty()).then(|| Path::new(&normalized));
+        if let Ok(mut engine) = self.engine.write() {
+            if let Err(error) = engine.set_host_project_path(binding) {
+                self.app_status = format!("Could not bind project filename: {error}");
+                return;
+            }
+        } else {
+            self.app_status = "Could not bind project filename: project lock unavailable".into();
+            return;
+        }
         if normalized.is_empty() {
             self.current_project_path = None;
             return;

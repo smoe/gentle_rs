@@ -463,7 +463,8 @@ replace confirmation, history, reconciliation or persistence rules with that
 label alone. Before S2, separately review a shared lifecycle policy that
 distinguishes project effects, external writes, reconciliation and confirmation;
 preserve existing adapter gates. Slice 3's authored regressions await external
-Rust/VM/native execution; Slice 4 alias/writer safety and S2 remain separate.
+Rust/VM/native execution. The separately authorized Plan-only Slice 4 writer
+below has its own pending verification; S2 remains separate.
 
 ## Sequence-Design Preview Report Approval
 
@@ -482,10 +483,39 @@ status and report bytes. No constructor, reconciliation, checkpoint/journal,
 autosave, alias/collision or overwrite semantics change follows from that approval
 facet alone. The separately owner-authorized
 [Slice 3](operation_lifecycle_slice3_plan.md) now supplies covered construction/
-state preservation, with external verification pending; alias/writer safety and
-S2 remain separately gated. Focused macOS approval boundary and
+state preservation, with external verification pending. The Plan-only Slice 4
+destination contract below is separately owner-authorized and awaits its own
+verification; S2 remains gated. Focused macOS approval boundary and
 parity checks have a [source/feature-bound execution record](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26).
 They do not establish full-policy security, native or scientific acceptance.
+
+## Sequence-Design Preview Destination Safety
+
+Only Plan's optional report writer uses this policy; other exporters and project
+saving retain their existing contracts. Every present path still needs the exact
+write-attempt approval. Reports require a fresh filename in an existing parent:
+no truncation, implicit directories, overwrite flag, delete/retry or new name
+without review. Identical existing reports, dangling links and special files are
+not fresh destinations. Stage the existing JSON bytes, sync a write-capable
+temporary handle and publish with no-clobber. Preserve original publication errors.
+
+A nonserialized engine `host_project_path` binds CLI/MCP defaults/arguments and
+GUI current-project semantics, including absent files. Reuse ProjectState's
+derived sidecar root to exclude the whole save-owned tree. Do not retain loader-
+lost metadata or infer filenames in stateless JS/Lua. Python remains CLI-backed.
+Explicit history-free clones and imported checkpoints preserve the binding;
+guarded commit keeps a newer live Save As binding. The field changes no state,
+history, dirty revision, command/request/report digest or approval policy.
+
+Use native directory identity, with conservative ASCII ignore-case for protected
+leaf names. Ambiguous same-parent non-ASCII comparisons fail closed rather than
+claiming universal Unicode normalization. Native alias resolution does not
+defeat adversarial parent swaps. No universal atomicity, crash durability or
+perfect temporary-link cleanup is promised. A later explicit project save may
+replace a report; an already published report may survive a later command failure,
+cancel or stale commit. Scientific completion and file publication stay separate.
+Authored regressions and [external checks](glen_next_verification_handoff.md#lifecycle-slice-4-2026-10-27)
+still require Glen/CI execution; this is not native acceptance or S2 authorization.
 
 ## Synthetic Sequence-Design Boundaries
 

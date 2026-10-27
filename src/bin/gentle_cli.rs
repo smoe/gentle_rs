@@ -643,6 +643,9 @@ fn execute_direct_operation(
     let lifecycle = LifecycleRequest::Operation(&operation);
     let preserves_state_file = lifecycle.preserves_project_content();
     let mut engine = GentleEngine::from_state_for(load_state(state_path)?, lifecycle);
+    engine
+        .set_host_project_path(Some(Path::new(state_path)))
+        .map_err(|e| e.to_string())?;
     let result = if let Some(sink) = progress_sink {
         let mut printer = ProgressPrinter::new(sink);
         engine
@@ -1237,6 +1240,9 @@ fn run() -> Result<(), String> {
     if let Some(shell_command) = parse_forwarded_shell_command(&args, cmd_idx)? {
         let export_dir = gentle_cli_tss_output::shell_export_directory(&shell_command);
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+        engine
+            .set_host_project_path(Some(Path::new(&state_path)))
+            .map_err(|e| e.to_string())?;
         let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
         if run.state_changed {
             engine
@@ -1289,6 +1295,9 @@ fn run() -> Result<(), String> {
             let command = parse_shell_line(&line)?;
             let export_dir = gentle_cli_tss_output::shell_export_directory(&command);
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            engine
+                .set_host_project_path(Some(Path::new(&state_path)))
+                .map_err(|e| e.to_string())?;
             let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
             if run.state_changed {
                 engine
@@ -1316,6 +1325,9 @@ fn run() -> Result<(), String> {
             let line = args[cmd_idx..].join(" ");
             let command = parse_shell_line(&line)?;
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            engine
+                .set_host_project_path(Some(Path::new(&state_path)))
+                .map_err(|e| e.to_string())?;
             let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
             print_json(&run.output)
         }
@@ -1395,6 +1407,9 @@ fn run() -> Result<(), String> {
             let lifecycle = LifecycleRequest::Workflow(&workflow);
             let preserves_state_file = lifecycle.preserves_project_content();
             let mut engine = GentleEngine::from_state_for(load_state(&state_path)?, lifecycle);
+            engine
+                .set_host_project_path(Some(Path::new(&state_path)))
+                .map_err(|e| e.to_string())?;
             let results = if let Some(sink) = global.progress_sink {
                 let mut printer = ProgressPrinter::new(sink);
                 engine

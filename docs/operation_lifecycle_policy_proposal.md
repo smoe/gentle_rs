@@ -5,8 +5,10 @@ parity evidence below. After a further owner-supplied Claude review, the owner
 authorized [revised Slice 3](operation_lifecycle_slice3_plan.md), explicitly
 without the new payload-resolution layer. Construction/workflow/no-autosave
 changes and regressions are authored; Rust/actual-process/VM/native verification
-remains with Glen/CI. The original review/source observations below are historical;
-the revised slice order records current scope. Alias/writer rules and S2 remain
+remains with Glen/CI. The owner subsequently authorized revised Slice 4's
+Plan-only fresh writer/host binding, now authored with separate pending external
+checks. Original review/source observations below are historical; the revised
+slice order records current scope. S2 and wider exporter/security changes remain
 separately gated. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
 
@@ -247,7 +249,14 @@ already written files or infer that undo removes them.
    The owner requested a [scoped Slice 4 plan](operation_lifecycle_slice4_plan.md)
    and [forwardable Claude review prompt](operation_lifecycle_slice4_claude_review_prompt.md)
    on 2026-10-27. Fresh-file-only Plan output and protected host binding are
-   proposed, not implemented or adopted; no new payload-resolution layer.
+   were proposed separately from slices 1--3; no new payload-resolution layer.
+   The owner-supplied review is now [reconciled](operation_lifecycle_slice4_plan.md#review-reconciliation-2026-10-27):
+   drop loader/context machinery in favor of one session-only project path,
+   explicit snapshot/live-binding propagation and a Plan-only no-clobber writer.
+   The owner has now authorized that revised Slice 4; its Plan-only writer,
+   session host path and conservative Unicode refusal are authored, not a verified
+   native alias guarantee. Rust/process/VM/native verification remains with Glen/CI
+   through the [existing handoff](glen_next_verification_handoff.md#lifecycle-slice-4-2026-10-27).
 
 Keep S1 regressions as a control, not a reason to repeat its scientific review.
 Do not expand this to every read-only operation before evidence warrants it.

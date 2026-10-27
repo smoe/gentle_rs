@@ -228,3 +228,48 @@ fn lifecycle_slice3_managed_cancel_discards_journal_not_already_written_report()
     );
     assert_eq!(service.status(id).unwrap().committed_operations, 0);
 }
+
+#[test]
+fn lifecycle_slice4_managed_worker_copies_binding_and_commit_keeps_live_save_as() {
+    let service = CommandExecutionService::default();
+    let mut live = fixture::live_with_redo();
+    let td = tempfile::tempdir().unwrap();
+    let old = td.path().join("old.json");
+    let new = td.path().join("new.json");
+    let report = td.path().join("worker-report.json");
+    live.set_host_project_path(Some(&old)).unwrap();
+    let engine = Arc::new(RwLock::new(live));
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let (go_tx, go_rx) = mpsc::channel();
+    let operation = fixture::plan(Some(report.display().to_string()), true);
+    let id = service
+        .submit_work(
+            engine.clone(),
+            "synthetic-host-binding".into(),
+            move |worker, _| {
+                assert_eq!(worker.host_project_path(), Some(old.as_path()));
+                let output = worker.apply(operation).map_err(|e| e.to_string())?;
+                ready_tx.send(()).unwrap();
+                go_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: serde_json::to_value(output).unwrap(),
+                })
+            },
+        )
+        .unwrap();
+    ready_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    engine
+        .write()
+        .unwrap()
+        .set_host_project_path(Some(&new))
+        .unwrap();
+    go_tx.send(()).unwrap();
+    assert!(!wait(&service, id).unwrap().state_changed);
+    assert!(report.is_file());
+    assert_eq!(
+        engine.read().unwrap().host_project_path(),
+        Some(new.as_path())
+    );
+    assert_eq!(service.status(id).unwrap().committed_operations, 1);
+}

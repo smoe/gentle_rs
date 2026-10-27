@@ -1037,9 +1037,20 @@ Interactive orchestration contract:
   `from_state_for` keeps fresh engine identity, defaults and counter reseeding
   without reconciling supplied state; apply uses the same selector. Ordinary
   construction, mixed/empty/opaque wrappers and payload parsing stay unchanged.
-  File-backed preservation starts after shared loading/hydration and does not
-  cover an explicit report path aliasing a project. See the
+  File-backed preservation starts after shared loading/hydration; Slice 3 alone
+  does not protect an explicit report path aliasing a project. The separate
+  Plan-only Slice 4 writer below supplies destination safety. See the
   [Slice 3 contract and remaining boundaries](operation_lifecycle_slice3_plan.md).
+- Plan's optional report output has a dedicated fresh-file-only writer, not a
+  changed global export helper. An existing parent is required; exact pretty
+  JSON is staged, synced and published without replacing a destination. Hosts
+  bind a serde-skipped project path to exclude even its absent filename and the
+  derived save-owned candidate tree. History-free forks/checkpoint imports keep
+  that context; guarded commit retains the live binding after Save As. It is
+  not project metadata, scientific identity, dirty state or a new stale rule.
+  Native parent identity and conservative name comparison are scoped safety,
+  not a hostile directory-swap or crash-durability guarantee. See the
+  [Slice 4 contract](operation_lifecycle_slice4_plan.md).
 - Root-frame orchestration is O(1) unless a cheap revision/count stamp changes.
   Expensive signatures, serialization, disk/network I/O, and subprocess
   preflight belong behind such a gate or in a background worker.

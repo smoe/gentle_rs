@@ -1,4 +1,4 @@
-"""Slice 3 source checks and opt-in actual-process synthetic preservation tests.
+"""Lifecycle Slice 3/4 source and opt-in actual-process synthetic file tests.
 
 All input is invented inline or tutorial 06.07's existing literal CDS. Temporary
 projects/sidecars are recreated through the supplied CLI, never private inputs.
@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +78,39 @@ class LifecycleSlice3SourceTests(unittest.TestCase):
                 self.assertEqual(json.loads(encoded), payload)
 
 
+class LifecycleSlice4SourceTests(unittest.TestCase):
+    def test_plan_only_staging_and_host_binding_are_wired(self):
+        writer = (ROOT / "src/engine/io/sequence_design_preview.rs").read_text()
+        production = writer.split("#[cfg(test)]", 1)[0]
+        for required in ("fs::symlink_metadata", "fs::canonicalize", "directory_identity",
+                         "candidate_store_sidecar_dir", "eq_ignore_ascii_case", "unsupported_name_comparison",
+                         "NamedTempFile::new_in", "sync_all", "persist_noclobber", "serde_json::to_string_pretty"):
+            self.assertIn(required, production)
+        for forbidden in ("create_dir_all", "fs::write", "temp.persist(", "resolve_operation_payload"):
+            self.assertNotIn(forbidden, production)
+        engine = (ROOT / "src/engine.rs").read_text()
+        self.assertIn("#[serde(skip)]\n    host_project_path: Option<PathBuf>", engine)
+        self.assertIn("host_project_path: self.host_project_path.clone()", engine)
+        self.assertIn("self.host_project_path = live.host_project_path.clone()", engine)
+        handler = (ROOT / "src/engine/ops/operation_handlers.rs").read_text()
+        plan_arm = handler.split("Operation::PlanDnaSequenceDesign { request, path } =>", 1)[1].split("Operation::ValidateRnaPrimerPanel", 1)[0]
+        self.assertLess(plan_arm.index("sequence_design_preview_destination"), plan_arm.index("plan_dna_sequence_design"))
+        self.assertIn("output.write(&report)", plan_arm)
+        self.assertNotIn("write_pretty_json_file", plan_arm)
+
+    def test_existing_locked_identity_crate_and_documented_limits(self):
+        manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
+        lock = tomllib.loads((ROOT / "Cargo.lock").read_text())
+        self.assertEqual(manifest["dependencies"]["same-file"], "1.0.6")
+        identity, = [p for p in lock["package"] if p["name"] == "same-file"]
+        self.assertEqual(identity["version"], "1.0.6")
+        root, = [p for p in lock["package"] if p["name"] == "GENtle"]
+        self.assertIn("same-file", root["dependencies"])
+        guide = (ROOT / "docs/tutorial/06-07_synthetic_sequence_design.md").read_text()
+        for required in ("fresh filename", "existing directory", "sidecar", "Save As", "Unicode", "parent-directory"):
+            self.assertIn(required, guide)
+
+
 @unittest.skipUnless(BIN_DIR, "Supply same-source binaries through GENTLE_LIFECYCLE_BIN_DIR; no auto-build")
 class LifecycleSlice3ProcessTests(unittest.TestCase):
     def setUp(self):
@@ -112,9 +146,10 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.state.write_bytes((json.dumps(value, indent=1).replace("\n", ending) + ending + " ").encode())
         return value
 
-    def mcp_call(self, tool, arguments, ok=True):
+    def mcp_call(self, tool, arguments, ok=True, default_state=False):
+        state_args = {} if default_state else {"state_path": str(self.state)}
         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                           "params": {"name": tool, "arguments": {"state_path": str(self.state), **arguments}}}).encode()
+                           "params": {"name": tool, "arguments": {**state_args, **arguments}}}).encode()
         framed = f"Content-Length: {len(body)}\r\n\r\n".encode() + body
         run = subprocess.run([str(self.mcp)], input=framed, capture_output=True, cwd=self.work,
                              env=self.env, timeout=90)
@@ -181,11 +216,13 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.assertEqual(self.state.read_bytes(), before)
         invalid = plan(loaded=True)
         invalid["PlanDnaSequenceDesign"]["request"]["target"]["seq_id"] = "missing"
-        report.unlink()
-        self.run_cli("workflow", json.dumps(workflow([plan(str(report), loaded=True), invalid])), ok=False)
-        self.assertTrue(report.is_file())
+        prefix = self.work / "workflow-prefix.json"
+        self.run_cli("workflow", json.dumps(workflow([plan(str(prefix), loaded=True), invalid])), ok=False)
+        self.assertTrue(prefix.is_file())
         self.assertEqual(self.state.read_bytes(), before)
-        self.mcp_call("workflow", {"workflow": workflow([plan(str(report), loaded=True), invalid]), "confirm": True}, ok=False)
+        mcp_prefix = self.work / "mcp-workflow-prefix.json"
+        self.mcp_call("workflow", {"workflow": workflow([plan(str(mcp_prefix), loaded=True), invalid]), "confirm": True}, ok=False)
+        self.assertTrue(mcp_prefix.is_file())
         self.assertEqual(self.state.read_bytes(), before)
         for ops in ([], [snv(), {"SetParameter": {"name": "max_fragments_per_container", "value": 123}}]):
             self.initialize()
@@ -224,6 +261,75 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         client.workflow(workflow([snv(), plan(loaded=True)]))
         client.shell("op " + quote(json.dumps(plan(loaded=True))), expect_json=True)
         self.assertEqual(self.state.read_bytes(), before)
+
+    def test_slice4_cli_mcp_and_defaults_refuse_project_and_sidecar_destinations(self):
+        operation = plan(str(self.state))
+        request = self.work / "request.json"
+        request.write_text(json.dumps(operation["PlanDnaSequenceDesign"]["request"]))
+        for command in [("op", json.dumps(operation)), ("workflow", json.dumps(workflow([operation]))),
+                        ("shell", "op " + quote(json.dumps(operation))),
+                        ("sequence-design", "plan", "@" + str(request), "--path", str(self.state))]:
+            result = self.run_cli(*command, ok=False)
+            self.assertIn("sequence_design_report.protected_path", result.stderr.decode(errors="replace"))
+            self.assertFalse(self.state.exists())
+        default = self.work / ".gentle_state.json"
+        result = subprocess.run([str(self.cli), "op", json.dumps(plan(str(default)))], cwd=self.work,
+                                env=self.env, capture_output=True, timeout=90)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sequence_design_report.protected_path", result.stderr.decode(errors="replace"))
+        self.mcp_call("op", {"operation": plan(str(default)), "confirm": True}, ok=False, default_state=True)
+        self.assertFalse(default.exists())
+        for baseline in (b"\r\n ", None):
+            if baseline is None:
+                self.initialize("\r\n")
+                baseline = self.state.read_bytes()
+            else:
+                self.state.write_bytes(baseline)
+            self.run_cli("op", json.dumps(operation), ok=False)
+            self.mcp_call("op", {"operation": operation, "confirm": True}, ok=False)
+            self.assertEqual(self.state.read_bytes(), baseline)
+        self.state.unlink()  # Disposable project fixture, not a retained report.
+        sidecar = self.state.parent / (self.state.name + ".candidates")
+        sidecar.mkdir()
+        output = sidecar / "unused.json"
+        self.run_cli("op", json.dumps(plan(str(output))), ok=False)
+        self.mcp_call("op", {"operation": plan(str(output)), "confirm": True}, ok=False)
+        self.assertFalse(output.exists())
+        self.assertFalse(self.state.exists())
+
+    def test_slice4_fresh_only_exact_bytes_and_duplicate_workflow_preserves_prefix(self):
+        report = self.work / "fresh-report.json"
+        result = self.run_cli("op", json.dumps(plan(str(report))))
+        before = report.read_bytes()
+        self.assertEqual(json.loads(before), result["dna_sequence_design"])
+        refused = self.run_cli("op", json.dumps(plan(str(report))), ok=False)
+        self.assertIn("destination_exists", refused.stderr.decode(errors="replace"))
+        self.assertEqual(report.read_bytes(), before)
+        missing = self.work / "absent-parent" / "report.json"
+        self.run_cli("op", json.dumps(plan(str(missing))), ok=False)
+        self.assertFalse(missing.parent.exists())
+        prefix = self.work / "duplicate-prefix.json"
+        self.mcp_call("workflow", {"workflow": workflow([plan(str(prefix)), plan(str(prefix))]), "confirm": True}, ok=False)
+        self.assertEqual(json.loads(prefix.read_bytes()), json.loads(before))
+        self.assertFalse(self.state.exists())
+
+    def test_slice4_python_uses_host_binding_and_native_aliases_preserve_files(self):
+        sys.path.insert(0, str(ROOT / "integrations/python"))
+        from gentle_py.client import GentleClient, GentleCliError
+        client = GentleClient(state_path=str(self.state), cli_cmd=[str(self.cli)], cwd=str(self.work))
+        with self.assertRaises(GentleCliError):
+            client.op(plan(str(self.state)))
+        self.assertFalse(self.state.exists())
+        sentinel = self.work / "sentinel.json"
+        sentinel.write_bytes(b"unchanged\r\n")
+        hard = self.work / "hardlink.json"
+        os.link(sentinel, hard)
+        client_path = self.work / "python-report.json"
+        client.op(plan(str(client_path)))
+        with self.assertRaises(GentleCliError):
+            client.op(plan(str(hard)))
+        self.assertEqual(sentinel.read_bytes(), b"unchanged\r\n")
+        self.assertTrue(os.path.samefile(sentinel, hard))
 
 
 if __name__ == "__main__":

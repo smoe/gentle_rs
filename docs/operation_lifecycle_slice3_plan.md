@@ -158,7 +158,9 @@ native acceptance.
 
 - No captured-payload layer or broad opaque-wrapper migration.
 - No global sidecar-loader/implicit-save repair or journal concurrency redesign.
-- Explicit report/project aliases and symlink/hard-link/race, overwrite,
-  atomicity/no-clobber rules remain separately authorized Slice 4. **Suppressing
-  autosave cannot stop an explicitly chosen report path overwriting a project.**
+- Slice 3's autosave suppression alone does not secure explicit report paths.
+  The separately authorized [Slice 4](operation_lifecycle_slice4_plan.md) now
+  authors Plan-only fresh output and bound project/sidecar exclusions, with
+  external verification pending. It is not generic exporter migration, overwrite
+  permission, hostile parent-race protection or crash durability.
 - S2, new editor biology and release/native/scientific acceptance stay separate.

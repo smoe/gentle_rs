@@ -896,16 +896,32 @@ path adds no operation-derived confirmation; explicit candidate/tool gates
 remain additive. Static Plan metadata is External with confirmation, not an
 authorization source. Approval covers the report-write attempt, including
 `cancelled` reports, not successful search. A file may be written successfully
-while its retained search status remains cancelled. Scientific/report bytes and
-the existing writer are unchanged. The same Slice 3 construction/save rule as
+while its retained search status remains cancelled. Scientific/report bytes
+are unchanged. The same Slice 3 construction/save rule as
 S1 covers Plan, including requested reports. A preview does not create a missing
 project; denied Apply keeps it missing; approved Apply creates the exact DNA.
 Raw MCP's returned `state_summary` reflects unreconciled preserved content, so
 container/arrangement counts may differ from older constructor-repaired results.
 Its separate `state_summary` tool retains ordinary construction. Generic managed
 Op/Workflow retains guarded journal publication; inspection is not an independent
-observation job. No new payload resolver or parser read is added. Explicit
-report/project aliases, overwrite/race safety and S2 remain separately gated.
+observation job. No new payload resolver or parser read is added.
+
+Slice 4's Plan-only writer admits a fresh file in an existing directory, stages
+the same pretty JSON, syncs its write-capable temporary handle and publishes
+with no-clobber. Existing destinations of any type, including dangling symlinks,
+are refused. No overwrite/mkdir/retry mode or new schema is added. Errors use
+existing `EngineError` variants with `sequence_design_report.*` prefixes.
+File-backed CLI/MCP and GUI hosts bind a serde-skipped project path, protecting
+even its absent filename and the derived save-owned candidate sidecar tree.
+The binding survives explicit history-free forks and checkpoint/import resets;
+guarded commit retains a newer live Save As binding without a new stale rule.
+It never enters scientific reports/digests, portable state, checkpoints or dirty
+revisions. Pure JS/Lua state calls are unbound; Python inherits CLI behavior.
+Conservative ASCII ignore-case and native directory identity can over-refuse;
+non-ASCII same-parent protected-name comparisons fail closed. Existing folder
+aliases are not a parent-swap sandbox. No universal atomicity/crash durability or
+report survival against later explicit project saves is claimed. Requested
+cancelled reports retain their status and approval requirements. S2 remains separate.
 
 Portable schemas in `gentle_protocol::sequence_design`:
 `gentle.dna_sequence_design_request.v1`,

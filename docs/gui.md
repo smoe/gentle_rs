@@ -206,8 +206,15 @@ Managed generic Op/Workflow still publishes its journal through the existing
 owner/stale-checked commit; it is not an independent observation lane. A concurrent
 journal append may make another job stale. Existing explicit report-write approval
 and cancellation remain; a written report may survive a cancelled/failed command.
-No new window, payload resolver, native acceptance or report/project alias safety
-is implied by this lifecycle repair.
+Plan's report writer now requires a fresh filename in an existing directory;
+it refuses existing destinations and the current project filename/derived
+save-owned sidecar tree. There is no overwrite flag or implicit folder creation.
+GUI load/Save As/new-project updates the session binding; a detached result
+cannot restore an older binding. Same-directory non-ASCII protected-name
+comparisons are conservatively refused: use another existing output folder.
+A later explicit Save As can still replace a report; parent-directory races,
+crash durability and native acceptance are not established by staging/no-clobber.
+No new window, payload resolver or observation lane is introduced.
 The same request optionally selects `search_strategy=conflict_directed`; omission
 retains enumeration. GUI Shell and Agent Assistant share the engine policy and
 need a freshly reviewed approval after a strategy change. This adds no separate

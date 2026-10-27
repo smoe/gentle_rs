@@ -1,5 +1,87 @@
 # Glen: Next Verification And Return
 
+## Lifecycle Slice 4, 2026-10-27
+
+Owner authorized the revised Plan-only fresh-file writer/host binding at the
+`b8e0118f` baseline. Test the normally integrated source, including the existing
+`a2637079` Slice 3 test-API repair. No new audit freeze or repetition of old
+source-bound passes. The [contract](operation_lifecycle_slice4_plan.md) records
+support limits; tutorial 06.07 now requires fresh files in existing folders.
+The owner-requested mid-implementation rebase advanced this branch to
+`1804605f`; all Slice 4 working files restored cleanly, preserving RNA S1.
+The scoped pre-rebase recovery stash `617a89ee` remains retained; unrelated
+outputs and older stashes were not applied. No new verification follows from
+the rebase or main's separately recorded RNA checks.
+Post-rebase freshness checks required the four generated maturity projections
+to adopt main's current glossary-source hash only; no capability definition,
+maturity verdict or evidence changed.
+
+Local non-Rust checks after the rebase: the focused lifecycle/tutorial/maturity
+Python suite passes 22 checks with 12 explicit actual-process skips (34 total);
+all 75 checkout tests pass, including LF/CRLF coverage. Maturity freshness,
+documentation status, scoped rustfmt and whitespace checks pass. These execute
+neither GENtle nor its Rust/VM/native tests; the checkout runner's synthetic
+binary fixtures are not real-binary acceptance.
+Session-close reports 4 OK, 2 warnings, 0 failures: intentional uncommitted work/
+generated hashes and the manual plan-fidelity reminder. The only extra generated
+refresh is reproduced by `python3 scripts/generate_capability_maturity.py --write`;
+it repairs the post-rebase source-hash mismatch documented above.
+
+Changed runtime: `src/engine.rs`, new
+`src/engine/io/sequence_design_preview.rs`, the Plan dispatch arm,
+`src/{engine_shell,agent_bridge,app,mcp_server}.rs` and `src/bin/gentle_cli.rs`.
+The new direct `same-file` dependency reuses locked 1.0.6, changing only the root
+dependency edge. Authored tests: new writer `sequence_design_preview/tests.rs`,
+service/GUI/MCP/JS/Lua cases, the existing sequence-design tutorial regression
+and `scripts/test_operation_lifecycle_slice3.py`. Documents include tutorial/
+input provenance, protocol/CLI/GUI/architecture/decisions, lifecycle plans/status,
+roadmap/changelog and this handoff. Private data and unrelated outputs are untouched.
+
+Rust, actual-process/VM and native execution was not run locally. Reuse same-source
+normal CI for groups already executed; run missing groups with nonzero counts:
+
+```sh
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo test --locked -j1 --lib lifecycle_slice4_ -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib lifecycle_slice4_ -- --test-threads=1
+cargo test --locked -j1 --lib sequence_design -- --test-threads=1
+cargo test --locked -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked -j1 --lib command_execution -- --test-threads=1
+cargo test --locked --no-default-features --features js-interface -j1 --lib lifecycle_slice4_ -- --test-threads=1
+cargo test --locked --no-default-features --features lua-interface -j1 --lib lifecycle_slice4_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo fmt --check
+```
+
+Build source-matched CLI/MCP once if needed, then run both actual-process
+companions, including Python delegation/default state paths. Missing binaries
+or prerequisites are unrun/blocked evidence, never parity:
+
+```sh
+cargo build --locked --no-default-features -j1 --bin gentle_cli --bin gentle_mcp
+GENTLE_LIFECYCLE_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_operation_lifecycle_slice3 -v
+GENTLE_TUTORIAL_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_sequence_design_tutorial -v
+```
+
+Require exact project/input/sidecar bytes, report equality, confirmation before
+I/O, missing/default project refusal, derived-tree exclusion, existing/link/
+special-file refusal, final-name race and injected staging errors. Keep both
+strategies and distinct report paths; no expected scientific hash changes.
+Verify host binding survives load/pool reconstruction, checkpoint import/fork,
+rollback and newer live Save As commit, without serialization or dirty revisions.
+Check native GUI load/Save As/new project, redo and responsiveness; Windows
+handles/device/ADS/verbatim/UNC/reparse cases and macOS aliases/case/Unicode
+remain actual native acceptance, not source or LF/CRLF proof. Retain inner-agent
+ask/nested-execution guards and capability discovery; no model call is needed.
+
+No overwrite mode, implicit mkdir, loader-fact context or payload resolver was
+added. Same-parent non-ASCII protected-name comparisons intentionally over-refuse:
+use a different existing directory. No hostile parent-swap, universal atomicity,
+crash durability or survival against later explicit project save claim. Record
+tested full SHA, feature/platform/toolchain, counts, failures and unrun checks;
+keep the previous goal paused and coordination/push with the main thread.
+
 ## DNA Map And Dotplot Separation, 2026-10-27
 
 The owner's screenshot shows the compact `Dotplot map` launcher in the main

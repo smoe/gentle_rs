@@ -124,6 +124,34 @@ use std::{
 };
 use tempfile::tempdir;
 
+#[test]
+fn lifecycle_slice4_gui_project_binding_follows_load_save_as_and_new() {
+    let td = tempfile::tempdir().unwrap();
+    let initial = td.path().join("initial.json");
+    std::fs::write(
+        &initial,
+        serde_json::to_vec(&crate::engine::ProjectState::default()).unwrap(),
+    )
+    .unwrap();
+    let mut app = GENtleApp::default();
+    app.load_project_from_file(initial.to_str().unwrap())
+        .unwrap();
+    let expected = std::fs::canonicalize(&initial).unwrap();
+    assert_eq!(
+        app.engine.read().unwrap().host_project_path(),
+        Some(expected.as_path())
+    );
+    let saved_as = td.path().join("saved-as.json");
+    app.set_current_project_path(saved_as.to_str().unwrap(), false);
+    assert_eq!(
+        app.engine.read().unwrap().host_project_path(),
+        Some(saved_as.as_path())
+    );
+    app.new_project();
+    assert!(app.current_project_path.is_none());
+    assert!(app.engine.read().unwrap().host_project_path().is_none());
+}
+
 fn test_runtime_frame(label: &str) -> crate::runtime_status::RuntimeStatusGuard {
     crate::runtime_status::runtime_status_registry().push_with_detail(
         crate::runtime_status::RuntimeStatusFrameKind::BackgroundJob,

@@ -2188,6 +2188,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn lifecycle_slice4_lua_runtime_state_only_writer_is_fresh_only() {
+        use crate::engine::lifecycle_slice3_tests as fixture;
+        let td = tempdir().unwrap();
+        let output = td.path().join("script-state.json");
+        let operation = fixture::plan(Some(output.display().to_string()), false);
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        let state = fixture::state();
+        lua.globals()
+            .set("input", lua.to_value(&state).unwrap())
+            .unwrap();
+        lua.globals()
+            .set("operation", serde_json::to_string(&operation).unwrap())
+            .unwrap();
+        lua.load("out = apply_operation(input, operation)")
+            .exec()
+            .unwrap();
+        let out: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("out").unwrap())
+            .unwrap();
+        assert_eq!(out["state"], serde_json::to_value(state).unwrap());
+        let before = fs::read(&output).unwrap();
+        let error = lua
+            .load("out = apply_operation(input, operation)")
+            .exec()
+            .unwrap_err();
+        assert!(error.to_string().contains("destination_exists"));
+        assert_eq!(fs::read(output).unwrap(), before);
+    }
+
     fn normalize_construct_reasoning_status_output(
         mut value: serde_json::Value,
     ) -> serde_json::Value {

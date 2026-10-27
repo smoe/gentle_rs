@@ -21708,7 +21708,7 @@ fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
     }
     args.push(json!({"name":"OUTPUT_ID", "required":false, "subject_kind":"sequence", "detail":"exact request.output_seq_id, also inside a preview.request"}));
     if !apply {
-        args.push(json!({"name":"OUTPUT_PATH", "required":false, "subject_kind":"other", "detail":"optional --path writes the preview, including unresolved/infeasible outcomes"}));
+        args.push(json!({"name":"OUTPUT_PATH", "required":false, "subject_kind":"other", "detail":"optional --path writes the preview, including unresolved/infeasible/cancelled outcomes, to a fresh file in an existing directory only; no overwrite or mkdir; bound project and save-owned sidecar paths are refused"}));
     }
     json!({
         "id":id, "kind":if id.starts_with("sequence-design ") {"command"} else {"operation"},
@@ -21720,7 +21720,7 @@ fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
         } else {
             "Bounded synonymous motif removal for synthetic coding inserts, not natural assay targets or full DNA Chisel. No design sequence is materialized; optional report writes require confirmation. Runtime admission validates explicit CDS/protein/code and frozen bases. Both-strand/overlap/flank motifs supported. Search exhaustion is unresolved, never infeasibility; no performance claim."
         },
-        "artifact_approval_contract":"The static plan family conservatively requires confirmation because an optional output path writes a report. The engine-owned request policy adds no confirmation only when path is absent; explicit candidate and tool gates remain additive. Any present path, including an empty or malformed path, requires approval before attempted execution. Approval covers the write attempt, including a cancelled report. Report publication and search completion are separate; this policy does not change legacy reconciliation, autosave, destination aliasing or overwrite behavior.",
+        "artifact_approval_contract":"The static plan family conservatively requires confirmation because an optional output path writes a report. The engine-owned request policy adds no confirmation only when path is absent; explicit candidate and tool gates remain additive. Any present path, including an empty or malformed path, requires approval before attempted execution. Approval covers the write attempt, including a cancelled report. Report publication and search completion are separate. Reports are fresh-file-only in an existing directory; bound project paths and the derived save-owned sidecar tree are protected, including absent names. Ambiguous non-ASCII protected-name comparisons are refused; stateless scripting infers no backing filename. No parent-swap, later Save As survival or crash-durability guarantee.",
         "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
     })
 }
@@ -54043,7 +54043,12 @@ fn execute_export_import_and_resource_command(
                 state.sequences.insert(id.clone(), dna);
                 imported_ids.push(id);
             }
-            *engine = GentleEngine::from_state(state);
+            let binding = engine.host_project_path().map(Path::to_path_buf);
+            let mut replacement = GentleEngine::from_state(state);
+            replacement
+                .set_host_project_path(binding.as_deref())
+                .map_err(|e| e.to_string())?;
+            *engine = replacement;
             Ok(ShellRunResult {
                 state_changed: true,
                 output: json!({
@@ -69513,7 +69518,12 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::MirnaScanTarget { .. } => execute_mirna_command(engine, command)?,
         ShellCommand::LoadProject { path } => {
             let state = ProjectState::load_from_path(path).map_err(|e| e.to_string())?;
-            *engine = GentleEngine::from_state(state);
+            let binding = engine.host_project_path().map(Path::to_path_buf);
+            let mut replacement = GentleEngine::from_state(state);
+            replacement
+                .set_host_project_path(binding.as_deref())
+                .map_err(|e| e.to_string())?;
+            *engine = replacement;
             ShellRunResult {
                 state_changed: true,
                 output: json!({

@@ -23,6 +23,10 @@ or biology is introduced. Lifecycle Slice 3 reuses it in
 `src/engine/lifecycle_slice3_tests.rs` and
 `scripts/test_operation_lifecycle_slice3.py`, including shared service and
 JS/Lua adapter consumers, to check state/file preservation rather than biology.
+Slice 4 additionally consumes the same request in
+`src/engine/io/sequence_design_preview/tests.rs` and the existing lifecycle
+companion for fresh-only publication, host-path binding and refusal controls.
+These synthesize temporary files; they add no biological fixture or raw digest.
 JSON/Markdown comparisons
 are semantic and covered with LF/CRLF; no retained raw-file or approval hash is
 invented. Replay commands are in the guide. All runtime reports, approvals and

@@ -307,9 +307,16 @@ containing only those inspections preserve post-loader project content and do
 not implicitly create/rewrite project files or candidate sidecars. Named/shared-
 shell inspection commands retain their existing no-change save behavior. Empty,
 mixed and opaque wrappers keep legacy construction/save rules; parsing and
-payload-file errors are unchanged. Explicit report paths must be distinct from
-project/sidecar files: destination collisions and overwrite behavior are not
-repaired by autosave suppression. Generic MCP still requires `confirm=true`.
+payload-file errors are unchanged. Plan reports require a fresh filename in an
+existing directory: no overwrite, mkdir or automatic rename. The bound CLI/MCP
+project filename (including absent/default files) and its derived `.candidates`
+tree are excluded. A repeated preview needs a new explicit filename and required
+agent approval. Generic MCP still requires `confirm=true`. Errors use existing
+`EngineError` codes with `sequence_design_report.*` reasons.
+Ambiguous non-ASCII same-parent protected-name comparisons are refused; use
+another existing output directory. Native folder aliases are resolved for
+directory-identity comparison, not a hostile parent-swap security guarantee.
+Later explicit Save As and crash durability are outside the writer's guarantee.
 The second command must not run until the user approves the exact feasible preview.
 Use its actual `approval_digest`, never the illustrative placeholder above.
 Planning never changes source/project sequences; application creates a derived

@@ -46,6 +46,7 @@ dependencies = [
  "rfd",
  "ring",
  "rustyline",
+ "same-file",
  "scraper",
  "screencapturekit",
  "serde",

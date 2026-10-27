@@ -172,6 +172,7 @@ svg2pdf = "0.13.0"
 rfd = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "form", "json"] }
 tempfile = { workspace = true }
+same-file = "1.0.6"
 flate2 = "1.0"
 md-5 = "0.11.0"
 memchr = "2"
