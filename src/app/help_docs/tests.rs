@@ -24,7 +24,7 @@ fn every_window_manual_button_dispatches_its_topic_without_capture_or_mutation()
                 },
             );
             let output = crate::egui_compat::end_test_pass(&ctx);
-            assert!(output.commands.is_empty(), "manual button must not open a browser");
+            assert!(output.platform_output.commands.is_empty(), "manual button must not open a browser");
             assert!(output.viewport_output.values().all(|viewport| viewport.commands.iter()
                 .all(|command| !matches!(command, egui::ViewportCommand::Screenshot(_)))));
             output.drop_without_applying_deltas();

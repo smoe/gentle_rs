@@ -313,7 +313,7 @@ impl GENtleApp {
         }
     }
 
-    fn navigate_manual_history(&mut self, forward: bool) {
+    pub(super) fn navigate_manual_history(&mut self, forward: bool) {
         self.ensure_manual_pages(self.help_doc);
         let target = if forward {
             self.help_manual_forward.pop()

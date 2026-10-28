@@ -221,6 +221,15 @@ Agent Help, screenshot capture, model calls and project mutation. See the
 The static checks recorded above are complete; actual Rust/GUI behavior remains
 unverified. No engine/scientific contract change is claimed by the manual move.
 
+Owner-reported compilation failed with E0624 at the parent toolbar's
+`navigate_manual_history` calls and E0609 in the no-browser test. The scoped
+repair gives the helper `pub(super)` visibility and reads
+`FullOutput.platform_output.commands`, as defined by locked egui 0.36.2.
+No navigation logic or assertion was removed; viewport screenshot and unchanged
+project checks remain. Run the already-listed default-feature test-target check
+first, then the missing Help regressions below. This repair is not a compilation
+pass; no local Rust execution occurred.
+
 Run these missing default-feature groups, or cite their same-source CI results.
 Require nonzero selected counts. Shared Cargo checks/formatting are already in
 the Slice 4 list; do not run them twice. Its default-feature `sequence_design`

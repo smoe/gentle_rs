@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-28 - Repair Manual Navigation Compilation Boundaries
+
+- Give the manual-history helper parent-module visibility so the existing
+  Help toolbar can call Back/Forward without exposing a public API.
+- Read the no-browser assertion from egui's `FullOutput.platform_output.commands`;
+  preserve the separate viewport screenshot guard and project-mutation checks.
+  Record the owner-reported E0624/E0609 failures in Glen's existing Help handoff.
+  Rust compilation and native acceptance remain unverified locally; no push.
+
 ## 2026-10-28 - Close Two Slice 5 Regression-Coverage Gaps
 
 - After the owner requested continuation, statically cross-check the integrated
