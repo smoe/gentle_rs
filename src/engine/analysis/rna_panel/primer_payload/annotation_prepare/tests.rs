@@ -473,6 +473,83 @@ fn observed_annotation_publication_visibility_and_fault_cleanup_are_owned() {
 }
 
 #[test]
+fn observed_annotation_publication_preserves_replaced_artifacts() {
+    let root = tempfile::tempdir().unwrap();
+    let mut r = fixture(root.path());
+    let p = run(r.clone());
+    let raw = fs::read(Path::new(&r.output_dir).join("artifacts/annotation.json")).unwrap();
+    for with_annotation in [false, true] {
+        r.output_dir = root
+            .path()
+            .join(format!("replacement {with_annotation}"))
+            .display()
+            .to_string();
+        let mut report = p.report.clone();
+        report.request = r.clone();
+        if !with_annotation {
+            report.annotation = None;
+        }
+        let paths = publication::Paths::new(&r).unwrap();
+        let stage = staging(&r.output_dir).unwrap();
+        if with_annotation {
+            fs::write(stage.path().join("annotation.json"), &raw).unwrap();
+        }
+        let out = PathBuf::from(&r.output_dir);
+        let moved = root
+            .path()
+            .join(format!("original artifacts {with_annotation}"));
+        let e = publication::publish(stage, &paths, &report, &mut |phase| {
+            if matches!(phase, publication::Phase::ArtifactsVisible) {
+                fs::rename(out.join("artifacts"), &moved).unwrap();
+                fs::create_dir(out.join("artifacts")).unwrap();
+                fs::write(
+                    out.join("artifacts/annotation.json"),
+                    b"unowned replacement",
+                )
+                .unwrap();
+                return Err(bad("synthetic replacement fault"));
+            }
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(e.message.contains("observed_annotation_orphaned_output"));
+        assert_eq!(
+            fs::read(out.join("artifacts/annotation.json")).unwrap(),
+            b"unowned replacement"
+        );
+        assert!(!out.join("report.json").exists());
+        if with_annotation {
+            assert_eq!(fs::read(moved.join("annotation.json")).unwrap(), raw);
+        } else {
+            assert_eq!(fs::read_dir(moved).unwrap().count(), 0);
+        }
+    }
+}
+
+#[test]
+fn observed_annotation_publication_failed_reacquire_discloses_orphan() {
+    let root = tempfile::tempdir().unwrap();
+    let mut r = fixture(root.path());
+    let mut p = run(r.clone());
+    r.output_dir = root.path().join("reacquire failure").display().to_string();
+    p.report.request = r.clone();
+    let paths = publication::Paths::new(&r).unwrap();
+    let stage = staging(&r.output_dir).unwrap();
+    let original = stage.path().join("annotation.json");
+    fs::write(&original, b"synthetic annotation").unwrap();
+    let e = publication::publish(stage, &paths, &p.report, &mut |phase| {
+        if matches!(phase, publication::Phase::Reserved) {
+            fs::remove_file(&original).unwrap();
+        }
+        Ok(())
+    })
+    .unwrap_err();
+    assert!(e.message.contains("observed_annotation_orphaned_output"));
+    assert!(Path::new(&r.output_dir).join("artifacts").is_dir());
+    assert!(!Path::new(&r.output_dir).join("report.json").exists());
+}
+
+#[test]
 fn observed_annotation_publication_discloses_unowned_orphan_without_deleting_it() {
     let root = tempfile::tempdir().unwrap();
     let mut r = fixture(root.path());

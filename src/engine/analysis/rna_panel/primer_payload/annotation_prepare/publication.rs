@@ -329,12 +329,6 @@ pub(super) fn publish(
     hook(Phase::BeforeReserve)?;
     paths.recheck_output()?;
     let out = &paths.output.resolved;
-    let stage_owner = same_file::Handle::from_path(stage.path()).map_err(io)?;
-    let annotation_owner = report
-        .annotation
-        .as_ref()
-        .map(|_| same_file::Handle::from_path(stage.path().join("annotation.json")).map_err(io))
-        .transpose()?;
     fs::create_dir(out).map_err(io)?;
     let owner = match same_file::Handle::from_path(out) {
         Ok(h) => h,
@@ -346,12 +340,23 @@ pub(super) fn publish(
             )));
         }
     };
+    let mut artifact_owners = None;
     let result: Result<PrimerPayloadFile, EngineError> = (|| {
         hook(Phase::Reserved)?;
         fs::rename(stage.path(), out.join("artifacts")).map_err(io)?;
         // The old temporary name no longer belongs to us. Disarm its automatic
         // recursive cleanup before any observer could recreate that name.
         let _ = stage.keep();
+        // No staging handles cross the rename. Establish cleanup ownership at
+        // the published paths before observers run; failure leaves an orphan.
+        let artifacts = out.join("artifacts");
+        let stage_owner = same_file::Handle::from_path(&artifacts).map_err(io)?;
+        let annotation_owner = report
+            .annotation
+            .as_ref()
+            .map(|_| same_file::Handle::from_path(artifacts.join("annotation.json")).map_err(io))
+            .transpose()?;
+        artifact_owners = Some((stage_owner, annotation_owner));
         hook(Phase::ArtifactsVisible)?;
         hook(Phase::ReportReady)?;
         // No fallible work follows this no-clobber completion marker.
@@ -376,8 +381,10 @@ pub(super) fn publish(
         };
         if same(out, &owner) {
             let artifacts = out.join("artifacts");
-            if same(&artifacts, &stage_owner) {
-                if let Some(h) = &annotation_owner {
+            if let Some((stage_owner, annotation_owner)) = &artifact_owners
+                && same(&artifacts, stage_owner)
+            {
+                if let Some(h) = annotation_owner {
                     let p = artifacts.join("annotation.json");
                     if same(&p, h) {
                         let _ = fs::remove_file(p);

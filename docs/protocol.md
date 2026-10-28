@@ -110,6 +110,10 @@ files/empty directories. Unowned additions/replacements are preserved and an
 it must not be adopted as completed or reused. Native Windows handles/filesystem
 behavior, actual adapters, real-provider policies and scientific acceptance
 remain separate checks.
+No staging-directory or annotation handle crosses the artifact-directory rename.
+Cleanup handles are acquired at the published paths before observers run;
+failed acquisition preserves the incomplete output and reports the same
+orphaned-output error rather than assuming ownership.
 
 ### S2.1c Named Annotation Operations
 
