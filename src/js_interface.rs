@@ -1421,10 +1421,27 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    // Test-only equality keeps binary sequence bytes visible, not just object keys.
+    const LIFECYCLE_STATE_ORACLE: &str = r#"
+        function canonical(x) {
+            if (ArrayBuffer.isView(x)) return Array.from(new Uint8Array(x.buffer, x.byteOffset, x.byteLength));
+            if (x instanceof ArrayBuffer) return Array.from(new Uint8Array(x));
+            if (Array.isArray(x)) return x.map(canonical);
+            if (x !== null && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
+            return x;
+        }
+        const eq = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+        if (eq(new Uint8Array([65]), new Uint8Array([67]))) throw Error('byte-view oracle lost sequence differences');
+        if (eq(new Uint8Array([65]).buffer, new Uint8Array([67]).buffer)) throw Error('buffer oracle lost sequence differences');
+    "#;
+
     #[test]
     fn lifecycle_slice3_js_runtime_preserves_state_and_legacy_controls() {
         use crate::engine::lifecycle_slice3_tests as fixture;
-        let state = serde_json::to_value(fixture::state()).unwrap();
+        // The public loader creates the buffer-backed VM representation used by scripts.
+        let td = tempdir().unwrap();
+        let state_path = td.path().join("synthetic's project.json");
+        fs::write(&state_path, serde_json::to_vec(&fixture::state()).unwrap()).unwrap();
         let ops = [
             fixture::plan(None, false),
             fixture::plan(None, true),
@@ -1432,14 +1449,10 @@ mod tests {
         ];
         let mut js = JavaScriptInterface::new();
         js.run_checked(format!(r#"
-            const input = {state};
+            {oracle}
+            const input = load_project({state_path});
+            const expected = load_project({state_path});
             const ops = {ops};
-            function canonical(x) {{
-                if (Array.isArray(x)) return x.map(canonical);
-                if (x !== null && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
-                return x;
-            }}
-            const eq = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
             for (const op of ops) {{
                 if (!eq(input, apply_operation(input,op).state)) throw Error('inspection repaired state');
             }}
@@ -1453,8 +1466,10 @@ mod tests {
             const missing = {{PlanDnaSequenceDesign:{{...ops[0].PlanDnaSequenceDesign,request:{{...ops[0].PlanDnaSequenceDesign.request,target:{{kind:'loaded_sequence',seq_id:'missing'}}}}}}}};
             let refused = false;
             try {{ apply_operation(input,missing); }} catch (_) {{ refused = true; }}
-            if (!refused || !eq(input,{state})) throw Error('refusal changed input');
-        "#,ops=serde_json::to_string(&ops).unwrap(),mutation=serde_json::to_string(&fixture::create()).unwrap())).unwrap();
+            if (!refused || !eq(input,expected)) throw Error('refusal changed input');
+        "#,oracle=LIFECYCLE_STATE_ORACLE,
+            state_path=serde_json::to_string(&state_path.to_string_lossy()).unwrap(),
+            ops=serde_json::to_string(&ops).unwrap(),mutation=serde_json::to_string(&fixture::create()).unwrap())).unwrap();
     }
 
     #[test]
@@ -1480,18 +1495,31 @@ mod tests {
         let td = tempdir().unwrap();
         let output = td.path().join("script-state.json");
         let operation = fixture::plan(Some(output.display().to_string()), false);
-        let state = serde_json::to_value(fixture::state()).unwrap();
+        let state_path = td.path().join("synthetic's project.json");
+        fs::write(&state_path, serde_json::to_vec(&fixture::state()).unwrap()).unwrap();
         let mut js = JavaScriptInterface::new();
         js.run_checked(format!(r#"
-            const input = {state};
+            {oracle}
+            const input = load_project({state_path});
+            const expected = load_project({state_path});
             const operation = {operation};
             const result = apply_operation(input, operation);
             if (result.result.dna_sequence_design.output_sequence !== 'ATGTTTAAGTAA') throw Error('wrong preview');
+            if (!eq(input,result.state)) throw Error('writer repaired state');
+            if (eq(input,apply_workflow(input,{{run_id:'synthetic-negative-oracle',ops:[]}}).state)) throw Error('state oracle cannot detect legacy repair');
+            if (!eq(input,expected)) throw Error('writer changed input');
+        "#,oracle=LIFECYCLE_STATE_ORACLE,
+            state_path=serde_json::to_string(&state_path.to_string_lossy()).unwrap(),
+            operation=serde_json::to_string(&operation).unwrap())).unwrap();
+        let before = fs::read(&output).unwrap();
+        js.run_checked(r#"
             let refused = false;
-            try {{ apply_operation(input, operation); }} catch (error) {{ refused = String(error).includes('destination_exists'); }}
+            try { apply_operation(input, operation); } catch (error) { refused = String(error).includes('destination_exists'); }
             if (!refused) throw Error('script overwrote a report');
-        "#,operation=serde_json::to_string(&operation).unwrap())).unwrap();
-        let report: serde_json::Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
+            if (!eq(input,expected)) throw Error('refusal changed input');
+        "#.to_string()).unwrap();
+        assert_eq!(fs::read(&output).unwrap(), before);
+        let report: serde_json::Value = serde_json::from_slice(&before).unwrap();
         assert_eq!(report["output_sequence"], "ATGTTTAAGTAA");
     }
 

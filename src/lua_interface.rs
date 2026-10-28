@@ -2098,6 +2098,14 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn lifecycle_output_state_json(lua: &Lua, global: &str) -> serde_json::Value {
+        let output: mlua::Table = lua.globals().get(global).unwrap();
+        let state: ProjectState = lua
+            .from_value(output.get::<Value>("state").unwrap())
+            .unwrap();
+        serde_json::to_value(state).unwrap()
+    }
+
     #[test]
     fn lifecycle_slice3_lua_runtime_preserves_state_and_legacy_controls() {
         use crate::engine::lifecycle_slice3_tests as fixture;
@@ -2120,10 +2128,7 @@ mod tests {
             lua.load("out = apply_operation(input, request)")
                 .exec()
                 .unwrap();
-            let out: serde_json::Value = lua
-                .from_value(lua.globals().get::<Value>("out").unwrap())
-                .unwrap();
-            assert_eq!(out["state"], expected);
+            assert_eq!(lifecycle_output_state_json(lua, "out"), expected);
         }
         for (covered, ops) in [
             (true, vec![fixture::snv(), fixture::plan(None, true)]),
@@ -2141,10 +2146,7 @@ mod tests {
             lua.load("out = apply_workflow(input, request)")
                 .exec()
                 .unwrap();
-            let out: serde_json::Value = lua
-                .from_value(lua.globals().get::<Value>("out").unwrap())
-                .unwrap();
-            assert_eq!(out["state"] == expected, covered);
+            assert_eq!(lifecycle_output_state_json(lua, "out") == expected, covered);
         }
         let mut invalid = fixture::plan(None, true);
         if let Operation::PlanDnaSequenceDesign { request, .. } = &mut invalid {
@@ -2160,10 +2162,10 @@ mod tests {
                 .exec()
                 .is_err()
         );
-        let unchanged: serde_json::Value = lua
+        let unchanged: ProjectState = lua
             .from_value(lua.globals().get::<Value>("input").unwrap())
             .unwrap();
-        assert_eq!(unchanged, expected);
+        assert_eq!(serde_json::to_value(unchanged).unwrap(), expected);
     }
 
     #[test]
@@ -2198,6 +2200,7 @@ mod tests {
         interface.register_rust_functions().unwrap();
         let lua = interface.lua();
         let state = fixture::state();
+        let expected = serde_json::to_value(&state).unwrap();
         lua.globals()
             .set("input", lua.to_value(&state).unwrap())
             .unwrap();
@@ -2207,10 +2210,25 @@ mod tests {
         lua.load("out = apply_operation(input, operation)")
             .exec()
             .unwrap();
-        let out: serde_json::Value = lua
-            .from_value(lua.globals().get::<Value>("out").unwrap())
+        assert_eq!(lifecycle_output_state_json(lua, "out"), expected);
+        lua.globals()
+            .set(
+                "empty_workflow",
+                serde_json::to_string(&Workflow {
+                    run_id: "synthetic-negative-oracle".into(),
+                    ops: vec![],
+                })
+                .unwrap(),
+            )
             .unwrap();
-        assert_eq!(out["state"], serde_json::to_value(state).unwrap());
+        lua.load("legacy = apply_workflow(input, empty_workflow)")
+            .exec()
+            .unwrap();
+        assert_ne!(
+            lifecycle_output_state_json(lua, "legacy"),
+            expected,
+            "the same typed oracle must detect legacy construction repair"
+        );
         let before = fs::read(&output).unwrap();
         let error = lua
             .load("out = apply_operation(input, operation)")
@@ -2218,6 +2236,10 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("destination_exists"));
         assert_eq!(fs::read(output).unwrap(), before);
+        let unchanged: ProjectState = lua
+            .from_value(lua.globals().get::<Value>("input").unwrap())
+            .unwrap();
+        assert_eq!(serde_json::to_value(unchanged).unwrap(), expected);
     }
 
     fn normalize_construct_reasoning_status_output(

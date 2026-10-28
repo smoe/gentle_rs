@@ -1,5 +1,55 @@
 # Glen: Next Verification And Return
 
+## Lifecycle Compile And VM Oracles, 2026-10-28
+
+Narrow repair of the owner-supplied Claude review at historical `550e6e0a`.
+The missing Slice 4 test-module path was already fixed in `a52c7b74`.
+`496830db` fixes Help navigation visibility and the one `FullOutput` command
+access; other `PlatformOutput` accesses stay unchanged. The companion test
+repair decodes Lua results as `ProjectState` before JSON comparison and feeds
+JavaScript through the public `load_project` binding, not project JSON literals.
+JS equality explicitly inspects typed-array and ArrayBuffer bytes. Production
+JS/Lua adapter source is byte-identical before/after this test-only repair.
+
+Run the following seven commands on the normally integrated full SHA, recording
+toolchain/platform/features, counts and primary failures. A zero-match filter
+is a failure. These commands have **not** been run in this Codex session; the
+quoted review's request to build did not override the standing no-local-Rust
+instruction. Older source-bound passes are not results for these repaired tests.
+
+```sh
+cargo check --locked -q
+cargo check --locked -q --no-default-features --lib
+cargo test --locked --lib lifecycle_slice -- --test-threads=1
+cargo test --locked --lib --features js-interface lifecycle_slice -- --test-threads=1
+cargo test --locked --lib --features lua-interface lifecycle_slice -- --test-threads=1
+cargo test --locked --lib help_docs -- --test-threads=1
+cargo fmt --check
+```
+
+Require all four repaired VM tests to execute. Their non-vacuous controls are:
+
+| Test | Preservation oracle and counterexample |
+| --- | --- |
+| `lifecycle_slice3_js_runtime_preserves_state_and_legacy_controls` | Loader-backed input and independent baseline; covered operations/workflows preserve state, while mutation, empty and mixed workflows do not. Refusal keeps the input. A/C byte-view and buffer counterexamples exercise byte sensitivity. |
+| `lifecycle_slice4_js_runtime_state_only_writer_is_fresh_only` | Exact output DNA and unchanged state; empty workflow must reconcile and differ under the same oracle. Existing destination must refuse without changing input or retained report bytes. |
+| `lifecycle_slice3_lua_runtime_preserves_state_and_legacy_controls` | Decode each operation/workflow result and refused input as `ProjectState`; empty and mixed mutation workflows must still differ from the same typed baseline. |
+| `lifecycle_slice4_lua_runtime_state_only_writer_is_fresh_only` | Typed state equality; empty workflow must differ under the same oracle. Existing destination must refuse with unchanged input and report bytes. |
+
+These controls are authored, not an executed red/green demonstration. Glen/CI
+must establish their runtime results; no production adapter conversion was
+added to make them pass. JS project JSON-literal ingress remains an explicitly
+deferred compatibility question; this repair uses the existing public loader.
+Separate any pre-existing repository-wide formatting drift from this delta.
+Python actual-binary tests, the full Rust suite, native GUI and native Windows
+remain unverified here. Reuse unaffected existing receipts; do not launch a
+parallel audit campaign. No push/CI dispatch, goal resumption or private data.
+
+Local non-Rust checks: 13 lifecycle/tutorial source tests pass with 12 actual-
+process skips; 19 documentation/real LF/CRLF-checkout checks pass. Manual
+projection freshness, documentation status, scoped JS/Lua rustfmt and whitespace
+pass. These checks do not execute a scripting VM or establish compilation.
+
 ## Lifecycle Slice 5, 2026-10-28
 
 Include the owner's approved [Slice 5](operation_lifecycle_slice5_plan.md) in

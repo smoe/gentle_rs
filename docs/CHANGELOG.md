@@ -9,6 +9,30 @@
   Record the owner-reported E0624/E0609 failures in Glen's existing Help handoff.
   Rust compilation and native acceptance remain unverified locally; no push.
 
+## 2026-10-28 - Repair Lifecycle Compile Boundaries And VM Test Oracles
+
+- Reconcile Claude's review of `550e6e0a` against current source: `a52c7b74`
+  already supplies the missing Slice 4 test-module path. Commit `496830db`
+  narrows Help history navigation to parent-module visibility and fixes only
+  the `FullOutput` command assertion, preserving correct `PlatformOutput` uses.
+- Repair four lifecycle scripting tests without changing production adapters:
+  Lua compares typed `ProjectState` values after decoding; JavaScript loads
+  temporary synthetic projects through `load_project`, including its refusal
+  baseline, and compares binary sequence contents explicitly. Retain the
+  mutation/empty/mixed controls; add the same empty-workflow counterexample to
+  each writer test and check retained report bytes after refusal.
+- Record the seven exact external verification commands and each test's
+  negative control in the consolidated Glen handoff. JS plain-JSON project
+  ingress is deferred, not repaired here. No scientific report, approval digest,
+  lifecycle policy or tutorial workflow changes. Rust/VM/native execution stays
+  with Glen/CI; no push or resumption of the previous goal. Unrelated outputs
+  remain untouched.
+- Checks: 13 Python lifecycle/tutorial source cases pass with 12 process skips;
+  19 documentation/LF/CRLF-checkout cases pass. Manual projection freshness,
+  documentation status, scoped JS/Lua rustfmt and whitespace pass. Production
+  JS/Lua source prefixes are byte-identical to their pre-repair versions; this
+  is not Rust compilation or executed VM evidence.
+
 ## 2026-10-28 - Close Two Slice 5 Regression-Coverage Gaps
 
 - After the owner requested continuation, statically cross-check the integrated
