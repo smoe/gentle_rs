@@ -3,8 +3,9 @@
 Status: S0 is implemented and its verification is recorded below. The owner
 separately authorized S1 on 2026-10-27: the bound intake/publication and shared
 engine/CLI/MCP paths now have focused macOS verification recorded below. The
-[detailed S2 plan and review request](observed_transcript_structures_s2_plan.md)
-are prepared; S2 and later slices remain proposals, not authorized for implementation.
+[detailed S2 plan](observed_transcript_structures_s2_plan.md#review-reconciliation)
+is reconciled after supplied Claude feedback; S2 and later slices remain
+proposals, including test-only S2.0a, not authorized for implementation.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
@@ -644,8 +645,12 @@ distinguished in the [S1 contract](observed_transcript_structures.md).
 3. **S2 -- explicit SAM-text ingress and annotation preparation.** The
    [bounded S2 proposal](observed_transcript_structures_s2_plan.md) and
    [new Claude review prompt](observed_transcript_structures_s2_claude_review_prompt.md)
-   separate preservation/kernel seam, annotation preparation, SAM accounting
-   and shared operation integration. They are unreviewed proposals, not code.
+   separate test-only preservation guards (S2.0a), private kernel/identity seam
+   (S2.0b), annotation preparation, SAM accounting and shared integration. The
+   supplied read-only review is reconciled, not implementation or a fresh
+   sign-off on Codex's revised text. Unknown masks and incomplete search remain
+   independent axes; source selectors/versions, gap policy and query identity
+   are explicit. The original prompt is retained as historical context.
    Prefer a
    bounded, hash-bound SAM input initially, with CIGAR geometry through the same
    kernel. Handle `S/H/P`, reverse flags/query coordinates, header lengths,
@@ -762,10 +767,13 @@ No request is sent, no candidate freeze/dispatch is created, and no native,
 release, biological or performance acceptance is claimed by this planning task.
 
 Next step: carry the source-bound macOS results into the consolidated Glen/CI
-request and execute missing process/platform checks. Review the separate
-[S2 plan](observed_transcript_structures_s2_plan.md) with its
-[current Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
-before authorizing implementation; neither has been Claude-reviewed. The older
+request and execute missing process/platform checks. Separately authorize the
+test-only S2.0a preservation guards from the
+[reconciled S2 plan](observed_transcript_structures_s2_plan.md#reconciled-implementation-order)
+before any implementation. The
+[original S2 Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
+has received the supplied read-only review; Codex's reconciliation is not a
+fresh Claude or scientific verdict. The older
 [S0 follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
 is historical and predates S1 completion, not the current S2 review request.
 SAM/BAM, GUI and later consequences are not authorized by the S1 request.

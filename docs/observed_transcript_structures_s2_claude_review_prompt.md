@@ -1,5 +1,13 @@
 # Claude Review Prompt: Observed Transcript S2
 
+Historical prompt: the owner supplied Claude's read-only review on 2026-10-28,
+inspected at main `550e6e0a`. Codex checked and reconciled it in the
+[current S2 plan](observed_transcript_structures_s2_plan.md#review-reconciliation).
+The original request below is preserved as review context, not an outstanding
+review request or authorization to implement. The revised first step is
+test-only S2.0a, still requiring separate owner approval; the revised text has
+not received a fresh Claude sign-off.
+
 Please perform a **read-only software/evidence-contract review** of the S2
 proposal before any implementation. Do not treat earlier S0/S1 reviews or
 test results as proof of this new slice.

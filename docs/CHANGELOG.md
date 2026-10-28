@@ -41,6 +41,30 @@
   Help formatting groups are unchanged, verified by comparing formatter output
   against HEAD. No unrelated formatting edits are included.
 
+## 2026-10-28 - Reconcile The Supplied Observed Transcript S2 Review
+
+- Check Claude's source-only feedback at main `550e6e0a` against the identical
+  kernel/payload paths at worktree `6878d608`. Expand the proposed private seam
+  to cover output identities, stored-support checks, fixed digest policies and
+  comparison context. Put test-only byte/digest/work/error guards before any
+  production refactor; keep configurable genes and Phase 2/S1 outputs unchanged.
+- Make unknown search completeness and missing-mask qualification independent;
+  specify zero interpreted segments for unsupported units, optimal-path-only
+  family support, qualification-split SAM catalogs and declared/verified
+  coordinate authority. Narrow optional-tag scope and type unsupported axes.
+- Prefer GTF first; preserve literal source IDs and bind selectors. Propose
+  always snapshot-tagged prepared annotation versions, typed duplicate-accession
+  and touching/gap-policy refusals, without approving a biological intron cutoff,
+  contig aliases, qualified IDs or a shorter QNAME-only accounting contract.
+  Preserve the original review prompt as historical and update the existing
+  umbrella/roadmap status, not a second competing plan.
+- This is documentation reconciliation only. S2.0a and later implementation,
+  Rust execution, real-data/Glen replay, fresh Claude sign-off, commit and push
+  are not authorized by receipt of the review; unrelated `output/` is untouched.
+- Verification: documentation status, 18 LF/CRLF-aware documentation tests,
+  five local plan/prompt link targets and whitespace pass. Session-close has
+  4 OK, 2 expected dirty-tree/manual-plan warnings and no failures.
+
 ## 2026-10-27 - Author Lifecycle Slice 4 Preview Writer Safety
 
 - Implement the owner-authorized revised Plan-only report contract: preflight
