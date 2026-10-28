@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-28 - Repair Help And Observed-Transcript Smoke Fixtures
+
+- Point synthetic Help clicks at an actual text row, excluding the galley's
+  inline leading space. The old midpoint could hit the preceding footer link.
+  Retain the exact embedded/manual destination assertion and capture/browser/
+  project guards; add a real hyperlink-response negative control for the old hit point.
+- Reuse existing typed discovery templates for observed-transcript structure
+  and annotation prepare/cancel smoke commands, and supply a typed inspection
+  binding instead of `{}`. Add schema/unknown-field refusals, quoted-path,
+  confirmation and no-execution controls. No production parser, navigation,
+  scientific admission or generated artifact changes.
+- Record the owner's three failing tests and the bounded external rerun in
+  Glen's handoff. Twenty-five Python/source checks passed, including LF/CRLF
+  coverage; the new Rust regressions remain unrun locally. No push or resumption
+  of the paused goal.
+
 ## 2026-10-28 - Author Named Annotation Preparation Routes
 
 - Commit verified S2.1b as `f55931ba`, preserving its exact execution receipts

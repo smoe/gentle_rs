@@ -488,13 +488,65 @@ fn help_link_frame(
 fn help_link_text_center(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
     match shape {
         egui::epaint::Shape::Text(text) if text.galley.job.text == label => {
-            Some(text.pos + text.galley.size() * 0.5)
+            // Inline galleys include preceding widgets as leading space, not clickable text.
+            text.galley
+                .rows
+                .iter()
+                .find(|row| !row.glyphs.is_empty())
+                .map(|row| text.pos + row.rect_without_leading_space().center().to_vec2())
         }
         egui::epaint::Shape::Vec(shapes) => shapes
             .iter()
             .find_map(|shape| help_link_text_center(shape, label)),
         _ => None,
     }
+}
+
+#[test]
+fn help_link_hit_point_excludes_inline_leading_space() {
+    let ctx = egui::Context::default();
+    let label = "Next chapter";
+    let mut link_rect = egui::Rect::NOTHING;
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(640.0, 200.0),
+        )),
+        ..Default::default()
+    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.allocate_exact_size(egui::vec2(400.0, 20.0), egui::Sense::hover());
+                link_rect = ui.hyperlink_to(label, "next.md").rect;
+            });
+        },
+    );
+    let output = crate::egui_compat::end_test_pass(&ctx);
+    let text = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) if text.galley.job.text == label => Some(text),
+            _ => None,
+        })
+        .expect("inline hyperlink text");
+    let point = output
+        .shapes
+        .iter()
+        .find_map(|shape| help_link_text_center(&shape.shape, label))
+        .unwrap();
+    assert!(
+        link_rect.contains(point),
+        "hit point must be inside the real hyperlink response"
+    );
+    assert!(
+        !link_rect.contains(text.pos + text.galley.size() * 0.5),
+        "negative control: the old galley midpoint lands in preceding inline space"
+    );
+    output.drop_without_applying_deltas();
 }
 
 fn click_help_link(app: &mut GENtleApp, label: &str) {

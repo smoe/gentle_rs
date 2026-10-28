@@ -1987,6 +1987,23 @@ fn smoke_command_line_for_glossary_command(
     command: &GlossaryCommandFixture,
     scratch: &Path,
 ) -> String {
+    let observed_descriptor = match command.path.as_str() {
+        "rna-reads transcript-annotation-prepare" | "rna-reads transcript-annotation-cancel" => {
+            Some(observed_annotation_descriptor(&command.path))
+        }
+        "rna-reads transcript-structures" | "rna-reads transcript-structures-cancel" => {
+            Some(observed_transcript_descriptor(&command.path))
+        }
+        _ => None,
+    };
+    if let Some(descriptor) = observed_descriptor {
+        // Discovery examples are typed parser inputs, not verified or executable evidence.
+        return format!(
+            "{} {}",
+            command.path,
+            quote_shell_arg(&descriptor["request_template"].to_string())
+        );
+    }
     if command.path.starts_with("rna-reads primer-payload-") && !command.path.ends_with("-show") {
         let descriptor = primer_payload_descriptor(&command.path);
         return format!(
@@ -2444,6 +2461,27 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
+    if path == "rna-reads transcript-structures-show" && flag == "--binding" {
+        let mut tokens = split_shell_words(line).expect("split observed-transcript smoke command");
+        let index = tokens
+            .iter()
+            .position(|token| token == "--binding")
+            .unwrap();
+        let digest = format!("sha256:{}", "0".repeat(64));
+        let binding = json!({
+            "schema":"gentle.observed_transcript_structures_result_binding.v1",
+            "request_sha256":digest,
+            "report_content_sha256":digest,
+            "report_path":tokens[2],
+            "outcome":"unavailable"
+        });
+        tokens[index + 1] = binding.to_string();
+        *line = tokens
+            .iter()
+            .map(|token| quote_shell_arg(token))
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
     if path == "rna-reads primer-payload-show" && flag == "--binding" {
         let binding = json!({"schema":"gentle.primer_payload_result_binding.v1","kind":"queries","request_sha256":"","report_content_sha256":"","report_path":"synthetic-report.json","outcome":"completed"});
         let mut tokens = split_shell_words(line).unwrap();
@@ -2507,6 +2545,130 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
     };
     if let Some(companion) = companion {
         line.push_str(companion);
+    }
+}
+
+#[test]
+fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation() {
+    let glossary = glossary_fixture();
+    let scratch = tempdir().unwrap();
+    for path in [
+        "rna-reads transcript-annotation-prepare",
+        "rna-reads transcript-annotation-cancel",
+        "rna-reads transcript-structures",
+        "rna-reads transcript-structures-cancel",
+    ] {
+        let entry = glossary
+            .commands
+            .iter()
+            .find(|entry| entry.path == path)
+            .unwrap();
+        let descriptor = if path.contains("transcript-annotation-") {
+            observed_annotation_descriptor(path)
+        } else {
+            observed_transcript_descriptor(path)
+        };
+        let line = smoke_command_line_for_glossary_command(entry, scratch.path());
+        let parsed = parse_shell_line(&line).expect("typed observed-transcript parser fixture");
+        assert!(
+            parsed.is_state_mutating(),
+            "artifact/control writes still require approval: {path}"
+        );
+        assert_eq!(descriptor["requires_confirmation"], true);
+        assert_eq!(
+            descriptor["request_template_is_example_not_resolved_input"],
+            true
+        );
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("shared operation expected for {path}");
+        };
+        serde_json::from_str::<Operation>(&payload).expect("typed operation round-trip");
+        assert_eq!(
+            serde_json::from_str::<Value>(&payload).unwrap(),
+            descriptor["operation_template"]
+        );
+        let request = &descriptor["request_template"];
+        assert!(
+            request["cancel_path"].is_null(),
+            "discovery cannot invent a marker path"
+        );
+        assert_eq!(request["budgets"]["max_input_bytes"], 0);
+        let mut unknown = request.clone();
+        unknown["unknown_smoke_field"] = json!(true);
+        let mut unlabelled = request.clone();
+        unlabelled.as_object_mut().unwrap().remove("schema");
+        for invalid in [json!({}), unknown, unlabelled] {
+            let error =
+                parse_shell_line(&format!("{path} {}", quote_shell_arg(&invalid.to_string())))
+                    .expect_err("empty, unlabelled and unknown-field requests must remain invalid");
+            assert!(
+                error.contains("missing field") || error.contains("unknown field"),
+                "{error}"
+            );
+        }
+    }
+    assert_eq!(
+        fs::read_dir(scratch.path()).unwrap().count(),
+        0,
+        "parser smoke must not execute requests"
+    );
+}
+
+#[test]
+fn glossary_observed_transcript_binding_keeps_quoted_identity_and_strict_schema() {
+    for path in [
+        "synthetic report's path.json",
+        r"C:\GENtle data\report's.json",
+    ] {
+        let base = format!(
+            "rna-reads transcript-structures-show {}",
+            quote_shell_arg(path)
+        );
+        let mut line = shell_command_line_with_option(&base, "--binding", Some("{}")).unwrap();
+        add_required_glossary_flag_companion(
+            "rna-reads transcript-structures-show",
+            "--binding",
+            &mut line,
+        );
+        let parsed = parse_shell_line(&line).expect("typed observed-transcript result binding");
+        assert!(!parsed.is_state_mutating());
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("shared inspection operation expected");
+        };
+        let Operation::InspectObservedTranscriptStructures {
+            path: report_path,
+            expected_result: Some(binding),
+            rows,
+            verify_artifacts,
+            ..
+        } = serde_json::from_str::<Operation>(&payload).unwrap()
+        else {
+            panic!("typed result binding must survive inspection parsing");
+        };
+        assert_eq!(report_path, path);
+        assert_eq!(binding.report_path, path);
+        assert_eq!(
+            binding.schema,
+            "gentle.observed_transcript_structures_result_binding.v1"
+        );
+        let digest = format!("sha256:{}", "0".repeat(64));
+        assert_eq!(binding.request_sha256, digest);
+        assert_eq!(binding.report_content_sha256, digest);
+        assert_eq!(binding.outcome, "unavailable");
+        assert_eq!(rows, 0);
+        assert!(!verify_artifacts);
+        let mut unknown = serde_json::to_value(&binding).unwrap();
+        unknown["unknown_smoke_field"] = json!(true);
+        for invalid in [json!({}), unknown] {
+            assert!(
+                parse_shell_line(&format!(
+                    "{base} --binding {}",
+                    quote_shell_arg(&invalid.to_string())
+                ))
+                .is_err()
+            );
+        }
+        assert!(parse_shell_line(&format!("{base} --binding demo")).is_err());
     }
 }
 

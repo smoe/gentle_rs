@@ -1,5 +1,48 @@
 # Glen: Next Verification And Return
 
+## Help And Observed-Transcript Smoke Fixtures, 2026-10-28
+
+The owner reports 4706 library passes, three failures and 16 ignored tests;
+the exact tested SHA/platform were not supplied. Inspection of integrated
+`284e5b70` confirms two fixture defects, not authority to relax production
+schemas or change a navigation destination assertion.
+
+Help's pointer helper used the center of an inline galley's full bounds,
+including the leading space occupied by earlier links. It now chooses a
+nonempty row's rectangle without leading space. The existing embedded-book
+click must still land at `docs/gui/documentation-automation-status.md`, not
+`what-to-trust-today.md`. A new synthetic hyperlink-response test proves the
+old center misses the link while the selected glyph-row point is inside it.
+Browser, screenshot and unchanged-project assertions remain intact.
+
+The four annotation/structure prepare/cancel smoke routes now use their existing
+discovery request templates instead of generic `{}`. Inspection `--binding`
+gets a typed, report-path-bound synthetic record. New controls require explicit
+write confirmation, unchanged quoted POSIX/Windows path spelling, metadata-only
+inspection defaults and rejection of empty/unlabelled/unknown-field requests
+and malformed bindings. Discovery placeholders/zero budgets remain nonexecutable;
+the parser, runtime validation and public contract were not broadened.
+
+Local verification: 25 Python/source tests passed, including LF/CRLF manual
+coverage and observed-transcript contract guards. Documentation status, manual
+inventory freshness and whitespace checks passed. These do not execute the new
+Rust regressions. Session-close reports four OK, two expected worktree/manual-
+review warnings and no failures; unrelated dirty/untracked files are preserved.
+
+On the next normally integrated source, run only these affected groups, or reuse
+same-source CI with nonzero counts:
+
+```sh
+cargo test --locked --lib -j1 help_docs -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+```
+
+They include the three original failures and the new geometry/template/binding
+regressions. Do not repeat completed unrelated RNA/gel/lifecycle checks. Rust
+and native execution of this repair remain unrun locally; return full tested
+SHA, toolchain/platform, counts, failures/skips and retained evidence through
+Steffen. No new audit freeze, push, package/model/provider call or goal resumption.
+
 ## Lifecycle Compile And VM Oracles, 2026-10-28
 
 Narrow repair of the owner-supplied Claude review at historical `550e6e0a`.
