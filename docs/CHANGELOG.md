@@ -13,6 +13,34 @@
   exact commands and platform/toolchain/features; no later-source or release
   pass is inferred. No local Rust, push or goal resumption.
 
+## 2026-10-28 - Author Snapshot-Bound No-Path Preview Publication
+
+- Implement owner-authorized Lifecycle Slice 5: only standalone managed
+  no-path Plan publishes a bounded command result instead of merging its private
+  journal. Retain project snapshot/Execution admission, exact typed request
+  binding, owner/structural freshness and engine-read/job cancel ordering.
+  Receipts disclose `preview`, source owner/revision and zero committed ops.
+- Retain a tiny host-local preview stamp after consumption; Agent Assistant
+  rejects wrong-owner attribution/sharing and marks later same-project edits
+  as historical at display and explicit draft sharing. Scientific JSON, Apply
+  source/output-ID validation, approvals and raw adapter journals are unchanged.
+- Author synthetic concurrency, direct report/digest, stale owner/structure,
+  metadata/Save As, cancellation-stage, worker-input, typed-binding, noncoverage,
+  output-budget and delayed GUI sharing regressions. Preserve S1/workflow stale
+  controls and raw operation behavior. No new resolver, queue or journal merge.
+- Update tutorial 06.07, canonical GUI topics, protocol, DEC-026/architecture,
+  lifecycle status, roadmap and consolidated handoff. Managed no-file previews
+  have no project History row; their local command receipts are not durable.
+  Runtime/Rust/VM/native checks remain Glen/CI's; no local build, model call,
+  capture, push or resumption of the previous goal is claimed. The owner later
+  requested a scoped commit/rebase, not execution or acceptance.
+- Non-Rust verification: 25 focused lifecycle/tutorial/maturity checks pass
+  with 12 actual-process skips (37 total); all 83 LF/CRLF-aware checkout tests
+  pass. Manual projections, documentation status, maturity freshness and
+  whitespace pass. Scoped rustfmt passes outside `app.rs`; its three pre-existing
+  Help formatting groups are unchanged, verified by comparing formatter output
+  against HEAD. No unrelated formatting edits are included.
+
 ## 2026-10-27 - Author Lifecycle Slice 4 Preview Writer Safety
 
 - Implement the owner-authorized revised Plan-only report contract: preflight

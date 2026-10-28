@@ -1,10 +1,11 @@
-//! Named RNA artifact-only and independent observation/control policies, never inferred from output JSON.
+//! Named artifact, snapshot-preview and observation policies, never inferred from output JSON.
 
 use super::*;
 use crate::engine::{Operation, RnaReadPanelResultBinding};
 
 pub(super) enum Policy {
     Project,
+    Preview(Box<gentle_protocol::sequence_design::DnaSequenceDesignRequest>),
     Screen(Box<crate::engine::ScreenRnaReadPanelRequest>),
     Summary(Box<crate::engine::ExportRnaReadPanelSummaryRequest>),
     PrimerTrace(Box<crate::engine::TracePrimerReadsRequest>),
@@ -24,12 +25,16 @@ impl Policy {
         }
     }
     pub(super) fn needs_project(&self) -> bool {
-        matches!(self, Self::Project)
+        matches!(self, Self::Project | Self::Preview(_))
     }
 }
 
 fn classify(op: Operation) -> Policy {
     match op {
+        Operation::PlanDnaSequenceDesign {
+            request,
+            path: None,
+        } => Policy::Preview(request),
         Operation::SummarizeObservedTranscriptStructures { request } => {
             Policy::ObservedStructures(request)
         }
@@ -67,6 +72,73 @@ fn classify(op: Operation) -> Policy {
         },
         Operation::CancelRnaReadPanel { .. } => Policy::Control,
         _ => Policy::Project,
+    }
+}
+
+#[cfg(test)]
+mod preview_policy_tests {
+    use super::*;
+    use crate::engine::{Engine, lifecycle_slice3_tests as fixture};
+
+    #[test]
+    fn lifecycle_slice5_preview_policy_keeps_execution_capacity_and_project_snapshot() {
+        for path in [
+            None,
+            Some(String::new()),
+            Some("synthetic-report.json".into()),
+        ] {
+            let expected_preview = path.is_none();
+            let op = fixture::plan(path, true);
+            let mut command = ShellCommand::Op {
+                payload: serde_json::to_string(&op).unwrap(),
+            };
+            for policy in [
+                classify(op),
+                admission(&command),
+                freeze(&mut command).unwrap(),
+            ] {
+                assert!(policy.needs_project());
+                assert!(matches!(policy.lane(), Lane::Execution));
+                assert_eq!(matches!(policy, Policy::Preview(_)), expected_preview);
+            }
+        }
+        let td = tempfile::tempdir().unwrap();
+        let path = td.path().join("not-yet-readable.json");
+        let mut command = ShellCommand::Op {
+            payload: format!("@{}", path.display()),
+        };
+        assert!(matches!(admission(&command), Policy::Project));
+        // Admission did not read the absent file. Existing worker freeze does.
+        assert!(freeze(&mut command).is_err());
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&fixture::plan(None, true)).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(freeze(&mut command).unwrap(), Policy::Preview(_)));
+    }
+
+    #[test]
+    fn lifecycle_slice5_preview_publication_requires_the_exact_typed_report() {
+        let op = fixture::plan(None, true);
+        let mut engine = fixture::live_with_redo();
+        let result = engine.apply(op.clone()).unwrap();
+        let mut output = serde_json::json!({"result":result});
+        assert!(matches!(
+            publication(classify(op.clone()), &output).unwrap(),
+            Publication::Preview
+        ));
+        assert!(publication(classify(op.clone()), &serde_json::json!({})).is_err());
+        output["result"]["dna_sequence_design"]["request"]["output_seq_id"] =
+            serde_json::json!("different-request");
+        assert!(
+            publication(classify(op.clone()), &output)
+                .err()
+                .unwrap()
+                .contains("executed request")
+        );
+        output["result"]["dna_sequence_design"] = serde_json::json!({"status":"feasible"});
+        assert!(publication(classify(op), &output).is_err());
     }
 }
 
@@ -182,6 +254,20 @@ pub(super) fn publication(
     output: &serde_json::Value,
 ) -> Result<Publication, String> {
     match &policy {
+        Policy::Preview(request) => {
+            let report: gentle_protocol::sequence_design::DnaSequenceDesignReport =
+                serde_json::from_value(
+                    output
+                        .pointer("/result/dna_sequence_design")
+                        .ok_or("Preview returned no typed sequence-design report")?
+                        .clone(),
+                )
+                .map_err(|e| e.to_string())?;
+            if report.request != **request {
+                return Err("Preview report does not match the executed request".into());
+            }
+            return Ok(Publication::Preview);
+        }
         Policy::ObservedStructures(request) => {
             let report = serde_json::from_value(
                 output
@@ -236,7 +322,8 @@ pub(super) fn publication(
     let binding: RnaReadPanelResultBinding = match policy {
         Policy::Project => return Ok(Publication::Project),
         Policy::Observe { .. } | Policy::Control => return Ok(Publication::Observation),
-        Policy::PrimerTrace(_)
+        Policy::Preview(_)
+        | Policy::PrimerTrace(_)
         | Policy::PayloadQueries(_)
         | Policy::PayloadAlignments(_)
         | Policy::ObservedStructures(_) => {

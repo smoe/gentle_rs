@@ -1031,11 +1031,20 @@ Interactive orchestration contract:
   effects. Blocking CLI callers retain their prior nontransactional prefix semantics.
 - Observation-only background computation uses the same engine execution baseline but
   clones no inherited undo/redo checkpoints and never enters the commit path.
-  Managed generic Op/Workflow instead publishes its operation journal through
+  Managed generic Op/Workflow normally publishes its operation journal through
   the guarded commit even for Plan/S1 inspections; it preserves project content,
   dirty revisions and undo/redo, not journal identity. A concurrent journal
   append can still make another job stale. No observation-lane exemption follows
   from a false `state_changed` or registry read-only label (DEC-026).
+  The owner-authorized [Slice 5](operation_lifecycle_slice5_plan.md) exception
+  covers only standalone managed Plan with no output path: it still takes a
+  project snapshot/Execution slot, but publishes a bounded source-bound command
+  result without merging its private journal. Owner/structural freshness and
+  cancellation are serialized by engine-read then job locks. Host consumers
+  retain the owner/revision stamp and recheck it on display/explicit sharing:
+  later same-project edits mark historical evidence, replacement forbids
+  attribution. No project History row, durable audit, generic stale-guard change
+  or scientific-report schema change follows. All other routes stay as above.
   Raw full-engine clones are not permitted in GUI workers: retaining unneeded
   shared history can keep complete historical project snapshots alive.
 - Persisted metadata edits made outside `apply` go through the engine auxiliary

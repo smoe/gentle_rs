@@ -18983,6 +18983,7 @@ fn agent_command_results_are_shared_only_by_explicit_bounded_draft_action() {
             "rows": [{"feature_id": 0, "kind": "gene", "label": "PATZ1"}]
         }),
         state_changed: false,
+        preview_binding: None,
     };
     let mut app = GENtleApp::default();
     app.agent_prompt = "Help me design an isoform-discrimination panel.".into();
@@ -19001,6 +19002,7 @@ fn agent_command_results_are_shared_only_by_explicit_bounded_draft_action() {
         command: "primers show-transcript-assay-panel panel".into(),
         output: serde_json::json!({"payload": "x".repeat(129 * 1024)}),
         state_changed: false,
+        preview_binding: None,
     };
     let draft = app.agent_prompt.clone();
     assert!(app.stage_agent_command_result_followup(&oversized).is_err());
@@ -19014,6 +19016,7 @@ fn agent_command_result_draft_limit_counts_all_utf8_bytes_without_partial_update
         command: "features query locus --label '\u{e9}'".into(),
         output: serde_json::json!({"label": "\u{e9}"}),
         state_changed: false,
+        preview_binding: None,
     };
     let mut app = GENtleApp::default();
     for initial in ["Review this result.", "state-summary"] {

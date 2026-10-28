@@ -81,8 +81,8 @@ fn observed_transcripts_managed_publication_keeps_live_project_and_journal_uncha
 }
 
 #[test]
-fn lifecycle_slice3_managed_op_and_workflow_publish_journals_not_project_changes() {
-    for workflow in [false, true] {
+fn lifecycle_slice3_managed_workflow_publishes_journals_not_project_changes() {
+    {
         let service = CommandExecutionService::default();
         let engine = Arc::new(RwLock::new(fixture::live_with_redo()));
         let before = engine.read().unwrap();
@@ -92,25 +92,16 @@ fn lifecycle_slice3_managed_op_and_workflow_publish_journals_not_project_changes
         let history = before.history_summary();
         let owner = before.instance_id();
         drop(before);
-        let command = if workflow {
-            format!(
-                "workflow {}",
-                crate::engine_shell::shell_quote(
-                    &serde_json::to_string(&Workflow {
-                        run_id: "managed-synthetic".into(),
-                        ops: vec![fixture::snv(), fixture::plan(None, true)]
-                    })
-                    .unwrap()
-                )
+        let command = format!(
+            "workflow {}",
+            crate::engine_shell::shell_quote(
+                &serde_json::to_string(&Workflow {
+                    run_id: "managed-synthetic".into(),
+                    ops: vec![fixture::snv(), fixture::plan(None, true)]
+                })
+                .unwrap()
             )
-        } else {
-            format!(
-                "op {}",
-                crate::engine_shell::shell_quote(
-                    &serde_json::to_string(&fixture::plan(None, true)).unwrap()
-                )
-            )
-        };
+        );
         let id = service
             .submit(engine.clone(), command, Default::default())
             .unwrap();
@@ -132,7 +123,7 @@ fn lifecycle_slice3_managed_op_and_workflow_publish_journals_not_project_changes
             (after.undo_available(), after.redo_available()),
             (history.undo_count, history.redo_count)
         );
-        assert_eq!(receipt.committed_operations, if workflow { 2 } else { 1 });
+        assert_eq!(receipt.committed_operations, 2);
         assert_eq!(
             after.history_summary().operation_log_count,
             history.operation_log_count + receipt.committed_operations

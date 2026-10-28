@@ -1,13 +1,16 @@
 # Request-Aware Operation Lifecycle Policy
 
-Status, 2026-10-27: slices 1--2 retain the source-scoped executed macOS approval/
+Status, 2026-10-28: slices 1--2 retain the source-scoped executed macOS approval/
 parity evidence below. After a further owner-supplied Claude review, the owner
 authorized [revised Slice 3](operation_lifecycle_slice3_plan.md), explicitly
 without the new payload-resolution layer. Construction/workflow/no-autosave
 changes and regressions are authored; Rust/actual-process/VM/native verification
 remains with Glen/CI. The owner subsequently authorized revised Slice 4's
 Plan-only fresh writer/host binding, now authored with separate pending external
-checks. Original review/source observations below are historical; the revised
+checks. Owner-authorized [Slice 5](operation_lifecycle_slice5_plan.md) now authors
+snapshot-bound standalone no-path Plan publication without a live journal or
+History row; all execution/native acceptance remains with Glen/CI.
+Original review/source observations below are historical; the revised
 slice order records current scope. S2 and wider exporter/security changes remain
 separately gated. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
@@ -133,9 +136,10 @@ parsed-command confirmation and the nested-agent ban remain intact.
 
 ### Full Lifecycle Target Beyond Slices 1--2
 
-Only Plan's final approval column is implemented by the current bounded repair.
-The construction, reconciliation, history and autosave columns remain future
-targets, not guarantees of this partial migration.
+This table began as the full target beyond slices 1--2. Slices 3/4 now author
+the covered construction/persistence and Plan writer rules; Slice 5 separately
+changes only managed standalone no-path journal publication. Their unrun
+Rust/process/native checks remain requirements, not executed guarantees.
 
 | Typed request | Project content | Explicit artifact | Reconcile | Undo/redo | Implicit project save | Operation-derived conversation approval |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -152,8 +156,9 @@ does not authorize an implicit reference fetch, sequence creation or S2 design.
 
 ## Full Migration Consumer Rules
 
-The approval/static-metadata parts of rules 2 and 5 are implemented in source.
-Other lifecycle changes remain deferred pending separate owner authorization.
+These are the original migration requirements, not a fresh implementation list.
+The revised slice order records the authored scope and pending external checks;
+unmigrated operations and opaque wrappers remain conservative.
 
 1. **Engine construction and apply:** add an explicitly selected inspection
    construction path that retains project content without persistent repairs;
@@ -257,6 +262,15 @@ already written files or infer that undo removes them.
    session host path and conservative Unicode refusal are authored, not a verified
    native alias guarantee. Rust/process/VM/native verification remains with Glen/CI
    through the [existing handoff](glen_next_verification_handoff.md#lifecycle-slice-4-2026-10-27).
+5. **Snapshot-bound no-file preview publication.** Owner authorized the revised
+   [Slice 5](operation_lifecycle_slice5_plan.md) and its DEC-026/History exception
+   on 2026-10-28. Only managed standalone no-path Plan retains command output/
+   receipt instead of committing its private journal. It still requires a
+   project snapshot/Execution slot and freshness/cancel ordering. Delayed
+   consumption/display/sharing retains owner/revision context. With-path Plan,
+   S1, workflows, opaque wrappers and raw adapters remain controls; no generic
+   journal merge, resolver or independent observation migration. Verification
+   remains external through the consolidated handoff.
 
 Keep S1 regressions as a control, not a reason to repeat its scientific review.
 Do not expand this to every read-only operation before evidence warrants it.
@@ -299,10 +313,12 @@ evidence below supports the bounded confirmation repair on the named macOS
 source/features. The `ced03a22` S1 control also ran headlessly; neither result
 transfers to unrun constructors, platforms or later integrated source.
 
-Separate authorization is still required for construction/scripting/autosave
-migration, the destination-alias/writer policy, and S2 itself. Strict project
-preservation cannot be claimed from a confirmation guard or unchanged disk
-bytes alone. There is no new release gate, writer redesign or S2 editor work.
+The bounded construction/save and Plan writer migrations were authorized as
+slices 3/4; the no-path managed-preview audit change was authorized as Slice 5.
+These authored paths still need their integrated-source external checks.
+Broader wrappers/exporters, loader semantics, generic journal changes and S2
+editor work require separate authorization. Confirmation guards or unchanged
+disk bytes alone do not prove strict preservation. No new release gate is added.
 
 ## Authoring Checks Before Rust Execution
 

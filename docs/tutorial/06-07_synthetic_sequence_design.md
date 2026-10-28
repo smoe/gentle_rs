@@ -113,6 +113,8 @@ The raw CLI/MCP op and nonempty all-inspection workflow routes share this rule;
 MCP still requires `confirm=true`. Empty/mixed workflows and opaque agent-plan
 wrappers retain legacy construction/save behavior. In-memory undo/redo and dirty
 revisions stay unchanged, while successful operation journals still advance.
+The managed no-path Agent Assistant exception is explained below; it does not
+change the file-writing commands above or raw CLI/MCP/scripting journals.
 The input is inline DNA in the request, not an existing sequence to overwrite.
 Planning also leaves any already stored project DNA unchanged.
 
@@ -246,6 +248,39 @@ prompt** shares result content only with your consent; it is not application
 approval. Execution receipts alone do not give the model the complete report.
 Approve a subsequent exact apply command separately. Window opening and
 undo/redo also require explicit review, not `auto` execution.
+
+## Optional no-file preview in Agent Assistant
+
+To inspect without writing a preview file, use the same request without `--path`:
+
+```text
+sequence-design plan @request.json
+```
+
+When run as a standalone background command in Agent Assistant, this retains
+an immutable project snapshot but adds **no project History row**. Its result
+and command receipt are local, bounded and **nonpersistent**; consumption does
+not save them in the project. This prevents a preview's journal entry from
+invalidating another running job. It is not a guarantee that concurrent DNA
+edits are safe: a structural edit or project replacement before publication
+refuses the result. Display-only changes do not invalidate it.
+
+After publication, a later same-project edit marks the displayed preview as
+**historical snapshot evidence**. That warning also appears when you explicitly
+share it with the inner agent. A replaced-project preview cannot be shared as
+current-project evidence. Re-preview changed DNA; Apply independently revalidates
+the exact source, annotations, genetic code and output ID and still needs the
+reviewed approval digest. Cancel before publication discards the no-file result;
+after publication Cancel does not retract it. An exhausted/infeasible search is
+not a feasible design merely because the command finished successfully.
+
+The `--path preview.json` commands above still write a file and keep their
+existing journal behavior. A workflow containing a no-path preview, GUI Shell
+execution outside this managed Agent Assistant route, and raw CLI/MCP/JavaScript/
+Lua calls also retain their existing journal contracts. Sharing a result remains
+an explicit user action, never permission to send data or Apply automatically.
+The managed preview check needs a GUI/host session; a CLI-only replay cannot
+prove its History, concurrency or delayed-sharing behavior.
 
 ## Executable checks and independent review
 

@@ -903,8 +903,10 @@ project; denied Apply keeps it missing; approved Apply creates the exact DNA.
 Raw MCP's returned `state_summary` reflects unreconciled preserved content, so
 container/arrangement counts may differ from older constructor-repaired results.
 Its separate `state_summary` tool retains ordinary construction. Generic managed
-Op/Workflow retains guarded journal publication; inspection is not an independent
-observation job. No new payload resolver or parser read is added.
+Op/Workflow normally retains guarded journal publication; inspection is not an
+independent observation job. Slice 5's standalone no-path managed Plan exception
+below retains a project snapshot without merging its journal. No new payload
+resolver or parser read is added.
 
 Slice 4's Plan-only writer admits a fresh file in an existing directory, stages
 the same pretty JSON, syncs its write-capable temporary handle and publishes
@@ -1045,6 +1047,23 @@ limit bound admission. Outputs are consumed once; their receipts remain until
 capacity requires oldest-consumed-terminal eviction. Missing/cancelled/stale
 results are never published as successful partial output. External resource/file
 effects are not rolled back by discarding a detached engine.
+
+Only standalone managed `PlanDnaSequenceDesign` with `path=None` uses
+`publication="preview"`: it requires the project snapshot/Execution slot but
+publishes no live journal or History row. `computed_operations` can be one while
+`committed_operations` is zero and `requires_project_commit=false`;
+`result_instance` and `result_structural_revision` identify its source snapshot,
+not an engine commit. The executed request must match the typed report.
+Before publication, cancellation, owner replacement or structural edits refuse
+the result; display/auxiliary metadata edits and Save As alone do not. After
+publication, cancellation cannot relabel it. Exhausted/infeasible reports may
+have Completed service receipts without becoming feasible scientific results.
+No compact fallback bypasses the 16 MiB full-output limit. The GUI retains the
+snapshot stamp after consumption, marks later same-project edits as historical
+on display/sharing, and refuses wrong-owner attribution/sharing. Raw adapters,
+with-path Plan, S1, workflows and opaque wrappers keep their prior contracts.
+This additive receipt value changes no scientific JSON/digest or Apply approval.
+
 The standalone RNA screen/summary allowlist is an explicit file-only exception:
 published typed outcomes are retained without live project or journal merging.
 Receipts expose `publication`, `requires_project_commit` and optional

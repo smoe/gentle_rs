@@ -1,5 +1,71 @@
 # Glen: Next Verification And Return
 
+## Lifecycle Slice 5, 2026-10-28
+
+Include the owner's approved [Slice 5](operation_lifecycle_slice5_plan.md) in
+the normal integrated-source lifecycle return, not a parallel audit campaign.
+Only managed standalone no-path Plan changes: it retains the project snapshot
+and execution capacity, but publishes a source-stamped command result with zero
+live journal commits/History rows. Raw adapters, with-path Plan, S1, workflows,
+opaque wrappers and arbitrary trusted work retain their contracts. No new
+payload-resolution layer, scientific schema, journal merge or queue.
+
+Changed runtime: `src/command_execution.rs`, its existing policy helper,
+`src/app.rs` and `src/app/routine_and_agent_assistant_ui.rs`.
+Inner-agent guidance in `src/agent_bridge.rs` retains full existing instructions
+and adds only the snapshot/History/historical-evidence distinction.
+New synthetic service tests: `src/command_execution/preview_tests.rs`; existing policy,
+lifecycle and GUI test modules cover request binding, noncoverage and delayed
+sharing. Test constructors in `src/app/tests.rs` supply no preview binding for
+unrelated outputs. Tutorial 06.07, protocol, canonical GUI chapters, decisions/
+architecture and lifecycle docs teach the bounded command audit versus History.
+
+Local Python/source checks pass 25 focused cases with 12 process skips (37
+total) and all 83 LF/CRLF checkout cases. Manual/maturity freshness, documentation
+status and whitespace pass. Scoped rustfmt passes except the preserved existing
+`app.rs` Help formatting groups: comparison to HEAD confirms no new format drift.
+Whole-file `cargo fmt --check` may report those three baseline groups; keep that
+separate from Slice 5 failures. No Rust/runtime/native acceptance is implied.
+Session-close has 4 OK, 2 expected working-tree/manual-review warnings and no
+failures. Unrelated `outputs/`, the paused goal and existing stashes are untouched.
+
+Rust/native/process/VM tests are authored, not executed locally. Use nonzero
+counts at the normally integrated full SHA and reuse unaffected same-source
+results; do not repeat every older evidence bundle:
+
+```sh
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --tests
+cargo test --locked -j1 --lib command_execution:: -- --test-threads=1
+cargo test --locked -j1 --lib routine_and_agent_assistant_ui::command_tests -- --test-threads=1
+cargo test --locked -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked -j1 --lib lifecycle_slice4_ -- --test-threads=1
+cargo test --locked -j1 --lib sequence_design -- --test-threads=1
+cargo test --locked -j1 --lib operation_lifecycle -- --test-threads=1
+cargo test --locked -j1 --lib agent_execution::tests::sequence_design -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo fmt --check
+```
+
+Exercise both service submit forms, named/raw inline/loaded previews and worker
+`@file` input; hold real mutations and simultaneous previews with channels.
+Require exact direct reports/approval hashes and unchanged live journal/state/
+revisions/undo/redo. Source/replacement changes before publication reject; display/
+metadata edits and Save As do not. Check cancellation before snapshot, during
+search, after computed work but before publication, and after publication.
+Exhausted/infeasible scientific reports are not feasible designs even if the
+service completed. Oversize refusal has an infrastructure test, not a claimed
+reachable full-solver case. Preserve the unchanged S1 and workflow stale guards.
+
+GUI/native: consume after edit/replacement, then edit/replace again before
+display/sharing. Historical warnings must reach the explicit inner-agent draft;
+wrong-owner/busy-project sharing must fail without changing it. No auto-send,
+model call or Apply approval follows. Check a long job remains usable beside a
+preview and that Operation History gains no managed no-path row; with-path
+reports/Apply still work. Keep existing raw CLI/MCP/JS/Lua/Python companions and
+scientific parity passing. Return exact source/binary/platform/features/counts,
+failures and unrun checks. No push/dispatch or previous-goal resumption here.
+
 ## Integrated Lifecycle And Help Follow-Up, 2026-10-28
 
 After the owner's next push, use the normally integrated source containing

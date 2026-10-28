@@ -29,6 +29,16 @@ committed operations. Failure/cancellation discards unpublished engine changes,
 but downloaded resources and exported files can remain. Concurrent structural
 edits or project replacement reject stale results; viewport-only edits are kept.
 
+A standalone `sequence-design plan` without `--path` is a snapshot-bound preview:
+it uses ordinary execution capacity but publishes only its result/command receipt,
+not a project History row. Other commands, including workflows and previews with
+an output path, keep their journal behavior. Command receipts are bounded and
+nonpersistent; copy/export reviewed evidence deliberately when needed. A later
+structural edit marks the displayed preview as historical, including in an
+explicit `Use reviewed result in next prompt` draft. A replaced-project preview
+is not attributed or shared as current-project evidence. Cancel before preview
+publication discards its result; publication does not itself approve Apply.
+
 The host accepts at most four active commands and retains 32 results/receipts.
 If the project lock or capacity is unavailable, submission reports that it was
 not admitted, rather than waiting. Results above 16 MiB require a file-export

@@ -2200,6 +2200,14 @@ struct AgentCommandOutput {
     command: String,
     output: serde_json::Value,
     state_changed: bool,
+    preview_binding: Option<AgentPreviewBinding>,
+}
+
+/// Host-local snapshot identity, retained independently of bounded job receipts.
+#[derive(Clone, Copy)]
+struct AgentPreviewBinding {
+    instance: u64,
+    structural_revision: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -111,6 +111,51 @@ class LifecycleSlice4SourceTests(unittest.TestCase):
             self.assertIn(required, guide)
 
 
+class LifecycleSlice5SourceTests(unittest.TestCase):
+    """Source/teaching checks only; concurrency and GUI Rust tests run on Glen/CI."""
+
+    def test_snapshot_publication_is_separate_from_independent_and_commit_paths(self):
+        policy = (ROOT / "src/command_execution/rna_artifacts.rs").read_text()
+        production = policy.split("#[cfg(test)]", 1)[0]
+        self.assertIn("path: None", production)
+        self.assertIn("Self::Project | Self::Preview(_)", production)
+        self.assertIn("Policy::Preview(request)", production)
+        service = (ROOT / "src/command_execution.rs").read_text()
+        branch = service.split("if preview {", 1)[1].split("if !project_commit {", 1)[0]
+        for required in ("engine.read()", "worker_job.lock()", "cancel.load",
+                         "live.instance_id()", "live.structural_revision()",
+                         'publication = "preview"', "result_instance = Some(expected_owner)",
+                         "result_structural_revision = Some(expected_revision)",
+                         "requires_project_commit = false"):
+            self.assertIn(required, branch)
+        self.assertLess(branch.index("engine.read()"), branch.index("worker_job.lock()"))
+        self.assertNotIn("commit_detached_execution", branch)
+        self.assertNotIn("journal_len()", branch)
+        self.assertNotIn("mutation_revision()", branch)
+        self.assertLess(branch.index("cancel.load"), branch.index("job.published = true"))
+
+    def test_binding_survives_consumption_and_is_checked_before_explicit_sharing(self):
+        gui = (ROOT / "src/app/routine_and_agent_assistant_ui.rs").read_text()
+        self.assertIn("receipt.requires_project_commit || receipt.result_instance.is_some()", gui)
+        self.assertIn("output.preview_binding = Some(binding)", gui)
+        sharing = gui.split("pub(super) fn stage_agent_command_result_followup(", 1)[1].split("fn render_agent_command_output", 1)[0]
+        self.assertIn("agent_preview_context_note(result)?", sharing)
+        self.assertIn("preview_context.as_str()", sharing)
+        rendering = gui.split("fn render_agent_command_output", 1)[1]
+        self.assertIn("agent_preview_context_note(result)", rendering)
+        self.assertIn("Historical snapshot preview", gui)
+        self.assertIn("replaced project", gui)
+
+    def test_tutorial_explains_managed_history_and_delayed_source_binding_in_both_endings(self):
+        guide = (ROOT / "docs/tutorial/06-07_synthetic_sequence_design.md").read_bytes()
+        for ending in (b"\n", b"\r\n"):
+            text = guide.replace(b"\r\n", b"\n").replace(b"\n", ending).decode()
+            for required in ("sequence-design plan @request.json", "no project History row",
+                             "nonpersistent", "historical snapshot evidence", "inner agent",
+                             "replaced-project", "CLI-only replay cannot", "exact source"):
+                self.assertIn(required, text)
+
+
 @unittest.skipUnless(BIN_DIR, "Supply same-source binaries through GENTLE_LIFECYCLE_BIN_DIR; no auto-build")
 class LifecycleSlice3ProcessTests(unittest.TestCase):
     def setUp(self):

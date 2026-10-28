@@ -46,6 +46,9 @@ launcher can be used, not that its analysis passed scientific validation.
     labels, and recent operation summaries
   - uses the same engine-owned history summary surfaced by shell/CLI
     `history status`
+  - standalone no-path design previews in Agent Assistant retain bounded command
+    results/receipts instead of adding project History rows; workflows, file-writing
+    previews and raw CLI/MCP/scripting keep their existing journal behavior
 - Background Jobs panel:
   - open via `Window -> Show Background Jobs`
   - central place for progress, cancel/retry actions, and recent completion/error events

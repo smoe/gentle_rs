@@ -1127,13 +1127,33 @@ execution identity so GUI dirty checks remain constant-time without marking
 inspections as edits.
 
 Observation-only workers use a history-free engine clone and do not commit it.
-Managed generic Op/Workflow commands are instead journal-publishing workers,
-even for covered Plan/S1 inspections: they retain a project snapshot and the
+Managed generic Op/Workflow commands are normally journal-publishing workers,
+including covered Plan/S1 inspections except for Slice 5 below: they retain a
+project snapshot and the
 same guarded commit, owner/history/structural checks and cancellation boundary.
 An inspection commit preserves persisted content, mutation/structural revisions
 and undo/redo, but advances the journal/execution identity. Concurrent journal
 publication can still make another job stale; Slice 3 does not waive that guard
-or move these commands into the independent observation lane. A raw
+or move these commands into the independent observation lane.
+
+Owner-authorized Slice 5 exception (2026-10-28): only a standalone managed
+`PlanDnaSequenceDesign` with `path=None` publishes a bounded command result
+instead of its private journal. It still requires the project snapshot and an
+Execution slot; publication checks owner/structural freshness and cancellation
+under engine-read then job locks. It does not compare journal length there or
+change the generic commit/admission guards. The receipt records `preview`, the
+snapshot owner/revision and zero committed operations. Such previews add no
+project History row; command receipts are bounded, local and nonpersistent.
+Same-project structural edits after publication make the retained preview historical;
+display and explicit model-sharing recheck its host-local binding. Replaced-
+project results are not reattributed/shared. Scientific report hashes/statuses,
+raw adapter journals, exact Apply validation and approval remain unchanged.
+With-path previews, S1, workflows, opaque wrappers and arbitrary trusted work
+remain journal-publishing controls. This is not RNA's project-independent lane,
+a generic ReadOnly exemption, journal merge or authorization of editor biology.
+See the [scope and pending checks](operation_lifecycle_slice5_plan.md).
+
+A raw
 `GentleEngine::clone` in a background worker is prohibited because it retains
 unneeded history (even with shared checkpoints). Persisted metadata mutations outside
 `apply` must advance the mutation revision and clear redo; otherwise a redo

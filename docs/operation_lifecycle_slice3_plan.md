@@ -10,6 +10,12 @@ new payload-resolution layer. No further Claude call was made. See the
 and [verification handoff](glen_next_verification_handoff.md#lifecycle-slice-3-2026-10-27).
 No release gate, S2 authorization or scientific acceptance follows from this slice.
 
+Superseded narrowly on 2026-10-28: owner-authorized [Slice 5](operation_lifecycle_slice5_plan.md)
+removes live journal/History publication only for standalone managed no-path
+Plan. Its project snapshot remains; S1, with-path Plan, workflows and other
+routes retain the journal/commit boundaries recorded below. Raw adapter
+semantics do not change. Verification remains Glen/CI's.
+
 ## Source And Scope
 
 Implementation began on `gentle_rs_3` in

@@ -2,6 +2,8 @@
 //!
 //! Workers own detached engines. Observation and cancellation never acquire the
 //! project lock. Project mutations commit only when successful and current.
+//! Standalone no-path design previews retain a project snapshot but publish only
+//! a bounded command result, with owner/structural freshness and no live journal.
 //! Named RNA file-only operations retain bound published results without merging
 //! their private journals; published outcomes survive late host cancellation.
 //! Observation/control use independent bounded lanes. Receipts survive result
@@ -63,6 +65,7 @@ impl Lane {
 
 enum Publication {
     Project,
+    Preview,
     Artifact(crate::engine::RnaReadPanelResultBinding),
     PrimerTrace(crate::engine::RnaPrimerTraceResultBinding),
     PrimerPayload(crate::engine::PrimerPayloadResultBinding),
@@ -112,8 +115,8 @@ pub struct CommandReceipt {
     /// Optional admission context; independent work never requires a project lock/identity.
     pub owner_instance: Option<u64>,
     pub result_instance: Option<u64>,
-    /// Revision at commit, so UI consumers can detect later edits without
-    /// confusing the command's own structural changes with stale results.
+    /// Revision at project commit or no-path preview publication. Preview UI
+    /// consumers retain this snapshot stamp to detect later structural edits.
     pub result_structural_revision: Option<u64>,
     pub runtime_frame_id: Option<String>,
     pub command_sha256: String,
@@ -485,7 +488,8 @@ impl CommandExecutionService {
                 worker_job.lock().unwrap().receipt.computed_operations = if result.is_err() && retained_operations == 0 { None } else { Some(retained_operations) };
                 let WorkResult { mut run, publication } = result?;
                 let project_commit = matches!(&publication, Publication::Project);
-                if project_commit && (baseline.is_none() || Some(detached.engine().instance_id()) != owner) {
+                let preview = matches!(&publication, Publication::Preview);
+                if (project_commit || preview) && (baseline.is_none() || Some(detached.engine().instance_id()) != owner) {
                     return Err("Managed command replaced its project instance; use the explicit project load/import route instead".into());
                 }
                 let mut bytes = bounded_output(&run.output);
@@ -513,6 +517,28 @@ impl CommandExecutionService {
                 let bytes = bytes.map_err(|_| "Command result exceeds the 16 MiB interactive retention limit; use a file-export operation")?;
                 let digest = sha256_prefixed_bytes(&bytes);
                 drop(bytes);
+                if preview {
+                    // Snapshot-bound, not project-independent: serialize freshness,
+                    // cancellation and publication without merging the private journal.
+                    let (expected_owner, expected_revision, _) = baseline.ok_or("Preview requires a project snapshot")?;
+                    let live = engine.read().map_err(|_| "Project lock unavailable")?;
+                    let mut job = worker_job.lock().unwrap();
+                    if cancel.load(Ordering::Acquire) {
+                        return Err("Command cancelled before preview publication; result discarded".into());
+                    }
+                    if live.instance_id() != expected_owner || live.structural_revision() != expected_revision {
+                        return Err("Preview became stale because its project instance or project data changed while it was running; rerun the preview".into());
+                    }
+                    if run.state_changed { return Err("Preview unexpectedly changed project state".into()); }
+                    job.published = true;
+                    job.receipt.publication = "preview";
+                    job.receipt.result_instance = Some(expected_owner);
+                    job.receipt.result_structural_revision = Some(expected_revision);
+                    job.receipt.result_sha256 = Some(digest);
+                    job.receipt.requires_project_commit = false;
+                    // Guards drop before the worker's detached engine and history.
+                    return Ok(run);
+                }
                 if !project_commit {
                     let mut job = worker_job.lock().unwrap();
                     if matches!(&publication, Publication::Observation) && cancel.load(Ordering::Acquire) {
@@ -539,7 +565,7 @@ impl CommandExecutionService {
                             job.receipt.publication="artifact_only";
                             job.receipt.observed_structures_result=Some(binding);
                         }
-                        Publication::Project => unreachable!(),
+                        Publication::Project | Publication::Preview => unreachable!(),
                     }
                     job.receipt.requires_project_commit = false;
                     // No live engine lock, journal append, or late cancellation veto.
@@ -654,6 +680,8 @@ impl CommandExecutionService {
 
 #[cfg(test)]
 mod lifecycle_tests;
+#[cfg(test)]
+mod preview_tests;
 
 #[cfg(test)]
 mod tests {
