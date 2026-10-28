@@ -5,8 +5,9 @@ The dated ledgers below retain each slice's authorization and tested source.
 S2.1 provides annotation preparation and named adapters; S2.2a decodes supplied
 raw SAM lines privately. Verified SAM file/unit ingress and S2.3 public SAM
 interpretation remain separate proposed slices.
-The separate [S2.1 hardening close-out](#s21-close-out-remains-pending) remains
-pending and retains its annotation-preparation file reservation.
+The separate [S2.1 hardening close-out](#s21c-execution-and-close-out-2026-10-29)
+has its implementation and required local checks complete; native-platform,
+real-provider and scientific acceptance remain separate.
 Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
 `1804605f1ba42369f943213414d79fd9a40013cb`. No fetch or remote-tip claim.
 Tracked files were clean; unrelated untracked `output/` is untouched.
@@ -974,6 +975,106 @@ typed receipt/correlation and its tests; no separate receipt-format consumer
 needs migration. B2/B3 can therefore tighten these pre-release S2.1 records
 without the prompt's owner grammar/schema-version decision. S1 and Phase 2
 records and completed annotation geometry remain frozen.
+
+##### B1-B5 Implementation
+
+- **B1:** acquire staging-directory/annotation cleanup handles only at their
+  published paths, after rename and before observer hooks. Failed acquisition
+  cannot establish cleanup ownership and returns the existing orphaned-output
+  diagnostic. Keep report-last no-clobber publication, identity comparisons,
+  empty-directory-only cleanup and the S1 publisher unchanged. New synthetic
+  tests replace the artifacts directory (both receipt-only and annotated
+  cases), preserve moved originals/replacements, and force a failed annotation
+  reacquire without publishing a final report.
+- **B2:** all four consumed ID/version attributes share the existing 512-byte,
+  no-whitespace/control identifier rule. Pin whitespace, Unicode whitespace,
+  length-513 refusal and length-512 acceptance for both version attributes.
+  Preserve unknown-attribute grammar. The earlier Unicode/quote/backslash test
+  now uses a valid declared version; its old whitespace case is superseded by
+  the explicit refusal test, not silently removed from coverage.
+- **B3:** replace only S2.1 preparation/receipt nullable version values with
+  `absent`, `declared(value)` and `inconsistent`, serialized as `"absent"`,
+  `{"declared":"7"}` and `"inconsistent"`. Keep reason counts and memory charges.
+  Refused receipts round-trip all states, including separate conflict and
+  partial-presence cases, through saved JSON and result correlation. Null and
+  unknown states refuse deserialization. Pin completed annotation bytes against
+  an independent explicit synthetic model; annotation fields and geometry do
+  not acquire version-state fields.
+- **B4:** derive dictionary admission from `64 * raw_bytes + 65,536 <= memory`:
+  at 128 MiB, 2,096,128 bytes pass the charge and one extra byte fails. The test
+  exercises the actual dictionary reader with hash-bound padded synthetic JSON,
+  not just arithmetic. The 544-byte distinct-row fingerprint charge alone
+  permits at most 246,723 rows; shared retained state/scratch reduces that bound.
+  Document both in CLI/protocol without changing any cap, charge or algorithm.
+- **B5:** pin `observed_annotation_raw_path` at the actual preparation boundary
+  for unsafe output components and `./input.gtf`, without assuming a normalized
+  outside-temp path is absent. Pin `transcript_id "";` on a gene row as
+  `observed_gtf_attribute_empty`, with no output receipt. Document clean relative
+  paths and this strict subset without making an unverified provider claim.
+
+The first focused annotation build passes 31/0/0. A raw-path test-only refinement
+was made while it compiled; it is not the final-source receipt. Rerun every
+Part A command on the frozen final diff before closing this ledger.
+
+##### Final Source-Bound Verification
+
+Tested source is Part A commit `97832b65` plus the B1-B5 working diff, on macOS
+27.0.1 arm64 with the same Rust/LLVM and unchanged lockfile hash recorded above.
+The SHA-256 of `git diff 97832b65 -- src crates Cargo.lock Cargo.toml .cargo/config.toml`
+is `f86df20193eb336a6f30df19ab30ef626db174f25782387567ef8ea71b4ef497`.
+Only the six named annotation implementation/test files differ in that source
+scope. Staging concern-specific hunks does not change the tested file bytes.
+
+With `env CARGO_INCREMENTAL=0`, `--locked --offline` and `-j1`, the final
+headless `cargo test -q --no-default-features --lib FILTER -- --test-threads=1`
+reruns pass as follows:
+
+| Filter | Passed | Failed | Ignored |
+| --- | ---: | ---: | ---: |
+| `observed_annotation_` | 31 | 0 | 0 |
+| `primer_payload` | 76 | 0 | 0 |
+| `observed_transcript_structures` | 70 | 0 | 0 |
+| `s2a_` | 6 | 0 | 0 |
+| `observed_transcripts_` | 16 | 0 | 0 |
+
+These overlap and must not be summed. The remaining final reruns also pass:
+
+| Command | Passed | Failed | Ignored |
+| --- | ---: | ---: | ---: |
+| `env CARGO_INCREMENTAL=0 cargo check -q --locked --offline --no-default-features --lib -j1` | exit 0 | 0 | n/a |
+| `env CARGO_INCREMENTAL=0 cargo check -q --locked --offline -j1` | exit 0 | 0 | n/a |
+| `env CARGO_INCREMENTAL=0 cargo test -q --locked --offline -p gentle-protocol --lib -j1` | 116 | 0 | 0 |
+| `env CARGO_INCREMENTAL=0 cargo test -q --locked --offline -j1 --test capability_registry_parity --test mcp_capability_surface --test parity_matrix_freshness` | 21 / 6 / 1 | 0 / 0 / 0 | 0 / 0 / 0 |
+| `env CARGO_INCREMENTAL=0 cargo run -q --locked --offline -j1 --bin gentle_examples_docs -- parity-matrix-generate` | exit 0 | 0 | n/a |
+| `target/debug/gentle_examples_docs parity-matrix-check` | exit 0 | 0 | n/a |
+
+The canonical generator emits no matrix diff. Existing headless dead-code and
+macOS linker unwind-size warnings are not hidden or changed. No new primary
+failure or cascade appears in Part B.
+
+`python3 -m unittest scripts.test_observed_transcript_contract scripts.test_primer_payload_contract scripts.test_capability_maturity scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_capability_maturity_survives_real_checkouts_and_detects_missing_rules scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes -v`
+passes 31 cases with one expected actual-payload-CLI skip, zero failures
+(32 total). Both real checkout modes and missing-policy negative controls run.
+`python3 scripts/generate_capability_maturity.py --check` exits 0 with no
+projection changes. Scoped `rustfmt --edition 2024 --config skip_children=true --check`
+passes for the six annotation files and the Part A MCP file; no whole-workspace
+formatting acceptance is claimed. Whitespace and documentation-status checks pass.
+
+The session-close check reports four OK, two warnings and zero failures:
+the intentional close-out diff with unrelated untouched `output/`, and the
+manual plan-fidelity reminder. Scope inspection confirms the only Part A repair
+is the missing MCP advertisement; B1-B5 introduce no SAM work, dependency,
+profile/cap changes, S1/Phase 2 changes, fake prepared-genome artifacts, push,
+CI dispatch or request to Glen.
+
+**Close-out disposition:** Part A and B1-B5 implementation and required local
+verification are complete. The four-file reservation is no longer an unfinished
+S2.1 implementation gate; coordinate any later edits through their own slice.
+Native Windows (especially rename/handle behavior), Linux, end-to-end annotation
+CLI/MCP processes, the full suite, real-provider inputs, provider/gap/budget
+choices and scientific acceptance remain unverified. Registry checks include
+CLI capability discovery, not actual-process annotation preparation. Nothing
+in this receipt authorizes S2.2 or promotes the inherited private SAM decoder.
 
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 

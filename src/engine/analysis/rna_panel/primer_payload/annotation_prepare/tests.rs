@@ -350,6 +350,46 @@ fn observed_annotation_dictionary_is_strict_full_scope_and_metadata_bound() {
 }
 
 #[test]
+fn observed_annotation_dictionary_memory_charge_has_an_exact_boundary() {
+    let root = tempfile::tempdir().unwrap();
+    let mut r = fixture(root.path());
+    let boundary = (CAP as usize - 65536) / 64;
+    assert_eq!(boundary, 2_096_128);
+    assert_eq!(
+        json_charge(boundary as u64, CAP as usize).unwrap(),
+        CAP as usize
+    );
+    r.budgets.max_dictionary_bytes = 8 * 1024 * 1024;
+    r.budgets.max_input_bytes = CAP;
+    r.budgets.max_retained_bytes = CAP as usize;
+    let mut raw = fs::read(&r.dictionary.path).unwrap();
+    raw.resize(boundary, b' ');
+    fs::write(&r.dictionary.path, &raw).unwrap();
+    r.dictionary = bound(Path::new(&r.dictionary.path));
+    {
+        assert!(limits(&r).is_ok());
+        let paths = publication::Paths::new(&r).unwrap();
+        assert_eq!(dictionary(&r, &paths).unwrap().0.contigs.len(), 2);
+    }
+    raw.push(b' ');
+    fs::write(&r.dictionary.path, raw).unwrap();
+    r.dictionary = bound(Path::new(&r.dictionary.path));
+    assert!(limits(&r).is_ok());
+    let paths = publication::Paths::new(&r).unwrap();
+    assert_eq!(
+        dictionary(&r, &paths).unwrap_err().message,
+        "observed_annotation_json_memory_budget"
+    );
+    assert_eq!(
+        json_charge(boundary as u64 + 1, CAP as usize)
+            .unwrap_err()
+            .message,
+        "observed_annotation_json_memory_budget"
+    );
+    assert!(!Path::new(&r.output_dir).exists());
+}
+
+#[test]
 fn observed_annotation_hash_parse_and_budget_failures_never_publish() {
     let root = tempfile::tempdir().unwrap();
     let original = fixture(root.path());
@@ -436,6 +476,19 @@ fn observed_annotation_versions_require_nonwhitespace_identifiers() {
 }
 
 #[test]
+fn observed_annotation_empty_transcript_attribute_fails_before_receipt() {
+    let root = tempfile::tempdir().unwrap();
+    let mut r = fixture(root.path());
+    fs::write(
+        &r.gtf.path,
+        "chrToy\ttest\tgene\t2\t14\t.\t-\t.\tgene_id \"gene_minus\"; transcript_id \"\";\n",
+    )
+    .unwrap();
+    r.gtf = bound(Path::new(&r.gtf.path));
+    assert_eq!(no_receipt(r).message, "observed_gtf_attribute_empty");
+}
+
+#[test]
 fn observed_annotation_early_and_late_control_have_distinct_analysis_states() {
     let root = tempfile::tempdir().unwrap();
     let original = fixture(root.path());
@@ -519,8 +572,14 @@ fn observed_annotation_raw_paths_and_hardlink_aliases_are_refused() {
     for suffix in ["/./result", "/../result", "//result", "/result/"] {
         let mut r = original.clone();
         r.output_dir = format!("{}{suffix}", root.path().display());
-        assert!(publication::Paths::new(&r).is_err());
+        let e = GentleEngine::new()
+            .prepare_observed_transcript_annotation(r, &mut |_| true)
+            .unwrap_err();
+        assert_eq!(e.message, "observed_annotation_raw_path");
     }
+    let mut r = original.clone();
+    r.gtf.path = "./input.gtf".into();
+    assert_eq!(no_receipt(r).message, "observed_annotation_raw_path");
     let mut r = original.clone();
     r.cancel_path = Some(r.gtf.path.clone());
     no_receipt(r);

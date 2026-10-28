@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-29 - Harden S2.1 Annotation Preparation Close-Out
+
+- Keep staging/annotation handles out of the artifact-directory rename. Acquire
+  cleanup identities afterward; preserve replaced output and explicitly report
+  failed ownership acquisition as orphaned output. The S1 publisher is untouched.
+- Validate version attributes as bounded, non-whitespace identifiers and expose
+  absent/declared/inconsistent version evidence in S2.1 receipts instead of
+  conflating absent and inconsistent values. The compatibility audit found no
+  committed artifact dependency; S1/Phase 2 contracts and annotation geometry
+  are unchanged.
+- Add exact dictionary-charge boundary, malformed-version, refused-receipt,
+  byte-exact annotation, replacement/reacquire and empty-attribute regressions.
+  Document effective memory ceilings and strict raw paths without raising limits
+  or claiming whole-provider capacity. Keep [source-bound verification](observed_transcript_structures_s2_plan.md#s21c-execution-and-close-out-2026-10-29)
+  and native Windows/Linux, real-provider and scientific acceptance distinct.
+- Final locked/offline default/headless checks pass; scoped RNA filters pass
+  31/76/70/6/16 respectively, with 116 protocol and 21/6/1 registry/MCP/matrix
+  tests green. These are separate overlapping scopes, not a full-suite total.
+  Fast checks pass 31 with one explicit actual-CLI skip. No S2.2 implementation
+  or new external/scientific acceptance is included.
+
 ## 2026-10-29 - Execute S2.1c Baseline Gates And Repair MCP Discovery
 
 - Run the locked/offline default and headless checks and the five scoped RNA

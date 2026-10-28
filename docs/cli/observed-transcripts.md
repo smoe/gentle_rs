@@ -23,6 +23,24 @@ uses an exact source-specific stable gene ID, not a symbol or a default gene.
 Choose the declared source scope, transcript-row policy and minimum exon gap
 explicitly. GENtle does not fetch missing annotations or infer a provider release.
 
+Use clean raw paths in the request, for example `input.gtf` and a fresh
+`prepared_gene` output directory with an existing parent. `./input.gtf` and
+`out/` are deliberately refused as `observed_annotation_raw_path`; spelling is
+checked before normalization. The strict GTF subset rejects empty attribute
+values, including `transcript_id "";` on a gene row, before publishing a receipt.
+Gene/transcript version attributes must also be non-whitespace identifiers of
+at most 512 bytes. Receipts distinguish absent, declared and inconsistent
+versions; GENtle does not infer them from transcript names.
+
+Budget admission is not a throughput promise. With the maximum 128-MiB
+retained-memory budget, conservative JSON accounting admits at most 2,096,128
+dictionary bytes even if the raw dictionary cap is 8 MiB. Distinct GTF row
+fingerprints alone limit the input to at most 246,723 distinct data rows;
+shared dictionary/model/scratch storage lowers that bound in practice. A
+1,000,000-line admission cap does not promise that many rows will fit. See the
+[accounting contract](../protocol.md#s21b-annotation-preparation-direct-engine-only)
+before choosing a supplied excerpt and explicit budgets.
+
 ```text
 rna-reads transcript-annotation-prepare REQUEST_JSON_OR_@FILE
 rna-reads transcript-annotation-cancel REQUEST_JSON_OR_@FILE

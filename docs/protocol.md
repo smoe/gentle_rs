@@ -112,6 +112,18 @@ reserved from the kernel's explicit memory cap. All dictionary bytes consume
 work in addition to the consumer's charges. Output is separately bounded at
 128 MiB. Requests can lower limits; none is a throughput or whole-provider claim.
 
+The effective dictionary raw-byte ceiling is
+`floor((max_retained_bytes - 65,536) / 64)` (smaller-than-65,536-byte memory
+budgets admit no dictionary), at most **2,096,128 bytes** with
+the 128-MiB memory cap, even when `max_dictionary_bytes` admits 8 MiB. One byte
+over fails `observed_annotation_json_memory_budget` before dictionary allocation.
+Each distinct GTF data-row fingerprint also retains a 512-byte node charge plus
+its 32-byte digest: even ignoring every other allocation, 128 MiB admits at most
+**246,723 distinct rows**, not the `max_lines` admission ceiling of 1,000,000.
+Dictionary, gene/transcript/exon state and scratch share the budget, so the
+reachable row ceiling is lower. These are conservative accounting ceilings,
+not measured RSS or throughput guarantees; no charge or cap is raised.
+
 Raw paths reject empty/dot/parent components before normalization. Inputs must
 be regular non-symlink files; existing parents are resolved and existing-file
 identities detect aliases/hardlinks. Output and marker cannot alias inputs;
@@ -120,6 +132,10 @@ also conservatively refuse case-folded spelling collisions, even on a
 case-sensitive volume. Stable opened-input identities are checked alongside
 the existing verified reader's size/mtime/hash checks. This is not a hostile
 concurrent-filesystem transaction or crash-durability guarantee.
+In particular, `./input.gtf` and `out/` fail `observed_annotation_raw_path`.
+Use `input.gtf` and `prepared_gene` (or clean absolute paths), with existing
+parent directories and a fresh output directory; do not normalize a refused
+raw path on the caller's behalf.
 
 Fresh staged files are closed/synchronized before public completion. Publication
 reserves a new directory, moves artifacts and creates `report.json` last by a
