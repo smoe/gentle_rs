@@ -900,6 +900,81 @@ the close-out's file reservation and coordinate shared protocol/roadmap/
 changelog/S2-plan edits with later junction work. The landed S2.1a/b/c feature
 and the still-pending close-out are separate statuses.
 
+#### S2.1c Execution And Close-Out, 2026-10-29
+
+The owner authorizes the separate S2.1 close-out, Part A followed by B1-B5.
+This supersedes the preceding reservation-only status, not the historical
+execution receipts. S2.2 remains separate and no SAM source is edited.
+
+The prompt expected `284e5b70`; the actual clean tracked baseline is
+`89330e0a`, including the separately landed S2.2a and projection follow-up.
+Untracked `output/` is unrelated and untouched. Before baseline execution,
+`git status --porcelain -- src crates Cargo.lock assets` is empty. The platform
+is macOS arm64, Rust `1.100.0-beta.7 (fd8e211ae 2026-10-17)` with LLVM 23.1.4.
+Every command below uses the unchanged `Cargo.lock` SHA-256
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+No dependency, profile, cap, source fixture or frozen S1/Phase 2 expectation changes.
+
+##### Part A Baseline
+
+All Cargo invocations use `env CARGO_INCREMENTAL=0`, `--locked --offline`
+and `-j1`. With that prefix, the exact check/test tails and baseline results are:
+
+| Command | Passed | Failed | Ignored |
+| --- | ---: | ---: | ---: |
+| `cargo check -q` | exit 0 | 0 | n/a |
+| `cargo check -q --no-default-features --lib` | exit 0 | 0 | n/a |
+| `cargo test -q --no-default-features --lib observed_annotation_ -- --test-threads=1` | 25 | 0 | 0 |
+| `cargo test -q --no-default-features --lib primer_payload -- --test-threads=1` | 70 | 0 | 0 |
+| `cargo test -q --no-default-features --lib observed_transcript_structures -- --test-threads=1` | 70 | 0 | 0 |
+| `cargo test -q --no-default-features --lib s2a_ -- --test-threads=1` | 6 | 0 | 0 |
+| `cargo test -q --no-default-features --lib observed_transcripts_ -- --test-threads=1` | 16 | 0 | 0 |
+| `cargo test -q -p gentle-protocol --lib` | 116 | 0 | 0 |
+| `cargo test -q --test capability_registry_parity` | 19 | 2 | 0 |
+| `cargo test -q --test mcp_capability_surface` | 4 | 2 | 0 |
+
+Filters overlap; do not add their counts. The first default check fails before
+GENtle compilation because the sandbox denies Swift's compiler-cache writes.
+The same locked/offline check succeeds with authorized cache access. Existing
+headless dead-code and macOS linker unwind-size warnings remain warnings.
+
+The primary discovery failures are `glossary_commands_have_matching_registry_entries`
+and `prominent_projections_match_user_facing_listings`, plus the independent
+MCP guards `every_glossary_shell_command_is_mcp_tool_or_documented_exclusion`
+and `glossary_mcp_op_routes_are_advertised_without_exclusion_shortcuts`.
+All point to the same S2.1c omission: the two annotation routes are absent from
+`tool_command_paths("op")`. There are no mutex-poisoning or other cascades.
+The failure baseline is already the untouched tree, so no stash/reset is needed.
+Repair only those two metadata rows in `src/mcp_server.rs`; extend the existing
+fast annotation-route guard to require them there too. Do not add exclusions,
+demote the registry, or change operation/confirmation behavior.
+
+At `89330e0a` plus the two MCP rows and fast guard, rerun the exact command
+`env CARGO_INCREMENTAL=0 cargo test -q --locked --offline -j1 --test capability_registry_parity --test mcp_capability_surface --test parity_matrix_freshness`:
+21/0/0, 6/0/0 and 1/0/0 pass/fail/ignored respectively. Then
+`env CARGO_INCREMENTAL=0 cargo run -q --locked --offline -j1 --bin gentle_examples_docs -- parity-matrix-generate`
+and `target/debug/gentle_examples_docs parity-matrix-check` both exit 0; the
+canonical matrix is already current and produces no diff.
+`python3 -m unittest scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes -v`
+passes 1/0/0 with the real LF/CRLF checkout modes and missing-policy control.
+The fast annotation-route guard rerun passes 8/0/0. The earlier combined
+Python contract/maturity/checkout run has 30 passes and one expected skip
+(actual payload CLI needs explicit `GENTLE_PAYLOAD_CLI`), no failures.
+Part A is green with that narrow discovery repair; Part B may now begin.
+
+##### B2/B3 Compatibility Audit
+
+Tracked-file searches for `gtf_strict.v1`, the annotation-report schema,
+`transcript_versions`, and `gene_version` find no committed annotation receipt,
+GTF fixture or tutorial depending on whitespace versions or the nullable receipt
+shape. The three non-test `gene_version` JSON fields belong to unrelated Ensembl
+entry contracts. The whitespace-version dependency is confined to one inline
+synthetic kernel test. Current code consumers are the preparation producer,
+typed receipt/correlation and its tests; no separate receipt-format consumer
+needs migration. B2/B3 can therefore tighten these pre-release S2.1 records
+without the prompt's owner grammar/schema-version decision. S1 and Phase 2
+records and completed annotation geometry remain frozen.
+
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 
 Propose a separate `SummarizeObservedTranscriptStructuresFromSam` request, not

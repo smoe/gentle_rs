@@ -1425,6 +1425,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "rna-reads transcript-structures",
             "rna-reads transcript-structures-show",
             "rna-reads transcript-structures-cancel",
+            "rna-reads transcript-annotation-prepare",
+            "rna-reads transcript-annotation-cancel",
             "rna-reads primer-trace-show",
             "op",
             "sequence-design plan",

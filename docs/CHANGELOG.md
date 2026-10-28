@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-29 - Execute S2.1c Baseline Gates And Repair MCP Discovery
+
+- Run the locked/offline default and headless checks and the five scoped RNA
+  filters; preserve separate counts and the unchanged lockfile binding in the
+  [close-out ledger](observed_transcript_structures_s2_plan.md#s21c-execution-and-close-out-2026-10-29).
+- The default-feature discovery guards reproduce missing MCP `op` metadata
+  for annotation prepare/cancel. Add those two advertised paths and extend the
+  fast route guard, without changing execution, write approval or registry scope.
+- Audit committed artifacts before B2/B3: no retained annotation receipts or
+  tutorial/fixture dependency on the old version shape or whitespace grammar.
+  Annotation hardening and S2.2 remain separate concerns.
+
 ## 2026-10-28 - Refresh Annotation Preparation Capability Projections
 
 - Regenerate S2.1c's two shell and two engine-operation parity rows from the

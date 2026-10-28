@@ -83,7 +83,8 @@ class ObservedTranscriptContractTests(unittest.TestCase):
             self.assertIn(route, (ROOT / "docs/cli/observed-transcripts.md").read_text())
             for path in ("src/engine.rs", "src/engine/ops/operation_handlers.rs",
                          "src/engine/operation_lifecycle.rs", "src/engine_shell/command_parsers.rs",
-                         "src/command_execution/rna_artifacts.rs", "crates/gentle-protocol/src/lib.rs"):
+                         "src/command_execution/rna_artifacts.rs", "crates/gentle-protocol/src/lib.rs",
+                         "src/mcp_server.rs"):
                 self.assertIn(operation, (ROOT / path).read_text(), path)
         protocol = (ROOT / "src/engine/protocol.rs").read_text()
         self.assertRegex(protocol, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s+pub observed_transcript_annotation:')
