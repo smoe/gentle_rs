@@ -1,5 +1,54 @@
 # GENtle Changelog
 
+## 2026-10-28 - Author Named Annotation Preparation Routes
+
+- Commit verified S2.1b as `f55931ba`, preserving its exact execution receipts
+  and untouched `output/`. Continue only with S2.1c's named preparation/cancel
+  operations, shared parser/CLI/MCP/discovery, explicit constructor/no-save/
+  checkpoint/approval policies and managed artifact/control boundaries.
+- Add compact request/receipt/raw-file result correlation and distinct gene/
+  dispatch outcomes; complete source refusal stays unavailable/partial. Preserve
+  existing Phase 2/S1 DTO bytes with an omitted optional result field. Required
+  UI literals gain `None` only; no GUI feature, SAM ingress or dependency change.
+- Author synthetic shared-route, approval, cancellation, correlation, lifecycle,
+  managed live-lock and MCP/state-file regressions. Rust execution, Cargo check
+  and canonical parity regeneration await the new scoped local-build choice;
+  old S2.1b tests/binary are not a C verdict. See the [current ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28).
+- No new Claude invocation, push, native/platform/provider/scientific or release
+  acceptance; workflows and raw-text admission keep their conservative policies.
+- Fast C-source/documentation checks pass 34 cases with one expected binary-
+  dependent skip; documentation status, scoped formatting and whitespace pass.
+  Session-close: 4 OK, 2 expected warnings, 0 failures. These are not Rust,
+  canonical generated-matrix freshness or native acceptance.
+
+## 2026-10-28 - Add The Bound Annotation Preparation File Boundary
+
+- Commit S2.1a and resolve its changelog-only rebase onto local main without
+  dropping the Help repair entry. The resulting commit is `f78a592b`; its
+  22 recorded source/config hashes remain unchanged. No fetch or push.
+- Implement separately owner-authorized S2.1b: strict versioned dictionary,
+  request and receipt, with one direct read-only-project engine method and
+  explicit external output. Reuse the private GTF consumer, existing geometry,
+  verified reader and preparation vocabulary; preserve Phase 2/S1 DTOs, bytes,
+  validators and old helper limits/errors. No operation or adapter registration.
+- Bind all raw GTF/dictionary bytes, source declarations, exact variable gene
+  selector and policies. Separate incomplete execution from complete gene
+  outcomes; missing/refused sources write no empty annotation. Publish a
+  bounded receipt last into fresh output, with identity-aware collision checks,
+  no clobber and owned-only cleanup/orphan disclosure. Disarm stale temporary
+  directory cleanup after moving artifacts, preserving any recreated old name.
+- Add inline synthetic file/hash/JSON/policy/control/path/publication regressions
+  and the [direct-engine protocol](protocol.md#s21b-annotation-preparation-direct-engine-only).
+  Focused macOS/aarch64 locked/offline headless verification passes 64 payload
+  tests (15 new file-boundary cases), 58 kernel tests, six preservation guards
+  and 16 S1-filter tests; filters overlap. Headless Cargo check and scoped
+  rustfmt pass. Retain baseline compiler/linker warnings and unrelated whole-
+  workspace formatting failures; exact source/binary receipts belong in the
+  [ledger](observed_transcript_structures_s2_plan.md#s21b-file-boundary-2026-10-28).
+- S2.1c lifecycle/approval/operations/CLI/MCP, SAM ingress, GUI, real-provider
+  policies, native Windows/Linux, scientific and release acceptance remain
+  separate. Unrelated `output/`, dependencies and generated artifacts untouched.
+
 ## 2026-10-28 - Repair Manual Navigation Compilation Boundaries
 
 - Give the manual-history helper parent-module visibility so the existing
@@ -32,6 +81,60 @@
   documentation status, scoped JS/Lua rustfmt and whitespace pass. Production
   JS/Lua source prefixes are byte-identical to their pre-repair versions; this
   is not Rust compilation or executed VM evidence.
+
+## 2026-10-28 - Author The Private GTF Preparation Kernel
+
+- Implement separately owner-authorized S2.1a at base `c5a9d63f`, preserving
+  the earlier uncommitted review reconciliation. Add a private bounded
+  incremental raw-line consumer, typed dictionary/policy/limit/outcome views,
+  strict GTF row/attribute admission and whole-input identity indexing.
+- Preserve configurable genes, exact decoded IDs/separate versions, source
+  scope/provider declarations, raw LF/CRLF hashes, complete supplied exon lists,
+  explicit gap policy and receipt-only refusal semantics (`annotation: None`).
+  Unknown strand is not a second known locus; omitted diagnostic examples do
+  not erase reason totals or strengthen a result. No annotation file is written.
+- Add inline synthetic grammar, opposite-strand/two-gene, collision/version,
+  resource/control and refusal cases, plus direct legacy touching-exon guards.
+  Preserve all frozen S2.0a/S1/Phase 2 expectations, DTOs and production validators.
+  The owner separately authorizes focused local locked/offline Rust execution;
+  results are recorded in the [S2.1a ledger](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28).
+- No public schema, file/JSON/SAM ingress, annotation receipt/publication,
+  operation/lifecycle/adapter, GUI, dependency change, commit, fetch, push or
+  real-data/native/scientific acceptance is included in this private slice.
+- Final macOS/aarch64 locked/offline headless verification passes 58 observed
+  structure tests (16 new pure cases plus the new legacy source guard), all six
+  S2.0a guards, 16 S1-filter tests and 49 payload tests (new legacy catalog guard);
+  filters overlap. The final rerun includes unknown-strand/UTF-8 and whitespace
+  admission guards; all frozen expectations remain unchanged. Headless Cargo
+  check and scoped rustfmt pass, with existing compiler/linker warnings retained.
+- Fast documentation/contract checks have 33 passes and one expected skip;
+  whitespace and local Markdown targets pass. Whole-workspace fmt retains 12
+  unrelated baseline failures. Keep source/binary/lock/toolchain/profile hashes
+  in the ledger; later main's Help-only change is not an RNA execution claim.
+
+## 2026-10-28 - Reconcile The Supplied GTF Preparation Review
+
+- Recheck Claude's S2.1 source-only critique at unchanged `c5a9d63f`. Replace
+  the earlier annotation outline in the canonical S2 plan with receipt-only
+  missing/refused-source outcomes, a strict contig dictionary, scoped GTF
+  grammar, whole-file collision indexing, snapshot/selector bindings and
+  preparation-specific resource limits. Keep legacy enums/DTOs/validators and
+  Phase 2/S1 bytes unchanged; no empty v1 annotation stands for a refused gene.
+- Qualify the proposed transcript-row policy: declarations can expose reuse
+  but cannot prove complete models or biological identity. Distinguish
+  normal exon repetition, selected-source conflicts and unrelated semantic
+  diagnostics; retain exact-ID and within-supplied-bytes nonclaims.
+- Verify the permissive genome parser's skip/lowercase/first-value behavior
+  and the private file helpers' budget/publication constraints. Require narrow
+  reuse, explicit path collisions, report-last failure handling and named
+  lifecycle/approval coverage, not a generic writer or rollback assumption.
+- Separate proposed S2.1a pure normalization, S2.1b file contracts/publication
+  and S2.1c thin engine/adapters. Real-data gap/provider/budget policies stay
+  owner decisions; no Rust implementation/execution, new model call, commit,
+  fetch, push, Glen dispatch or runtime/scientific acceptance in this change.
+- Documentation status, 18 LF/CRLF-aware documentation tests, local Markdown
+  targets and whitespace pass. Session-close reports 4 OK, 2 warnings for the
+  intentional documentation diff/untouched `output/` and manual plan fidelity.
 
 ## 2026-10-28 - Close Two Slice 5 Regression-Coverage Gaps
 

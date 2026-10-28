@@ -12,6 +12,7 @@ pub(super) enum Policy {
     PayloadQueries(Box<crate::engine::PreparePrimerPayloadAlignmentQueriesRequest>),
     PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
     ObservedStructures(Box<crate::engine::SummarizeObservedTranscriptStructuresRequest>),
+    ObservedAnnotation(Box<crate::engine::PrepareObservedTranscriptAnnotationRequest>),
     Observe { expensive: bool },
     Control,
 }
@@ -38,6 +39,10 @@ fn classify(op: Operation) -> Policy {
         Operation::SummarizeObservedTranscriptStructures { request } => {
             Policy::ObservedStructures(request)
         }
+        Operation::PrepareObservedTranscriptAnnotation { request } => {
+            Policy::ObservedAnnotation(request)
+        }
+        Operation::CancelObservedTranscriptAnnotation { .. } => Policy::Control,
         Operation::InspectObservedTranscriptStructures {
             verify_artifacts,
             rows,
@@ -145,6 +150,44 @@ mod preview_policy_tests {
 #[cfg(test)]
 mod primer_trace_tests {
     use super::*;
+
+    #[test]
+    fn observed_annotation_named_policies_are_independent_and_control_is_separate() {
+        let root = tempfile::tempdir().unwrap();
+        let request = GentleEngine::observed_annotation_test_fixture(root.path());
+        for cancel in [false, true] {
+            let op = if cancel {
+                Operation::CancelObservedTranscriptAnnotation {
+                    request: Box::new(request.clone()),
+                }
+            } else {
+                Operation::PrepareObservedTranscriptAnnotation {
+                    request: Box::new(request.clone()),
+                }
+            };
+            let mut command = ShellCommand::Op {
+                payload: serde_json::to_string(&op).unwrap(),
+            };
+            for policy in [
+                classify(op),
+                admission(&command),
+                freeze(&mut command).unwrap(),
+            ] {
+                assert!(!policy.needs_project());
+                assert!(matches!(
+                    (cancel, policy.lane()),
+                    (true, Lane::Control) | (false, Lane::Execution)
+                ));
+            }
+        }
+        // The workflow service retains its conservative project-bound policy.
+        assert!(
+            admission(&ShellCommand::Workflow {
+                payload: "{}".into()
+            })
+            .needs_project()
+        );
+    }
 
     #[test]
     fn primer_payload_named_lifecycle_does_not_require_the_live_project() {
@@ -268,6 +311,19 @@ pub(super) fn publication(
             }
             return Ok(Publication::Preview);
         }
+        Policy::ObservedAnnotation(request) => {
+            let result = serde_json::from_value(
+                output
+                    .pointer("/result/observed_transcript_annotation")
+                    .ok_or("Annotation preparation returned no typed receipt")?
+                    .clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let binding =
+                GentleEngine::observed_transcript_annotation_result_binding(request, &result)
+                    .map_err(|e| e.to_string())?;
+            return Ok(Publication::ObservedAnnotation(binding));
+        }
         Policy::ObservedStructures(request) => {
             let report = serde_json::from_value(
                 output
@@ -326,7 +382,8 @@ pub(super) fn publication(
         | Policy::PrimerTrace(_)
         | Policy::PayloadQueries(_)
         | Policy::PayloadAlignments(_)
-        | Policy::ObservedStructures(_) => {
+        | Policy::ObservedStructures(_)
+        | Policy::ObservedAnnotation(_) => {
             unreachable!("handled above")
         }
         Policy::Screen(request) => {

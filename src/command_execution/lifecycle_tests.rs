@@ -81,6 +81,39 @@ fn observed_transcripts_managed_publication_keeps_live_project_and_journal_uncha
 }
 
 #[test]
+fn observed_annotation_managed_publication_does_not_need_the_live_project_lock() {
+    let root = tempfile::tempdir().unwrap();
+    let request = GentleEngine::observed_annotation_test_fixture(root.path());
+    let service = CommandExecutionService::default();
+    let engine = Arc::new(RwLock::new(fixture::live_with_redo()));
+    let held = engine.write().unwrap();
+    let before = serde_json::to_value(held.state()).unwrap();
+    let journal = held.journal_len();
+    let redo = held.redo_available();
+    let command = format!(
+        "rna-reads transcript-annotation-prepare {}",
+        crate::engine_shell::quote_shell_arg(&serde_json::to_string(&request).unwrap())
+    );
+    let parsed = crate::engine_shell::parse_shell_line(&command).unwrap();
+    let id = service
+        .submit_parsed(engine.clone(), parsed, command, Default::default())
+        .unwrap();
+    let result = wait(&service, id).unwrap();
+    assert!(!result.state_changed);
+    let receipt = service.status(id).unwrap();
+    assert_eq!(receipt.publication, "artifact_only");
+    assert!(!receipt.requires_project_commit);
+    assert_eq!(receipt.committed_operations, 0);
+    assert_eq!(
+        receipt.observed_annotation_result.as_ref().unwrap().outcome,
+        "completed"
+    );
+    assert_eq!(before, serde_json::to_value(held.state()).unwrap());
+    assert_eq!((journal, redo), (held.journal_len(), held.redo_available()));
+    assert!(!service.cancel(id));
+}
+
+#[test]
 fn lifecycle_slice3_managed_workflow_publishes_journals_not_project_changes() {
     {
         let service = CommandExecutionService::default();

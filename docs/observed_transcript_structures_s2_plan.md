@@ -1,9 +1,11 @@
 # Observed Transcript Structures S2: SAM And Annotation Preparation
 
-Status: **S2.0a guards retained; bounded S2.0b implemented and locally verified**.
+Status: **S2.0a/b retained; private S2.1a implemented with scoped verification**.
 S2.0b adds a private shared core and decoded, in-memory SAM normalization only.
-File ingress, annotation preparation, operations/adapters and later slices remain
-proposals, not authorized by this step. Verification is recorded below.
+The owner subsequently authorized only S2.1a's pure GTF normalizer and focused
+local Rust tests/check; its working-diff verification is recorded below.
+Annotation file ingress/publication, operations/adapters and later slices remain
+proposals, not authorized by either private step.
 Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
 `1804605f1ba42369f943213414d79fd9a40013cb`. No fetch or remote-tip claim.
 Tracked files were clean; unrelated untracked `output/` is untouched.
@@ -332,87 +334,485 @@ operations/lifecycle/adapters and saved publication stay separate.
 
 ### S2.1: Explicit Annotation Preparation
 
-Propose `PrepareObservedTranscriptAnnotation` with a strict versioned request
-and typed preparation receipt. It writes a new, bound
-`gentle.primer_payload_annotation.v1` plus provenance/diagnostics; **no third
-transcript geometry schema**. One request prepares one named source; subsequent
-comparison consumes independently prepared sources without rerunning alignments.
+#### S2.1 Review Reconciliation, 2026-10-28
 
-Require raw input path/hash/byte count, explicit format, source/provider,
-assembly, declared reference FASTA hash, bound contig dictionary, stable gene-ID
-selection, input-scope declaration, budgets and fresh output directory. The
-dictionary is a hashed exact-name/length document; reconcile it with SAM `@SQ`.
-Do not guess aliases, liftover, assembly or contig lengths. Whole-FASTA SHA-256,
-per-contig digests and SAM `M5` are different bindings, not interchangeable.
-Default authority is **producer-declared reference identity**: verifying the
-dictionary's bytes does not verify the original genome FASTA or aligned bases.
-Missing reference identity refuses interpretable output; missing original FASTA
-bytes remains a disclosed verification limit, as in S1, not a fabricated replay.
+The owner supplied Claude's read-only S2.1 review against `c5a9d63f`.
+Codex rechecked that same source: `main` and `gentle_rs_2_main` both point at
+`c5a9d63fcddaa78cc02a791b6001081b39af80b6`; only unrelated untracked `output/`
+is present. No fetch, new Claude invocation or runtime verification. The
+following **revised Codex proposal replaces the earlier S2.1 outline**; it is
+not implementation authorization or a fresh Claude/scientific sign-off.
 
-Recommended order is plain-text **GTF first**, then UCSC genePred in a separate
-commit after its gap/crosswalk policy and tabular companion are ready. This is
-a Codex recommendation, not an owner-approved format decision. Select the
-format/column layout explicitly (including any genePred `bin` column); no GFF3,
-BED12 or JSON sniffing. The archive's UCSC JSON needs an owner-prepared tabular
-companion with extraction/hash provenance; do not promise automatic loading of
-every archive member.
+Original recommendation: GTF-first preparation into the existing annotation
+geometry plus a receipt, then SAM intake and saved interpretation separately.
+The supplied review identified missing outcome/dictionary contracts and
+underspecified grammar, source scope and lifecycle details.
 
-- For GTF, normalize exon rows from one-based inclusive to zero-based half-open
-  geometry; require consistent source gene/transcript IDs, contig and strand.
-  Preserve gene/transcript IDs exactly as written, without adding/removing
-  version suffixes or changing case. Record separate version attributes in the
-  receipt and reject contradictory claims. Use strict GTF attribute handling:
-  reject conflicting/duplicate consumed keys rather than lowercasing them or
-  choosing the first; do not reuse the permissive GFF/GTF attribute parser as-is.
-- For genePred, validate declared columns, exon count, ordered arrays and bounds.
-  A `name2` label is not a stable gene-ID crosswalk. Require an explicit,
-  snapshot-bound transcript-to-gene-ID mapping when the source lacks gene IDs;
-  never assign every row to the requested gene from a symbol or interval.
-- Scan/hash the full supplied input to EOF. Selection retains **whole transcript
-  exon lists**, not exons clipped to a locus window. Record supplied-file and
-  selection coverage; a locus excerpt is not a whole-genome annotation search.
-  Non-exon GTF features are counted as intentionally unused, not silently lost.
-- Malformed rows, contradictory repeated IDs, mixed loci/strands for the same
-  transcript, unsupported overlaps and missing selected-gene links refuse a
-  completed annotation rather than silently dropping models. Identical duplicate
-  rows may be deduplicated only under a recorded deterministic rule and count.
-  Bind the annotation's included contig set separately from the full reference
-  dictionary. A selected gene's repeated transcript accession inside that scope
-  produces typed `duplicate_transcript_accession` source refusal: no merged
-  models, fabricated qualified IDs or reactive contig pruning. This rule is not
-  limited to alternate contigs. Missing competing-source gene selection remains
-  a typed resolution gap at comparison; keep other alignment contigs accounted.
-- A genuinely absent selected gene is a typed `missing_gene` preparation result,
-  not a malformed row or an empty completed model set. Retain its source receipt
-  as unavailable comparison evidence; do not silently drop that requested source.
-- Preserve provider/source separation. A UCSC `ncbiRefSeq` track snapshot is not
-  a direct NCBI GCF annotation release. Bind retrieval/source metadata and notices
-  when supplied; no online retrieval, source replacement or inferred release.
+| Finding | Source check and revised proposal |
+| --- | --- |
+| H1: empty/refused sources | Confirmed: `comparison::sources` permits zero transcripts; Phase 2 `reference::catalog` refuses them. Neither legacy enum nor `core::Context` represents a refused source. Publish a receipt only for gene-level refusal/absence, never an empty v1 annotation. Later S2.3 needs a SAM-only resolution projection; do not extend legacy `GeneResolution`. |
+| H2: dictionary absent on disk | Confirmed: `sam::SamInput.dictionary` is only an in-memory map. Specify a strict ordered dictionary document below, rather than infer competitor lengths from one selected gene. |
+| H3: transcript-ID reuse | Accept bounded whole-file indexing and required/not-required transcript-row policy. Qualify the review's stronger claim: transcript rows provide evidence of multiple declarations, not proof of biological reuse or complete exon coverage. Without them, consistent same-locus reuse may be undetectable; with them, missing internal exons still need a coverage nonclaim. |
+| M1-M4: grammar, locus and scope | Specify the strict subset, an `ambiguous_gene_locus` receipt-only outcome and exact-ID missing-gene semantics. EOF verifies supplied bytes, not completeness of a provider annotation or correctness/stability of its IDs. |
+| M5-M6: legacy compatibility | Accept mandatory annotation/receipt pairing for future S2 intake. Bare v1 geometry may still pass old consumers; do not claim those consumers enforce new policies. Keep touching-exon validation unchanged in both legacy paths and add preservation tests. |
+| L1-L2: budgets/helpers | Use preparation-specific budgets, not irrelevant read/PAF fields. File helpers are reusable from a child beside `observed`, but not all are drop-in: `read_json` and `publish` take `PrimerPayloadBudgets`. Any narrow limit-helper extraction must preserve the old wrapper's limits, bytes and errors. No blanket visibility/refactor change. |
+| L3-L4: paths/lifecycle | Accept explicit input/output/control collision checks and named prepare/cancel approval/no-save/managed policies. Existing `staging`/`publish` are not a complete collision or rollback contract. Do not import Plan-only writer assumptions. |
 
-The preparation receipt binds each exact source gene selector; S2 ingress
-requires its `reference_gene`/`comparison_genes` to agree. A mismatched ID form
-is `selector_binding_mismatch`, not a biologically absent gene or an opportunity
-for alias fallback. A version-attribute map is provenance, not selector rewriting.
+Codex also verified the genome-index parser beyond the review's module-level
+claim: `parse_tabular_annotation_gene_records_with_progress` skips malformed
+rows/UTF-8, while `parse_annotation_attributes` lowercases keys and keeps the
+first value. Do not change or directly reuse that permissive parser.
 
-Refuse touching or overlapping exons: the current comparer would turn touching
-exons into a zero-length model skip. For positive gaps, require an explicit
-source-bound `minimum_reference_gap_bases` admission policy in the request/
-receipt, with no default claimed as a biological minimum. A retained model below
-that bound makes the selected source/gene typed `reference_gap_policy_refused`;
-do not drop the model, snap boundaries or merge exons. Suspected alignment-gap
-semantics also stay unresolved rather than being reinterpreted. Synthetic tests
-use clearly labelled hand-chosen values. The real-data minimum and acceptability
-of refusal remain owner decisions; no new RNA mechanism follows from a short gap.
+#### Source, Dictionary And Identity Contract
 
-**Reconciled snapshot rule:** for every S2-prepared annotation, use
-`release = snapshot-sha256:<64-hex-raw-input-digest>`, even when a provider release
-is supplied. Put that verbatim provider claim in nullable
-`declared_provider_release` with its provenance in the receipt. Thus the reused
-field has one explicit snapshot meaning in S2; old S1 annotations/semantics are
-not rewritten. Require the receipt at S2 ingress and label the version kind as
-snapshot, not provider release. Selection/crosswalk/gap-policy hashes also bind
-the prepared artifact. Missing provider release limits claims without creating
-a permanent activation blocker or a guessed annotation release.
+Propose one strict versioned `PrepareObservedTranscriptAnnotation` request for
+one source and configurable `{source_id, gene_id}`, with explicit GTF format,
+`reference_id`, assembly, declared FASTA digest, input/dictionary path-hash-byte
+bindings, policies, budgets and fresh output directory. Input scope is required:
+`whole_source_file | producer_excerpt`, with optional declared derivation/source/
+notice metadata. Neither value authenticates or proves whole-provider coverage.
+No species, gene, strand, assembly, canonical model or release default.
+
+Specify `gentle.reference_contig_dictionary.v1`: `schema`, `reference_id`,
+`assembly`, `reference_fasta_sha256` and ordered `contigs: [{name, length}]`.
+Refuse unknown/duplicate fields, empty dictionaries and duplicate exact names.
+Names are nonempty UTF-8, at most 4096 bytes, not `*`, without whitespace or
+control characters; do not rewrite case/aliases. Lengths are positive unsigned
+integers with checked conversion to the consuming geometry's integer range.
+Preserve list order in the bound document; use an exact-name lookup internally.
+Check reference metadata equality across request/dictionary/output. Bound its
+full bytes and entries independently of the selected annotation contig set.
+Per-contig digests, `M5`, FASTA-index imports and inferred lengths stay outside v1.
+
+For prepared geometry, retain `gentle.primer_payload_annotation.v1` unchanged.
+Set `release = snapshot-sha256:<64-hex-raw-GTF-digest>`. Carry the request's
+nullable `declared_provider_release` verbatim in the receipt, labelled as a
+declaration, not a header-derived release. Provider labels are not interchangeable:
+a UCSC track snapshot is not silently relabelled a direct NCBI GCF release.
+Coordinate authority remains `declared`; hashing a dictionary does not verify
+the genome FASTA. A different selection/policy can yield identical annotation
+bytes but a different preparation-receipt identity.
+
+#### Strict GTF Subset And Selection
+
+Propose grammar `gtf_strict.v1`, not a claim to accept every GTF dialect:
+
+- Count column-one `#` comments, including release-looking headers, without
+  treating them as metadata authority. Reject actual blank/whitespace-only
+  records in this subset; an ordinary final newline is not a blank record.
+  Accept a final unterminated data line. Strip only LF/one terminal CR for
+  parsing; hash unmodified bytes. Reject embedded controls and invalid UTF-8.
+- Require exactly nine tab-separated columns. Coordinates are ASCII decimal,
+  overflow-checked, with `1 <= start <= end <= dictionary length`; every data
+  contig must exist in the dictionary, including unselected rows. Validate
+  source/feature tokens (nonempty, at most 4096 bytes, no whitespace/controls),
+  score as `.` or finite number, frame as
+  `.|0|1|2`, and strand as `+|-|.`. Store exons as `[start-1,end)`.
+- Parse case-sensitive ASCII attribute keys (`[A-Za-z_][A-Za-z0-9_]*`), separated
+  from values by one or more ASCII spaces, with quote/escape-aware semicolon
+  splitting. Require a terminating semicolon per attribute and nonempty key/
+  value. Consumed IDs/versions are quoted strings; recognise escaped quote
+  and backslash explicitly and reject unsupported escapes rather than silently
+  normalizing them. Unknown attributes may contain quoted values or bare
+  tokens, may repeat and are intentionally unused, not biological evidence.
+- Consume `gene_id` on every data row; `transcript_id` must be absent on
+  `gene` rows and present on other features in this declared subset. Consume
+  optional `gene_version`/`transcript_version`; reject duplicate consumed
+  keys even if equal. IDs remain exact, nonempty, at most 512 UTF-8 bytes,
+  without controls/whitespace. Separate version attributes never alter IDs.
+- Lexical, required-field, dictionary and coordinate failures anywhere refuse
+  the request with no finalized report. For otherwise parseable unrelated
+  models, recommend counting semantic conflicts with bounded examples, not
+  refusing the selected gene. This proposed policy must be explicit in the
+  grammar/receipt. It cannot hide a conflict linked to the selected gene.
+- Keep a budgeted **whole-supplied-file** index from transcript ID to declared
+  gene/contig/strand associations and transcript-feature declarations. Ordinary
+  exon rows sharing one consistent transcript ID are not duplicates. Detect
+  cross-gene/cross-locus collisions before selection discards other rows.
+- For the selected gene, every row must have consistent locus/strand/linkage;
+  require `+` or `-`, retain every supplied exon and sort ascending independently
+  of row order or `exon_number`. Never clip a model to the requested locus or
+  silently discard a failing transcript. Multiple loci/strands produce
+  `ambiguous_gene_locus`.
+- Require explicit `transcript_feature_rows: required | not_required`.
+  Under `required`, every selected transcript needs one declaration; absence
+  is `transcript_model_conflict` with a missing-declaration reason. A supplied
+  declaration must be unique and its span equal the supplied exon hull.
+  Repeated declarations are observational collision evidence, not a mechanism.
+  Under `not_required`, disclose undetectable consistent same-locus reuse.
+  Neither setting proves full transcript coverage in an excerpt.
+- For selected rows, require consistent version values and all-or-none presence
+  in each applicable scope: gene version across that gene, transcript version
+  across rows bearing that transcript ID, not across gene-only rows. Missing/
+  contradictory applicable declarations are model conflicts, not ID rewrites.
+  Recommend refusing identical selected-model duplicate rows in v1 rather than
+  deduplication; retain their count/reason. These technical policy recommendations
+  are not real-provider or biological approval.
+- Refuse overlapping/touching selected exons in preparation only. Require
+  `minimum_reference_gap_bases >= 1` explicitly; gap equal to the minimum
+  passes, a smaller positive gap refuses the whole selected gene. Never merge
+  exons, snap boundaries or infer a mechanism from gap size. Real-data threshold/
+  refusal acceptance remains an owner decision; synthetic tests use labelled
+  hand-chosen values.
+
+#### Outcomes, Receipts And Limits Of Reuse
+
+Define a new preparation outcome, separate from execution status:
+`completed`, `missing_gene`, `ambiguous_gene_locus`,
+`duplicate_transcript_accession`, `transcript_model_conflict`,
+`identical_duplicate_row`, `reference_gap_policy_refused`.
+For collisions retain observed bases `multiple_transcript_rows`, `multiple_loci`
+and/or `cross_gene_link`, not an inferred biological cause. Retain all bounded
+reason counts and choose the primary refusal deterministically: collision,
+ambiguous locus, identical duplicate, model conflict, then gap policy.
+`missing_gene` means no exact `gene_id` match in supplied bytes, including
+case/version-spelling differences; it is not proof of biological absence.
+A matched gene without usable exon models is a model conflict, not missing.
+
+Only `completed` publishes a nonempty annotation artifact. Every completed
+scan with a gene-level absence/refusal publishes **receipt only**, never an empty
+v1 annotation. A preparation receipt in `report.json` binds request/schema/
+grammar version, raw GTF/dictionary bindings and verification status, reference
+metadata, exact selector, source/scope/provider claims, policies, feature/index/
+diagnostic counts, outcome/reasons, and the optional annotation artifact hash.
+The receipt's canonical digest excludes only its own digest field; record its
+raw file hash separately. Dictionary and all source bytes must be verified to
+EOF before any completed gene outcome is published.
+
+Cancellation/control failure before complete verification leaves gene outcome
+and complete analysis/counts absent, not zero or `missing_gene`; any processed
+diagnostics are explicitly partial. After a completed verified unit, retain its
+analysis with the late interrupted execution status, following S1's distinction.
+Data/hash/resource errors publish no final report. Define/test these states in
+the request/receipt contract before implementing file publication.
+
+S2.3 must consume a matching annotation/receipt pair or a typed receipt-only
+unavailable source. Add a SAM-only resolution wrapper there; do not fabricate
+an empty `AnnotationSource`, extend legacy `GeneResolution`/`AnnotationBinding`
+or tighten old `sources`/`catalog`. Exact receipt-selector mismatch is
+`selector_binding_mismatch`, not missing. Bare completed v1 geometry can still
+be accepted by old validators: that is structural readability, **not** proof
+that Phase 2/S1 enforce the receipt, gap policy or whole-reference coverage.
+
+#### Bounded Implementation Order And Verification
+
+The owner separately authorized S2.1a and focused local Rust verification on
+2026-10-28, after reviewing the reconciliation. Its private working diff is
+described below; S2.1b/c still require separate authorization:
+
+1. **S2.1a -- pure private kernel and synthetic guards.** Implement private typed
+   dictionary/policy/outcome views, a bounded incremental line consumer and the
+   whole-file identity index under `observed_transcript_structures`. No file
+   access, public schema, operation or adapter. Test normal exon repetition,
+   two configurable opposite-strand genes, collisions, source scope, strict
+   grammar, version/gap/refusal semantics and exact resource/control boundaries.
+   Add direct guards that both unchanged legacy validators still admit touching
+   exons; preparation must refuse them. Preserve every S2.0a/Phase 2/S1 guard.
+2. **S2.1b -- versioned request/receipt/dictionary and file boundary.** Place
+   I/O below `primer_payload`, beside `observed`; reuse suitable verified-reader,
+   line, control and staging patterns. The existing `line()` strips terminators;
+   S2.1a needs raw line framing for hashing, so do not reconstruct LF after
+   decoding. Any raw-line helper must preserve legacy `line()` behavior.
+   Use preparation-only raw/line/index/exon/
+   work/memory/diagnostic/output limits, including unselected rows and comments.
+   Raw GTF streaming and bounded dictionary JSON are separate limits: the
+   existing S1/read-JSON cap is 128,000,000 bytes, not proof that the generic
+   verified reader cannot stream larger sources. Do not raise any legacy cap.
+   Initial preparation ceilings remain the explicit engineering proposals in
+   Bounds below; larger real-provider files need a separately approved budget.
+   Narrow helper extraction, if necessary, must preserve old signatures/behavior
+   and avoid dummy query/PAF budget fields.
+   Check raw path components before normalization; refuse input/output/control
+   aliases and a cancellation marker within output or equal to either input.
+   Check existing-file identities/resolved parents for aliases, regular-file/
+   symlink and no-clobber rules; never treat lexical comparison as complete
+   cross-platform collision protection. Close handles before publication.
+   Reuse report-last publication only after checking its failure paths: existing
+   `publish` can leave reserved/artifact directories after a later failure.
+   No final receipt means no completed artifact set; clean only owned staging/
+   reservations where safe or disclose orphaned output, never overwrite/reuse it.
+3. **S2.1c -- named operation and thin adapters.** Register prepare plus a
+   request-bound Cancel companion through shared engine/parser/shell, generic
+   MCP, discovery/parity and named construction/no-save/write-approval/managed
+   policies. Approval covers every receipt/marker write attempt, including
+   refusal or cancellation. Preserve conservative workflows and project/journal
+   boundaries. Do not add SAM interpretation routes, GUI or a second registry.
+
+File-backed acceptance must cover LF/CRLF raw hashes and releases with identical
+geometry, quoted paths with spaces, symlink/input changes, all output/control
+collisions, hash mismatch, budget/cancellation/write failures and report-last
+visibility. Check final directory contents, but do not infer write chronology
+from directory iteration order. Same annotation bytes under two admitted policies
+must have distinct receipt identities. Native Windows handles, actual CLI/MCP/
+VM, real-data/scientific and release acceptance stay separately unverified.
+GTF fixtures remain inline/synthetic initially; any later committed byte-bound
+input requires provenance, scoped attributes and fast checkout coverage.
+
+GTF-first is the recommendation, not authorization to add genePred, GFF3, BED12,
+JSON sniffing, implicit conversion/network retrieval or guessed aliases. Later
+genePred requires declared columns and a snapshot-bound stable gene-ID crosswalk;
+a `name2` label alone is not that mapping. The archive needs explicit compatible
+companions, not a promise that every retained file is already loadable.
+
+#### S2.1a Implementation, 2026-10-28
+
+Owner-authorized base: `c5a9d63fcddaa78cc02a791b6001081b39af80b6` on
+`gentle_rs_2_main`, matching local main at start. The four-document review
+reconciliation was already an intentional working diff; unrelated `output/`
+remains untouched. No fetch, new model review, commit or push.
+
+- `annotation.rs` and `annotation/gtf.rs` add only a private, incremental raw-line
+  consumer. Private context/dictionary/policy/limit/outcome views are not a
+  frozen schema or file parser. The caller supplies raw LF/CRLF or final
+  unterminated lines; the kernel hashes exactly those bytes and requires an
+  explicit finish. It cannot verify an original file, provider coverage or
+  declaration. Failed/control-interrupted input poisons the consumer, preventing
+  a later partial successful finish. No stream/file/control-marker is opened.
+- Strict row/attribute admission and a bounded whole-input gene/transcript index
+  preserve decoded IDs and separate version strings without aliases or suffix
+  construction. Selected-linked cross-gene/locus collisions survive selection;
+  normal exon repetition is accepted. Unknown strand is refused as missing
+  strand evidence, not manufactured into a second known locus. Two declared
+  opposing strands or different contigs remain ambiguity/collision evidence.
+- Selected models retain all supplied exons in ascending order and use the
+  unchanged `PrimerPayloadAnnotation` geometry with raw-snapshot release.
+  Refusal/absence returns `annotation: None`, never an empty v1 annotation;
+  unused conflicting models are counted, not silently repaired. Required versus
+  optional transcript rows, duplicate-row refusal, version scope and gap policy
+  follow the reconciled technical contract. No real-provider/gap policy or
+  biological identity/completeness is approved.
+- Results retain exact scope/selector/provider declarations, raw hash/bytes,
+  feature/selection/index counts, version maps, entity/reason diagnostics and
+  nonclaims. Diagnostic examples are capped separately from exact totals;
+  truncating examples cannot improve the outcome. Counts across gene/transcript
+  entities are not independently summable biological events. There is no public
+  preparation receipt, persisted digest recipe or adapter projection yet.
+- Preparation-specific limits cover raw/line bytes, all lines including
+  comments, dictionary entries, indexed genes/transcripts, all exon rows,
+  charged work, retained-state accounting and diagnostic examples. Accounting
+  includes row digests, index/object/string charges, vector reserve allowances,
+  output geometry and bounded parser scratch. The reported peak is this
+  deterministic representation-accounting model, not allocator/RSS measurement.
+  No legacy cap/profile/dependency is changed; input-owned borrowed context and
+  dictionary storage are outside the consumer's retained-state accounting.
+- Inline synthetic tests cover variable genes/opposite strands, source/scope
+  nonclaims, LF/CRLF/unterminated input, quoting/Unicode/byte limits, strict data
+  errors, whole-file collisions, versions, model refusals, exact/one-over limits
+  and every bounded control poll. Direct tests of the unchanged legacy source
+  validator and real bound-JSON Phase 2 catalog preserve touching-exon admission;
+  only preparation refuses touching models. The catalog fixture is synthetic
+  and does not replay FASTA/alignment or assert native-platform behavior.
+
+Final working-diff verification on macOS/aarch64 uses `CARGO_INCREMENTAL=0`
+and `--locked --offline --no-default-features --lib -j1`; every test command
+uses `-- --test-threads=1`:
+
+| Command/filter | Result |
+| --- | --- |
+| `cargo test ... observed_transcript_structures` | 58/58, including 16 new pure GTF tests, the new source-validator touching guard, all S2.0b/S0 tests and four kernel preservation guards |
+| `cargo test ... s2a_` | 6/6, including exact S1 report/data/table bytes and kernel identity/work/errors |
+| `cargo test ... observed_transcripts_` | 16/16 engine/shell/MCP-unit/lifecycle tests |
+| `cargo test ... primer_payload` | 49/49, including the new real bound-JSON catalog touching guard and unchanged ten-case Phase 2 serialized-row/work oracle |
+| `cargo check -q ...` | Pass; existing headless dead-code warnings |
+
+Filters overlap; none of these Rust tests is ignored. There are 18 new tests in
+total, including both legacy guards. Earlier runs passed the initial 15 pure
+cases and then the 58-test filter; the final rerun above additionally covers
+the final whitespace-only metadata/source-token admission checks. No frozen
+expectation is regenerated. Existing dead-code and large `__eh_frame` linker
+warnings remain separate from the passing results, with no performance verdict.
+
+Execution identity: Cargo `1.100.0-beta.5` (`7552a885e`), rustc
+`1.100.0-beta.5` (`8ea38001b9da1d6683ac5ebbc993cac89d3a09df`), LLVM 23.1.3,
+`aarch64-apple-darwin`. Effective unoptimized profile, root debuginfo 1,
+dependency debuginfo 0, 256 codegen units, incremental disabled by environment
+and the existing 16-MiB test-thread stack remain unchanged. Cargo.lock SHA-256:
+`40ae5b6c9ba74ba080d39be11b4e57ad2dbc020dba5ecad7222e22f639f84918`.
+The 22-path Rust/Cargo/config manifest at
+`/tmp/gentle-s21a-final-source-manifest.sha256` has SHA-256
+`0c4368e8129ea25f3e36a53f666017b823fd8d4b88a92895dc7c8ad622322c62`.
+Test binary `target/debug/build/GENtle/002e669310863d66/out/gentle-002e669310863d66`
+has SHA-256
+`c9ac125e35405ca1df4e002a789027ba564309a369c24be055717514c3ad0ef6`.
+These local working-diff receipts are not committed fixtures or release assets.
+
+Documentation status, 34 fast documentation/contract cases (33 passed, one
+expected binary-dependent skip), local Markdown targets and whitespace pass.
+Scoped rustfmt for all six changed Rust paths passes; whole-workspace fmt still
+reports the 12 unrelated baseline files in `/tmp/gentle-s21a-fmt.log`, untouched.
+Session-close reports 4 OK, 2 warnings for the intentional diff/untouched
+`output/` and manual plan fidelity, no failures. Manual scope review confirms
+the authorized pure consumer/tests plus documentation only. No other cache
+cleanup, profile, dependency, public DTO, production validator or fixture change.
+
+S2.0a expectations, public v1 DTOs and ten-case Phase 2 oracle remain unchanged;
+old execution receipts are not reattributed to S2.1a. Full suite, default-GUI
+check, actual CLI/VM processes, native Windows/Linux, real-data/scientific and
+release acceptance are unrun. S2.1b/c file/JSON/tag ingress, public receipts,
+publication/lifecycle, adapters and GUI remain separate.
+
+While verification runs, local main advances to `54da62df`, changing Help
+visibility/test code and documentation only. The working base and RNA source
+remain the above `c5a9d63f` plus this diff; no rebase or later-tree pass is inferred.
+
+#### S2.1b File Boundary, 2026-10-28
+
+After committing S2.1a, the owner authorized S2.1b from the existing reviewed
+plan and separately allowed focused locked/offline local Rust tests/checks.
+S2.1a was committed as `18116bf7`, then rebased onto local main `54da62df`,
+becoming `f78a592b`; both changelog entries were retained. All 22 recorded
+Rust/Cargo/config hashes still match the S2.1a execution receipt. This is not
+execution of the later integrated tree. No fetch or push; unrelated `output/`
+remains untouched.
+
+The S2.1b working diff adds the strict versioned dictionary/request/receipt
+and one direct `&self` engine file method below `primer_payload`, beside S1's
+`observed` boundary. It reuses the incremental consumer, canonical geometry,
+verified-reader and control/writer patterns. The small preparation vocabulary
+is re-exported once through protocol aliases; context, limits and parser stay
+crate-private. No legacy public DTO, grammar, limit or validation change.
+
+The [protocol](protocol.md#s21b-annotation-preparation-direct-engine-only)
+specifies the raw/semantic digest recipes, complete-analysis versus execution
+status, receipt-only refusals, conservative JSON/memory accounting and path/
+publication limits. Exact raw GTF line framing is preserved, dictionary bytes
+are independently bounded and verified, and existing-file identities supplement
+the legacy reader's hash/size/mtime checks. The preparation-specific publisher
+closes/synchronizes staged files, reserves fresh output and links the report
+last with no clobber. Fault cleanup removes only identity-matching owned files
+and empty directories; unowned additions survive with an explicit orphan error.
+It does not strengthen or refactor the old publisher under cover of this slice.
+
+Inline synthetic regressions cover raw LF/CRLF/final-line geometry and release
+bindings, exact configurable IDs, policy-dependent receipts, missing/refused
+sources, strict dictionary fields/metadata/competitors, hash/parse/resource
+failures, request-bound early/late control, raw paths/hardlinks, Unix symlinks/
+input replacement, report-last visibility and owned/orphan cleanup. No new
+committed fixture or generated file requires checkout regeneration.
+S2.1c named operations, cancellation command, lifecycle/approval/no-save
+policies, shell/CLI/MCP/discovery, SAM ingress and GUI remain unimplemented.
+
+Native Windows handles/case/rename behavior, real disk/sync failure, default
+GUI/full suite, real-provider/gap policies and scientific/release acceptance
+remain separate. Same-filesystem hard-link support is required for the final
+completion marker. No hostile concurrent-filesystem or crash-durability
+guarantee is claimed.
+
+##### S2.1b Verification
+
+On macOS/aarch64, the final working diff above `f78a592b` passes:
+
+```text
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 primer_payload -- --test-threads=1
+64 passed (15 new S2.1b file cases; unchanged legacy serialized-row/work oracle)
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 observed_transcript_structures -- --test-threads=1
+58 passed
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 s2a_ -- --test-threads=1
+6 passed
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 observed_transcripts_ -- --test-threads=1
+16 passed
+env CARGO_INCREMENTAL=0 cargo check -q --locked --offline --no-default-features --lib -j1
+exit 0
+```
+
+Filters overlap; do not sum them. No ignored Rust tests in these filters.
+The first check found two new helper type-inference errors, corrected before
+successful execution. A first 13-case selected run passed; ownership review
+then added the stale-temp-name guard and three final file tests. The final
+payload rebuild took 3m56s; no timing/performance acceptance is inferred.
+Baseline headless dead-code and linker `__eh_frame` warnings remain visible.
+
+The 28-path Rust/Cargo/config manifest at
+`/tmp/gentle-s21b-final-source-manifest.sha256` has SHA-256
+`9794dd19c7105eec3c51723b2575cc5f6c97ea9d13771e3ed715a7a827a83cdb`;
+all paths recheck unchanged. The test binary
+`target/debug/build/GENtle/002e669310863d66/out/gentle-002e669310863d66`
+has SHA-256
+`f30a22a9f3bd57213b5e037f63699349f4970da5327cb1f17c50cdcd5e8d83b1`.
+Cargo.lock remains
+`40ae5b6c9ba74ba080d39be11b4e57ad2dbc020dba5ecad7222e22f639f84918`.
+Toolchain: Cargo 1.100.0-beta.5 `7552a885e`, rustc 1.100.0-beta.5
+`8ea38001b9da1d6683ac5ebbc993cac89d3a09df`, LLVM 23.1.3,
+`aarch64-apple-darwin`. Effective unoptimized test/dev recipe: root debug 1,
+dependency debug 0, 256 codegen units, `CARGO_INCREMENTAL=0`, unchanged
+16-MiB configured test thread stack. These are local working-diff receipts,
+not committed fixtures, native acceptance or a future merged-SHA claim.
+
+Fast source/documentation checks run 34 cases: 33 pass, one explicitly skipped
+for lack of a supplied actual-process payload CLI binary. Documentation status,
+scoped rustfmt and whitespace pass. Whole-workspace `cargo fmt --check` still
+reports formatting in 12 unrelated baseline files; preserve them untouched
+(`/tmp/gentle-s21b-fmt.log`). Session-close reports 4 OK, 2 warnings for the
+intentional diff/untouched `output/` and manual plan fidelity, no failures.
+The diff stays within the authorized S2.1b contract; no adjacent cleanup,
+dependency/profile/fixture changes or later slice is included. Native/default-
+GUI/full-suite, real-provider, scientific and release checks remain unrun.
+
+#### S2.1c Operation Boundary, 2026-10-28
+
+After verifying the recorded 28-path S2.1b source receipt and whitespace,
+S2.1b is committed locally as `f55931bafa172da930d6ebf1c2ad4075b7249ae3`. Local main is
+still `54da62df`, already an ancestor; no fetch/rebase/merge/push is needed.
+The owner asks to commit and continue. The next bounded S2.1c working diff
+uses the existing reviewed plan; an optional further Claude prompt and a new
+local-Rust execution choice were offered. No new model invocation or review
+verdict is inferred. Unrelated `output/` remains untouched.
+
+The minimal plan is named prepare/cancel operations, one additive optional
+result, shared parsing/discovery/MCP, explicit lifecycle/approval and managed
+policies, then focused regression/parity checks. The implementation adds:
+
+- `PrepareObservedTranscriptAnnotation` and `CancelObservedTranscriptAnnotation`
+  with shared-shell `rna-reads transcript-annotation-prepare|transcript-annotation-cancel`.
+  The generic CLI/MCP/scripting paths reuse these typed operations and the
+  unchanged S2.1b request/receipt/annotation geometry, not new biological logic.
+- Explicit preserve-content construction/no implicit save/no checkpoint and
+  write-attempt approval, plus external capability metadata. A candidate's
+  false flags cannot waive operation-derived approval. Generic MCP still
+  requires `confirm:true`. Raw operation audit remains; direct shell control
+  does not append a journal. Existing mixed/empty workflows remain conservative.
+- Typed `submit_parsed` execution/control lanes and artifact-only retention,
+  without a live project lock/journal merge. Legacy raw-text submission still
+  snapshots conservatively. Compact result bindings correlate submitted request,
+  receipt content/raw bytes/path and distinct dispatch/gene outcomes. Result
+  correlation resolves only the output directory; it does not rescan source,
+  report or annotation bytes. Existing worker/project policies are unchanged.
+- Cancellation shares raw-path/alias checks but does not require remaining
+  source bytes or fresh output. Current parents must resolve. A matching
+  marker is idempotent; stale/malformed markers or aliases never clobber input.
+  Success requests cancellation only, not termination. Preparation's existing
+  admission/publication path stays unchanged.
+
+New inline synthetic tests cover constructor/content/redo/revision and mixed-
+workflow policy, LF/CRLF quoted request paths, discovery and false agent flags,
+idempotent request-bound cancellation with removed sources, result correlation,
+unavailable/cancel/control feedback, named lanes, held-live-lock standalone
+publication, and generic MCP confirmation/no-save boundaries. All new result
+fields are omitted for existing operations; frozen Phase 2/S1 assertions are
+not edited. UI `OpResult` literals gain only the required `None` field.
+
+Rust execution and canonical parity regeneration are pending the owner's new
+S2.1c build choice; S2.1b's exception is not extended implicitly. No existing
+binary is treated as source-matched for this diff. The matrix must be generated
+from the updated canonical registry before claiming freshness; its existing
+LF/CRLF checkout guard must also run. Source/documentation tests and whitespace
+are not runtime evidence. No claim of passing C tests, default-GUI/full-suite,
+actual CLI/MCP processes/VM, native Windows/Linux, real-provider, scientific or
+release acceptance. S2.2/S2.3, SAM/BAM ingress and GUI remain unimplemented.
+
+Fast C-source/documentation checks finish with 34 passes and one expected
+actual-process payload-CLI skip (35 cases). Documentation status, scoped
+rustfmt and whitespace pass. Session-close reports 4 OK, 2 warnings, no
+failures: intentional implementation diff/untouched `output/` (the glossary
+edit is the required canonical registration, not an unrelated generated file),
+and manual plan fidelity. The diff matches the bounded S2.1c plan. Required
+remaining execution, after the new build choice, is the `observed_annotation_`,
+`primer_payload`, `observed_transcript_structures`, `s2a_` and
+`observed_transcripts_` locked/offline headless filters, headless Cargo check,
+canonical protocol/discovery guards, then source-matched
+`gentle_examples_docs parity-matrix-generate`/`parity-matrix-check` and
+`scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes`.
+Do not dispatch CI, push or count this authored checklist as execution.
 
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 
@@ -624,8 +1024,11 @@ proof of no lifecycle effects.
 | Primers/claims | Independently vary masks and declared search completeness; defaults give unassessed reconciliation/zero definite support and unassessed flanks. Assert absent masks alone do not change mapping certainty. Deduplicate qualification-split unit catalogs; no unqualified novel-junction label. |
 | Hypothesis selection | A longer unspliced versus shorter spliced mapping: both observations remain, nonoptimal membership is explicit and only retained best-equivalent paths contribute support. No new score/filter or old-byte change. |
 | Annotation | GTF `[101,110]` becomes `[100,110)`; exact ID forms, separate versions and selector mismatch; genePred crosswalk/columns; touching/overlapping/small-positive-gap policies and duplicate accessions; declared contig scope cannot drop an alignment competitor. Typed source refusal, no qualified-ID invention or silent model filtering. |
+| S2.1a grammar/index | Comments, blank records, unterminated final line, field counts, consumed/unknown repeated attributes, quoted semicolons/escapes, invalid UTF-8/controls and bounds; interleaved genes, normal exon repetition, selected-linked collisions in otherwise unselected rows, required/missing/multiple transcript declarations, version scope and excerpt completeness nonclaims. Legacy validators still accept touching exons; preparation alone refuses them. |
+| S2.1b dictionary/receipt | Duplicate names/fields, metadata mismatch, positive lengths and checked integer conversion; missing/refused gene produces receipt only, never an empty annotation; exact-ID absence versus matched gene without exons; identical geometry with changed admitted policy gives a different receipt identity; LF/CRLF changes raw hashes/snapshot release but not transcript geometry. |
+| S2.1b publication | Partial/cancelled versus fully verified outcomes, early/late control failures, input/output/marker aliases and marker containment, source change/symlink/hash errors, output exists/write/sync failure, no-clobber and report-last visibility. Exact contents are checked without treating directory order as write chronology. |
 | Authority | Always snapshot-tagged prepared release plus nullable declared provider release. Same chain key with different verification evidence stays same key/different authority; joins do not upgrade declared to verified. |
-| Resources/control | Exact-boundary/one-over cases for every cap, full EOF hash, cancellation/control/data errors, output failure, rollback/no final report, idempotent refusal of existing output and bounded saved inspection. |
+| Resources/control | Exact-boundary/one-over cases for every cap, including whole-file index/unselected data/comments; full EOF hash, cancellation/control/data errors, output failure and safe cleanup/orphan disclosure; no final report on data/hash/resource errors, no reuse of uncommitted output, idempotent refusal of existing output and bounded saved inspection. |
 | Portability | LF and CRLF raw-hash bindings through real file-backed boundary, paths with spaces through shared shell quoting, Windows handle-close/rename behavior. New committed byte-bound fixtures need provenance plus scoped `.gitattributes` and fast checkout guards. |
 | Adapters/lifecycle | Parser/descriptor parity, forged planner flags still needing confirmation, raw/managed results, constructor/workflow/autosave and journal/redo preservation, actual CLI/MCP processes separately from unit tests. |
 
@@ -668,12 +1071,21 @@ sign-off on this revised text.
 
 ## Recommended Defaults And Remaining Owner Decisions
 
-- Start with S2.0a tests only, followed by separately authorized S2.0b. No real
-  SAM or annotation policy is needed to write synthetic preservation guards.
-- Recommend GTF first, genePred later. Keep the exact row-to-unit manifest in
-  this slice. A compact QNAME-uniqueness declaration could be a later reviewed
-  producer contract, but must not silently replace current accounting or prove
-  original FASTQ identity. Neither recommendation is an owner decision yet.
+- S2.0a/b are implemented with scoped results above. S2.1a is subsequently
+  owner-authorized with focused local verification; preserve all older guards
+  and verify its working diff without inferring S2.1b/c authorization. The
+  supplied review alone was not implementation approval.
+- Recommend GTF first, genePred later, with explicit real-provider
+  `transcript_feature_rows` policy and input scope. Counting unrelated semantic
+  inconsistencies and refusing identical selected-model duplicate rows are
+  Codex's v1 technical recommendations, not owner-approved provider policy.
+- Retain the proposed finite preparation budgets; larger raw-stream/index
+  limits for real whole-provider files need separate approval. Do not confuse
+  S1's 128,000,000-byte JSON/input limits with the proposal's MiB units or treat
+  a budget refusal as gene absence.
+- Keep the exact row-to-unit manifest in later S2.2. A compact QNAME-uniqueness
+  declaration could be a later reviewed producer contract, but must not silently
+  replace current accounting or prove original FASTQ identity.
 - Do not add contig aliases or qualified transcript IDs now. A future explicit
   alias table would need hash/authority/collision policy and its own review;
   it is not equivalent to guessing names, but is additional scope.
@@ -706,6 +1118,20 @@ Documentation status, 18 LF/CRLF-aware documentation tests, five local plan/
 prompt link targets and whitespace checks pass. Session-close has 4 OK,
 2 warnings (intentional documentation diff/untouched `output/`, manual plan
 fidelity), no failures. No Rust build/test, implementation, commit or push.
+
+The later S2.1 review reconciliation was source-checked at `c5a9d63f` after the
+interrupted read-only session resumed with the same clean tracked baseline.
+It changes only this canonical plan, the umbrella plan's pointer, the existing
+roadmap entry and changelog. Documentation status, all 18 LF/CRLF-aware
+`DocumentationStatusTests`, local Markdown targets and whitespace pass.
+Session-close reports 4 OK, 2 warnings (intentional four-document working diff
+and untouched `output/`, manual plan fidelity), no failures. This is a scoped
+technical recommendation, not owner authorization for S2.1a/b/c or a fresh
+Claude verdict; no Rust code, schema, generated artifact, fixture, build/test,
+commit, fetch, push, real-data or scientific acceptance is added.
+That paragraph records the review-only reconciliation. The subsequent owner
+authorization and executed S2.1a working diff are recorded in the implementation
+ledger above; they do not authorize S2.1b/c or change that historical receipt.
 That paragraph records the earlier review-reconciliation session only; the
 separately authorized S2.0a implementation/execution ledger above supersedes its
 pre-implementation status, not its source-inspection limits.

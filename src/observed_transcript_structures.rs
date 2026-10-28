@@ -11,6 +11,7 @@ use crate::engine::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub(crate) mod annotation;
 mod comparison;
 mod core;
 pub(crate) mod dag;

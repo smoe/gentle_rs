@@ -3633,6 +3633,19 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         }
     }
     // Transport only: large populations remain in the engine-owned report, not the model response.
+    if let Some(prepared) = result.observed_transcript_annotation.as_deref() {
+        return match GentleEngine::observed_transcript_annotation_result_binding(
+            &prepared.report.request,
+            prepared,
+        ) {
+            Ok(binding) => tool_result_json(
+                json!({"schema":"gentle.command_observed_annotation_result.v1",
+                "state_path":state_path,"observed_annotation_result":binding,"full_output_retained_in_report":true}),
+                false,
+            ),
+            Err(error) => tool_result_json(json!({"state_path":state_path,"error":error}), true),
+        };
+    }
     if let Some(report) = result.observed_transcript_structures.as_deref() {
         return match GentleEngine::observed_transcript_structures_result_binding(
             &report.request,
@@ -5368,6 +5381,8 @@ mod tests {
         // Confirmation is checked before payload parsing, files or scientific admission.
         for name in [
             "PreparePrimerPayloadAlignmentQueries",
+            "PrepareObservedTranscriptAnnotation",
+            "CancelObservedTranscriptAnnotation",
             "SummarizePrimerPayloadAlignments",
             "InspectPrimerPayload",
             "CancelPrimerPayload",
@@ -5413,6 +5428,51 @@ mod tests {
         assert_ne!(inspected["isError"], true, "{inspected}");
         assert_eq!(inspected["structuredContent"]["result"]["observed_transcript_structures_inspection"]["rows"].as_array().unwrap().len(),1);
         assert_eq!(before, fs::read(&path).unwrap());
+    }
+
+    #[test]
+    fn observed_annotation_mcp_keeps_confirmation_and_unreconciled_state_file_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let mut request = GentleEngine::observed_annotation_test_fixture(root.path());
+        request.cancel_path = Some(root.path().join("cancel marker").display().to_string());
+        let path = root.path().join("project's state.json");
+        crate::engine::lifecycle_slice3_tests::state()
+            .save_to_path(&path.display().to_string())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let denied = op_tool_result(
+            &path.display().to_string(),
+            &json!({"operation":{
+            "PrepareObservedTranscriptAnnotation":{"request":request}}}),
+        );
+        assert_eq!(denied["isError"], true);
+        assert!(!Path::new(&request.output_dir).exists());
+        let result = op_tool_result(
+            &path.display().to_string(),
+            &json!({"confirm":true,"operation":{
+            "PrepareObservedTranscriptAnnotation":{"request":request}}}),
+        );
+        assert_ne!(result["isError"], true, "{result}");
+        assert_eq!(
+            result["structuredContent"]["observed_annotation_result"]["outcome"],
+            "completed"
+        );
+        assert_eq!(before, fs::read(&path).unwrap());
+        let cancel = op_tool_result(
+            &path.display().to_string(),
+            &json!({"confirm":true,"operation":{
+            "CancelObservedTranscriptAnnotation":{"request":request}}}),
+        );
+        assert_ne!(cancel["isError"], true, "{cancel}");
+        assert_eq!(before, fs::read(&path).unwrap());
+        let missing = root.path().join("must remain absent.json");
+        let cancel = op_tool_result(
+            &missing.display().to_string(),
+            &json!({"confirm":true,"operation":{
+            "CancelObservedTranscriptAnnotation":{"request":request}}}),
+        );
+        assert_ne!(cancel["isError"], true, "{cancel}");
+        assert!(!missing.exists());
     }
 
     #[test]

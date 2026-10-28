@@ -37,6 +37,9 @@ mod tests;
 
 const INTERRUPTED: &str = "primer_payload_interrupted";
 
+#[path = "primer_payload/annotation_prepare.rs"]
+mod annotation_prepare;
+
 fn hash<T: Serialize>(value: &T) -> Result<String, EngineError> {
     Ok(sha256_prefixed_bytes(&encode(value)?))
 }

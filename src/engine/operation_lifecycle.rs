@@ -19,6 +19,8 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
             | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::InspectObservedTranscriptStructures { .. }
             | Operation::CancelObservedTranscriptStructures { .. }
+            | Operation::PrepareObservedTranscriptAnnotation { .. }
+            | Operation::CancelObservedTranscriptAnnotation { .. }
     )
 }
 
@@ -57,6 +59,10 @@ pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationAppro
     match op {
         Operation::SummarizeObservedTranscriptStructures { .. }
         | Operation::CancelObservedTranscriptStructures { .. } => {
+            Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
+        }
+        Operation::PrepareObservedTranscriptAnnotation { .. }
+        | Operation::CancelObservedTranscriptAnnotation { .. } => {
             Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
         }
         Operation::PlanDnaSequenceDesign { path: Some(_), .. } => {

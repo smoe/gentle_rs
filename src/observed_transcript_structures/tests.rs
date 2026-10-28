@@ -6,6 +6,26 @@
 use super::*;
 use crate::engine::{PRIMER_PAYLOAD_ANNOTATION_SCHEMA, PrimerPayloadTranscript};
 
+#[test]
+fn observed_annotation_preparation_preserves_legacy_touching_exon_admission() {
+    let mut a = input();
+    a.annotation_sources[0].annotation.transcripts[0].genomic_exons = vec![(100, 110), (110, 120)];
+    let context = core::Context {
+        reference: &a.reference,
+        reference_gene: &a.reference_gene,
+        comparison_genes: &a.comparison_genes,
+        annotation_sources: &a.annotation_sources,
+        required_flank_bases: a.required_flank_bases,
+        budgets: &a.budgets,
+    };
+    // Directly test the pre-existing validator, not a new preparation helper.
+    assert!(comparison::sources(&context).is_ok());
+    assert_eq!(
+        a.annotation_sources[0].annotation.transcripts[0].genomic_exons,
+        [(100, 110), (110, 120)]
+    );
+}
+
 #[path = "preservation_tests.rs"]
 mod preservation;
 

@@ -70,6 +70,75 @@ No SAM text/file parser, public schema, operation, annotation preparation,
 publication, GUI or biological acceptance is authorized by this private slice.
 See the [implementation and verification scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 
+### Observed Structures S2.1a Pure Preparation Boundary
+
+Owner-authorized 2026-10-28: implement the reconciled strict GTF subset as a
+private bounded incremental consumer, not annotation file/JSON ingress,
+publication, operations or adapters. Keep gene/source/reference selectors and
+gap/transcript-row policies explicit; no biology or provider defaults. Hash
+supplied raw bytes without claiming original-file or provider verification.
+Preparation failures/absence have typed outcomes and no annotation, never an
+empty v1 annotation used as unavailable evidence. Preserve scoped diagnostics,
+unknown strand, versions and excerpt/completeness limits.
+
+Retain the existing annotation geometry, legacy enum/DTO meanings and all
+Phase 2/S1 byte/work guards. Touching exons are refused only by preparation;
+do not tighten legacy validators to enforce a receipt they do not consume.
+Public dictionary/receipt contracts, safe publication and named lifecycle/
+adapter migration belong to separately authorized S2.1b/c. See the
+[implementation ledger](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28).
+
+### Observed Structures S2.1b File Boundary
+
+Owner-authorized after the S2.1a commit on 2026-10-28: expose strict versioned
+preparation request/receipt/dictionary records and one direct engine method.
+Reuse the canonical annotation geometry and the same typed preparation
+vocabulary, not adapter-local biology or a new transcript model. No Operation,
+CLI/MCP/GUI route or implicit lifecycle migration belongs to this slice.
+
+Hash the raw supplied GTF stream that is parsed, bind every dictionary byte and
+retain source/gap/version policies in the request/receipt digest. Keep EOF/data
+verification separate from execution status and complete gene analysis. Partial
+input never becomes absence or measured zero. Refusals publish receipt only;
+completed geometry uses raw-snapshot release and remains structurally readable
+by legacy validators without claiming they enforce the new receipt.
+
+Use preparation-only limits and safe fresh-directory publication, with the
+receipt as last completion marker. External writes remain separate from the
+unchanged project/journal. Validate raw paths before normalization and existing
+identities before publication. Never recursively remove potentially unowned
+output after failure; preserve/disclose orphaned incomplete directories.
+No data/hash/resource error is converted into a recoverable biological outcome.
+The [protocol](protocol.md#s21b-annotation-preparation-direct-engine-only) records
+the new digest recipe and conservative JSON/memory admission model; neither
+changes existing S1/Phase 2 bytes, limits or errors. Native/platform/provider/
+scientific acceptance and S2.1c named adapters remain separately gated.
+
+### Observed Structures S2.1c Operation Boundary
+
+Owner-requested continuation after the S2.1b local commit on 2026-10-28:
+register only named annotation preparation and request-bound cancellation.
+Keep one strict file/biology boundary. New operation-derived approval covers
+every external receipt/marker write attempt, independently of model/candidate
+flags and generic MCP confirmation. Explicitly migrate constructor/no-save,
+no-checkpoint and managed policies; do not infer them from `ReadOnly` or output.
+
+Typed standalone admission separates preparation execution and marker control
+from the live project. Retain correlated artifact metadata without merging a
+private journal or vetoing an already-published result on late host cancel.
+Raw-text admission and workflows retain their conservative project-bound
+host policies. Compact transport retains a separate gene outcome: complete
+source refusal is unavailable evidence, not zero biology or successful models.
+Do not re-query sources to validate a worker result; correlate request/receipt
+digests, serialized receipt bytes and its resolved publication path.
+
+The new optional result/worker-binding fields are omitted for old operations.
+Phase 2/S1 wire bytes, existing schemas, helper limits and frozen assertions
+remain unchanged. SAM ingress, S2.3 receipt consumption, GUI, provider/gap
+policy acceptance and native/scientific verdicts remain separate. See the
+[S2.1c ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28)
+for authored versus executed scope.
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic

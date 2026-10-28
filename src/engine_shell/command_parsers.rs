@@ -13318,6 +13318,24 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 .map_err(|e| e.to_string())?,
             })
         }
+        "transcript-annotation-prepare" | "transcript-annotation-cancel" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads transcript-annotation-prepare|transcript-annotation-cancel REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = Box::new(parse_required_json_payload::<
+                crate::engine::PrepareObservedTranscriptAnnotationRequest,
+            >(
+                &tokens[2], "observed transcript annotation request"
+            )?);
+            let op = if tokens[1] == "transcript-annotation-prepare" {
+                Operation::PrepareObservedTranscriptAnnotation { request }
+            } else {
+                Operation::CancelObservedTranscriptAnnotation { request }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
+            })
+        }
         "transcript-structures" | "transcript-structures-cancel" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads transcript-structures|transcript-structures-cancel REQUEST_JSON_OR_@FILE".into());

@@ -35,6 +35,117 @@ operation, CLI/MCP route, file parser or saved schema; see the
 [bounded implementation scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 All existing S0/S1/Phase 2 public types and byte-preservation contracts remain.
 
+### S2.1b Annotation Preparation (Direct Engine Only)
+
+`GentleEngine::prepare_observed_transcript_annotation(request, progress)` verifies
+one explicit GTF plus an ordered `gentle.reference_contig_dictionary.v1` file.
+This began as a direct shared-engine method in S2.1b. Separately authorized
+S2.1c now exposes it through the named operations and shared routes below;
+callers of the direct method still authorize every external write attempt.
+It does not change the project or journal, run an aligner or read original reads.
+
+The strict `gentle.observed_transcript_annotation_request.v1` requires raw
+`PrimerPayloadFile` bindings for `gtf` and `dictionary`, explicit `format: gtf`,
+`reference_id`, declared `reference`, exact `{source_id,gene_id}` selector,
+source declaration/scope, transcript-row/gap policy, preparation-only budgets,
+fresh `output_dir` and optional request-bound `cancel_path`. No gene/provider/
+assembly or gap default. The dictionary has `schema`, `reference_id`, `assembly`,
+`reference_fasta_sha256`, ordered `contigs:[{name,length}]`; duplicate/unknown
+fields, repeated exact names and invalid lengths/metadata refuse the input.
+Names/IDs are not normalized. Its full bytes, including unselected competitors,
+are bound. Reference authority remains `declared`, not verified FASTA content.
+
+`report.json` uses `gentle.observed_transcript_annotation_report.v1`. Its
+`request_sha256` hashes canonical sorted-key JSON. `content_sha256` hashes that
+same canonical representation with **only that field omitted**, not blank;
+the returned `report_file` separately binds the pretty JSON's raw bytes. This
+is a new recipe, not a change to S1/Phase 2 digests. The receipt retains the full
+request, separate dictionary/GTF verification flags, execution status, optional
+complete analysis and optional annotation artifact. Complete analysis includes
+grammar, typed gene outcome/reasons, counts, bounded diagnostics and exact
+omission totals, supplied versions, selected contigs, dictionary entry count,
+charged work and retained-representation peak. Source declarations are retained,
+not authenticated. Only `completed` gene outcome writes nonempty unchanged v1
+geometry at `artifacts/annotation.json`, with raw-GTF `snapshot-sha256:...`
+release. Missing/refused genes publish a receipt only (empty artifacts directory).
+
+Before complete EOF/hash verification and analysis, cancellation/control failure
+has `analysis:null` and no annotation, never zero counts or `missing_gene`.
+Late interruption retains complete analysis/artifact with `cancelled` or
+`control_error` execution status. Invalid data, hashes and exhausted budgets
+publish no final receipt. No original-file completeness or biological claim is
+inferred from successful supplied-input verification. Future SAM intake must
+require a matched receipt/annotation pair; legacy readers do not enforce it.
+
+Raw GTF and dictionary bytes share a 128-MiB total ceiling; dictionary JSON has
+an independent explicit ceiling (at most 8 MiB). Conservative JSON allocation
+admission charges 64 times serialized/raw size plus 64 KiB before parsing or
+canonicalizing. This can refuse a file below its raw cap; it is a representation
+bound, not RSS. Dictionary retained storage and fixed reader/context scratch are
+reserved from the kernel's explicit memory cap. All dictionary bytes consume
+work in addition to the consumer's charges. Output is separately bounded at
+128 MiB. Requests can lower limits; none is a throughput or whole-provider claim.
+
+Raw paths reject empty/dot/parent components before normalization. Inputs must
+be regular non-symlink files; existing parents are resolved and existing-file
+identities detect aliases/hardlinks. Output and marker cannot alias inputs;
+the marker cannot lie inside output. Parents must already exist. macOS/Windows
+also conservatively refuse case-folded spelling collisions, even on a
+case-sensitive volume. Stable opened-input identities are checked alongside
+the existing verified reader's size/mtime/hash checks. This is not a hostile
+concurrent-filesystem transaction or crash-durability guarantee.
+
+Fresh staged files are closed/synchronized before public completion. Publication
+reserves a new directory, moves artifacts and creates `report.json` last by a
+same-filesystem no-clobber hard link. Failure cleans only identity-matching owned
+files/empty directories. Unowned additions/replacements are preserved and an
+`observed_annotation_orphaned_output` error discloses the incomplete directory;
+it must not be adopted as completed or reused. Native Windows handles/filesystem
+behavior, actual adapters, real-provider policies and scientific acceptance
+remain separate checks.
+
+### S2.1c Named Annotation Operations
+
+`PrepareObservedTranscriptAnnotation {request}` and
+`CancelObservedTranscriptAnnotation {request}` use the same S2.1b request.
+Shared-shell `rna-reads transcript-annotation-prepare|transcript-annotation-cancel`
+accepts typed JSON or a quoted `@FILE`. Generic MCP `op` keeps mandatory
+`confirm:true`. Operation-derived approval also covers ordinary and forged
+agent candidates independently of their own flags. Every receipt/marker write
+attempt requires approval, even for cancelled/refused/invalid work.
+
+Both names explicitly join the request-aware preserve-content constructor and
+no-save policy, no-checkpoint selector and managed standalone policies. Raw
+`apply` retains its execution audit without changing project content or history;
+the shell's direct Cancel route appends no project journal. Standalone prepare
+uses the execution lane and artifact-only publication; Cancel has a separately
+bounded control lane through typed `submit_parsed` admission. Legacy raw-text
+submission still conservatively snapshots the project before parsing; it is not
+made lock-independent by this slice. Private worker journals are never merged into the live
+project. Existing workflow construction/save and conservative managed workflow
+commit policies are unchanged, not a new artifact-only workflow service.
+
+The additive optional `OpResult.observed_transcript_annotation` is omitted when
+absent, preserving Phase 2/S1 output bytes. It contains the emitted preparation
+and raw report file binding. Managed/MCP compact replies use
+`gentle.command_observed_annotation_result.v1` with
+`observed_annotation_result: gentle.observed_transcript_annotation_result_binding.v1`.
+This binds the executed request, report content hash, raw report path/hash/bytes,
+dispatch `outcome` and separate typed optional `gene_outcome`. Dispatch outcome
+is `completed`, `unavailable`, `cancelled` or `control_error`; a complete gene
+refusal maps to `unavailable`/partial agent feedback, not zero biology. Metadata
+correlation validates the typed report, canonical digests and serialized raw
+receipt, resolving the output directory for path correlation only; it does not
+reread source/report/annotation bytes or authenticate provenance.
+
+Cancellation validates the request and current raw paths/aliases, not source
+contents; missing source files are allowed only with resolvable parents. It can
+write beside an already-published output but not inside it. Matching markers
+are idempotent; stale/malformed markers and clobbering are refused. Marker
+publication never confirms termination. No SAM preparation/interpretation,
+annotation/receipt ingestion for S2.3, GUI, new provider policy or scientific
+acceptance follows from this registration.
+
 ## Primer Payload Evidence (Phase 2, Experimental)
 
 Separate `PreparePrimerPayloadAlignmentQueries`, `SummarizePrimerPayloadAlignments`,

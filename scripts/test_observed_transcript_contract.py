@@ -72,6 +72,26 @@ class ObservedTranscriptContractTests(unittest.TestCase):
         for path in [BASE / "observed.rs", BASE / "observed_tests.rs", ROOT / "src/engine/protocol/observed_transcripts.rs"]:
             self.assertTrue(path.read_text().startswith("//!"), str(path))
 
+    def test_annotation_routes_name_their_effect_lifecycle_and_shared_parser(self):
+        commands = {c["path"]: c for c in json.loads((ROOT / "docs/glossary.json").read_text())["commands"]}
+        routes = {
+            "rna-reads transcript-annotation-prepare": "PrepareObservedTranscriptAnnotation",
+            "rna-reads transcript-annotation-cancel": "CancelObservedTranscriptAnnotation",
+        }
+        for route, operation in routes.items():
+            self.assertEqual(commands[route]["engine_operations"], [operation])
+            self.assertIn(route, (ROOT / "docs/cli/observed-transcripts.md").read_text())
+            for path in ("src/engine.rs", "src/engine/ops/operation_handlers.rs",
+                         "src/engine/operation_lifecycle.rs", "src/engine_shell/command_parsers.rs",
+                         "src/command_execution/rna_artifacts.rs", "crates/gentle-protocol/src/lib.rs"):
+                self.assertIn(operation, (ROOT / path).read_text(), path)
+        protocol = (ROOT / "src/engine/protocol.rs").read_text()
+        self.assertRegex(protocol, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s+pub observed_transcript_annotation:')
+        self.assertNotIn("observed_transcript_annotation", (ROOT / "src/engine/protocol/primer_payload.rs").read_text())
+        for path in (BASE / "annotation_prepare.rs", BASE / "annotation_prepare/adapter_tests.rs",
+                     ROOT / "src/engine/protocol/observed_annotation.rs"):
+            self.assertTrue(path.read_text().startswith("//!"), str(path))
+
 
 if __name__ == "__main__":
     unittest.main()

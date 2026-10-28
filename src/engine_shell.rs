@@ -19878,6 +19878,41 @@ fn rna_panel_descriptor(id: &str) -> Value {
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)})
 }
 
+fn observed_annotation_descriptor(id: &str) -> Value {
+    let cancel = matches!(
+        id,
+        "CancelObservedTranscriptAnnotation" | "rna-reads transcript-annotation-cancel"
+    );
+    let name = if cancel {
+        "CancelObservedTranscriptAnnotation"
+    } else {
+        "PrepareObservedTranscriptAnnotation"
+    };
+    let request = json!({
+        "schema":crate::engine::OBSERVED_ANNOTATION_REQUEST_SCHEMA,"format":"gtf",
+        "gtf":{"path":"REPLACE_GTF","sha256":"","bytes":0},
+        "dictionary":{"path":"REPLACE_DICTIONARY","sha256":"","bytes":0},
+        "reference_id":"REPLACE_REFERENCE_ID","reference":{"assembly":"REPLACE_ASSEMBLY","fasta_sha256":""},
+        "selector":{"source_id":"REPLACE_SOURCE_ID","gene_id":"REPLACE_EXACT_STABLE_GENE_ID"},
+        "source":{"scope":"producer_excerpt","provider":null,"declared_provider_release":null,
+            "declared_derivation":null,"source_uri":null,"notice":null},
+        "policy":{"transcript_feature_rows":"required","minimum_reference_gap_bases":0},
+        "budgets":{"max_input_bytes":0,"max_dictionary_bytes":0,"max_line_bytes":0,"max_lines":0,
+            "max_dictionary_entries":0,"max_indexed_genes":0,"max_indexed_transcripts":0,
+            "max_exon_rows":0,"max_retained_bytes":0,"max_work":0,"max_diagnostics":0,"max_output_bytes":0},
+        "output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null
+    });
+    json!({"id":id,"kind":"operation","mutating":"external","requires_confirmation":true,
+        "args":[{"name":"REQUEST_JSON_OR_@FILE","required":true,"detail":"An explicit reviewed GTF/dictionary request; prepare and cancel use identical request bytes."}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},
+        "description":"Prepare exact gene models from one bound strict GTF snapshot and explicit reference dictionary, or write its request-bound cancel marker. Preserve source scope, policy and unknowns. No project mutation, aligner, SAM ingress, provider retrieval, protein assignment or GUI.",
+        "request_template":request,"operation_template":{(name):{"request":request}},
+        "request_template_is_example_not_resolved_input":true,
+        "template_contract":"Replace every placeholder and choose source scope, transcript-row/gap policy and resource budgets explicitly. Zero budgets/gap are deliberately inadmissible, not biological defaults. No checksum, gene or release may be guessed.",
+        "result_contract":"gentle.observed_transcript_annotation_result_binding.v1 distinguishes completed, unavailable, cancelled and control_error from its separate gene_outcome. Report-only refusal is not zero evidence. Receipt/marker writes require confirmation; cancellation does not confirm worker termination.",
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
 fn observed_transcript_descriptor(id: &str) -> Value {
     let inspect = matches!(
         id,
@@ -22106,6 +22141,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rna_panel_descriptor("BuildRnaReadPanel"),
         primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
         observed_transcript_descriptor("SummarizeObservedTranscriptStructures"),
+        observed_annotation_descriptor("PrepareObservedTranscriptAnnotation"),
+        observed_annotation_descriptor("CancelObservedTranscriptAnnotation"),
+        observed_annotation_descriptor("rna-reads transcript-annotation-prepare"),
+        observed_annotation_descriptor("rna-reads transcript-annotation-cancel"),
         observed_transcript_descriptor("InspectObservedTranscriptStructures"),
         observed_transcript_descriptor("CancelObservedTranscriptStructures"),
         observed_transcript_descriptor("rna-reads transcript-structures"),
@@ -66509,6 +66548,14 @@ fn execute_op_command(
     let op = resolve_operation_payload(payload)?;
     // These file-only observation/control routes never append a project journal.
     match &op {
+        Operation::CancelObservedTranscriptAnnotation { request } => {
+            let message = GentleEngine::cancel_observed_transcript_annotation(request)
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
         Operation::InspectObservedTranscriptStructures {
             path,
             expected_result,
@@ -66662,6 +66709,7 @@ fn execute_op_command(
             | Operation::PreparePrimerPayloadAlignmentQueries { .. }
             | Operation::SummarizePrimerPayloadAlignments { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::PrepareObservedTranscriptAnnotation { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
             | Operation::ExportRnaReadPanelSummary { .. }
@@ -66696,6 +66744,7 @@ fn execute_op_command(
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
+                | Operation::PrepareObservedTranscriptAnnotation { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::PlanDnaSequenceDesign { .. }

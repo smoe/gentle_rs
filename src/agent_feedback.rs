@@ -65,6 +65,52 @@ impl AgentExecutionStatus {
     /// Interpret only engine-owned job envelopes, never free-text messages.
     pub fn from_shell_output(output: &Value) -> Self {
         if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.command_observed_annotation_result.v1")
+        {
+            return if output
+                .pointer("/observed_annotation_result/schema")
+                .and_then(Value::as_str)
+                == Some("gentle.observed_transcript_annotation_result_binding.v1")
+            {
+                match output
+                    .pointer("/observed_annotation_result/outcome")
+                    .and_then(Value::as_str)
+                {
+                    Some("completed") => Self::Completed,
+                    Some("unavailable") => Self::Partial,
+                    Some("cancelled") => Self::Cancelled,
+                    _ => Self::Failed,
+                }
+            } else {
+                Self::Failed
+            };
+        }
+        if let Some(report) = output.pointer("/result/observed_transcript_annotation/report") {
+            return match (
+                report.get("schema").and_then(Value::as_str),
+                report.get("status").and_then(Value::as_str),
+            ) {
+                (Some("gentle.observed_transcript_annotation_report.v1"), Some("completed")) => {
+                    match report.pointer("/analysis/outcome").and_then(Value::as_str) {
+                        Some("completed") => Self::Completed,
+                        Some(
+                            "missing_gene"
+                            | "ambiguous_gene_locus"
+                            | "duplicate_transcript_accession"
+                            | "transcript_model_conflict"
+                            | "identical_duplicate_row"
+                            | "reference_gap_policy_refused",
+                        ) => Self::Partial,
+                        _ => Self::Failed,
+                    }
+                }
+                (Some("gentle.observed_transcript_annotation_report.v1"), Some("cancelled")) => {
+                    Self::Cancelled
+                }
+                _ => Self::Failed,
+            };
+        }
+        if output.get("schema").and_then(Value::as_str)
             == Some("gentle.command_observed_structures_result.v1")
         {
             return match (
