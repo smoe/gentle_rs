@@ -5,8 +5,8 @@
 After the owner's next push, use the normally integrated source containing
 `1adad235` (Lifecycle Slice 4) and `7329f00f` (manual navigation/contextual Help).
 Record the full tested SHA once; these commit IDs identify changes, not an
-interim freeze or a request for another bundle. The two sections below define
-this delta. Older sections retain their own source-bound results and outstanding
+interim freeze or a request for another bundle. The Slice 4 and manual sections
+below define this delta. Older sections retain their own source-bound results and outstanding
 limits; they are not a blanket request to repeat completed checks.
 
 Already completed, not new Glen work: at `7329f00f`, 164 Python/source/checkout/
@@ -25,6 +25,34 @@ profile, binary and input hashes, exact commands/counts/skips, primary failures
 versus cascades, and retained artifact locations/checksums. No push, dispatch,
 package build, tag, publication, live-model call or scientific approval is
 requested. Keep the previous goal paused and unrelated outputs/stashes intact.
+
+## Glen Scoped Scan At b8e0118f, Report Received 2026-10-28
+
+Owner-relayed auto-report, not a new local run: Glen inspected
+`ce4d33b5b990701f2ce51c85f6ce2821df9dc8ce..b8e0118feb44726392702398be6b6d52218eec66`
+(six commits, 42 files) in a fresh worktree. The earlier source remains an
+ancestor. He reports no concrete regression and recommends no patch.
+
+Reported passes at exactly `b8e0118feb44726392702398be6b6d52218eec66`:
+
+- Observed-transcript structure tests: 23/23; this predates S1 consumption.
+- Lifecycle Slice 3: 11/11.
+- Dotplot focus and resize: 2/2; not native window acceptance.
+- Python lifecycle source tests: three passed; five binary tests explicitly skipped.
+- Diff/whitespace check passed. Rust used one Cargo job and an explicitly
+  isolated target. An initial inherited-shared-target attempt was stopped;
+  all intended Rust groups were then rerun completely in that isolated target.
+
+Glen reports removing the run-owned worktree and 7.5 GiB Cargo cache, leaving
+the shared cache untouched. The supplied summary does not include raw streams,
+artifact hashes, exact commands, platform, feature set or toolchain version;
+retain those limits rather than reconstructing them. There is no full-suite,
+cross-platform, real-CLI/VM, native GUI, package or scientific verdict here.
+
+This SHA precedes `929c54e4` S1, `1adad235` Slice 4 and `7329f00f` manual Help.
+Keep their missing checks open. Do not repeat these completed scoped groups
+merely because an older section still lists them; use normal integrated CI for
+affected-source regressions, keeping the new result separate from this receipt.
 
 ## Lifecycle Slice 4, 2026-10-27
 
@@ -159,12 +187,14 @@ view; the explicit toolbar mode remains. The launcher fills its available
 height and scrolls within narrow/short panes. Existing saved mode choices are
 not migrated; select `Standard map` once if the old launcher is still selected.
 
-Run the following missing default-feature regressions on the ordinary integrated
-source, or reuse same-source CI results; local Rust execution remains prohibited:
+Glen's [scoped scan](#glen-scoped-scan-at-b8e0118f-report-received-2026-10-28)
+reports the focus/resize pair passing at `b8e0118f`. Do not call those two
+checks unrun or launch another old-SHA audit; only affected-source regression
+through normal integrated CI remains. The two contextual routes below have no
+individually itemized result in that return; run them only if missing from
+same-source CI. Local Rust execution remains prohibited:
 
 ```sh
-cargo test --locked --lib -j1 dotplot_auxiliary_focus_preserves_the_selected_primary_map -- --test-threads=1
-cargo test --locked --lib -j1 dotplot_primary_launcher_fills_height_and_stays_inside_narrow_resized_body -- --test-threads=1
 cargo test --locked --lib -j1 open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request -- --test-threads=1
 cargo test --locked --lib -j1 open_construct_reasoning_dotplot_action_focuses_repeat_region -- --test-threads=1
 ```
@@ -221,6 +251,12 @@ protein claim or scientific acceptance is requested. Native/Windows outcomes
 outside an executed path remain unrun, even if the headless synthetic run passes.
 
 ## Lifecycle Slice 3, 2026-10-27
+
+Glen reports 11/11 focused passes at `b8e0118f`; see the
+[source-bound receipt](#glen-scoped-scan-at-b8e0118f-report-received-2026-10-28).
+The remaining real-process, optional scripting-runtime and native checks are
+not supplied by that result. The command list below retains the feature scopes
+for missing/affected checks, not a request to repeat the completed old-SHA run.
 
 Owner-authorized implementation starts from `ce4d33b5`; integrate normally and
 record the exact tested full SHA. No new payload resolver or parser change.

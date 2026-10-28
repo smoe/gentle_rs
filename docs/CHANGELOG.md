@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-28 - Record Glen's Scoped Lifecycle And Dotplot Return
+
+- Retain the owner-relayed no-finding report at exact source `b8e0118f`:
+  observed-transcript structure tests 23/23, Lifecycle Slice 3 11/11 and
+  Dotplot focus/resize 2/2; Python source tests three passed, five binary skips.
+  Glen reports one-job Rust execution in an isolated target after abandoning
+  an inherited shared-target attempt. No runtime patch is recommended.
+- Remove the implication that the focused Dotplot pair is wholly unrun.
+  Keep changed-source regressions, actual-process/VM/native and newer S1,
+  Slice 4/manual acceptance separate. The summary lacks raw evidence hashes,
+  exact commands and platform/toolchain/features; no later-source or release
+  pass is inferred. No local Rust, push or goal resumption.
+
 ## 2026-10-27 - Author Lifecycle Slice 4 Preview Writer Safety
 
 - Implement the owner-authorized revised Plan-only report contract: preflight
