@@ -9,6 +9,7 @@ pub use crate::observed_transcript_structures::annotation::{
     Entity as ObservedAnnotationEntity, InputScope as ObservedAnnotationInputScope,
     Outcome as ObservedAnnotationOutcome, Policy as ObservedAnnotationPolicy,
     Reason as ObservedAnnotationReason, TranscriptRows as ObservedAnnotationTranscriptRows,
+    VersionState as ObservedAnnotationVersionState,
 };
 
 pub const REFERENCE_CONTIG_DICTIONARY_SCHEMA: &str = "gentle.reference_contig_dictionary.v1";
@@ -117,8 +118,8 @@ pub struct ObservedAnnotationAnalysis {
     pub omitted_diagnostics: usize,
     pub indexed_genes: usize,
     pub indexed_transcripts: usize,
-    pub gene_version: Option<String>,
-    pub transcript_versions: BTreeMap<String, Option<String>>,
+    pub gene_version: ObservedAnnotationVersionState,
+    pub transcript_versions: BTreeMap<String, ObservedAnnotationVersionState>,
     pub included_contigs: Vec<String>,
     pub work: usize,
     pub retained_peak_bytes: usize,

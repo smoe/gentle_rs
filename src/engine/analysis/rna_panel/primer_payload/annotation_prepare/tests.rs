@@ -125,7 +125,29 @@ fn observed_annotation_file_success_is_bound_read_only_and_report_last() {
     let path = Path::new(&r.output_dir).join(&artifact.path);
     assert_eq!(bound(&path).sha256, artifact.sha256);
     let annotation: PrimerPayloadAnnotation =
-        serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // Independent synthetic byte expectation; version evidence belongs only to the receipt.
+    let expected = PrimerPayloadAnnotation {
+        schema: PRIMER_PAYLOAD_ANNOTATION_SCHEMA.into(),
+        reference_id: "toy_ref".into(),
+        assembly: "toy_assembly".into(),
+        release: format!("snapshot-{}", sha256_prefixed_bytes(GTF.as_bytes())),
+        reference_fasta_sha256: format!("sha256:{}", "4".repeat(64)),
+        coordinate_convention: "zero_based_half_open".into(),
+        transcripts: vec![crate::engine::PrimerPayloadTranscript {
+            transcript_id: "tx.7".into(),
+            gene_ids: vec!["gene_minus".into()],
+            target_name: "chrToy".into(),
+            target_length: 1000,
+            genomic_contig: Some("chrToy".into()),
+            genomic_strand: Some('-'),
+            genomic_exons: vec![(1, 5), (9, 14)],
+        }],
+    };
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        serde_json::to_vec_pretty(&expected).unwrap()
+    );
     assert_eq!(annotation.transcripts[0].genomic_strand, Some('-'));
     assert_eq!(
         annotation.transcripts[0].genomic_exons,
@@ -239,6 +261,69 @@ fn observed_annotation_missing_and_refused_genes_publish_receipt_only() {
 }
 
 #[test]
+fn observed_annotation_refused_receipts_distinguish_version_evidence() {
+    let root = tempfile::tempdir().unwrap();
+    let original = fixture(root.path());
+    for (i, state) in [
+        json!("absent"),
+        json!({"declared":"7"}),
+        json!("inconsistent"),
+        json!("inconsistent"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut r = original.clone();
+        let mut raw = GTF.replace(
+            "gene_id \"gene_minus\";",
+            "gene_id \"gene_minus\"; gene_version \"7\";",
+        );
+        match i {
+            0 => {
+                raw = raw
+                    .replace(" gene_version \"7\";", "")
+                    .replace(" transcript_version \"7\";", "")
+            }
+            1 => {}
+            2 => {
+                raw = raw
+                    .replacen("gene_version \"7\"", "gene_version \"8\"", 1)
+                    .replacen("transcript_version \"7\"", "transcript_version \"8\"", 1)
+            }
+            _ => {
+                raw = raw.replacen(" gene_version \"7\";", "", 1).replacen(
+                    " transcript_version \"7\";",
+                    "",
+                    1,
+                )
+            }
+        }
+        fs::write(&r.gtf.path, raw).unwrap();
+        r.gtf = bound(Path::new(&r.gtf.path));
+        r.policy.minimum_reference_gap_bases = 5;
+        r.output_dir = root
+            .path()
+            .join(format!("version refusal {i}"))
+            .display()
+            .to_string();
+        let p = run(r);
+        let a = p.report.analysis.as_ref().unwrap();
+        assert_ne!(a.outcome, ObservedAnnotationOutcome::Completed);
+        assert!(p.report.annotation.is_none());
+        let value = serde_json::to_value(&p.report).unwrap();
+        assert_eq!(value["analysis"]["gene_version"], state);
+        assert_eq!(value["analysis"]["transcript_versions"]["tx.7"], state);
+        let saved: ObservedTranscriptAnnotationReport =
+            serde_json::from_slice(&fs::read(&p.report_file.path).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&saved).unwrap(), value);
+        GentleEngine::observed_transcript_annotation_result_binding(&p.report.request, &p).unwrap();
+    }
+    for invalid in [json!(null), json!("unknown"), json!({"declared":null})] {
+        assert!(serde_json::from_value::<ObservedAnnotationVersionState>(invalid).is_err());
+    }
+}
+
+#[test]
 fn observed_annotation_dictionary_is_strict_full_scope_and_metadata_bound() {
     let root = tempfile::tempdir().unwrap();
     let original = fixture(root.path());
@@ -291,6 +376,63 @@ fn observed_annotation_hash_parse_and_budget_failures_never_publish() {
     let mut r = original;
     r.gtf = bound(Path::new(&r.gtf.path));
     no_receipt(r);
+}
+
+#[test]
+fn observed_annotation_versions_require_nonwhitespace_identifiers() {
+    let root = tempfile::tempdir().unwrap();
+    let original = fixture(root.path());
+    for attribute in ["gene_version", "transcript_version"] {
+        for value in [
+            " ".to_string(),
+            "7 8".into(),
+            "\u{a0}".into(),
+            "v".repeat(513),
+        ] {
+            let mut r = original.clone();
+            let raw = if attribute == "gene_version" {
+                GTF.replace(
+                    "gene_id \"gene_minus\";",
+                    &format!("gene_id \"gene_minus\"; gene_version \"{value}\";"),
+                )
+            } else {
+                GTF.replace(
+                    "transcript_version \"7\"",
+                    &format!("transcript_version \"{value}\""),
+                )
+            };
+            fs::write(&r.gtf.path, raw).unwrap();
+            r.gtf = bound(Path::new(&r.gtf.path));
+            assert_eq!(
+                no_receipt(r).message,
+                if value.len() > 512 {
+                    "observed_gtf_attribute_length"
+                } else {
+                    "observed_gtf_identifier"
+                }
+            );
+        }
+        let mut r = original.clone();
+        let value = "v".repeat(512);
+        let raw = if attribute == "gene_version" {
+            GTF.replace(
+                "gene_id \"gene_minus\";",
+                &format!("gene_id \"gene_minus\"; gene_version \"{value}\";"),
+            )
+        } else {
+            GTF.replace(
+                "transcript_version \"7\"",
+                &format!("transcript_version \"{value}\""),
+            )
+        };
+        fs::write(&r.gtf.path, raw).unwrap();
+        r.gtf = bound(Path::new(&r.gtf.path));
+        r.output_dir = root.path().join(attribute).display().to_string();
+        assert_eq!(
+            run(r).report.analysis.unwrap().outcome,
+            ObservedAnnotationOutcome::Completed
+        );
+    }
 }
 
 #[test]

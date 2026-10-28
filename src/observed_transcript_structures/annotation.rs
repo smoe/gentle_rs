@@ -39,6 +39,16 @@ pub enum TranscriptRows {
     NotRequired,
 }
 
+/// Attribute evidence in the supplied rows, not an inferred provider version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VersionState {
+    Absent,
+    Declared(String),
+    /// Conflicting values or a mixture of present and missing attributes.
+    Inconsistent,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
@@ -155,8 +165,8 @@ pub(crate) struct Preparation {
     pub omitted_diagnostics: usize,
     pub indexed_genes: usize,
     pub indexed_transcripts: usize,
-    pub gene_version: Option<String>,
-    pub transcript_versions: BTreeMap<String, Option<String>>,
+    pub gene_version: VersionState,
+    pub transcript_versions: BTreeMap<String, VersionState>,
     pub included_contigs: Vec<String>,
     pub nonclaims: Vec<&'static str>,
     pub work: usize,
@@ -218,6 +228,15 @@ struct Versions {
 }
 
 impl Versions {
+    fn into_state(self) -> VersionState {
+        if self.conflict || self.partial {
+            VersionState::Inconsistent
+        } else {
+            self.first
+                .map_or(VersionState::Absent, VersionState::Declared)
+        }
+    }
+
     fn observe(&mut self, value: Option<&str>, meter: &mut Meter<'_>) -> Result<(), EngineError> {
         if let Some(s) = value {
             if let Some(first) = &self.first {
@@ -751,12 +770,12 @@ impl Consumer<'_> {
             if !t.genes.contains(&context.selector.gene_id) {
                 continue;
             }
-            let version = if t.version.conflict || t.version.partial {
-                None
-            } else {
-                t.version.first
+            let version = t.version.into_state();
+            let version_bytes = match &version {
+                VersionState::Declared(value) => value.len(),
+                _ => 0,
             };
-            meter.entry(plus(id.len(), version.as_ref().map_or(0, String::len))?)?;
+            meter.entry(plus(id.len(), version_bytes)?)?;
             versions.insert(id.clone(), version);
             if outcome != Outcome::Completed {
                 continue;
@@ -836,7 +855,16 @@ impl Consumer<'_> {
             diagnostics: d.examples,
             indexed_genes: genes.len(),
             indexed_transcripts,
-            gene_version: gene_version.cloned(),
+            gene_version: if genes
+                .get(&context.selector.gene_id)
+                .is_some_and(|g| g.version.conflict || g.version.partial)
+            {
+                VersionState::Inconsistent
+            } else {
+                gene_version
+                    .cloned()
+                    .map_or(VersionState::Absent, VersionState::Declared)
+            },
             transcript_versions: versions,
             included_contigs: included
                 .into_iter()

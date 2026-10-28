@@ -114,7 +114,7 @@ fn attributes(raw: &str) -> Result<[Option<String>; 4], EngineError> {
             if out[slot].is_some() {
                 return Err(bad("observed_gtf_attribute_duplicate"));
             }
-            if slot < 2 && !identifier(&value, 512) {
+            if !identifier(&value, 512) {
                 return Err(bad("observed_gtf_identifier"));
             }
             out[slot] = Some(value);

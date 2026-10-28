@@ -76,6 +76,25 @@ not authenticated. Only `completed` gene outcome writes nonempty unchanged v1
 geometry at `artifacts/annotation.json`, with raw-GTF `snapshot-sha256:...`
 release. Missing/refused genes publish a receipt only (empty artifacts directory).
 
+In complete analysis, `gene_version` and each `transcript_versions` value use
+the explicit `ObservedAnnotationVersionState` vocabulary: `"absent"`,
+`{"declared":"7"}`, or `"inconsistent"`. Absent means no version attribute
+in the supplied relevant rows; inconsistent means conflicting values or a
+mixture of present/missing attributes. Existing conflict/presence reason counts
+remain separate. There is no nullable/default fallback. These are declared
+attribute observations, not inferred provider versions. The pre-release S2.1
+close-out replaces the nullable receipt fields after auditing committed
+artifacts; no S1/Phase 2 record or annotation geometry changes.
+
+Both version attributes now share the ID rule: at most 512 bytes, no whitespace
+or control characters. Quoted whitespace versions fail with
+`observed_gtf_identifier`; values over 512 bytes fail with
+`observed_gtf_attribute_length` (raw row/control validation can fail earlier).
+Any empty attribute value, including `transcript_id "";` on a gene row, is
+outside `gtf_strict.v1`: `observed_gtf_attribute_empty` refuses the request at
+the lexical stage and publishes no receipt. This states a grammar boundary,
+not a claim about any provider's files.
+
 Before complete EOF/hash verification and analysis, cancellation/control failure
 has `analysis:null` and no annotation, never zero counts or `missing_gene`.
 Late interruption retains complete analysis/artifact with `cancelled` or

@@ -167,8 +167,11 @@ fn gtf_preparation_two_configurable_genes_preserve_geometry_and_source_claims() 
     assert_eq!(a.scope, InputScope::ProducerExcerpt);
     assert_eq!(a.policy, c.policy);
     assert_eq!(a.selector.gene_id, "gene_A.7");
-    assert_eq!(a.gene_version.as_deref(), Some("7"));
-    assert_eq!(a.transcript_versions["tx_A.2"].as_deref(), Some("2"));
+    assert_eq!(a.gene_version, VersionState::Declared("7".into()));
+    assert_eq!(
+        a.transcript_versions["tx_A.2"],
+        VersionState::Declared("2".into())
+    );
     let annotation = a.annotation.as_ref().unwrap();
     assert_eq!(annotation.release, format!("snapshot-{}", a.raw_sha256));
     assert_eq!(annotation.schema, PRIMER_PAYLOAD_ANNOTATION_SCHEMA);
@@ -270,7 +273,7 @@ fn gtf_preparation_strict_attributes_preserve_unicode_quotes_backslashes_and_unk
         '+',
         101,
         110,
-        r#"gene_id "Géne"; transcript_id "tx\"quoted\\slash"; tag "a;b"; tag repeated; transcript_version " 9 ";"#,
+        r#"gene_id "Géne"; transcript_id "tx\"quoted\\slash"; tag "a;b"; tag repeated; transcript_version "9";"#,
     );
     let p = run(&c, &raw);
     assert_eq!(p.outcome, Outcome::Completed);
@@ -279,8 +282,8 @@ fn gtf_preparation_strict_attributes_preserve_unicode_quotes_backslashes_and_unk
         "tx\"quoted\\slash"
     );
     assert_eq!(
-        p.transcript_versions["tx\"quoted\\slash"].as_deref(),
-        Some(" 9 ")
+        p.transcript_versions["tx\"quoted\\slash"],
+        VersionState::Declared("9".into())
     );
 }
 
@@ -460,8 +463,8 @@ fn gtf_preparation_version_presence_conflicts_are_order_independent_and_scoped()
             p.selected_reasons
                 .contains_key(&Reason::VersionPresenceMismatch)
         );
-        assert_eq!(p.gene_version, None);
-        assert_eq!(p.transcript_versions["tx"], None);
+        assert_eq!(p.gene_version, VersionState::Inconsistent);
+        assert_eq!(p.transcript_versions["tx"], VersionState::Inconsistent);
     }
     let mut c = context();
     c.declared_provider_release = Some("different declaration".into());
