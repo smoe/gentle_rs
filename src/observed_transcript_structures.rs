@@ -11,9 +11,7 @@ use crate::engine::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-// S2.1a has no file/operation surface; the future ingress boundary remains separate.
-#[allow(dead_code)]
-mod annotation;
+pub(crate) mod annotation;
 mod comparison;
 mod core;
 pub(crate) mod dag;

@@ -1,4 +1,4 @@
-//! Private incremental GTF preparation; no files, publication, operations or public schema.
+//! Incremental GTF preparation; file verification/publication belong to the engine boundary.
 //!
 //! Hashes cover supplied bytes, not provider completeness or authenticated provenance.
 //! Memory charges bound a conservative retained representation plus bounded parser
@@ -13,38 +13,41 @@ mod gtf;
 mod tests;
 
 #[derive(Debug, Clone)]
-pub(super) struct Contig {
+pub(crate) struct Contig {
     pub name: String,
     pub length: u64,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct Dictionary {
+pub(crate) struct Dictionary {
     pub reference_id: String,
     pub reference: ReferenceBinding,
     pub contigs: Vec<Contig>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum InputScope {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputScope {
     WholeSourceFile,
     ProducerExcerpt,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum TranscriptRows {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRows {
     Required,
     NotRequired,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Policy {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Policy {
     pub transcript_feature_rows: TranscriptRows,
     pub minimum_reference_gap_bases: usize,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct Context {
+pub(crate) struct Context {
     pub reference_id: String,
     pub reference: ReferenceBinding,
     pub selector: ReferenceGene,
@@ -56,7 +59,7 @@ pub(super) struct Context {
 
 /// No read/PAF fields and no implicit defaults. All supplied rows consume limits.
 #[derive(Debug, Clone)]
-pub(super) struct Limits {
+pub(crate) struct Limits {
     pub max_input_bytes: usize,
     pub max_line_bytes: usize,
     pub max_lines: usize,
@@ -69,8 +72,9 @@ pub(super) struct Limits {
     pub max_diagnostics: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Outcome {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
     Completed,
     MissingGene,
     AmbiguousGeneLocus,
@@ -80,8 +84,9 @@ pub(super) enum Outcome {
     ReferenceGapPolicyRefused,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum Reason {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reason {
     MultipleTranscriptRows,
     MultipleLoci,
     CrossGeneLink,
@@ -97,14 +102,16 @@ pub(super) enum Reason {
     GapBelowPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum Entity {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Entity {
     Gene,
     Transcript,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Diagnostic {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Diagnostic {
     pub entity: Entity,
     pub id: String,
     pub selected: bool,
@@ -112,8 +119,9 @@ pub(super) struct Diagnostic {
     pub first_line: usize,
 }
 
-#[derive(Debug, Default)]
-pub(super) struct Counts {
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Counts {
     pub lines: usize,
     pub comments: usize,
     pub data_rows: usize,
@@ -126,7 +134,7 @@ pub(super) struct Counts {
 }
 
 #[derive(Debug)]
-pub(super) struct Preparation {
+pub(crate) struct Preparation {
     pub grammar: &'static str,
     pub outcome: Outcome,
     pub annotation: Option<PrimerPayloadAnnotation>,
@@ -257,7 +265,7 @@ struct Transcript {
 
 /// One caller-supplied raw line at a time, including its LF/CRLF when present.
 /// A failed push poisons the consumer: no partial result can be finished later.
-pub(super) struct Consumer<'a> {
+pub(crate) struct Consumer<'a> {
     context: &'a Context,
     dictionary: &'a Dictionary,
     lookup: BTreeMap<&'a str, (usize, usize)>,
@@ -273,7 +281,7 @@ pub(super) struct Consumer<'a> {
 }
 
 impl<'a> Consumer<'a> {
-    pub(super) fn new(
+    pub(crate) fn new(
         context: &'a Context,
         dictionary: &'a Dictionary,
         limits: &'a Limits,
@@ -362,7 +370,7 @@ impl<'a> Consumer<'a> {
         })
     }
 
-    pub(super) fn push_line(
+    pub(crate) fn push_line(
         &mut self,
         raw: &[u8],
         check: &mut dyn FnMut() -> Result<(), EngineError>,
@@ -604,7 +612,7 @@ impl Diagnoses {
 
 impl Consumer<'_> {
     /// Explicit end-of-supplied-input, not proof that a provider file was complete.
-    pub(super) fn finish(
+    pub(crate) fn finish(
         self,
         check: &mut dyn FnMut() -> Result<(), EngineError>,
     ) -> Result<Preparation, EngineError> {

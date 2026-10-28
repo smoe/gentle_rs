@@ -655,6 +655,99 @@ While verification runs, local main advances to `54da62df`, changing Help
 visibility/test code and documentation only. The working base and RNA source
 remain the above `c5a9d63f` plus this diff; no rebase or later-tree pass is inferred.
 
+#### S2.1b File Boundary, 2026-10-28
+
+After committing S2.1a, the owner authorized S2.1b from the existing reviewed
+plan and separately allowed focused locked/offline local Rust tests/checks.
+S2.1a was committed as `18116bf7`, then rebased onto local main `54da62df`,
+becoming `f78a592b`; both changelog entries were retained. All 22 recorded
+Rust/Cargo/config hashes still match the S2.1a execution receipt. This is not
+execution of the later integrated tree. No fetch or push; unrelated `output/`
+remains untouched.
+
+The S2.1b working diff adds the strict versioned dictionary/request/receipt
+and one direct `&self` engine file method below `primer_payload`, beside S1's
+`observed` boundary. It reuses the incremental consumer, canonical geometry,
+verified-reader and control/writer patterns. The small preparation vocabulary
+is re-exported once through protocol aliases; context, limits and parser stay
+crate-private. No legacy public DTO, grammar, limit or validation change.
+
+The [protocol](protocol.md#s21b-annotation-preparation-direct-engine-only)
+specifies the raw/semantic digest recipes, complete-analysis versus execution
+status, receipt-only refusals, conservative JSON/memory accounting and path/
+publication limits. Exact raw GTF line framing is preserved, dictionary bytes
+are independently bounded and verified, and existing-file identities supplement
+the legacy reader's hash/size/mtime checks. The preparation-specific publisher
+closes/synchronizes staged files, reserves fresh output and links the report
+last with no clobber. Fault cleanup removes only identity-matching owned files
+and empty directories; unowned additions survive with an explicit orphan error.
+It does not strengthen or refactor the old publisher under cover of this slice.
+
+Inline synthetic regressions cover raw LF/CRLF/final-line geometry and release
+bindings, exact configurable IDs, policy-dependent receipts, missing/refused
+sources, strict dictionary fields/metadata/competitors, hash/parse/resource
+failures, request-bound early/late control, raw paths/hardlinks, Unix symlinks/
+input replacement, report-last visibility and owned/orphan cleanup. No new
+committed fixture or generated file requires checkout regeneration.
+S2.1c named operations, cancellation command, lifecycle/approval/no-save
+policies, shell/CLI/MCP/discovery, SAM ingress and GUI remain unimplemented.
+
+Native Windows handles/case/rename behavior, real disk/sync failure, default
+GUI/full suite, real-provider/gap policies and scientific/release acceptance
+remain separate. Same-filesystem hard-link support is required for the final
+completion marker. No hostile concurrent-filesystem or crash-durability
+guarantee is claimed.
+
+##### S2.1b Verification
+
+On macOS/aarch64, the final working diff above `f78a592b` passes:
+
+```text
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 primer_payload -- --test-threads=1
+64 passed (15 new S2.1b file cases; unchanged legacy serialized-row/work oracle)
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 observed_transcript_structures -- --test-threads=1
+58 passed
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 s2a_ -- --test-threads=1
+6 passed
+env CARGO_INCREMENTAL=0 cargo test --locked --offline --no-default-features --lib -j1 observed_transcripts_ -- --test-threads=1
+16 passed
+env CARGO_INCREMENTAL=0 cargo check -q --locked --offline --no-default-features --lib -j1
+exit 0
+```
+
+Filters overlap; do not sum them. No ignored Rust tests in these filters.
+The first check found two new helper type-inference errors, corrected before
+successful execution. A first 13-case selected run passed; ownership review
+then added the stale-temp-name guard and three final file tests. The final
+payload rebuild took 3m56s; no timing/performance acceptance is inferred.
+Baseline headless dead-code and linker `__eh_frame` warnings remain visible.
+
+The 28-path Rust/Cargo/config manifest at
+`/tmp/gentle-s21b-final-source-manifest.sha256` has SHA-256
+`9794dd19c7105eec3c51723b2575cc5f6c97ea9d13771e3ed715a7a827a83cdb`;
+all paths recheck unchanged. The test binary
+`target/debug/build/GENtle/002e669310863d66/out/gentle-002e669310863d66`
+has SHA-256
+`f30a22a9f3bd57213b5e037f63699349f4970da5327cb1f17c50cdcd5e8d83b1`.
+Cargo.lock remains
+`40ae5b6c9ba74ba080d39be11b4e57ad2dbc020dba5ecad7222e22f639f84918`.
+Toolchain: Cargo 1.100.0-beta.5 `7552a885e`, rustc 1.100.0-beta.5
+`8ea38001b9da1d6683ac5ebbc993cac89d3a09df`, LLVM 23.1.3,
+`aarch64-apple-darwin`. Effective unoptimized test/dev recipe: root debug 1,
+dependency debug 0, 256 codegen units, `CARGO_INCREMENTAL=0`, unchanged
+16-MiB configured test thread stack. These are local working-diff receipts,
+not committed fixtures, native acceptance or a future merged-SHA claim.
+
+Fast source/documentation checks run 34 cases: 33 pass, one explicitly skipped
+for lack of a supplied actual-process payload CLI binary. Documentation status,
+scoped rustfmt and whitespace pass. Whole-workspace `cargo fmt --check` still
+reports formatting in 12 unrelated baseline files; preserve them untouched
+(`/tmp/gentle-s21b-fmt.log`). Session-close reports 4 OK, 2 warnings for the
+intentional diff/untouched `output/` and manual plan fidelity, no failures.
+The diff stays within the authorized S2.1b contract; no adjacent cleanup,
+dependency/profile/fixture changes or later slice is included. Native/default-
+GUI/full-suite, real-provider, scientific and release checks remain unrun.
+
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 
 Propose a separate `SummarizeObservedTranscriptStructuresFromSam` request, not

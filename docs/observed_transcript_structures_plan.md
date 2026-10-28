@@ -17,8 +17,10 @@ receipt-only outcomes, a strict dictionary, bounded GTF selection and explicit
 pure/file/adapter steps are defined. The owner subsequently authorized only
 the [S2.1a private normalizer](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28)
 and focused local Rust checks, now passing at the recorded working diff;
-file/publication/adapter steps remain proposals,
-not implemented or newly Claude-approved.
+The owner then authorized S2.1b's versioned file/publication boundary from that
+reviewed plan, with focused local Rust checks. Its direct method and contracts
+are recorded in the [S2.1b ledger](observed_transcript_structures_s2_plan.md#s21b-file-boundary-2026-10-28);
+S2.1c operation/adapter registration remains separate, not newly Claude-approved.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.

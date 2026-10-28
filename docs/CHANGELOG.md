@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-10-28 - Add The Bound Annotation Preparation File Boundary
+
+- Commit S2.1a and resolve its changelog-only rebase onto local main without
+  dropping the Help repair entry. The resulting commit is `f78a592b`; its
+  22 recorded source/config hashes remain unchanged. No fetch or push.
+- Implement separately owner-authorized S2.1b: strict versioned dictionary,
+  request and receipt, with one direct read-only-project engine method and
+  explicit external output. Reuse the private GTF consumer, existing geometry,
+  verified reader and preparation vocabulary; preserve Phase 2/S1 DTOs, bytes,
+  validators and old helper limits/errors. No operation or adapter registration.
+- Bind all raw GTF/dictionary bytes, source declarations, exact variable gene
+  selector and policies. Separate incomplete execution from complete gene
+  outcomes; missing/refused sources write no empty annotation. Publish a
+  bounded receipt last into fresh output, with identity-aware collision checks,
+  no clobber and owned-only cleanup/orphan disclosure. Disarm stale temporary
+  directory cleanup after moving artifacts, preserving any recreated old name.
+- Add inline synthetic file/hash/JSON/policy/control/path/publication regressions
+  and the [direct-engine protocol](protocol.md#s21b-annotation-preparation-direct-engine-only).
+  Focused macOS/aarch64 locked/offline headless verification passes 64 payload
+  tests (15 new file-boundary cases), 58 kernel tests, six preservation guards
+  and 16 S1-filter tests; filters overlap. Headless Cargo check and scoped
+  rustfmt pass. Retain baseline compiler/linker warnings and unrelated whole-
+  workspace formatting failures; exact source/binary receipts belong in the
+  [ledger](observed_transcript_structures_s2_plan.md#s21b-file-boundary-2026-10-28).
+- S2.1c lifecycle/approval/operations/CLI/MCP, SAM ingress, GUI, real-provider
+  policies, native Windows/Linux, scientific and release acceptance remain
+  separate. Unrelated `output/`, dependencies and generated artifacts untouched.
+
 ## 2026-10-28 - Repair Manual Navigation Compilation Boundaries
 
 - Give the manual-history helper parent-module visibility so the existing

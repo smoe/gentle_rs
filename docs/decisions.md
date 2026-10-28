@@ -88,6 +88,32 @@ Public dictionary/receipt contracts, safe publication and named lifecycle/
 adapter migration belong to separately authorized S2.1b/c. See the
 [implementation ledger](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28).
 
+### Observed Structures S2.1b File Boundary
+
+Owner-authorized after the S2.1a commit on 2026-10-28: expose strict versioned
+preparation request/receipt/dictionary records and one direct engine method.
+Reuse the canonical annotation geometry and the same typed preparation
+vocabulary, not adapter-local biology or a new transcript model. No Operation,
+CLI/MCP/GUI route or implicit lifecycle migration belongs to this slice.
+
+Hash the raw supplied GTF stream that is parsed, bind every dictionary byte and
+retain source/gap/version policies in the request/receipt digest. Keep EOF/data
+verification separate from execution status and complete gene analysis. Partial
+input never becomes absence or measured zero. Refusals publish receipt only;
+completed geometry uses raw-snapshot release and remains structurally readable
+by legacy validators without claiming they enforce the new receipt.
+
+Use preparation-only limits and safe fresh-directory publication, with the
+receipt as last completion marker. External writes remain separate from the
+unchanged project/journal. Validate raw paths before normalization and existing
+identities before publication. Never recursively remove potentially unowned
+output after failure; preserve/disclose orphaned incomplete directories.
+No data/hash/resource error is converted into a recoverable biological outcome.
+The [protocol](protocol.md#s21b-annotation-preparation-direct-engine-only) records
+the new digest recipe and conservative JSON/memory admission model; neither
+changes existing S1/Phase 2 bytes, limits or errors. Native/platform/provider/
+scientific acceptance and S2.1c named adapters remain separately gated.
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic
