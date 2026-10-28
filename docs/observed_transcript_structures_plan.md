@@ -12,6 +12,13 @@ decoded-SAM normalization; focused local checks pass on the working diff in its
 [implementation scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 SAM file ingress, annotation preparation, new operations/adapters and later
 slices remain proposals, not authorized by that bounded step.
+The supplied S2.1 review is now [reconciled against `c5a9d63f`](observed_transcript_structures_s2_plan.md#s21-review-reconciliation-2026-10-28):
+receipt-only outcomes, a strict dictionary, bounded GTF selection and explicit
+pure/file/adapter steps are defined. The owner subsequently authorized only
+the [S2.1a private normalizer](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28)
+and focused local Rust checks, now passing at the recorded working diff;
+file/publication/adapter steps remain proposals,
+not implemented or newly Claude-approved.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.

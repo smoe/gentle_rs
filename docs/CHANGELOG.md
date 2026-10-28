@@ -9,6 +9,60 @@
   Record the owner-reported E0624/E0609 failures in Glen's existing Help handoff.
   Rust compilation and native acceptance remain unverified locally; no push.
 
+## 2026-10-28 - Author The Private GTF Preparation Kernel
+
+- Implement separately owner-authorized S2.1a at base `c5a9d63f`, preserving
+  the earlier uncommitted review reconciliation. Add a private bounded
+  incremental raw-line consumer, typed dictionary/policy/limit/outcome views,
+  strict GTF row/attribute admission and whole-input identity indexing.
+- Preserve configurable genes, exact decoded IDs/separate versions, source
+  scope/provider declarations, raw LF/CRLF hashes, complete supplied exon lists,
+  explicit gap policy and receipt-only refusal semantics (`annotation: None`).
+  Unknown strand is not a second known locus; omitted diagnostic examples do
+  not erase reason totals or strengthen a result. No annotation file is written.
+- Add inline synthetic grammar, opposite-strand/two-gene, collision/version,
+  resource/control and refusal cases, plus direct legacy touching-exon guards.
+  Preserve all frozen S2.0a/S1/Phase 2 expectations, DTOs and production validators.
+  The owner separately authorizes focused local locked/offline Rust execution;
+  results are recorded in the [S2.1a ledger](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28).
+- No public schema, file/JSON/SAM ingress, annotation receipt/publication,
+  operation/lifecycle/adapter, GUI, dependency change, commit, fetch, push or
+  real-data/native/scientific acceptance is included in this private slice.
+- Final macOS/aarch64 locked/offline headless verification passes 58 observed
+  structure tests (16 new pure cases plus the new legacy source guard), all six
+  S2.0a guards, 16 S1-filter tests and 49 payload tests (new legacy catalog guard);
+  filters overlap. The final rerun includes unknown-strand/UTF-8 and whitespace
+  admission guards; all frozen expectations remain unchanged. Headless Cargo
+  check and scoped rustfmt pass, with existing compiler/linker warnings retained.
+- Fast documentation/contract checks have 33 passes and one expected skip;
+  whitespace and local Markdown targets pass. Whole-workspace fmt retains 12
+  unrelated baseline failures. Keep source/binary/lock/toolchain/profile hashes
+  in the ledger; later main's Help-only change is not an RNA execution claim.
+
+## 2026-10-28 - Reconcile The Supplied GTF Preparation Review
+
+- Recheck Claude's S2.1 source-only critique at unchanged `c5a9d63f`. Replace
+  the earlier annotation outline in the canonical S2 plan with receipt-only
+  missing/refused-source outcomes, a strict contig dictionary, scoped GTF
+  grammar, whole-file collision indexing, snapshot/selector bindings and
+  preparation-specific resource limits. Keep legacy enums/DTOs/validators and
+  Phase 2/S1 bytes unchanged; no empty v1 annotation stands for a refused gene.
+- Qualify the proposed transcript-row policy: declarations can expose reuse
+  but cannot prove complete models or biological identity. Distinguish
+  normal exon repetition, selected-source conflicts and unrelated semantic
+  diagnostics; retain exact-ID and within-supplied-bytes nonclaims.
+- Verify the permissive genome parser's skip/lowercase/first-value behavior
+  and the private file helpers' budget/publication constraints. Require narrow
+  reuse, explicit path collisions, report-last failure handling and named
+  lifecycle/approval coverage, not a generic writer or rollback assumption.
+- Separate proposed S2.1a pure normalization, S2.1b file contracts/publication
+  and S2.1c thin engine/adapters. Real-data gap/provider/budget policies stay
+  owner decisions; no Rust implementation/execution, new model call, commit,
+  fetch, push, Glen dispatch or runtime/scientific acceptance in this change.
+- Documentation status, 18 LF/CRLF-aware documentation tests, local Markdown
+  targets and whitespace pass. Session-close reports 4 OK, 2 warnings for the
+  intentional documentation diff/untouched `output/` and manual plan fidelity.
+
 ## 2026-10-28 - Close Two Slice 5 Regression-Coverage Gaps
 
 - After the owner requested continuation, statically cross-check the integrated

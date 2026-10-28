@@ -70,6 +70,24 @@ No SAM text/file parser, public schema, operation, annotation preparation,
 publication, GUI or biological acceptance is authorized by this private slice.
 See the [implementation and verification scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 
+### Observed Structures S2.1a Pure Preparation Boundary
+
+Owner-authorized 2026-10-28: implement the reconciled strict GTF subset as a
+private bounded incremental consumer, not annotation file/JSON ingress,
+publication, operations or adapters. Keep gene/source/reference selectors and
+gap/transcript-row policies explicit; no biology or provider defaults. Hash
+supplied raw bytes without claiming original-file or provider verification.
+Preparation failures/absence have typed outcomes and no annotation, never an
+empty v1 annotation used as unavailable evidence. Preserve scoped diagnostics,
+unknown strand, versions and excerpt/completeness limits.
+
+Retain the existing annotation geometry, legacy enum/DTO meanings and all
+Phase 2/S1 byte/work guards. Touching exons are refused only by preparation;
+do not tighten legacy validators to enforce a receipt they do not consume.
+Public dictionary/receipt contracts, safe publication and named lifecycle/
+adapter migration belong to separately authorized S2.1b/c. See the
+[implementation ledger](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28).
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic

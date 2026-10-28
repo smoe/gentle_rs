@@ -1,6 +1,50 @@
-//! Inline invented oligos/FASTQ only; deterministic temporary inputs, no physical assay evidence.
+//! Inline invented oligos, FASTQ and annotation geometry; deterministic inputs, no assay evidence.
 
 use super::*;
+
+#[test]
+fn primer_payload_annotation_preparation_preserves_legacy_catalog_touching_policy() {
+    // Invented geometry, recreated in a private temp directory through the real
+    // bound JSON reader. This is catalog admission, not a FASTA/alignment replay.
+    let td = tempfile::tempdir().unwrap();
+    let digest = format!("sha256:{}", "1".repeat(64));
+    let annotation = PrimerPayloadAnnotation {
+        schema: PRIMER_PAYLOAD_ANNOTATION_SCHEMA.into(),
+        reference_id: "invented".into(),
+        assembly: "invented".into(),
+        release: "invented".into(),
+        reference_fasta_sha256: digest.clone(),
+        coordinate_convention: "zero_based_half_open".into(),
+        transcripts: vec![PrimerPayloadTranscript {
+            transcript_id: "invented_tx".into(),
+            gene_ids: vec!["invented_gene".into()],
+            target_name: "invented_contig".into(),
+            target_length: 1000,
+            genomic_contig: Some("invented_contig".into()),
+            genomic_strand: Some('+'),
+            genomic_exons: vec![(100, 110), (110, 120)],
+        }],
+    };
+    let path = td.path().join("invented touching annotation.json");
+    fs::write(&path, serde_json::to_vec_pretty(&annotation).unwrap()).unwrap();
+    let r = PrimerPayloadReference {
+        reference_id: "invented".into(),
+        scope: PrimerPayloadReferenceScope::Genome,
+        assembly: "invented".into(),
+        release: "invented".into(),
+        fasta: PrimerPayloadFile {
+            path: "not opened by catalog".into(),
+            sha256: digest,
+            bytes: 0,
+        },
+        annotation: bound_file(&path),
+    };
+    let catalog = reference::catalog(&r, &limits()).unwrap();
+    assert_eq!(
+        catalog.annotation.transcripts[0].genomic_exons,
+        [(100, 110), (110, 120)]
+    );
+}
 
 pub(super) fn limits() -> PrimerPayloadBudgets {
     PrimerPayloadBudgets {
