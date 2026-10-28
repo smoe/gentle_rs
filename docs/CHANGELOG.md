@@ -93,6 +93,28 @@
   Rust tests remain unexecuted. External acceptance is recorded in the
   [implementation ledger](manual_navigation_plan.md).
 
+## 2026-10-27 - Prepare Observed Transcript S2 For Review
+
+- Inspect current S0/S1, PAF geometry/identity, annotation validation and named
+  lifecycle seams at `1804605f`; prepare a bounded SAM-text/annotation plan and
+  a forwardable read-only Claude prompt. Keep the reference gene explicit,
+  existing Phase 2 and S1 bytes/digests frozen, and one shared interpretation
+  kernel. Distinguish declared SAM query-unit support from original read identity.
+- Propose explicit GTF/genePred preparation, snapshot provenance for unknown
+  provider releases, clipping/dictionary/row accounting, incomplete-mask/search
+  handling and finite resource/publication contracts. Link the current review
+  from the umbrella plan/roadmap without changing historical verification.
+  No implementation, schema adoption, Rust build, model invocation, new fixture,
+  Glen dispatch, push or native/scientific acceptance is authorized or claimed.
+- Verification: documentation status, 11 LF/CRLF-aware documentation tests,
+  local plan/prompt link targets and whitespace pass. Session-close has 4 OK,
+  2 expected warnings (intentional dirty documentation/untouched `output/` and
+  manual plan fidelity), no failures. No Rust execution for this planning task.
+- Before the owner-authorized commit/rebase on 2026-10-28, retain the original
+  inspection baseline and note local main `7329f00f`'s Plan-only writer and
+  manual-tree changes in the proposal/review prompt. Neither implements S2 or
+  grants general writer/lifecycle coverage to its future operations.
+
 ## 2026-10-27 - Keep Dotplot Windows Separate From The DNA Map
 
 - Remove implicit primary-map switches when opening/focusing dotplot or
