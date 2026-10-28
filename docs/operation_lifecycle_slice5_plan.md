@@ -1,10 +1,13 @@
 # Lifecycle Slice 5: Snapshot-Bound Preview Publication
 
 Status, 2026-10-28: **owner authorized the revised scope, DEC-026 exception and
-absence of project History rows; implementation/tests authored, Rust/native
-verification pending with Glen/CI**. The prior goal stays paused. No local Rust,
-actual-process/VM/native execution, Claude invocation or push performed. The owner
-subsequently requested a scoped commit and rebase; neither is runtime acceptance.
+absence of project History rows; implementation/tests authored**. The later
+owner-authorized [284e5b70 rehearsal](glen_next_verification_handoff.md#synthetic-lifecycle-rehearsal-at-284e5b70-2026-10-28)
+passes 25 source/process checks and scoped macOS GUI observations. Native
+cancellation/concurrency is inconclusive; remaining platform/VM/full-suite
+acceptance stays separate. No Rust build, model call or push in that rehearsal;
+the prior goal stays paused. Authoring-time unrun lists below remain historical,
+not a request to repeat the explicitly executed subset.
 
 The [original review prompt](operation_lifecycle_slice5_claude_review_prompt.md)
 records Codex's proposal. The owner supplied Claude's review against local main

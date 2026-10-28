@@ -85,6 +85,17 @@ class SequenceDesignTutorialSourceTests(unittest.TestCase):
         self.assertEqual(fixture["cds"], {"start_0based": 0, "end_0based_exclusive": 12})
         self.assertEqual(fixture["protein_sequence"], "MFK")
 
+    def test_history_instructions_distinguish_shell_and_agent_prompt(self):
+        guide = GUIDE.read_text(encoding="utf-8")
+        step = guide.split("## 4. Undo and redo", 1)[1].split("## 5.", 1)[0]
+        self.assertIn("**GUI Shell**", step)
+        self.assertIn("**Agent Assistant prompt**", " ".join(step.split()))
+        for command in ("history status", "history undo", "history redo",
+                        "`/history`", "`/undo`", "`/redo`"):
+            self.assertIn(command, step)
+        self.assertIn("no configured agent provider", step)
+        self.assertIn("**Windows > Show Operation History**", guide)
+
     def test_literal_four_word_oracle_and_teaching_table(self):
         request = json.loads(REQUEST.read_bytes())
         self.assertEqual(request["avoid_motifs"], [{"pattern": "TTTAAA", "strand": "both"}])

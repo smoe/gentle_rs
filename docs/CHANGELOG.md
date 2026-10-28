@@ -45,6 +45,30 @@
   capability-maturity JSON edits and `output/` remain outside this commit;
   native/platform, full-suite, canonical parity and scientific gates stay open.
 
+## 2026-10-28 - Rehearse Synthetic Lifecycle Through Existing Binaries
+
+- At `284e5b7049016e42ea19dd4bd50d7e93516d7ca7`, execute the lifecycle/tutorial
+  companions against existing revision-reporting CLI/MCP binaries: 25 passes,
+  no skips (12 real-process checks). Retain hashes, logs and limitations outside
+  Git; no build, model call, push or independent scientific verdict.
+- With owner-approved transient captures and an isolated synthetic profile,
+  observe no-file preview/no History row, historical labelling and explicit
+  sharing, replaced-project result clearing, exact file preview and approved
+  Apply, product/container removal on undo and restoration on redo. The GUI uses
+  an identical-binary temporary app wrapper, not an accepted installer/package.
+- Keep native cancellation/concurrent responsiveness inconclusive: automation
+  times out before a visible cancel outcome. A rendering sample and subsequent
+  empty runtime dump do not establish an engine defect, admission or a pass.
+  Windows, VM/full-suite, package and biological/runtime verdicts stay separate.
+- Clarify tutorial 06.07's observed History navigation boundary: GUI Shell uses
+  `history ...`; Agent Assistant uses local `/history`, `/undo`, `/redo` aliases.
+  Add a source teaching regression; update the existing plan/handoff/roadmap
+  status without changing runtime code, approvals, science or unrelated work.
+- Follow-up documentation/source validation: 14 checks and the real LF/CRLF
+  tutorial-checkout case pass; manual freshness, documentation status and
+  whitespace pass. Session-close has four OK, two intentional working-tree/
+  plan-review warnings, no failures. These are separate from the 25-test replay.
+
 ## 2026-10-28 - Author Named Annotation Preparation Routes
 
 - Commit verified S2.1b as `f55931ba`, preserving its exact execution receipts

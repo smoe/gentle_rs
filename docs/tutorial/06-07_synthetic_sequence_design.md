@@ -181,6 +181,10 @@ the previous process's undo stack.
 If you applied through the same still-open GUI Shell/Agent Assistant session,
 inspect history and explicitly undo:
 
+The `history ...` spellings below are for **GUI Shell**. In the **Agent Assistant
+prompt**, use the direct local aliases `/history`, `/undo` and `/redo` instead.
+They need no configured agent provider and do not send a model request.
+
 ```text
 history status
 history undo
@@ -289,6 +293,9 @@ Lua calls also retain their existing journal contracts. Sharing a result remains
 an explicit user action, never permission to send data or Apply automatically.
 The managed preview check needs a GUI/host session; a CLI-only replay cannot
 prove its History, concurrency or delayed-sharing behavior.
+To inspect History while keeping this preview in the result panel, open
+**Windows > Show Operation History**. Running `/history` is also local, but
+replaces the latest command result, so inspect/share the preview first.
 
 ## Executable checks and independent review
 

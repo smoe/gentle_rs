@@ -43,6 +43,60 @@ and native execution of this repair remain unrun locally; return full tested
 SHA, toolchain/platform, counts, failures/skips and retained evidence through
 Steffen. No new audit freeze, push, package/model/provider call or goal resumption.
 
+## Synthetic Lifecycle Rehearsal At 284e5b70, 2026-10-28
+
+Owner authorizes this local rehearsal while Glen is unavailable, then explicitly
+approves an isolated GUI profile and transient, unretained screen captures.
+Source `284e5b7049016e42ea19dd4bd50d7e93516d7ca7`; all three existing main-checkout
+binaries report that revision and build `1793215065252`. Hashes remain identical
+before/after. This is binary self-report plus content identity, not a clean-build,
+feature/profile/toolchain or package attestation. No Rust build or model call.
+
+```sh
+GENTLE_LIFECYCLE_BIN_DIR=/Users/u005069/GitHub/gentle_rs/target/debug \
+GENTLE_TUTORIAL_BIN_DIR=/Users/u005069/GitHub/gentle_rs/target/debug \
+python3 -m unittest scripts.test_operation_lifecycle_slice3 scripts.test_sequence_design_tutorial -v
+```
+
+Executed on macOS 27.0.1/ARM64 with disposable HOME/USERPROFILE/XDG paths:
+**25 passed, zero skips** (13 source/teaching, 12 actual-process checks).
+Includes both strategies, 18 exhaustive cases each, refusal/tampering/receipts,
+project and sidecar byte preservation, LF/CRLF/quoted paths and macOS aliases.
+The companions delete their per-test temporary state; do not describe this log
+as an archive of every subprocess payload. The later alias teaching regression
+is a separate source check, not a twenty-sixth original process-run result.
+
+Scoped native observations using the same GUI bytes in a temporary app wrapper:
+no-file preview completes without a History row or undo/redo; an unrelated edit
+marks the retained output historical; explicit draft sharing includes that
+warning without sending; project replacement clears the old result. Fresh
+file preview yields exact `ATGTTTAAGTAA`/one base-9 edit/all seven GC windows;
+reviewed Apply creates one sequence/container, same-session undo removes both,
+and redo restores the 12-bp native viewer. No screenshots are retained, so these
+are recorded observations, not a raw-image/semantic-snapshot acceptance bundle.
+
+**Native cancellation/concurrent long-job responsiveness is inconclusive.**
+An additional bounded synthetic workflow probe hit native-automation timeouts;
+no active admission/cancel/terminal receipt was visibly established. A stack
+sample found rendering rather than a captured design worker, and a later
+SIGUSR1 dump had no active frames. Neither proves an engine defect or successful
+cancel. Stop only the rehearsal process; do not waive or claim this acceptance.
+
+Evidence outside Git:
+`/private/tmp/gentle-lifecycle-rehearsal-284e5b70.R2QDjA/` (`REPORT.md`, runner
+log, version outputs, source/binary bindings and synthetic input/report/sample).
+`SHA256SUMS` SHA-256:
+`c723f0e43a881c2e096de526ecc94c65621c1ec4ac1121d1b47ffe3d17506988`.
+GUI binary hash `a96165d907b008731a3442ebff72249b00488f45f9638bbdfbc58519f9b1a71a`;
+CLI/MCP hashes are in that report. Content hashes do not authenticate provenance.
+Keep native cancellation/concurrency, Windows/Linux/package, full-suite, VM and
+live-model/scientific/performance verdicts separate. The owner's successful local
+CI report is not independently reconstructed here. Older authoring-time unrun
+lists below are superseded only for the explicitly executed checks above.
+Tutorial 06.07 now distinguishes GUI Shell history commands from Agent Assistant
+`/history`, `/undo`, `/redo`; no runtime/approval/scientific contract changes.
+No push, goal resumption, unrelated-output edits or new release gate.
+
 ## Lifecycle Compile And VM Oracles, 2026-10-28
 
 Narrow repair of the owner-supplied Claude review at historical `550e6e0a`.
