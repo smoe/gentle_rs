@@ -70,6 +70,7 @@ enum Publication {
     PrimerTrace(crate::engine::RnaPrimerTraceResultBinding),
     PrimerPayload(crate::engine::PrimerPayloadResultBinding),
     ObservedStructures(crate::engine::ObservedTranscriptStructuresResultBinding),
+    ObservedAnnotation(crate::engine::ObservedTranscriptAnnotationResultBinding),
     Observation,
 }
 
@@ -139,6 +140,9 @@ pub struct CommandReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_structures_result:
         Option<crate::engine::ObservedTranscriptStructuresResultBinding>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_annotation_result:
+        Option<crate::engine::ObservedTranscriptAnnotationResultBinding>,
     pub requires_project_commit: bool,
     pub rna_progress: Option<crate::engine::RnaReadPanelProgress>,
 }
@@ -417,6 +421,7 @@ impl CommandExecutionService {
                     primer_trace_result: None,
                     primer_payload_result: None,
                     observed_structures_result: None,
+                    observed_annotation_result: None,
                     requires_project_commit: needs_project,
                     rna_progress: None,
                 },
@@ -513,6 +518,11 @@ impl CommandExecutionService {
                         run.output=serde_json::json!({"schema":"gentle.command_observed_structures_result.v1","observed_structures_result":binding,"full_output_retained_in_report":true});
                         bytes=bounded_output(&run.output);
                     }
+                    if let Publication::ObservedAnnotation(binding) = &publication {
+                        run.output = serde_json::json!({"schema":"gentle.command_observed_annotation_result.v1",
+                            "observed_annotation_result":binding,"full_output_retained_in_report":true});
+                        bytes = bounded_output(&run.output);
+                    }
                 }
                 let bytes = bytes.map_err(|_| "Command result exceeds the 16 MiB interactive retention limit; use a file-export operation")?;
                 let digest = sha256_prefixed_bytes(&bytes);
@@ -565,6 +575,10 @@ impl CommandExecutionService {
                             job.receipt.publication="artifact_only";
                             job.receipt.observed_structures_result=Some(binding);
                         }
+                        Publication::ObservedAnnotation(binding) => {
+                            job.receipt.publication = "artifact_only";
+                            job.receipt.observed_annotation_result = Some(binding);
+                        }
                         Publication::Project | Publication::Preview => unreachable!(),
                     }
                     job.receipt.requires_project_commit = false;
@@ -602,7 +616,8 @@ impl CommandExecutionService {
                 let outcome = job.receipt.artifact_result.as_ref().filter(|b| b.kind == crate::engine::RnaReadPanelResultKind::Screen)
                     .map(|b| b.outcome.clone()).or_else(|| job.receipt.primer_trace_result.as_ref().map(|b| b.outcome.clone()))
                     .or_else(||job.receipt.primer_payload_result.as_ref().map(|b|b.outcome.clone()))
-                    .or_else(||job.receipt.observed_structures_result.as_ref().map(|b|b.outcome.clone()));
+                    .or_else(||job.receipt.observed_structures_result.as_ref().map(|b|b.outcome.clone()))
+                    .or_else(||job.receipt.observed_annotation_result.as_ref().map(|b|b.outcome.clone()));
                 job.receipt.state = match outcome.as_deref() {
                     Some("cancelled") => RuntimeStatusFrameState::Cancelled,
                     Some("control_error" | "unavailable") => RuntimeStatusFrameState::Failed,
@@ -610,7 +625,9 @@ impl CommandExecutionService {
                 };
                 job.receipt.phase = outcome.unwrap_or_else(|| "completed".into());
                 if job.receipt.phase == "control_error" {
-                    job.receipt.error = Some("Screening control failed; bound verified-unit report retained".into());
+                    job.receipt.error = Some(if job.receipt.observed_annotation_result.is_some() {
+                        "Annotation preparation control failed; bound receipt retained"
+                    } else { "Screening control failed; bound verified-unit report retained" }.into());
                 }
                 frame.update_phase(job.receipt.phase.clone());
                 frame.update_state(job.receipt.state);

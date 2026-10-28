@@ -39,9 +39,9 @@ All existing S0/S1/Phase 2 public types and byte-preservation contracts remain.
 
 `GentleEngine::prepare_observed_transcript_annotation(request, progress)` verifies
 one explicit GTF plus an ordered `gentle.reference_contig_dictionary.v1` file.
-This is a direct shared-engine method, **not** a registered Operation or CLI/MCP
-route. S2.1c must separately add named lifecycle, write-approval and adapter
-policies; callers of the direct method authorize every external write attempt.
+This began as a direct shared-engine method in S2.1b. Separately authorized
+S2.1c now exposes it through the named operations and shared routes below;
+callers of the direct method still authorize every external write attempt.
 It does not change the project or journal, run an aligner or read original reads.
 
 The strict `gentle.observed_transcript_annotation_request.v1` requires raw
@@ -103,6 +103,48 @@ files/empty directories. Unowned additions/replacements are preserved and an
 it must not be adopted as completed or reused. Native Windows handles/filesystem
 behavior, actual adapters, real-provider policies and scientific acceptance
 remain separate checks.
+
+### S2.1c Named Annotation Operations
+
+`PrepareObservedTranscriptAnnotation {request}` and
+`CancelObservedTranscriptAnnotation {request}` use the same S2.1b request.
+Shared-shell `rna-reads transcript-annotation-prepare|transcript-annotation-cancel`
+accepts typed JSON or a quoted `@FILE`. Generic MCP `op` keeps mandatory
+`confirm:true`. Operation-derived approval also covers ordinary and forged
+agent candidates independently of their own flags. Every receipt/marker write
+attempt requires approval, even for cancelled/refused/invalid work.
+
+Both names explicitly join the request-aware preserve-content constructor and
+no-save policy, no-checkpoint selector and managed standalone policies. Raw
+`apply` retains its execution audit without changing project content or history;
+the shell's direct Cancel route appends no project journal. Standalone prepare
+uses the execution lane and artifact-only publication; Cancel has a separately
+bounded control lane through typed `submit_parsed` admission. Legacy raw-text
+submission still conservatively snapshots the project before parsing; it is not
+made lock-independent by this slice. Private worker journals are never merged into the live
+project. Existing workflow construction/save and conservative managed workflow
+commit policies are unchanged, not a new artifact-only workflow service.
+
+The additive optional `OpResult.observed_transcript_annotation` is omitted when
+absent, preserving Phase 2/S1 output bytes. It contains the emitted preparation
+and raw report file binding. Managed/MCP compact replies use
+`gentle.command_observed_annotation_result.v1` with
+`observed_annotation_result: gentle.observed_transcript_annotation_result_binding.v1`.
+This binds the executed request, report content hash, raw report path/hash/bytes,
+dispatch `outcome` and separate typed optional `gene_outcome`. Dispatch outcome
+is `completed`, `unavailable`, `cancelled` or `control_error`; a complete gene
+refusal maps to `unavailable`/partial agent feedback, not zero biology. Metadata
+correlation validates the typed report, canonical digests and serialized raw
+receipt, resolving the output directory for path correlation only; it does not
+reread source/report/annotation bytes or authenticate provenance.
+
+Cancellation validates the request and current raw paths/aliases, not source
+contents; missing source files are allowed only with resolvable parents. It can
+write beside an already-published output but not inside it. Matching markers
+are idempotent; stale/malformed markers and clobbering are refused. Marker
+publication never confirms termination. No SAM preparation/interpretation,
+annotation/receipt ingestion for S2.3, GUI, new provider policy or scientific
+acceptance follows from this registration.
 
 ## Primer Payload Evidence (Phase 2, Experimental)
 

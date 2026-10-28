@@ -149,3 +149,16 @@ pub struct ObservedTranscriptAnnotationPreparation {
     pub report: ObservedTranscriptAnnotationReport,
     pub report_file: PrimerPayloadFile,
 }
+
+/// Compact correlation of the submitted request and emitted receipt, not source revalidation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedTranscriptAnnotationResultBinding {
+    pub schema: String,
+    pub request_sha256: String,
+    pub report_content_sha256: String,
+    pub report_file: PrimerPayloadFile,
+    /// Dispatch outcome: completed, unavailable, cancelled or control_error.
+    pub outcome: String,
+    pub gene_outcome: Option<ObservedAnnotationOutcome>,
+}

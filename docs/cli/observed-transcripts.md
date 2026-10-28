@@ -14,6 +14,45 @@ rna-reads transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--bi
 rna-reads transcript-structures-cancel REQUEST_JSON_OR_@FILE
 ```
 
+## Prepare A Reference Annotation (S2.1c)
+
+To prepare reference models for one gene, provide a reviewed strict GTF snapshot
+and an ordered contig dictionary, each with its actual byte count and SHA-256.
+The [versioned preparation request](../protocol.md#s21b-annotation-preparation-direct-engine-only)
+uses an exact source-specific stable gene ID, not a symbol or a default gene.
+Choose the declared source scope, transcript-row policy and minimum exon gap
+explicitly. GENtle does not fetch missing annotations or infer a provider release.
+
+```text
+rna-reads transcript-annotation-prepare REQUEST_JSON_OR_@FILE
+rna-reads transcript-annotation-cancel REQUEST_JSON_OR_@FILE
+```
+
+Both routes require write approval, even if preparation will be refused or
+cancelled. They preserve project content and do not autosave the project.
+Shared-shell CLI/MCP/scripting callers use the same request and engine boundary;
+generic MCP `op` still requires `confirm:true`. Request files with spaces or
+apostrophes must be quoted through the shared shell, as for other RNA commands.
+
+Preparation publishes a fresh `report.json` and, only for a completed gene model,
+`artifacts/annotation.json`. A fully inspected but absent/conflicting gene yields
+receipt-only evidence, not an empty annotation or a measured biological zero.
+Cancellation/control failure before full analysis has no gene counts/outcome;
+a late interruption retains complete evidence with the interrupted status.
+MCP and managed jobs return a compact result binding with separate dispatch
+`outcome` and `gene_outcome`, plus the saved report's raw file binding. An
+`unavailable` dispatch result describes a source refusal, not failed file writing.
+
+Cancel writes only a marker for the **identical** request, including its output,
+policies and optional `cancel_path`. It does not inspect source bytes, remove
+outputs or confirm worker termination. Current paths/aliases are still checked;
+source files may be gone if their parent paths remain resolvable. A matching
+existing marker is idempotent; a stale/malformed marker is never overwritten.
+Managed standalone preparation retains its artifact-only result without a live
+project/journal merge. Workflows retain their conservative project-bound host
+policy. No SAM ingress, new alignment, transcript interpretation or GUI is
+introduced by reference preparation; those remain later slices.
+
 <!-- manual-page-nav:start -->
 
 ---

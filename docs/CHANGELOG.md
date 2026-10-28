@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-28 - Author Named Annotation Preparation Routes
+
+- Commit verified S2.1b as `f55931ba`, preserving its exact execution receipts
+  and untouched `output/`. Continue only with S2.1c's named preparation/cancel
+  operations, shared parser/CLI/MCP/discovery, explicit constructor/no-save/
+  checkpoint/approval policies and managed artifact/control boundaries.
+- Add compact request/receipt/raw-file result correlation and distinct gene/
+  dispatch outcomes; complete source refusal stays unavailable/partial. Preserve
+  existing Phase 2/S1 DTO bytes with an omitted optional result field. Required
+  UI literals gain `None` only; no GUI feature, SAM ingress or dependency change.
+- Author synthetic shared-route, approval, cancellation, correlation, lifecycle,
+  managed live-lock and MCP/state-file regressions. Rust execution, Cargo check
+  and canonical parity regeneration await the new scoped local-build choice;
+  old S2.1b tests/binary are not a C verdict. See the [current ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28).
+- No new Claude invocation, push, native/platform/provider/scientific or release
+  acceptance; workflows and raw-text admission keep their conservative policies.
+- Fast C-source/documentation checks pass 34 cases with one expected binary-
+  dependent skip; documentation status, scoped formatting and whitespace pass.
+  Session-close: 4 OK, 2 expected warnings, 0 failures. These are not Rust,
+  canonical generated-matrix freshness or native acceptance.
+
 ## 2026-10-28 - Add The Bound Annotation Preparation File Boundary
 
 - Commit S2.1a and resolve its changelog-only rebase onto local main without

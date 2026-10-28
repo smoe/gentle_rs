@@ -71,6 +71,10 @@ fn raw_path(raw: &str) -> Result<&Path, EngineError> {
 }
 
 fn location(raw: &str, input: bool) -> Result<Location, EngineError> {
+    location_kind(raw, input, false)
+}
+
+fn location_kind(raw: &str, input: bool, directory: bool) -> Result<Location, EngineError> {
     let path = raw_path(raw)?;
     let parent = path
         .parent()
@@ -86,7 +90,7 @@ fn location(raw: &str, input: bool) -> Result<Location, EngineError> {
     let resolved = parent.join(leaf);
     let identity = match fs::symlink_metadata(&resolved) {
         Ok(meta) => {
-            if !meta.is_file() || meta.file_type().is_symlink() {
+            if !(meta.is_file() || (directory && meta.is_dir())) || meta.file_type().is_symlink() {
                 return Err(bad("observed_annotation_regular_file"));
             }
             Some(same_file::Handle::from_path(&resolved).map_err(io)?)
@@ -120,10 +124,24 @@ pub(super) struct Paths {
 
 impl Paths {
     pub(super) fn new(r: &PrepareObservedTranscriptAnnotationRequest) -> Result<Self, EngineError> {
-        let a = location(&r.gtf.path, true)?;
-        let b = location(&r.dictionary.path, true)?;
-        let output = location(&r.output_dir, false)?;
-        if output.identity.is_some()
+        Self::admit(r, true)
+    }
+
+    /// Control validates aliases without re-opening source bytes or requiring them to remain.
+    pub(super) fn for_cancel(
+        r: &PrepareObservedTranscriptAnnotationRequest,
+    ) -> Result<Self, EngineError> {
+        Self::admit(r, false)
+    }
+
+    fn admit(
+        r: &PrepareObservedTranscriptAnnotationRequest,
+        prepare: bool,
+    ) -> Result<Self, EngineError> {
+        let a = location(&r.gtf.path, prepare)?;
+        let b = location(&r.dictionary.path, prepare)?;
+        let output = location_kind(&r.output_dir, false, !prepare)?;
+        if (prepare && output.identity.is_some())
             || aliases(&a, &b)
             || aliases(&output, &a)
             || aliases(&output, &b)
@@ -154,6 +172,27 @@ impl Paths {
             output,
             marker,
         })
+    }
+
+    pub(super) fn recheck_cancel(&self) -> Result<(), EngineError> {
+        let marker = self
+            .marker
+            .as_ref()
+            .ok_or_else(|| bad("observed_annotation_cancel_path_required"))?;
+        let output = location_kind(&self.output_raw, false, true)?;
+        let m = location(&marker.0, false)?;
+        if output.resolved != self.output.resolved
+            || m.resolved != marker.1.resolved
+            || aliases(&m, &output)
+        {
+            return Err(bad("observed_annotation_control_path_changed"));
+        }
+        for (raw, _) in &self.inputs {
+            if aliases(&m, &location(raw, false)?) {
+                return Err(bad("observed_annotation_control_collision"));
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn unchanged(&self, input: &str) -> Result<(), EngineError> {

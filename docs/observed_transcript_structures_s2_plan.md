@@ -748,6 +748,72 @@ The diff stays within the authorized S2.1b contract; no adjacent cleanup,
 dependency/profile/fixture changes or later slice is included. Native/default-
 GUI/full-suite, real-provider, scientific and release checks remain unrun.
 
+#### S2.1c Operation Boundary, 2026-10-28
+
+After verifying the recorded 28-path S2.1b source receipt and whitespace,
+S2.1b is committed locally as `f55931bafa172da930d6ebf1c2ad4075b7249ae3`. Local main is
+still `54da62df`, already an ancestor; no fetch/rebase/merge/push is needed.
+The owner asks to commit and continue. The next bounded S2.1c working diff
+uses the existing reviewed plan; an optional further Claude prompt and a new
+local-Rust execution choice were offered. No new model invocation or review
+verdict is inferred. Unrelated `output/` remains untouched.
+
+The minimal plan is named prepare/cancel operations, one additive optional
+result, shared parsing/discovery/MCP, explicit lifecycle/approval and managed
+policies, then focused regression/parity checks. The implementation adds:
+
+- `PrepareObservedTranscriptAnnotation` and `CancelObservedTranscriptAnnotation`
+  with shared-shell `rna-reads transcript-annotation-prepare|transcript-annotation-cancel`.
+  The generic CLI/MCP/scripting paths reuse these typed operations and the
+  unchanged S2.1b request/receipt/annotation geometry, not new biological logic.
+- Explicit preserve-content construction/no implicit save/no checkpoint and
+  write-attempt approval, plus external capability metadata. A candidate's
+  false flags cannot waive operation-derived approval. Generic MCP still
+  requires `confirm:true`. Raw operation audit remains; direct shell control
+  does not append a journal. Existing mixed/empty workflows remain conservative.
+- Typed `submit_parsed` execution/control lanes and artifact-only retention,
+  without a live project lock/journal merge. Legacy raw-text submission still
+  snapshots conservatively. Compact result bindings correlate submitted request,
+  receipt content/raw bytes/path and distinct dispatch/gene outcomes. Result
+  correlation resolves only the output directory; it does not rescan source,
+  report or annotation bytes. Existing worker/project policies are unchanged.
+- Cancellation shares raw-path/alias checks but does not require remaining
+  source bytes or fresh output. Current parents must resolve. A matching
+  marker is idempotent; stale/malformed markers or aliases never clobber input.
+  Success requests cancellation only, not termination. Preparation's existing
+  admission/publication path stays unchanged.
+
+New inline synthetic tests cover constructor/content/redo/revision and mixed-
+workflow policy, LF/CRLF quoted request paths, discovery and false agent flags,
+idempotent request-bound cancellation with removed sources, result correlation,
+unavailable/cancel/control feedback, named lanes, held-live-lock standalone
+publication, and generic MCP confirmation/no-save boundaries. All new result
+fields are omitted for existing operations; frozen Phase 2/S1 assertions are
+not edited. UI `OpResult` literals gain only the required `None` field.
+
+Rust execution and canonical parity regeneration are pending the owner's new
+S2.1c build choice; S2.1b's exception is not extended implicitly. No existing
+binary is treated as source-matched for this diff. The matrix must be generated
+from the updated canonical registry before claiming freshness; its existing
+LF/CRLF checkout guard must also run. Source/documentation tests and whitespace
+are not runtime evidence. No claim of passing C tests, default-GUI/full-suite,
+actual CLI/MCP processes/VM, native Windows/Linux, real-provider, scientific or
+release acceptance. S2.2/S2.3, SAM/BAM ingress and GUI remain unimplemented.
+
+Fast C-source/documentation checks finish with 34 passes and one expected
+actual-process payload-CLI skip (35 cases). Documentation status, scoped
+rustfmt and whitespace pass. Session-close reports 4 OK, 2 warnings, no
+failures: intentional implementation diff/untouched `output/` (the glossary
+edit is the required canonical registration, not an unrelated generated file),
+and manual plan fidelity. The diff matches the bounded S2.1c plan. Required
+remaining execution, after the new build choice, is the `observed_annotation_`,
+`primer_payload`, `observed_transcript_structures`, `s2a_` and
+`observed_transcripts_` locked/offline headless filters, headless Cargo check,
+canonical protocol/discovery guards, then source-matched
+`gentle_examples_docs parity-matrix-generate`/`parity-matrix-check` and
+`scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes`.
+Do not dispatch CI, push or count this authored checklist as execution.
+
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 
 Propose a separate `SummarizeObservedTranscriptStructuresFromSam` request, not

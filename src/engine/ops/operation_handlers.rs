@@ -40550,6 +40550,7 @@ impl GentleEngine {
             primer_payload_inspection: None,
             observed_transcript_structures: None,
             observed_transcript_structures_inspection: None,
+            observed_transcript_annotation: None,
             rna_primer_trace_inspection: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,
@@ -52235,6 +52236,16 @@ impl GentleEngine {
                     result.observed_transcript_structures = Some(Box::new(
                         self.summarize_observed_transcript_structures(*request, on_progress)?,
                     ));
+                }
+                Operation::PrepareObservedTranscriptAnnotation { request } => {
+                    result.observed_transcript_annotation = Some(Box::new(
+                        self.prepare_observed_transcript_annotation(*request, on_progress)?,
+                    ));
+                }
+                Operation::CancelObservedTranscriptAnnotation { request } => {
+                    result
+                        .messages
+                        .push(Self::cancel_observed_transcript_annotation(&request)?);
                 }
                 Operation::InspectObservedTranscriptStructures {
                     path,

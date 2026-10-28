@@ -114,6 +114,31 @@ the new digest recipe and conservative JSON/memory admission model; neither
 changes existing S1/Phase 2 bytes, limits or errors. Native/platform/provider/
 scientific acceptance and S2.1c named adapters remain separately gated.
 
+### Observed Structures S2.1c Operation Boundary
+
+Owner-requested continuation after the S2.1b local commit on 2026-10-28:
+register only named annotation preparation and request-bound cancellation.
+Keep one strict file/biology boundary. New operation-derived approval covers
+every external receipt/marker write attempt, independently of model/candidate
+flags and generic MCP confirmation. Explicitly migrate constructor/no-save,
+no-checkpoint and managed policies; do not infer them from `ReadOnly` or output.
+
+Typed standalone admission separates preparation execution and marker control
+from the live project. Retain correlated artifact metadata without merging a
+private journal or vetoing an already-published result on late host cancel.
+Raw-text admission and workflows retain their conservative project-bound
+host policies. Compact transport retains a separate gene outcome: complete
+source refusal is unavailable evidence, not zero biology or successful models.
+Do not re-query sources to validate a worker result; correlate request/receipt
+digests, serialized receipt bytes and its resolved publication path.
+
+The new optional result/worker-binding fields are omitted for old operations.
+Phase 2/S1 wire bytes, existing schemas, helper limits and frozen assertions
+remain unchanged. SAM ingress, S2.3 receipt consumption, GUI, provider/gap
+policy acceptance and native/scientific verdicts remain separate. See the
+[S2.1c ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28)
+for authored versus executed scope.
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic

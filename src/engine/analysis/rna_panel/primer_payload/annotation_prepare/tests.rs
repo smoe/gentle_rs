@@ -4,6 +4,18 @@
 use super::*;
 use serde_json::json;
 
+#[path = "adapter_tests.rs"]
+mod adapters;
+
+impl GentleEngine {
+    /// Inline synthetic annotation inputs, absent from non-test builds.
+    pub(crate) fn observed_annotation_test_fixture(
+        root: &Path,
+    ) -> PrepareObservedTranscriptAnnotationRequest {
+        fixture(root)
+    }
+}
+
 const GTF: &str = concat!(
     "# synthetic snapshot\n",
     "chrToy\ttest\ttranscript\t2\t14\t.\t-\t.\tgene_id \"gene_minus\"; transcript_id \"tx.7\"; transcript_version \"7\";\n",

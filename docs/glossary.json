@@ -1,6 +1,20 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["PrepareObservedTranscriptAnnotation"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads transcript-annotation-prepare",
+         "summary": "Prepare one exact stable gene from a raw-hash-bound strict GTF snapshot and ordered contig dictionary. Retain source scope, policies and receipt-only refusal; no project mutation, SAM ingress, retrieval or protein claim. Writes require approval.",
+         "usage": "rna-reads transcript-annotation-prepare REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["CancelObservedTranscriptAnnotation"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads transcript-annotation-cancel",
+         "summary": "Write the exact annotation-preparation request's cancellation marker, without replaying source analysis. Requires approval; not confirmation of worker termination.",
+         "usage": "rna-reads transcript-annotation-cancel REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["SummarizeObservedTranscriptStructures"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads transcript-structures",

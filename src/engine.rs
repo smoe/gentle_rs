@@ -3285,6 +3285,12 @@ pub enum Operation {
     SummarizeObservedTranscriptStructures {
         request: Box<SummarizeObservedTranscriptStructuresRequest>,
     },
+    PrepareObservedTranscriptAnnotation {
+        request: Box<PrepareObservedTranscriptAnnotationRequest>,
+    },
+    CancelObservedTranscriptAnnotation {
+        request: Box<PrepareObservedTranscriptAnnotationRequest>,
+    },
     InspectObservedTranscriptStructures {
         path: String,
         #[serde(default)]
@@ -10326,6 +10332,8 @@ impl GentleEngine {
                 | Operation::SummarizeObservedTranscriptStructures { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
                 | Operation::CancelObservedTranscriptStructures { .. }
+                | Operation::PrepareObservedTranscriptAnnotation { .. }
+                | Operation::CancelObservedTranscriptAnnotation { .. }
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::CancelPrimerTrace { .. }
                 | Operation::ScreenRnaReadPanel { .. }

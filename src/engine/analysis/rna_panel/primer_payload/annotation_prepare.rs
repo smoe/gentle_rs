@@ -264,8 +264,115 @@ fn prepare(
 }
 
 impl GentleEngine {
-    /// Direct S2.1b file boundary only. No Operation, shell/MCP route or project mutation.
-    /// Callers must authorize the external write attempt, even for a refusal/cancellation.
+    /// Correlate typed emitted metadata with the executed request. No source re-analysis.
+    pub fn observed_transcript_annotation_result_binding(
+        request: &PrepareObservedTranscriptAnnotationRequest,
+        result: &ObservedTranscriptAnnotationPreparation,
+    ) -> Result<ObservedTranscriptAnnotationResultBinding, EngineError> {
+        limits(request)?;
+        let report = &result.report;
+        let memory = request.budgets.max_retained_bytes;
+        let identity = semantic_hash(request, memory)?;
+        let mut basis = report.clone();
+        basis.content_sha256.clear();
+        let analysis = report.analysis.as_ref();
+        let complete_gene =
+            analysis.is_some_and(|a| a.outcome == ObservedAnnotationOutcome::Completed);
+        let status = report.status;
+        if report.schema != OBSERVED_ANNOTATION_REPORT_SCHEMA
+            || semantic_hash(&report.request, memory)? != identity
+            || report.request_sha256 != identity
+            || semantic_hash(&basis, memory)? != report.content_sha256
+            || report.gtf_verified && !report.dictionary_verified
+            || analysis.is_some() && !(report.gtf_verified && report.dictionary_verified)
+            || (status == ObservedAnnotationExecutionStatus::Completed && analysis.is_none())
+            || ((status == ObservedAnnotationExecutionStatus::ControlError)
+                != report.control_error.is_some())
+            || report.control_error.as_ref().is_some_and(|s| s.is_empty())
+            || complete_gene != report.annotation.is_some()
+            || report.annotation.as_ref().is_some_and(|a| {
+                a.path != "artifacts/annotation.json" || a.bytes == 0 || !is_hash(&a.sha256)
+            })
+            || analysis.is_some_and(|a| {
+                a.grammar != "gtf_strict.v1"
+                    || a.coordinate_authority != "declared"
+                    || a.raw_sha256 != request.gtf.sha256
+                    || a.raw_bytes as u64 != request.gtf.bytes
+                    || a.snapshot_release != format!("snapshot-{}", request.gtf.sha256)
+            })
+        {
+            return Err(bad("observed_annotation_result_binding"));
+        }
+        // Correlate the returned canonical publication path. This resolves only
+        // the output directory; it does not reread reports, annotations or inputs.
+        let expected = fs::canonicalize(&request.output_dir)
+            .map_err(|e| bad(e.to_string()))?
+            .join("report.json");
+        if Path::new(&result.report_file.path) != expected {
+            return Err(bad("observed_annotation_result_path"));
+        }
+        let raw = serde_json::to_vec_pretty(report).map_err(|e| bad(e.to_string()))?;
+        if result.report_file.bytes != raw.len() as u64
+            || result.report_file.sha256 != sha256_prefixed_bytes(&raw)
+            || result
+                .report_file
+                .bytes
+                .checked_add(report.annotation.as_ref().map_or(0, |a| a.bytes))
+                .is_none_or(|n| n > request.budgets.max_output_bytes)
+        {
+            return Err(bad("observed_annotation_result_raw_binding"));
+        }
+        let outcome = match status {
+            ObservedAnnotationExecutionStatus::Completed if complete_gene => "completed",
+            ObservedAnnotationExecutionStatus::Completed => "unavailable",
+            ObservedAnnotationExecutionStatus::Cancelled => "cancelled",
+            ObservedAnnotationExecutionStatus::ControlError => "control_error",
+        };
+        Ok(ObservedTranscriptAnnotationResultBinding {
+            schema: "gentle.observed_transcript_annotation_result_binding.v1".into(),
+            request_sha256: identity,
+            report_content_sha256: report.content_sha256.clone(),
+            report_file: result.report_file.clone(),
+            outcome: outcome.into(),
+            gene_outcome: analysis.map(|a| a.outcome),
+        })
+    }
+
+    /// Write only a request-bound marker; never infer completion or replay source analysis.
+    pub fn cancel_observed_transcript_annotation(
+        request: &PrepareObservedTranscriptAnnotationRequest,
+    ) -> Result<String, EngineError> {
+        limits(request)?;
+        let paths = publication::Paths::for_cancel(request)?;
+        let identity = semantic_hash(request, request.budgets.max_retained_bytes)?;
+        let path = request
+            .cancel_path
+            .as_deref()
+            .ok_or_else(|| bad("observed_annotation_cancel_path_required"))?;
+        if control::marker_requested(Some(path), std::slice::from_ref(&identity))? {
+            return Ok("Cancellation already requested; termination not confirmed".into());
+        }
+        let parent = Path::new(path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut marker = tempfile::NamedTempFile::new_in(parent).map_err(|e| bad(e.to_string()))?;
+        marker
+            .write_all(identity.as_bytes())
+            .map_err(|e| bad(e.to_string()))?;
+        marker
+            .as_file()
+            .sync_all()
+            .map_err(|e| bad(e.to_string()))?;
+        paths.recheck_cancel()?;
+        marker
+            .persist_noclobber(path)
+            .map_err(|e| bad(e.to_string()))?;
+        Ok("Cancellation requested for this exact request; termination not confirmed".into())
+    }
+
+    /// Shared file boundary; named S2.1c operations/adapters delegate without project mutation.
+    /// Callers authorize the external write attempt, even for a refusal/cancellation.
     pub fn prepare_observed_transcript_annotation(
         &self,
         request: PrepareObservedTranscriptAnnotationRequest,
