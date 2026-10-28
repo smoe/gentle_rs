@@ -1,11 +1,37 @@
 # Glen: Next Verification And Return
 
+## Integrated Lifecycle And Help Follow-Up, 2026-10-28
+
+After the owner's next push, use the normally integrated source containing
+`1adad235` (Lifecycle Slice 4) and `7329f00f` (manual navigation/contextual Help).
+Record the full tested SHA once; these commit IDs identify changes, not an
+interim freeze or a request for another bundle. The two sections below define
+this delta. Older sections retain their own source-bound results and outstanding
+limits; they are not a blanket request to repeat completed checks.
+
+Already completed, not new Glen work: at `7329f00f`, 164 Python/source/checkout/
+synthetic-package checks passed, with six optional real-CLI skips (170 total).
+Both manual migration checks retained all 7,171 GUI and 8,869 CLI nonblank lines
+from `1adad235`, including indentation/multiplicity after documented link moves.
+Manual projection freshness, documentation status and whitespace passed.
+Slice 4's earlier checks are recorded below; none of these results executes
+the pending Rust, real CLI/MCP/VM or native acceptance paths. Reuse same-source
+CI receipts and run each missing command/feature group only once; rerun an
+affected completed check only when its source or inputs have changed.
+
+Return one concise report through Steffen to this main-maintaining chat:
+per-item pass/fail/not-run/blocked, full source SHA, platform/toolchain/features/
+profile, binary and input hashes, exact commands/counts/skips, primary failures
+versus cascades, and retained artifact locations/checksums. No push, dispatch,
+package build, tag, publication, live-model call or scientific approval is
+requested. Keep the previous goal paused and unrelated outputs/stashes intact.
+
 ## Lifecycle Slice 4, 2026-10-27
 
 Owner authorized the revised Plan-only fresh-file writer/host binding at the
-`b8e0118f` baseline. Test the normally integrated source, including the existing
-`a2637079` Slice 3 test-API repair. No new audit freeze or repetition of old
-source-bound passes. The [contract](operation_lifecycle_slice4_plan.md) records
+`b8e0118f` baseline; implementation `1adad235` is now integrated beneath
+`7329f00f`. Test the normally integrated source, including the existing
+`a2637079` Slice 3 test-API repair. The [contract](operation_lifecycle_slice4_plan.md) records
 support limits; tutorial 06.07 now requires fresh files in existing folders.
 The owner-requested mid-implementation rebase advanced this branch to
 `1804605f`; all Slice 4 working files restored cleanly, preserving RNA S1.
@@ -70,7 +96,7 @@ special-file refusal, final-name race and injected staging errors. Keep both
 strategies and distinct report paths; no expected scientific hash changes.
 Verify host binding survives load/pool reconstruction, checkpoint import/fork,
 rollback and newer live Save As commit, without serialization or dirty revisions.
-Check native GUI load/Save As/new project, redo and responsiveness; Windows
+Check native GUI load/Save As/new project/reset, undo/redo and responsiveness; Windows
 handles/device/ADS/verbatim/UNC/reparse cases and macOS aliases/case/Unicode
 remain actual native acceptance, not source or LF/CRLF proof. Retain inner-agent
 ask/nested-execution guards and capability discovery; no model call is needed.
@@ -81,6 +107,47 @@ use a different existing directory. No hostile parent-swap, universal atomicity,
 crash durability or survival against later explicit project save claim. Record
 tested full SHA, feature/platform/toolchain, counts, failures and unrun checks;
 keep the previous goal paused and coordination/push with the main thread.
+
+## Manual Navigation And Contextual Help, 2026-10-28
+
+`7329f00f` adds 73 GUI and 69 CLI authoritative topic files, a shared catalog,
+legacy anchors, reciprocal links, complete-book search/copy, cross-book history
+and 40 typed window Help destinations. Ordinary Help must remain separate from
+Agent Help, screenshot capture, model calls and project mutation. See the
+[implementation/acceptance ledger](manual_navigation_plan.md#external-acceptance-handoff).
+The static checks recorded above are complete; actual Rust/GUI behavior remains
+unverified. No engine/scientific contract change is claimed by the manual move.
+
+Run these missing default-feature groups, or cite their same-source CI results.
+Require nonzero selected counts. Shared Cargo checks/formatting are already in
+the Slice 4 list; do not run them twice. Its default-feature `sequence_design`
+filter also covers `sequence_design_window_gc_documented_walkthrough_is_replayable`,
+so do not rerun that walkthrough separately. `help_docs` includes the real
+topic-button dispatch, active-window registry, cross-book history and
+package-layout cases:
+
+```sh
+cargo test --locked -j1 --lib help_manual -- --test-threads=1
+cargo test --locked -j1 --lib help_docs -- --test-threads=1
+cargo test --locked -j1 --lib cli_docs_mention_all_cli_glossary_paths -- --test-threads=1
+cargo test --locked -j1 --lib genome_edit_intent_documented_operation_is_the_tested_synthetic_request -- --test-threads=1
+```
+
+Native checks still needed: narrow/wide Help windows, Contents/tree and
+breadcrumbs, both directions of GUI/CLI links, Back/Forward, old bookmarks,
+UTF-8/duplicate headings, whole-book Find/Copy, Reload, images and wheel/trackpad
+scrolling. Check ordinary Help in sequence, specialist and detached windows,
+including the active-window native menu route; no capture/model request or
+project/dirty/undo change may result. Headless clicks are not native acceptance.
+
+Keep installed-package checks on the normal authorized release path, not a new
+package campaign. On macOS/Linux/Windows, launch from an unrelated working
+directory with complete resources and with a missing chapter/incompatible
+catalog; require one complete embedded-book fallback and a visible notice,
+never an index-only or mixed-source book. Test on a disposable package copy,
+not installed originals. Text embedding does not supply images/tutorial assets;
+their installed-resource requirement and other guides' section-scroll limits
+remain explicit. Record unavailable platforms/packages as pending, not passed.
 
 ## DNA Map And Dotplot Separation, 2026-10-27
 
@@ -211,8 +278,9 @@ Glen owns native GUI dirty/redo behavior and Windows handle/path checks.
 
 Do not relabel old approval passes as current-source evidence. Opaque wrappers
 still repair on construction; permissive sidecar warnings can still be saved
-by unmigrated commands; explicit report paths aliasing project/sidecars remain
-Slice 4. Report these boundaries, not a universal read-only guarantee. Return
+by unmigrated commands. Report-path alias protection was deferred at Slice 3;
+it is now authored in Slice 4 above, with acceptance still pending. Report these
+boundaries, not a universal read-only guarantee. Return
 changed-source SHA, feature/platform/toolchain, exact selected counts, failures
 and unrun checks through the main-maintaining thread; no new audit campaign.
 
