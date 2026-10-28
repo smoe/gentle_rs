@@ -208,6 +208,145 @@ fn lifecycle_slice5_two_previews_do_not_invalidate_each_other() {
 }
 
 #[test]
+fn lifecycle_slice5_preview_tolerates_a_read_only_journal_append_after_snapshot() {
+    let service = CommandExecutionService::default();
+    let engine = Arc::new(RwLock::new(fixture::live_with_redo()));
+    let (id, release) = held(&service, engine.clone());
+    {
+        let mut live = engine.write().unwrap();
+        let structural = live.structural_revision();
+        let mutation = live.mutation_revision();
+        let journal = live.journal_len();
+        live.apply(fixture::snv()).unwrap();
+        assert_eq!(live.structural_revision(), structural);
+        assert_eq!(live.mutation_revision(), mutation);
+        assert_eq!(live.journal_len(), journal + 1);
+    }
+    let expected = engine.read().unwrap().clone(); // Post-S1 oracle; preview must not replace it.
+    release.send(()).unwrap();
+    wait(&service, id).unwrap();
+    let receipt = service.status(id).unwrap();
+    assert_eq!(receipt.publication, "preview");
+    assert_eq!(receipt.committed_operations, 0);
+    let live = engine.read().unwrap();
+    assert_eq!(
+        serde_json::to_value(&*live).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert_eq!(live.execution_revision(), expected.execution_revision());
+    assert_eq!(live.undo_available(), expected.undo_available());
+    assert_eq!(live.redo_available(), expected.redo_available());
+}
+
+#[test]
+fn lifecycle_slice5_published_preview_apply_revalidates_only_its_actual_constraints() {
+    use crate::dna_sequence::DNAsequence;
+    use gentle_protocol::sequence_design::DnaSequenceDesignReport;
+
+    for change in ["unrelated", "source_dna", "source_features", "output_id"] {
+        let service = CommandExecutionService::default();
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(fixture::state())));
+        let id = service
+            .submit(
+                engine.clone(),
+                command(&fixture::plan(None, true), false),
+                Default::default(),
+            )
+            .unwrap();
+        let run = wait(&service, id).unwrap();
+        let report: DnaSequenceDesignReport =
+            serde_json::from_value(run.output["result"]["dna_sequence_design"].clone()).unwrap();
+        let approval = report.approval_digest.clone().unwrap();
+        let output_id = report.request.output_seq_id.clone();
+        let published_revision = service
+            .status(id)
+            .unwrap()
+            .result_structural_revision
+            .unwrap();
+        let mut live = engine.write().unwrap();
+        match change {
+            "unrelated" => {
+                live.apply(fixture::create()).unwrap();
+            }
+            "source_dna" => {
+                // Synthetic synonymous change, still MFK: this is different source DNA.
+                live.state_mut().sequences.insert(
+                    "synthetic_source".into(),
+                    DNAsequence::from_sequence("ATGTTCAAATAA").unwrap(),
+                );
+            }
+            "source_features" => {
+                live.state_mut()
+                    .sequences
+                    .get_mut("synthetic_source")
+                    .unwrap()
+                    .features_mut()
+                    .push(gb_io::seq::Feature {
+                        kind: "misc_feature".into(),
+                        location: gb_io::seq::Location::simple_range(0, 3),
+                        qualifiers: vec![(
+                            "note".into(),
+                            Some("Synthetic annotation added after preview".into()),
+                        )],
+                    });
+            }
+            "output_id" => {
+                live.apply(Operation::CreateSequenceFromText {
+                    sequence_text: "ATGC".into(),
+                    output_id: Some(output_id.clone()),
+                    name: None,
+                    circular: false,
+                })
+                .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert_ne!(live.structural_revision(), published_revision);
+        let source_before_apply = live.state().sequences["synthetic_source"].get_forward_string();
+        let journal_before_apply = live.journal_len();
+        // Submit the original, unmodified proposal/digest explicitly. No automatic Apply.
+        let applied = live.apply(Operation::ApplyDnaSequenceDesign {
+            proposal: Box::new(report),
+            approval_digest: approval,
+        });
+        if change == "unrelated" {
+            let applied = applied.unwrap();
+            let receipt = applied.dna_sequence_design_receipt.unwrap();
+            assert!(receipt.output_constraints_verified);
+            assert!(!receipt.search_claims_verified);
+            assert_eq!(
+                live.state().sequences[&output_id].get_forward_string(),
+                "ATGTTTAAGTAA"
+            );
+            assert_eq!(live.journal_len(), journal_before_apply + 1);
+        } else {
+            let error = applied.unwrap_err();
+            assert!(
+                error.message.contains(if change == "output_id" {
+                    "never overwrites"
+                } else {
+                    "prepare and review a new preview"
+                }),
+                "{error}"
+            );
+            if change == "output_id" {
+                assert_eq!(
+                    live.state().sequences[&output_id].get_forward_string(),
+                    "ATGC"
+                );
+            } else {
+                assert!(!live.state().sequences.contains_key(&output_id));
+            }
+            assert_eq!(live.journal_len(), journal_before_apply);
+        }
+        assert_eq!(
+            live.state().sequences["synthetic_source"].get_forward_string(),
+            source_before_apply
+        );
+    }
+}
+
+#[test]
 fn lifecycle_slice5_rejects_structural_edit_and_replacement_before_publication() {
     for replace in [false, true] {
         let service = CommandExecutionService::default();

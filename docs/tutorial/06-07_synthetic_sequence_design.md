@@ -270,7 +270,15 @@ After publication, a later same-project edit marks the displayed preview as
 share it with the inner agent. A replaced-project preview cannot be shared as
 current-project evidence. Re-preview changed DNA; Apply independently revalidates
 the exact source, annotations, genetic code and output ID and still needs the
-reviewed approval digest. Cancel before publication discards the no-file result;
+reviewed approval digest.
+
+An edit to an unrelated sequence can trigger the historical warning without
+invalidating the original source. Apply checks the actual constraints rather
+than treating every project edit as a changed insert. Changed source DNA,
+changed source annotations or an occupied output ID still require resolution;
+a historical warning is never permission to skip those checks.
+
+Cancel before publication discards the no-file result;
 after publication Cancel does not retract it. An exhausted/infeasible search is
 not a feasible design merely because the command finished successfully.
 

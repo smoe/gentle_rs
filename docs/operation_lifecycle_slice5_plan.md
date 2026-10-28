@@ -196,6 +196,20 @@ and the manual plan-fidelity reminder), 0 failures. Roadmap remains 400 lines.
 
 ## Glen/CI Verification, Not Executed Here
 
+Owner-requested continuation, 2026-10-28: a further source pass at integrated
+`a52c7b74` identified two missing test boundaries, not a confirmed runtime bug.
+New synthetic regressions explicitly retain a read-only S1 journal append
+while a preview finishes, and feed a published report unchanged into explicit
+Apply after an unrelated edit, changed source DNA, changed annotations or an
+occupied output ID. An unrelated edit can make a preview historical without
+invalidating its actual source; the other three controls must refuse. Tutorial
+06.07 now explains that distinction. Runtime, policy and scientific contracts
+are unchanged; these Rust regressions are authored and remain unrun locally.
+Continuation checks pass 13 Python source/teaching cases with 12 process skips
+(25 total), the targeted real LF/CRLF checkout test, scoped rustfmt and
+documentation-status/whitespace checks. Session-close: 4 OK, 2 intentional
+working-tree/manual-review warnings, 0 failures. No Rust/native result is claimed.
+
 Use the ordinary integrated source and record full SHA/features/platform and
 nonzero counts. Reuse unaffected same-source evidence; no new audit campaign.
 

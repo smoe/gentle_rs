@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-28 - Close Two Slice 5 Regression-Coverage Gaps
+
+- After the owner requested continuation, statically cross-check the integrated
+  `b0521123` paths at `a52c7b74`. Add an explicit read-only journal-append control
+  during held preview execution, and a published-report-to-Apply test covering
+  unrelated edits versus changed source DNA/features or output-ID occupation.
+- Clarify tutorial 06.07: historical snapshot context does not automatically
+  invalidate an unchanged source, while Apply still checks its exact bindings.
+  Update the existing plan/handoff; runtime/policy/scientific code is unchanged.
+  Rust/native verification remains with Glen/CI; no build, model call, push or
+  resumption of the earlier goal. Unrelated outputs remain untouched.
+- Checks: 13 Python source/teaching cases pass, 12 process checks skip, and the
+  targeted LF/CRLF tutorial checkout test passes. Scoped rustfmt, documentation
+  status and whitespace pass; the new Rust regressions are unrun.
+
 ## 2026-10-28 - Record Glen's Scoped Lifecycle And Dotplot Return
 
 - Retain the owner-relayed no-finding report at exact source `b8e0118f`:

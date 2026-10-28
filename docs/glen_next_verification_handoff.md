@@ -66,6 +66,15 @@ reports/Apply still work. Keep existing raw CLI/MCP/JS/Lua/Python companions and
 scientific parity passing. Return exact source/binary/platform/features/counts,
 failures and unrun checks. No push/dispatch or previous-goal resumption here.
 
+Additional source-pass tests authored after `b0521123` (unrun):
+`lifecycle_slice5_preview_tolerates_a_read_only_journal_append_after_snapshot`
+must preserve the intervening S1 audit and the live engine/history, and
+`lifecycle_slice5_published_preview_apply_revalidates_only_its_actual_constraints`
+must accept an unchanged source after an unrelated edit but refuse changed
+source DNA, changed annotations and an occupied output ID. They use the same
+command-execution filter above; no new audit campaign or production behavior.
+Tutorial 06.07 distinguishes historical context from actual Apply invalidity.
+
 ## Integrated Lifecycle And Help Follow-Up, 2026-10-28
 
 After the owner's next push, use the normally integrated source containing
