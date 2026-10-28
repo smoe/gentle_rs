@@ -2,8 +2,9 @@
 
 Status: S0 is implemented and its verification is recorded below. The owner
 separately authorized S1 on 2026-10-27: the bound intake/publication and shared
-engine/CLI/MCP paths now have focused macOS verification recorded below. S2 and
-later slices remain proposals, not authorized by either implementation task.
+engine/CLI/MCP paths now have focused macOS verification recorded below. The
+[detailed S2 plan and review request](observed_transcript_structures_s2_plan.md)
+are prepared; S2 and later slices remain proposals, not authorized for implementation.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
@@ -640,7 +641,12 @@ distinguished in the [S1 contract](observed_transcript_structures.md).
    export, CLI/MCP/agent discovery and generic JS/Lua/Python reachability. Test
    file-write confirmation, named no-save behavior and unchanged project/journal.
    Keep old schemas/results byte-compatible; source-bound execution is required.
-3. **S2 -- explicit SAM-text ingress and annotation preparation.** Prefer a
+3. **S2 -- explicit SAM-text ingress and annotation preparation.** The
+   [bounded S2 proposal](observed_transcript_structures_s2_plan.md) and
+   [new Claude review prompt](observed_transcript_structures_s2_claude_review_prompt.md)
+   separate preservation/kernel seam, annotation preparation, SAM accounting
+   and shared operation integration. They are unreviewed proposals, not code.
+   Prefer a
    bounded, hash-bound SAM input initially, with CIGAR geometry through the same
    kernel. Handle `S/H/P`, reverse flags/query coordinates, header lengths,
    unavailable MAPQ and malformed/unsupported records explicitly; do not broaden
@@ -756,8 +762,10 @@ No request is sent, no candidate freeze/dispatch is created, and no native,
 release, biological or performance acceptance is claimed by this planning task.
 
 Next step: carry the source-bound macOS results into the consolidated Glen/CI
-request and execute missing process/platform checks; authorize S2 separately. The updated
-[Claude follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
-is available if a second read-only pass on the remaining qualifications is
-wanted; it has not been sent or executed. SAM/BAM, GUI and later consequences
-are not authorized by the S1 request.
+request and execute missing process/platform checks. Review the separate
+[S2 plan](observed_transcript_structures_s2_plan.md) with its
+[current Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
+before authorizing implementation; neither has been Claude-reviewed. The older
+[S0 follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
+is historical and predates S1 completion, not the current S2 review request.
+SAM/BAM, GUI and later consequences are not authorized by the S1 request.
