@@ -24,9 +24,9 @@ pub(super) fn resolutions(sources: &[Source<'_>]) -> Vec<SourceComparison> {
         .collect()
 }
 
-pub(super) fn sources(input: &Input) -> Result<Vec<Source<'_>>, EngineError> {
+pub(super) fn sources<'a>(input: &core::Context<'a>) -> Result<Vec<Source<'a>>, EngineError> {
     let mut selectors = BTreeMap::new();
-    for gene in std::iter::once(&input.reference_gene).chain(&input.comparison_genes) {
+    for gene in std::iter::once(input.reference_gene).chain(input.comparison_genes) {
         if gene.source_id.is_empty()
             || gene.gene_id.is_empty()
             || selectors
@@ -39,7 +39,7 @@ pub(super) fn sources(input: &Input) -> Result<Vec<Source<'_>>, EngineError> {
     let mut sources = BTreeMap::new();
     let mut total_rows = 0usize;
     let mut geometry_rows = 0usize;
-    for source in &input.annotation_sources {
+    for source in input.annotation_sources {
         let a = &source.annotation;
         total_rows = total_rows
             .checked_add(a.transcripts.len())
@@ -120,8 +120,8 @@ pub(super) fn sources(input: &Input) -> Result<Vec<Source<'_>>, EngineError> {
     Ok(result)
 }
 
-fn support(
-    observation: &Observation,
+fn support<R>(
+    observation: &core::CoreObservation<R>,
     range: Interval,
     work: &mut usize,
     limit: usize,
@@ -144,8 +144,8 @@ fn support(
     Ok(Some(count))
 }
 
-pub(super) fn qualify(
-    observation: &Observation,
+pub(super) fn qualify<R>(
+    observation: &core::CoreObservation<R>,
     (a, z): Interval,
     flank: usize,
     work: &mut usize,
@@ -168,10 +168,10 @@ pub(super) fn qualify(
     )
 }
 
-pub(super) fn compare(
-    observation: &Observation,
+pub(super) fn compare<R>(
+    observation: &core::CoreObservation<R>,
     sources: &[Source<'_>],
-    input: &Input,
+    input: &core::Context<'_>,
     work: &mut usize,
 ) -> Result<Vec<SourceComparison>, EngineError> {
     let mut result = Vec::new();

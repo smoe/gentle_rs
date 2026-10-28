@@ -15,6 +15,32 @@
   targeted LF/CRLF tutorial checkout test passes. Scoped rustfmt, documentation
   status and whitespace pass; the new Rust regressions are unrun.
 
+## 2026-10-28 - Prepare The Private Observed-Transcript SAM Geometry Seam
+
+- After committing/rebasing S2.0a as `a52c7b74`, implement the separately
+  owner-authorized S2.0b private typed identity/context/segment/result seam.
+  Keep one observation, DAG, reconciliation and comparer implementation;
+  project legacy results to unchanged public DTOs/digest recipes. Preserve
+  original admission, work/errors/order and stored-support assertions, without
+  modifying the frozen S2.0a or ten-case Phase 2 expectations.
+- Add pure normalization of already decoded, explicitly grouped SAM units:
+  asymmetric hard/soft clips, reverse query axes, POS/dictionary/SEQ/QUAL
+  checks, `D` versus `N`, unpadded `P`, MAPQ 0 versus absent 255, and fixed
+  private identity domains. Never fabricate PAF identity or original-read
+  provenance. Unsupported units lose all support segments, not only bad rows.
+- Add inline synthetic/basewise oracle, equivalent-PAF physical-key, two-gene,
+  identity/alternative/missing-mask, refusal and budget/control regressions.
+  Reference/search authority stays declared; no text/file/tag parser, annotation
+  preparation, new operation/schema/adapter, GUI, dependency, push or real-data
+  acceptance. Verification is recorded in the [S2.0b ledger](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
+- Scoped macOS/aarch64 locked/offline headless runs pass observed structures
+  41/41 (13 new), all six S2.0a guards, S1 filter 16/16 and payload 48/48;
+  filters overlap. Headless Cargo check, six-path rustfmt, whitespace and fast
+  documentation/contract checks pass (33 executed, one expected skip).
+  Whole-workspace fmt retains 12 unrelated baseline failures. Record exact
+  source-manifest/binary/lock/toolchain/profile identity in the ledger; no
+  default-GUI/full-suite/native/platform/scientific acceptance is claimed.
+
 ## 2026-10-28 - Record Glen's Scoped Lifecycle And Dotplot Return
 
 - Retain the owner-relayed no-finding report at exact source `b8e0118f`:

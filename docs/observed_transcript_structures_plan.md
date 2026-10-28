@@ -7,7 +7,11 @@ engine/CLI/MCP paths now have focused macOS verification recorded below. The
 is reconciled after supplied Claude feedback. The owner separately authorized
 test-only S2.0a on 2026-10-28; its six new guards and scoped macOS regressions
 pass in the [execution ledger](observed_transcript_structures_s2_plan.md#s20a-implementation-and-verification-2026-10-28).
-S2.0b and later slices remain proposals, not authorized for implementation.
+The owner separately authorized S2.0b's private core/identity seam and pure
+decoded-SAM normalization; focused local checks pass on the working diff in its
+[implementation scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
+SAM file ingress, annotation preparation, new operations/adapters and later
+slices remain proposals, not authorized by that bounded step.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
@@ -648,9 +652,10 @@ distinguished in the [S1 contract](observed_transcript_structures.md).
    [bounded S2 proposal](observed_transcript_structures_s2_plan.md) and
    [new Claude review prompt](observed_transcript_structures_s2_claude_review_prompt.md)
    separate test-only preservation guards (S2.0a), private kernel/identity seam
-   (S2.0b), annotation preparation, SAM accounting and shared integration. The
-   supplied read-only review is reconciled, not implementation or a fresh
-   sign-off on Codex's revised text. Unknown masks and incomplete search remain
+   (S2.0b), annotation preparation, SAM accounting and shared integration. S2.0b's
+   private core/decoded-SAM working diff has scoped macOS verification; file ingress
+   and later integration remain separate. The supplied read-only review is
+   reconciled, not a fresh sign-off on Codex's implementation. Unknown masks and incomplete search remain
    independent axes; source selectors/versions, gap policy and query identity
    are explicit. The original prompt is retained as historical context.
    Prefer a
@@ -772,7 +777,7 @@ Next step: carry the source-bound macOS results into the consolidated Glen/CI
 request and execute missing process/platform checks. Preserve the separately
 owner-authorized test-only S2.0a guards and their source-bound results from the
 [reconciled S2 plan](observed_transcript_structures_s2_plan.md#reconciled-implementation-order)
-before any S2.0b production refactor. The
+through the separately authorized S2.0b private refactor/normalizer. The
 [original S2 Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
 has received the supplied read-only review; Codex's reconciliation is not a
 fresh Claude or scientific verdict. The older

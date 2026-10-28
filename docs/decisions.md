@@ -52,6 +52,24 @@ main's independent lifecycle Slice 3 does not implicitly cover new operations.
 Native/platform replay and scientific acceptance remain source-bound. No assay
 thresholds are approved.
 
+### Observed Structures S2.0b Private Boundary
+
+Owner-authorized 2026-10-28 after S2.0a's commit/rebase: use one private
+format-neutral observation/path/comparison core with typed identity policies.
+Project legacy results back to the unchanged v1 DTOs, retaining full input
+serialization, digest tuples, charged work, sort keys, errors and stored-support
+assertions. Never update the frozen preservation expectations to bless a refactor.
+
+Decoded SAM uses declared query-unit keys, not QNAME-derived original records;
+separate private context/observation domains share only the physical chain
+recipe. Normalize clips/padding before the unchanged walker. Unknown alignment
+identity stays absent, not a synthetic PAF statistic. Unsupported units supply
+zero interpreted segments; reference/dictionary/search declarations cannot
+become verification, and unknown masks remain independent from search coverage.
+No SAM text/file parser, public schema, operation, annotation preparation,
+publication, GUI or biological acceptance is authorized by this private slice.
+See the [implementation and verification scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic

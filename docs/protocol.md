@@ -29,6 +29,12 @@ S1's focused macOS engine/shell/MCP-unit and lifecycle checks pass at the source
 recorded in its ledger. Actual process/VM, native, platform and scientific
 acceptance remain separate, not inherited by later main revisions.
 
+S2.0b adds only a private format-neutral seam and pure normalization of decoded
+SAM fields with declared query-unit identity. It introduces no SAM request,
+operation, CLI/MCP route, file parser or saved schema; see the
+[bounded implementation scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
+All existing S0/S1/Phase 2 public types and byte-preservation contracts remain.
+
 ## Primer Payload Evidence (Phase 2, Experimental)
 
 Separate `PreparePrimerPayloadAlignmentQueries`, `SummarizePrimerPayloadAlignments`,

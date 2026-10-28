@@ -12,9 +12,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod comparison;
+mod core;
 pub(crate) mod dag;
 pub(crate) mod geometry;
 mod kernel;
+// S2.0b is deliberately private until a separately reviewed ingress contract exists.
+#[allow(dead_code)]
+mod sam;
 #[cfg(test)]
 mod tests;
 

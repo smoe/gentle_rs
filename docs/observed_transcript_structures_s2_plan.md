@@ -1,7 +1,9 @@
 # Observed Transcript Structures S2: SAM And Annotation Preparation
 
-Status: **S2.0a test-only guards implemented with scoped macOS verification**.
-S2.0b and later steps remain proposals, not authorized for implementation.
+Status: **S2.0a guards retained; bounded S2.0b implemented and locally verified**.
+S2.0b adds a private shared core and decoded, in-memory SAM normalization only.
+File ingress, annotation preparation, operations/adapters and later slices remain
+proposals, not authorized by this step. Verification is recorded below.
 Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
 `1804605f1ba42369f943213414d79fd9a40013cb`. No fetch or remote-tip claim.
 Tracked files were clean; unrelated untracked `output/` is untouched.
@@ -9,8 +11,9 @@ The [roadmap](roadmap.md) owns priority/release scope. This is a bounded expansi
 of [the umbrella plan's S2](observed_transcript_structures_plan.md#slice-boundaries-and-remaining-work),
 not a new release gate. The [original Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
 was reviewed; the reconciliation below is Codex's, not a fresh Claude sign-off.
-The later S2.0a authorization does not authorize a production refactor or SAM
-ingress. Focused local Rust tests/check were separately authorized by the owner.
+S2.0a did not authorize a production refactor or SAM ingress. After its commit
+and rebase, the owner separately authorized bounded S2.0b and focused local
+Rust tests/check. No file ingress, new operation, GUI, dependency or push.
 
 Integration context, 2026-10-28: the owner requested committing this proposal
 and rebasing onto local `main`, now `7329f00f607c82c195ea13d931f83b0f1bc93150`.
@@ -231,6 +234,101 @@ reference FASTA digest, assembly, exact contig and ascending skipped intervals.
 Equivalent SAM/PAF geometry with identical coordinate authority must agree on
 that physical key; ingress/context/observation identities may legitimately differ.
 Changing the reference gene must not change the same physical chain key.
+
+### S2.0b Implementation, 2026-10-28
+
+Base: `a52c7b7473ef5e175f928c9504b98aadd435d99b` on `gentle_rs_2_main`,
+after S2.0a's commit/rebase onto local main `b0521123`. No fetch/remote-tip claim.
+The implementation was verified as a working diff, not a new public SAM capability:
+
+- `core.rs` owns the one observation/DAG/reconciliation/comparison path over
+  private typed keys, borrowed query/segment views and a minimal context.
+  `kernel.rs` preserves legacy admission and projects back to the unchanged
+  public v1 records. Legacy context serialization and observation/physical-chain
+  digest recipes stay at their existing boundaries. The public DTOs, Phase 2
+  walker, DAG, assertions and S2.0a expectations are not rewritten.
+- `sam.rs` accepts already decoded fields and explicitly grouped units, not
+  SAM text, files or optional tags. A future parser must validate text/tag
+  syntax and provide exact row accounting; that boundary is still unimplemented.
+  No QNAME grouping, original-read identity, invented PAF identity, NM/MD/AS
+  inference or aligner is introduced. It has fixed private context/observation
+  domains and reuses the unchanged physical-chain key. Private normalized
+  results are not a versioned SAM request/report/publication contract.
+- Normalization checks terminal `H/S`, unclipped axes, original-query reverse
+  orientation, reference dictionary/POS and optional SEQ/QUAL lengths. Preserve
+  `M/=/X/I/D/N`; only `N` creates skips. Under explicit unpadded admission,
+  `P` consumes no coordinates and its operation count remains a diagnostic.
+  Hard/soft counts remain stored-orientation counts; projected intervals use
+  the original-query axis. MAPQ 255 is absent, while 0 remains reported zero.
+- Paired/mate, padded-reference, CG/placeholder, missing CIGAR, no supported
+  bases and overlong-axis rows make their entire unit unavailable. Unmapped
+  rows also make the unit unassessed; zero-row units are `NotProvided`. No
+  retained good row may contribute possible support for such a unit. Malformed
+  geometry or contradictory declarations fail the entire call. Missing axes
+  remain absent, not manufactured zero-length queries.
+- All units/rows/operations are admitted before normalized copies, even for
+  unavailable units; exact caps and cooperative control errors are tested.
+  Dictionary/reference authority and search completeness remain producer
+  declarations. Missing masks and incomplete search stay independent axes.
+  Reference genes/sources remain explicit, with two opposite-strand synthetic
+  loci. There is no source selection, transcript canonicalization, protein,
+  biological novelty, molecule-count or natural-RNA-end assertion.
+- `sam_tests.rs` contains inline synthetic provenance and an independent
+  basewise geometry oracle, asymmetric and Cartesian clipping cases, SAM/PAF
+  physical-key parity, configurable genes, repeated names/row roles, whole-unit
+  refusal, missing axes/masks, alternatives, nonoptimal observations, strict
+  data errors and resource/control tests. No committed external data/fixture
+  or newline policy is added.
+
+Verification of this working diff on macOS/aarch64 uses `CARGO_INCREMENTAL=0`
+and `--locked --offline --no-default-features --lib -j1`; every test command
+uses `-- --test-threads=1`:
+
+| Command/filter | Result |
+| --- | --- |
+| `cargo test ... observed_transcript_structures` | 41/41, including 13 new SAM tests and all 28 existing tests |
+| `cargo test ... s2a_` | 6/6 exact byte/identity/work/error and S1 publication guards |
+| `cargo test ... observed_transcripts_` | 16/16 engine/shell/MCP-unit/lifecycle tests |
+| `cargo test ... primer_payload` | 48/48, including the unchanged ten-case Phase 2 serialized-row/work oracle |
+| `cargo check -q ...` | Pass; existing headless dead-code warnings |
+
+Filters overlap; no ignored tests or regenerated preservation expectations in
+these Rust runs. The test build retains the existing large `__eh_frame` linker
+warning, not a measured exception/runtime-performance verdict. Cargo/rustc,
+effective unoptimized profile, incremental setting and 16-MiB thread-stack
+configuration match the S2.0a execution identity above. Cargo.lock remains
+`40ae5b6c9ba74ba080d39be11b4e57ad2dbc020dba5ecad7222e22f639f84918`.
+The 18-path Rust/Cargo/config manifest at
+`/tmp/gentle-s2b-source-manifest.sha256` has SHA-256
+`2e63cea03130af71dcf51a634c671ec3808d958163f6cc358fc5770b92bd2b89`;
+the test binary at
+`target/debug/build/GENtle/002e669310863d66/out/gentle-002e669310863d66`
+has SHA-256
+`f099940ff3cc411014feac07f512ea4d6a0a28563eca30d3838a22eac21aa028`.
+These are local working-diff receipts, not committed fixtures or release assets.
+Local main subsequently points at the same S2.0a base `a52c7b74`; no later
+source change, fetch, merge or push is inferred.
+
+The owner subsequently requested committing S2.0b and rebasing onto local main
+`98f69995`, whose added commit changes lifecycle-preview tests and documentation,
+not these RNA paths. Preserve the pre-commit source/binary receipts above;
+integration does not relabel them as execution of the later tree. No fetch,
+push or later-slice implementation is requested by this integration action.
+
+Documentation status passes; 34 fast documentation/contract cases finish with
+33 passes and one expected binary-dependent skip, including LF/CRLF documentation
+coverage. Scoped rustfmt on the six changed Rust paths and `git diff --check`
+pass. Whole-workspace `cargo fmt --check` still fails in the same 12 unrelated
+baseline files (local `/tmp/gentle-s2b-fmt.log`); they are untouched. Session-close
+reports 4 OK, 2 warnings (intentional working diff/untouched `output/`, manual
+plan fidelity), no failures. Scope matches the separately authorized private
+S2.0b contract; no adjacent behavior change or extra cleanup is included.
+
+Full suite, default-feature/GUI check, actual CLI/VM processes, Linux/Windows,
+native, real-data/scientific and release acceptance are unrun. Retain S2.0a's
+historical execution identity separately. S2.1/S2.2/S2.3, text/file/optional-tag ingress, annotation gap and
+duplicate-accession policies, qualification-split public SAM catalogs, receipts,
+operations/lifecycle/adapters and saved publication stay separate.
 
 ### S2.1: Explicit Annotation Preparation
 

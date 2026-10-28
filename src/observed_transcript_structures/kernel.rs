@@ -1,4 +1,4 @@
-//! Bounded, deterministic in-memory observation, record reconciliation and support accounting.
+//! Legacy admission and byte-preserving projection over the private observation core.
 
 use super::*;
 
@@ -93,136 +93,36 @@ fn admit(input: &Input) -> Result<(), EngineError> {
     Ok(())
 }
 
-fn observe(
-    input: &Input,
-    query: &QueryEvidence,
-    segment: &PrimerPayloadSegment,
-    sources: &[comparison::Source<'_>],
-    work: &mut usize,
-) -> Result<Observation, EngineError> {
-    let mut ends = query.ends.clone();
-    for constraints in &mut ends {
-        constraints.sort();
-        constraints.dedup();
-        if constraints.is_empty() {
-            constraints.push(EndConstraint::Unknown);
-        }
-    }
-    let mut out = Observation {
-        observation_id: String::new(),
-        record: query.record.clone(),
-        query_id: query.query_id.clone(),
-        contig: segment.target_name.clone(),
-        observed_span: segment.target_interval,
-        aligned_query_interval: segment.query_interval,
-        payload_query_length: query.query_length,
-        alignment_clipped: [
-            segment.query_interval.0 != 0,
-            segment.query_interval.1 != query.query_length,
-        ],
-        query_to_reference_strand: segment.strand,
-        reported_mapq: segment.mapq,
-        ends,
-        detail: if query.scope == PrimerPayloadReferenceScope::Transcriptome {
-            DetailStatus::TranscriptomeUnassessed
-        } else if !segment.alignment_detail_verified {
-            DetailStatus::CoarseUnassessed
-        } else {
-            DetailStatus::Detailed
-        },
-        blocks: Vec::new(),
-        topology: Topology::Unassessed,
-        excluded_query_intervals: query.masks.clone(),
-        skips: Vec::new(),
-        flank_qualification: Vec::new(),
-        observed_junction_chain: None,
-        comparisons: Vec::new(),
-    };
-    if segment.alignment_detail_verified {
-        let g = geometry::walk(
-            segment
-                .alignment_operations
-                .iter()
-                .map(|&(c, n)| (c as u8, n)),
-            segment.query_interval,
-            segment.target_interval,
-            segment.strand,
-        )?;
-        let intervals = union(
-            g.blocks
-                .iter()
-                .flat_map(|b| unmasked(b.query, query.masks.as_deref().unwrap_or(&[])))
-                .collect(),
-        );
-        if intervals != segment.aligned_query_intervals {
-            return Err(bad("observed_structure_stored_support_mismatch"));
-        }
-        if out.detail == DetailStatus::Detailed {
-            out.blocks = g.blocks;
-            out.skips = g.skips;
-            out.topology = if out.skips.is_empty() {
-                Topology::Unspliced
-            } else {
-                Topology::Spliced
-            };
-            if out.skips.len() > input.budgets.max_skips_per_chain {
-                return Err(bad("observed_structure_skip_budget"));
-            }
-            for &skip in &out.skips {
-                out.flank_qualification.push(comparison::qualify(
-                    &out,
-                    skip,
-                    input.required_flank_bases,
-                    work,
-                    input.budgets.max_total_work,
-                )?);
-            }
-            if !out.skips.is_empty() {
-                out.observed_junction_chain = Some(digest(&(
-                    "gentle.observed_junction_chain.v1",
-                    &input.reference.assembly,
-                    &input.reference.fasta_sha256,
-                    &out.contig,
-                    &out.skips,
-                ))?);
-            }
-        }
-    }
-    out.comparisons = comparison::compare(&out, sources, input, work)?;
-    out.observation_id = digest(&(
-        "gentle.observed_transcript_observation.v1",
-        &input.reference,
-        &out.record,
-        &out.query_id,
-        &query.alignment_sha256,
-        query.scope,
-        &segment.query_interval,
-        &out.contig,
-        &out.observed_span,
-        out.query_to_reference_strand,
-        &segment.alignment_operations,
-        &out.excluded_query_intervals,
-        &out.ends,
-    ))?;
-    Ok(out)
-}
+struct LegacyIdentity<'a>(&'a Input);
 
-fn contains(
-    a: &ChainFamily,
-    b: &ChainFamily,
-    work: &mut usize,
-    limit: usize,
-) -> Result<bool, EngineError> {
-    if a.contig != b.contig || a.skips.len() < b.skips.len() {
-        return Ok(false);
+impl core::Identity<ReadRecord> for LegacyIdentity<'_> {
+    fn context_id(&self) -> Result<String, EngineError> {
+        digest(self.0)
     }
-    for window in a.skips.windows(b.skips.len()) {
-        dag::charge_many(work, limit, b.skips.len())?;
-        if window == b.skips {
-            return Ok(true);
-        }
+
+    fn observation_id(
+        &self,
+        input: &core::Context<'_>,
+        query: &core::Query<'_, ReadRecord>,
+        segment: &core::Segment<'_>,
+        out: &core::CoreObservation<ReadRecord>,
+    ) -> Result<String, EngineError> {
+        digest(&(
+            "gentle.observed_transcript_observation.v1",
+            &input.reference,
+            &out.key,
+            &out.query_id,
+            &query.alignment_sha256,
+            query.scope,
+            &segment.query_interval,
+            &out.contig,
+            &out.observed_span,
+            out.query_to_reference_strand,
+            &segment.alignment_operations,
+            &out.excluded_query_intervals,
+            &out.ends,
+        ))
     }
-    Ok(false)
 }
 
 /// Interpret supplied in-memory evidence. No references are opened or discovered.
@@ -240,201 +140,108 @@ pub fn summarize_with_control(
 ) -> Result<Summary, EngineError> {
     check()?;
     admit(input)?;
-    let sources = comparison::sources(input)?;
-    let mut work = 0usize;
-    let mut observations = BTreeMap::<String, Observation>::new();
-    let mut families = BTreeMap::<String, ChainFamily>::new();
-    let mut record_paths = BTreeMap::<ReadRecord, (Vec<Vec<String>>, bool, bool)>::new();
-    for record in &input.unassessed_records {
-        record_paths.insert(record.clone(), (Vec::new(), false, false));
-    }
-    let mut queries = input.queries.iter().collect::<Vec<_>>();
-    queries.sort_by(|a, b| (&a.record, &a.query_id).cmp(&(&b.record, &b.query_id)));
-    for query in queries {
-        check()?;
-        let mut nodes = BTreeMap::new();
-        for segment in &query.segments {
-            check()?;
-            let observation = observe(input, query, segment, &sources, &mut work)?;
-            if let Some(chain) = &observation.observed_junction_chain {
-                families
-                    .entry(chain.clone())
-                    .or_insert_with(|| ChainFamily {
-                        chain_id: chain.clone(),
-                        contig: observation.contig.clone(),
-                        skips: observation.skips.clone(),
-                        supporting_records: 0,
-                        definite_records: 0,
-                    });
-                if families.len() > input.budgets.max_chain_families {
-                    return Err(bad("observed_structure_family_budget"));
-                }
-            }
-            let weight = if observation.detail == DetailStatus::Detailed {
-                union(
-                    observation
-                        .blocks
-                        .iter()
-                        .flat_map(|b| unmasked(b.query, query.masks.as_deref().unwrap_or(&[])))
-                        .collect(),
-                )
+    let context = core::Context {
+        reference: &input.reference,
+        reference_gene: &input.reference_gene,
+        comparison_genes: &input.comparison_genes,
+        annotation_sources: &input.annotation_sources,
+        required_flank_bases: input.required_flank_bases,
+        budgets: &input.budgets,
+    };
+    let queries = input
+        .queries
+        .iter()
+        .map(|q| core::Query {
+            key: &q.record,
+            alignment_sha256: &q.alignment_sha256,
+            query_id: &q.query_id,
+            query_length: q.query_length,
+            scope: q.scope,
+            masks: q.masks.as_deref(),
+            ends: &q.ends,
+            search_complete: q.search_complete,
+            segments: q
+                .segments
                 .iter()
-                .map(|(a, z)| z - a)
-                .sum()
-            } else {
-                0
-            };
-            nodes.insert(
-                (
-                    segment.query_interval,
-                    segment.target_name.clone(),
-                    segment.target_interval,
-                    segment.strand,
-                    observation.observation_id.clone(),
-                ),
-                weight,
-            );
-            observations.insert(observation.observation_id.clone(), observation);
-        }
-        let nodes = nodes.into_iter().collect::<Vec<_>>();
-        let dag = dag::best_equivalent(
-            nodes.iter().map(|(k, _)| k.0).collect(),
-            nodes.iter().map(|(_, w)| *w).collect(),
-            &mut work,
-            input.budgets.max_total_work,
-        )?;
-        let paths = dag.paths(
-            input.budgets.max_alternatives_per_record,
-            &mut work,
-            input.budgets.max_total_work,
-        )?;
-        let entry = record_paths
-            .entry(query.record.clone())
-            .or_insert_with(|| (Vec::new(), true, true));
-        entry.1 &= !paths.is_empty()
-            && query.scope == PrimerPayloadReferenceScope::Genome
-            && query.segments.iter().all(|s| s.alignment_detail_verified);
-        entry.2 &= query.search_complete;
-        for path in paths {
-            entry
-                .0
-                .push(path.iter().map(|&i| nodes[i].0.4.clone()).collect());
-        }
-        entry.0.sort();
-        entry.0.dedup();
-        if entry.0.len() > input.budgets.max_alternatives_per_record {
-            return Err(bad("observed_structure_alternative_budget"));
-        }
-    }
-    let mut records = Vec::new();
-    let mut used_families = BTreeSet::new();
-    for (record, (hypotheses, assessed, declared_complete)) in record_paths {
-        check()?;
-        let complete = assessed && declared_complete;
-        let mut possible = BTreeSet::new();
-        let mut definite: Option<BTreeSet<String>> = None;
-        let mut chain_sets = Vec::new();
-        let mut topologies = BTreeSet::new();
-        for path in &hypotheses {
-            if path.len() > 1 {
-                topologies.insert(Topology::Segmented);
-            } else if let Some(id) = path.first() {
-                topologies.insert(observations[id].topology);
-            }
-            let chains = path
-                .iter()
-                .filter_map(|id| observations[id].observed_junction_chain.clone())
-                .collect::<BTreeSet<_>>();
-            possible.extend(chains.iter().cloned());
-            definite = Some(match definite {
-                None => chains.clone(),
-                Some(old) => old.intersection(&chains).cloned().collect(),
-            });
-            chain_sets.push(chains);
-        }
-        let definite = if complete {
-            definite.unwrap_or_default()
-        } else {
-            BTreeSet::new()
-        };
-        let ids = possible.iter().collect::<Vec<_>>();
-        let mut nested = true;
-        for (i, a) in ids.iter().enumerate() {
-            for b in ids.iter().skip(i + 1) {
-                dag::charge(&mut work, input.budgets.max_total_work)?;
-                nested &= contains(
-                    &families[*a],
-                    &families[*b],
-                    &mut work,
-                    input.budgets.max_total_work,
-                )? || contains(
-                    &families[*b],
-                    &families[*a],
-                    &mut work,
-                    input.budgets.max_total_work,
-                )?;
-            }
-        }
-        let agreement = chain_sets.windows(2).all(|w| w[0] == w[1]);
-        let reconciliation = if !complete || hypotheses.is_empty() {
-            Reconciliation::Unassessed
-        } else if agreement {
-            Reconciliation::Agreement
-        } else if nested && possible.len() > 1 {
-            Reconciliation::ContainedPartial
-        } else {
-            Reconciliation::Alternatives
-        };
-        for chain in &possible {
-            let family = families.get_mut(chain).expect("observed family");
-            family.supporting_records += 1;
-            family.definite_records += usize::from(definite.contains(chain));
-            used_families.insert(chain.clone());
-        }
-        records.push(RecordSupport {
-            record,
-            hypotheses,
-            reconciliation,
-            topologies: if topologies.is_empty() {
-                vec![Topology::Unassessed]
-            } else {
-                topologies.into_iter().collect()
-            },
-            search_declared_complete: declared_complete,
-            all_query_views_assessed: assessed,
-            definite_chains: definite.into_iter().collect(),
-            possible_chains: possible.into_iter().collect(),
-        });
-    }
-    Ok(Summary {
-        context_sha256: digest(input)?,
-        reference: input.reference.clone(),
-        annotation_bindings: {
-            let mut bindings = input
-                .annotation_sources
-                .iter()
-                .map(|s| AnnotationBinding {
-                    source_id: s.source_id.clone(),
-                    provider: s.provider.clone(),
-                    annotation_sha256: s.annotation_sha256.clone(),
-                    reference_id: s.annotation.reference_id.clone(),
-                    assembly: s.annotation.assembly.clone(),
-                    release: s.annotation.release.clone(),
-                    reference_fasta_sha256: s.annotation.reference_fasta_sha256.clone(),
+                .map(|s| core::Segment {
+                    query_interval: s.query_interval,
+                    target_name: &s.target_name,
+                    target_interval: s.target_interval,
+                    strand: s.strand,
+                    mapq: s.mapq,
+                    alignment_detail_verified: s.alignment_detail_verified,
+                    alignment_operations: &s.alignment_operations,
+                    stored_support: Some(&s.aligned_query_intervals),
+                    source_ordinal: None,
+                    clipping: None,
                 })
-                .collect::<Vec<_>>();
-            bindings.sort_by(|a, b| a.source_id.cmp(&b.source_id));
-            bindings
-        },
-        reference_gene: input.reference_gene.clone(),
-        gene_resolutions: comparison::resolutions(&sources),
-        observations: observations.into_values().collect(),
-        records,
-        families: families
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let result = core::run(
+        &context,
+        &queries,
+        &input.unassessed_records,
+        &LegacyIdentity(input),
+        0,
+        check,
+    )?;
+    Ok(Summary {
+        context_sha256: result.context_sha256,
+        reference: result.reference,
+        annotation_bindings: result.annotation_bindings,
+        reference_gene: result.reference_gene,
+        gene_resolutions: result.gene_resolutions,
+        observations: result
+            .observations
             .into_iter()
-            .filter(|(id, _)| used_families.contains(id))
-            .map(|(_, f)| f)
+            .map(|o| Observation {
+                observation_id: o.observation_id,
+                record: o.key,
+                query_id: o.query_id,
+                contig: o.contig,
+                observed_span: o.observed_span,
+                aligned_query_interval: o.aligned_query_interval,
+                payload_query_length: o.query_axis_length,
+                alignment_clipped: o.alignment_clipped,
+                query_to_reference_strand: o.query_to_reference_strand,
+                reported_mapq: o.reported_mapq,
+                ends: o.ends,
+                detail: o.detail,
+                topology: o.topology,
+                blocks: o.blocks,
+                excluded_query_intervals: o.excluded_query_intervals,
+                skips: o.skips,
+                flank_qualification: o.flank_qualification,
+                observed_junction_chain: o.observed_junction_chain,
+                comparisons: o.comparisons,
+            })
             .collect(),
-        comparison_work: work,
+        records: result
+            .supports
+            .into_iter()
+            .map(|r| RecordSupport {
+                record: r.key,
+                hypotheses: r.hypotheses,
+                reconciliation: r.reconciliation,
+                topologies: r.topologies,
+                search_declared_complete: r.search_declared_complete,
+                all_query_views_assessed: r.all_query_views_assessed,
+                definite_chains: r.definite_chains,
+                possible_chains: r.possible_chains,
+            })
+            .collect(),
+        families: result
+            .families
+            .into_iter()
+            .map(|f| ChainFamily {
+                chain_id: f.chain_id,
+                contig: f.contig,
+                skips: f.skips,
+                supporting_records: f.supporting_keys,
+                definite_records: f.definite_keys,
+            })
+            .collect(),
+        comparison_work: result.comparison_work,
     })
 }
