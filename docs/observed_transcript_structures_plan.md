@@ -23,6 +23,10 @@ are recorded in the [S2.1b ledger](observed_transcript_structures_s2_plan.md#s21
 The next owner-requested continuation authors the named S2.1c operations and
 shared adapters in its [bounded ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28).
 Its execution is tracked separately from S2.1b, not newly Claude-approved.
+After reporting tests have run, the owner requests continuation and chooses the
+reviewed plan for [S2.2a private raw-line decoding](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28).
+File/unit ingress and public SAM interpretation stay separate; no previous
+test receipt or unspecified owner-reported run is relabelled as this new source.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.

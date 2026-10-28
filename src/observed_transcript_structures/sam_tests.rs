@@ -109,6 +109,164 @@ fn run(a: &SamInput) -> Analysis {
     analyze(a, &mut || Ok(())).unwrap()
 }
 
+fn decode_text(raw: &str, d: &BTreeMap<String, usize>) -> super::super::sam_text::Document {
+    use super::super::sam_text::{Consumer, Limits};
+    let limits = Limits {
+        max_input_bytes: 65536,
+        max_line_bytes: 8192,
+        max_lines: 100,
+        max_rows: 100,
+        max_dictionary_entries: 10,
+        max_header_ids: 10,
+        max_fields_per_line: 64,
+        max_operations: 10000,
+        max_sa_entries: 100,
+        max_retained_bytes: 4 * 1024 * 1024,
+        max_work: 100000,
+    };
+    let mut consumer = Consumer::new(d, &limits, &mut || Ok(())).unwrap();
+    for line in raw.as_bytes().split_inclusive(|&c| c == b'\n') {
+        consumer.push_line(line, &mut || Ok(())).unwrap();
+    }
+    consumer.finish(&mut || Ok(())).unwrap()
+}
+
+#[test]
+fn sam_text_rows_reach_same_normalizer_with_configurable_opposite_strand_genes() {
+    let mut a = input();
+    let raw = "@SQ\tSN:ctg_a\tLN:1000\n@SQ\tSN:ctg_b\tLN:1000\n\
+        repeated\t0\tctg_a\t101\t0\t10M10N10M10N10M\t*\t0\t0\t*\t*\n\
+        repeated\t16\tctg_b\t201\t255\t10M15N10M\t*\t0\t0\t*\t*\n";
+    let decoded = decode_text(raw, &a.dictionary);
+    a.source_sha256 = decoded.raw_sha256;
+    let template = a.units[0].clone();
+    a.units = decoded
+        .rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let mut unit = template.clone();
+            // Explicit test producer declarations, never generated from QNAME or missing masks.
+            unit.unit_id = format!("declared_unit_{i}");
+            unit.declared_axis_length = Some(if i == 0 { 30 } else { 20 });
+            unit.rows = vec![r.row];
+            unit
+        })
+        .collect();
+    let first = run(&a);
+    assert_eq!(first.summary.observations.len(), 2);
+    assert_eq!(first.summary.supports.len(), 2);
+    assert_eq!(
+        first
+            .summary
+            .observations
+            .iter()
+            .find(|o| o.contig == "ctg_a")
+            .unwrap()
+            .reported_mapq,
+        Some(0)
+    );
+    assert_eq!(
+        first
+            .summary
+            .observations
+            .iter()
+            .find(|o| o.contig == "ctg_b")
+            .unwrap()
+            .reported_mapq,
+        None
+    );
+    a.reference_gene.gene_id = "gene_b".into();
+    let second = run(&a);
+    assert_eq!(
+        first
+            .summary
+            .families
+            .iter()
+            .map(|f| &f.chain_id)
+            .collect::<Vec<_>>(),
+        second
+            .summary
+            .families
+            .iter()
+            .map(|f| &f.chain_id)
+            .collect::<Vec<_>>()
+    );
+    assert_ne!(first.summary.context_sha256, second.summary.context_sha256);
+    assert_eq!(second.summary.reference_gene.gene_id, "gene_b");
+    let minus = second
+        .summary
+        .observations
+        .iter()
+        .find(|o| o.contig == "ctg_b")
+        .unwrap();
+    assert_eq!(minus.query_to_reference_strand, '-');
+    assert_eq!(minus.comparisons[0].models[0].model_strand, '-');
+}
+
+#[test]
+fn sam_text_asymmetric_clipping_uses_existing_basewise_oracle() {
+    let a = input();
+    let ops = vec![
+        ('H', 2),
+        ('S', 3),
+        ('M', 4),
+        ('I', 2),
+        ('=', 5),
+        ('N', 7),
+        ('X', 2),
+        ('P', 1),
+        ('S', 7),
+        ('H', 1),
+    ];
+    for reverse in [false, true] {
+        let cigar = ops
+            .iter()
+            .map(|(c, n)| format!("{n}{c}"))
+            .collect::<String>();
+        let raw = format!(
+            "@SQ\tSN:ctg_a\tLN:1000\n@SQ\tSN:ctg_b\tLN:1000\n\
+            q\t{}\tctg_a\t101\t255\t{cigar}\t*\t0\t0\t*\t*\n",
+            if reverse { 16 } else { 0 }
+        );
+        let d = decode_text(&raw, &a.dictionary);
+        let n = normalize(&d.rows[0].row).unwrap().unwrap();
+        let g = geometry::walk(
+            n.operations.iter().map(|&(c, n)| (c as u8, n)),
+            n.query,
+            n.target,
+            if reverse { '-' } else { '+' },
+        )
+        .unwrap();
+        let (blocks, skips) = basewise(&ops, reverse);
+        assert_eq!(g.blocks, blocks);
+        assert_eq!(g.skips, skips);
+        assert_eq!(n.clipping.padding_operations, 1);
+    }
+}
+
+#[test]
+fn sam_text_valid_cg_or_paired_rows_withhold_the_whole_explicit_unit() {
+    for extra in ["\tCG:B:I,160", ""] {
+        let mut a = input();
+        let second_flag = if extra.is_empty() { 1 } else { 0 };
+        let raw = format!(
+            "@SQ\tSN:ctg_a\tLN:1000\n@SQ\tSN:ctg_b\tLN:1000\n\
+            q\t0\tctg_a\t101\t0\t10M10N10M10N10M\t*\t0\t0\t*\t*\n\
+            q\t{second_flag}\tctg_a\t101\t0\t10M10N10M10N10M\t*\t0\t0\t*\t*{extra}\n"
+        );
+        let decoded = decode_text(&raw, &a.dictionary);
+        assert_eq!(decoded.rows.len(), 2);
+        a.source_sha256 = decoded.raw_sha256;
+        // Explicitly bind both rows to this unit; the decoder itself never groups them.
+        a.units[0].rows = decoded.rows.into_iter().map(|r| r.row).collect();
+        let result = run(&a);
+        assert!(result.summary.observations.is_empty());
+        assert!(result.summary.families.is_empty());
+        assert!(!result.units[0].unavailable.is_empty());
+    }
+}
+
 /// Walk individual bases including unavailable clips, then reverse query labels.
 /// This does not call the normalizer or use its interval/clip arithmetic.
 fn basewise(ops: &[(char, usize)], reverse: bool) -> (Vec<SupportedBlock>, Vec<Interval>) {

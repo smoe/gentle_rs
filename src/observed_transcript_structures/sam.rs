@@ -11,7 +11,7 @@ pub(super) struct UnitKey {
     pub unit_id: String,
 }
 
-/// Fields consumed after a future parser validates text/tags; no raw sequences.
+/// Fields consumed after separate text/tag validation; no raw sequences or unit grouping.
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct Row {
     pub ordinal: u64,
@@ -183,6 +183,36 @@ fn normalize(row: &Row) -> Result<Option<Normalized>, EngineError> {
 }
 
 struct SamIdentity<'a>(&'a SamInput);
+
+fn validate_target(
+    row: &Row,
+    geometry: Option<&Normalized>,
+    dictionary: &BTreeMap<String, usize>,
+) -> Result<(), EngineError> {
+    if row.flag & 4 == 0 {
+        let length = row
+            .target
+            .as_ref()
+            .and_then(|t| dictionary.get(t))
+            .ok_or_else(|| bad("observed_sam_target"))?;
+        if row.position_1based == 0
+            || row.position_1based > *length
+            || geometry.is_some_and(|g| g.target.1 > *length)
+        {
+            return Err(bad("observed_sam_target"));
+        }
+    }
+    Ok(())
+}
+
+/// Same geometry/target checks for text intake, without unit identity or interpretation.
+pub(super) fn validate_decoded_row(
+    row: &Row,
+    dictionary: &BTreeMap<String, usize>,
+) -> Result<(), EngineError> {
+    let normalized = normalize(row)?;
+    validate_target(row, normalized.as_ref(), dictionary)
+}
 
 impl core::Identity<UnitKey> for SamIdentity<'_> {
     fn context_id(&self) -> Result<String, EngineError> {
@@ -368,19 +398,7 @@ pub(super) fn analyze(
                 None
             };
             // Even an unsupported mapped row must not conceal malformed target bounds.
-            if row.flag & 4 == 0 {
-                let length = row
-                    .target
-                    .as_ref()
-                    .and_then(|t| input.dictionary.get(t))
-                    .ok_or_else(|| bad("observed_sam_target"))?;
-                if row.position_1based == 0
-                    || row.position_1based > *length
-                    || geometry.as_ref().is_some_and(|g| g.target.1 > *length)
-                {
-                    return Err(bad("observed_sam_target"));
-                }
-            }
+            validate_target(row, geometry.as_ref(), &input.dictionary)?;
             diagnostic.rows.push(RowDiagnostic {
                 ordinal: row.ordinal,
                 unavailable,

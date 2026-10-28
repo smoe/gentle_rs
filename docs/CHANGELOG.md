@@ -16,6 +16,35 @@
   coverage; the new Rust regressions remain unrun locally. No push or resumption
   of the paused goal.
 
+## 2026-10-28 - Add And Verify The Private Bounded SAM Text Decoder
+
+- Continue after the owner reports tests have run; keep that report separate
+  from unspecified commands/counts/platform/source receipts. Rebase onto local
+  main `284e5b70`, preserving the merge, JS/Lua test repairs and Cargo.lock update.
+  Keep the separate S2.1c parity-matrix refresh visible; no guessed acceptance.
+- Implement only S2.2a's private incremental raw-line SAM subset, with exact
+  byte hashing, explicit dictionary/header/field/type checks, bounded RG/SA/CG
+  metadata and poisoned failure semantics. Retain every row/flag and ordinal;
+  never group QNAMEs or manufacture source identity, masks/search completeness
+  or alignments from tags. Sequence/quality/program/ignored-tag text is not kept.
+- Reuse the unchanged decoded geometry/target checks. Add inline synthetic
+  grammar/resource/control tests and integrations for both gene strands,
+  asymmetric-clipping/basewise parity, MAPQ 0/255 and whole-unit exclusion.
+  Frozen Phase 2/S1 DTOs, IDs, error/work and byte expectations are not edited.
+- Owner-authorized local locked/offline headless verification passes 12 new
+  SAM-text, 70 kernel, six preservation, 70 primer-payload, 16 S1-related and
+  25 annotation-filter tests; filters overlap. Frozen byte/work expectations
+  remain unchanged. Headless Cargo check passes with existing warnings.
+  No file ingress, publication, schema/operations/adapters, GUI,
+  dependency/profile change, new model call, private-data replay, push or
+  native/scientific/release acceptance. See the [bounded ledger](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28).
+- Fast source/documentation checks: 35 pass, one expected actual-process skip;
+  scoped formatting, documentation status and whitespace pass. Session-close:
+  4 OK, 2 expected warnings, 0 failures. Retain the new helper's borrowed-string
+  compile correction and exact source/toolchain/binary receipts. Concurrent
+  capability-maturity JSON edits and `output/` remain outside this commit;
+  native/platform, full-suite, canonical parity and scientific gates stay open.
+
 ## 2026-10-28 - Author Named Annotation Preparation Routes
 
 - Commit verified S2.1b as `f55931ba`, preserving its exact execution receipts

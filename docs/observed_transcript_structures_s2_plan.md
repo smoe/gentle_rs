@@ -873,6 +873,157 @@ Separately, masks `None` make junction-flank qualification `Unassessed`, not
 zero support. Even with a complete-search declaration, unknown masks do not
 become primer-free qualified evidence. Report these defaults and axes explicitly.
 
+#### S2.2a Private Text Decoder, 2026-10-28
+
+The owner reports that tests have run and requests continuation. No retained
+source/command/count/platform receipt is supplied with that report; record it
+as owner-reported execution, not invented detailed acceptance. Rebase the clean
+branch onto local main `284e5b7049016e42ea19dd4bd50d7e93516d7ca7`, retaining
+the main merge, JS/Lua test repairs and the owner's Cargo.lock update. No fetch,
+push or inspection of unrelated `output/`. The owner chooses the existing
+reviewed plan rather than another Claude prompt for the bounded next step.
+
+S2.1c's canonical matrix still lacks the newly registered annotation rows in
+this checkout. Its source-matched regeneration/freshness and LF/CRLF checks
+remain a named integration follow-up, not implied by the owner-reported tests.
+The owner subsequently authorizes focused local Rust tests/check, a local
+commit and rebase, without push. This is a new scoped exception, not an
+expansion of old receipts or permission for later SAM ingress.
+
+This slice implements **only S2.2a**, a private incremental raw-line
+decoder, not the whole proposed S2.2 file/unit boundary or a public schema:
+
+- Validate raw framing, UTF-8/allowed character positions, mandatory fields,
+  finite/ranged optional values and header order/uniqueness. Require the full
+  explicit exact-name dictionary in `@SQ`, with matching names/lengths; retain
+  observed header order without requiring it to equal the caller's map order.
+  `@HD` is optional but, when present, first/unique with `VN:1.6`. Circular
+  `TP` and unknown header kinds are not supported by this linear subset.
+- Consume row `RG:Z`, `SA:Z` and `CG:B:I` only. Require RG to name a declared
+  header ID. Keep bounded SA companion descriptions separately, never invent
+  observed rows, RNA strand or search completeness from them. Validate SA NM
+  syntax but discard the value; no NM/MD/AS identity/ranking fields. Validate
+  every optional value's type and reject repeated tags, including unused ones;
+  keep no inventory of ignored values. Declared M5/assembly/UR/program text
+  cannot become reference verification or executed commands.
+- Keep each alignment ordinal, QNAME and flags, including secondary,
+  supplementary, unmapped, QC-fail and duplicate observations. Row counters
+  overlap and are not unit/molecule support. Do not group equal QNAMEs, assign
+  unit IDs, create a zero-row unit or infer empty primer masks. QNAME `*` is
+  text-admitted as an unavailable name, not an executable identity binding;
+  later manifest admission must handle that explicitly rather than synthesize
+  identity or bypass the existing unit checks.
+- Validate clipping, query/quality lengths and mapped target bounds through
+  the existing decoded-SAM normalizer. Factor only the unchanged target check
+  out of private `sam::analyze`; keep all old error strings, work and DTOs.
+  Valid but unsupported paired/CG/placeholder/no-CIGAR/no-supported/overlong-axis
+  rows stay decoded rows, not a data error or fabricated support. Existing
+  whole-unit exclusion remains owned by the normalizer/later manifest layer.
+- Hash unmodified supplied LF/CRLF/final-line bytes. Explicit finish reports
+  only supplied-input completion, not verified source EOF/provider coverage.
+  Any failed or interrupted push poisons the consumer. Counts/results are
+  returned only on successful atomic finish. No file or marker is opened.
+- Bound all raw lines/rows/header IDs/fields/CIGAR and array entries/SA entries,
+  retained representation and work. Charge temporary geometry normalization,
+  parser scratch and retained structures before allocation. The memory model
+  is conservative representation accounting, not measured allocator/RSS.
+
+The subset deliberately refuses reserved FLAG bits above `0xfff`, matching
+the existing private normalizer rather than the general SAM recommendation to
+ignore future bits. It is not a full SAM validator: unused header/tag semantics,
+program-chain provenance and alias resolution are not interpreted. UTF-8 is
+accepted in CO/known DS/PG-CL header values, not arbitrary identifiers or tags.
+Header and mate metadata do not establish physical origin or biological truth.
+
+Inline synthetic tests cover grammar/type/range refusals, LF/CRLF raw bindings,
+sequence/quality/tag-text nonretention, duplicate/header/target scope, exact-
+boundary/one-over limits and cancellation at every bounded poll. Separate
+integration guards feed text-decoded rows into the existing normalizer with
+two explicitly bound units and opposing-strand genes, compare asymmetric clips
+to the existing independent basewise oracle, distinguish MAPQ 0/255 and ensure
+paired/CG rows withhold the entire explicitly grouped unit. Existing frozen
+Phase 2/S1 expectations are not changed. The subsequently authorized executed
+verification below is separate from the initial authored-only handoff.
+
+Verified raw-file ingress, conversion provenance, row-to-unit/mask witnesses,
+SA-companion completeness assessment, annotation/receipt joins, saved/public
+SAM reports, operations/CLI/MCP/GUI and S2.3 remain separate. No actual BAM/SAM,
+private sequence, thresholds, source release inference or scientific acceptance
+is introduced. Official SAM/tag printings were rechecked at the same revisions
+listed below; no format-version drift was inferred.
+
+Fast source/documentation verification for this working diff: 36 cases finish
+with 35 passes and one expected actual-process payload-CLI skip. Documentation
+status, scoped rustfmt for the five changed/new Rust paths and whitespace pass.
+Session-close reports 4 OK, 2 warnings (intentional diff/untouched `output/`,
+manual plan fidelity), no failures. Scope review confirms the private decoder,
+unchanged target-check extraction and synthetic guards only; no adjacent cleanup,
+catalog regeneration or new biological rule is included.
+Cargo.lock is the owner's main update, SHA-256
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`;
+it is not the lockfile used by old S2.1a/b execution receipts.
+
+**Executed working-diff verification.** Base HEAD/main is
+`284e5b7049016e42ea19dd4bd50d7e93516d7ca7`, macOS 27.0.1 (26A434),
+`aarch64-apple-darwin`. Cargo 1.100.0-beta.7 `72b77b8d9`; rustc
+1.100.0-beta.7 `fd8e211ae301c84a86d13cf52a6d3ce08c589e2e`, LLVM 23.1.4.
+Effective unoptimized test/dev settings: root debug 1, dependency debug 0,
+256 codegen units, `CARGO_INCREMENTAL=0`, unchanged configured 16-MiB test
+thread stack; no default/desktop/script features. Commands, from this checkout:
+
+```sh
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 sam_text_ -- --test-threads=1
+# 12 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 observed_transcript_structures -- --test-threads=1
+# 70 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 s2a_ -- --test-threads=1
+# 6 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 primer_payload -- --test-threads=1
+# 70 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 observed_transcripts_ -- --test-threads=1
+# 16 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo test --lib --no-default-features --locked --offline -j 1 observed_annotation_ -- --test-threads=1
+# 25 passed, 0 failed, 0 ignored
+env CARGO_INCREMENTAL=0 cargo check -q --locked --offline --no-default-features -j 1
+# exit 0; existing headless GUI-profiler dead-code warnings remain
+```
+
+Filters overlap; do not sum them or treat these unit filters as full-suite,
+actual-process/VM, GUI, native Windows/Linux, provider or scientific acceptance.
+The frozen Phase 2/S1 bytes, IDs, errors and work guards pass without changing
+their expectations. Canonical S2.1c matrix regeneration remains separate.
+
+The 14-path Rust/Cargo/config source manifest
+`/tmp/gentle-s22a-source.sha256` has SHA-256
+`56975a6c42c4ce100d266d3602b70c49224fdb824b6477650104f0c1dfc2c433`;
+all entries recheck unchanged. Test binary
+`target/debug/build/GENtle/796de64c7ed78822/out/gentle-796de64c7ed78822`
+has SHA-256
+`f0a44c7c76da60094a56d8e8d1d40c00d1b8c880547f9cb5f9f1eb72cc6f3beb`.
+Logs are `/tmp/gentle-s22a-sam-text-final.log` and
+`/tmp/gentle-s22a-{FILTER}.log` for the remaining filters above; the check log
+is `/tmp/gentle-s22a-check.log`. These are local execution receipts, not
+committed fixtures or a release binary.
+
+Initial dependency compilation stopped at an ICU build script killed by
+SIGKILL; no cause is attributed. The retry passed that stage and exposed one
+new helper `String`/`&str` mismatch. The intended borrowed-string correction
+was already present from concurrent work before Codex's patch could apply.
+The final test run waited for the concurrent same-target build, then executed
+all twelve cases successfully. Keep baseline headless dead-code and linker
+`__eh_frame` warnings visible; no unrelated warning repair is included.
+Four concurrent capability-maturity JSON edits and untracked `output/` are
+not this slice and remain excluded from its commit. No dependency, profile,
+generated matrix/catalog, public SAM operation or later slice is changed.
+
+During verification, local main advances to
+`3b6eb4657eab49db5c9b24db2d61eee68fc14e28`: unrelated Help/shell-test
+fixtures and handoff/documentation only. Keep the execution above at its
+tested base plus working diff, not a claim to have run those new fixtures.
+The owner-requested post-commit rebase must retain both changelog entries,
+the disjoint roadmap changes and unrelated working edits; recheck the source
+manifest rather than inheriting a merged-source/native acceptance claim.
+
 ### S2.3: Shared Interpretation, Saved Evidence And Adapters
 
 Normalize admitted SAM geometry into the private S2.0 seam; use the existing
@@ -924,7 +1075,9 @@ discovery, with thin scripting access. Tentative producer commands are
 `rna-reads transcript-structures-from-sam`, both with strict JSON requests.
 Specify typed saved-result inspection and request-bound cancellation companions
 in the protocol before coding; reuse S1 helpers, not its strict v1 request type.
-These names are **proposed, not currently available commands**. No GUI in S2.
+The annotation preparation name is now registered by S2.1c. The SAM producer,
+inspection/cancellation companions and their public contracts remain
+**proposed, not currently available commands**. No GUI in S2.
 
 ## SAM Geometry Admission Contract
 

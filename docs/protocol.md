@@ -35,6 +35,13 @@ operation, CLI/MCP route, file parser or saved schema; see the
 [bounded implementation scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 All existing S0/S1/Phase 2 public types and byte-preservation contracts remain.
 
+The separately authorized S2.2a private raw-line SAM decoder validates a bounded
+document and delegates geometry checks to that normalizer. It has no public
+request/schema, file reader, operation or CLI/MCP/GUI route. Decoded rows and
+RG/SA/CG metadata are not producer-verified query units or interpretation.
+Reference genes remain explicit in the existing interpretation context; the
+decoder chooses none. See the [subset and execution ledger](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28).
+
 ### S2.1b Annotation Preparation (Direct Engine Only)
 
 `GentleEngine::prepare_observed_transcript_annotation(request, progress)` verifies

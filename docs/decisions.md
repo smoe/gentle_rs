@@ -139,6 +139,28 @@ policy acceptance and native/scientific verdicts remain separate. See the
 [S2.1c ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28)
 for authored versus executed scope.
 
+### Observed Structures S2.2a Private Text Boundary
+
+Owner-authorized continuation, 2026-10-28, from the reviewed plan: decode only
+caller-supplied raw SAM lines in a private, bounded incremental consumer.
+Keep raw source hashing/framing separate from actual file verification and
+retain one row per supplied alignment ordinal. Equal/unavailable QNAME and
+RG/SA declarations do not establish original read identity, unit membership,
+search completeness, masks or RNA strand. Never synthesize alignments from SA.
+
+Reuse decoded-SAM geometry/target checks without changing old inputs, public
+DTOs, error strings, charged work, identities or Phase 2/S1 wire bytes. Validate
+but discard sequence/quality strings, unused tags and program/comment text.
+Return no successful prefix after data/resource/control failure. Explicit
+budgets include temporary normalization and all rows/optional arrays, even
+ones that cannot later contribute support. This is a documented subset, not a
+claim of full SAM validation, provider verification or biological identity.
+
+Verified file ingress, explicit row-to-unit/mask witnesses, annotation/receipt
+joins, saved SAM schemas, operations/adapters and GUI remain later work. The
+[S2.2a ledger](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28)
+records execution separately from authored guards and the prior owner report.
+
 ### Observed Structures S1 Intake And Lifecycle
 
 Owner-authorized 2026-10-27: consume one explicitly selected, bound genomic

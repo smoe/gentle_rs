@@ -92,6 +92,17 @@ class ObservedTranscriptContractTests(unittest.TestCase):
                      ROOT / "src/engine/protocol/observed_annotation.rs"):
             self.assertTrue(path.read_text().startswith("//!"), str(path))
 
+    def test_sam_text_decoder_stays_private_without_file_or_public_operation_ingress(self):
+        root = ROOT / "src/observed_transcript_structures"
+        for name in ("sam_text.rs", "sam_text_tests.rs"):
+            self.assertTrue((root / name).read_text().startswith("//!"), name)
+        module = (root / "sam_text.rs").read_text()
+        for forbidden in ("std::fs", "fs::", "Command::", "reqwest", "pub struct "):
+            self.assertNotIn(forbidden, module)
+        self.assertIn("sam::validate_decoded_row", module)
+        self.assertIn("mod sam_text;", (ROOT / "src/observed_transcript_structures.rs").read_text())
+        self.assertNotIn("SummarizeObservedTranscriptStructuresFromSam", (ROOT / "src/engine.rs").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

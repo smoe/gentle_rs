@@ -20,6 +20,9 @@ mod kernel;
 // S2.0b is deliberately private until a separately reviewed ingress contract exists.
 #[allow(dead_code)]
 mod sam;
+// S2.2a decodes supplied raw lines only; verified file/unit ingress stays separate.
+#[allow(dead_code)]
+mod sam_text;
 #[cfg(test)]
 mod tests;
 
