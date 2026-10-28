@@ -5,6 +5,9 @@ use super::*;
 use crate::observed_transcript_structures as kernel;
 use serde_json::json;
 
+#[path = "observed_preservation_tests.rs"]
+mod preservation;
+
 fn fixture(root: &Path) -> (GentleEngine, SummarizeObservedTranscriptStructuresRequest) {
     fixture_mode(root, true)
 }

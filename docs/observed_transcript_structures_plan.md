@@ -4,8 +4,10 @@ Status: S0 is implemented and its verification is recorded below. The owner
 separately authorized S1 on 2026-10-27: the bound intake/publication and shared
 engine/CLI/MCP paths now have focused macOS verification recorded below. The
 [detailed S2 plan](observed_transcript_structures_s2_plan.md#review-reconciliation)
-is reconciled after supplied Claude feedback; S2 and later slices remain
-proposals, including test-only S2.0a, not authorized for implementation.
+is reconciled after supplied Claude feedback. The owner separately authorized
+test-only S2.0a on 2026-10-28; its six new guards and scoped macOS regressions
+pass in the [execution ledger](observed_transcript_structures_s2_plan.md#s20a-implementation-and-verification-2026-10-28).
+S2.0b and later slices remain proposals, not authorized for implementation.
 Claude reviewed the original draft read-only at `ce4d33b5`; the reconciliation
 and implementation are Codex's work, not a fresh Claude/native/scientific verdict.
 The [roadmap](roadmap.md) owns priorities; this is not another release gate.
@@ -767,10 +769,10 @@ No request is sent, no candidate freeze/dispatch is created, and no native,
 release, biological or performance acceptance is claimed by this planning task.
 
 Next step: carry the source-bound macOS results into the consolidated Glen/CI
-request and execute missing process/platform checks. Separately authorize the
-test-only S2.0a preservation guards from the
+request and execute missing process/platform checks. Preserve the separately
+owner-authorized test-only S2.0a guards and their source-bound results from the
 [reconciled S2 plan](observed_transcript_structures_s2_plan.md#reconciled-implementation-order)
-before any implementation. The
+before any S2.0b production refactor. The
 [original S2 Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
 has received the supplied read-only review; Codex's reconciliation is not a
 fresh Claude or scientific verdict. The older

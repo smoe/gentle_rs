@@ -1,14 +1,16 @@
 # Observed Transcript Structures S2: SAM And Annotation Preparation
 
-Status: **proposal reconciled after supplied read-only Claude review; not
-implemented or authorized for implementation**. Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
+Status: **S2.0a test-only guards implemented with scoped macOS verification**.
+S2.0b and later steps remain proposals, not authorized for implementation.
+Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
 `1804605f1ba42369f943213414d79fd9a40013cb`. No fetch or remote-tip claim.
 Tracked files were clean; unrelated untracked `output/` is untouched.
 The [roadmap](roadmap.md) owns priority/release scope. This is a bounded expansion
 of [the umbrella plan's S2](observed_transcript_structures_plan.md#slice-boundaries-and-remaining-work),
 not a new release gate. The [original Claude prompt](observed_transcript_structures_s2_claude_review_prompt.md)
 was reviewed; the reconciliation below is Codex's, not a fresh Claude sign-off.
-Implementation, including test-only S2.0a, needs a separate owner instruction.
+The later S2.0a authorization does not authorize a production refactor or SAM
+ingress. Focused local Rust tests/check were separately authorized by the owner.
 
 Integration context, 2026-10-28: the owner requested committing this proposal
 and rebasing onto local `main`, now `7329f00f607c82c195ea13d931f83b0f1bc93150`.
@@ -90,8 +92,8 @@ or particular annotation releases. No new assay threshold is approved.
 
 ### S2.0a: Test-Only Preservation Guards First
 
-The recommended first implementation task, **still awaiting authorization**, is
-tests only. Freeze exact S1 report/data/TSV bytes, `Summary`/`Observation`/
+The owner-authorized first implementation task is tests only. Freeze exact
+S1 report/data/TSV bytes, `Summary`/`Observation`/
 `RecordSupport`/`ChainFamily` field order, context and observation/chain digests,
 `comparison_work`, covered error strings, query/node sort keys and the PAF
 stored-support check. Retain all ten existing Phase 2 serialized-row/work cases.
@@ -100,6 +102,92 @@ geometry algorithm does not read, and the existing defaulted
 `Input.unassessed_records`. No production changes or serde-default additions to
 S1 v1. Bound any deterministic output paths before pinning file bytes; no
 expected-byte regeneration to conceal changes during S2.0b.
+
+### S2.0a Implementation And Verification, 2026-10-28
+
+The reconciled plan was committed as `36702cce` and rebased onto local main
+`550e6e0a` as `e84b3f73` before test work. The owner separately authorized local
+Rust tests/check and the minimal missing test-path correction. Tests were
+verified as a working diff; the owner subsequently requested committing and
+rebasing it. Main first advanced to documentation-only `962b68a2`;
+the results below belong to `e84b3f73` plus the fingerprinted Rust diff, not a
+new-source/full-suite acceptance claim. The later integration target
+`b0521123447d3636258cd6fca1702968c1ddb190` adds lifecycle-preview publication,
+not observed-transcript kernel/payload changes. Recheck the integrated source;
+do not silently relabel the pre-commit binary receipt below.
+
+- `src/observed_transcript_structures/preservation_tests.rs` freezes five
+  in-memory scenarios: exact forward, reverse/masked, unassessed/masks unknown,
+  competing loci and distinct records sharing a name. Pin input/result compact
+  bytes, pretty result bytes, individual observation/record/family arrays,
+  context/observation/chain identities and work counts `54,51,24,71,142`.
+  Separate tests preserve query/node ordering, all 14 segment fields in the
+  serialized context, the existing defaulted `unassessed_records`, ten error
+  strings and the PAF stored-support check on both orientations.
+- `src/engine/analysis/rna_panel/primer_payload/observed_preservation_tests.rs`
+  replays the old v1 request/report/data and five JSON-cell table recipes
+  independently against actual S1 publication. Completed and incomplete cases
+  retain actual temporary paths and every derived binding, not scrubbed hashes.
+  Geometry uses the separately frozen kernel, not a second interpreter. Exact
+  compact/pretty JSON, row quoting/order, receipts, nonclaims, absent counts,
+  mandatory fields and unknown-field refusal are checked. Three request/source
+  errors are pinned too. Fixtures remain inline and explicitly synthetic.
+- Only test files/registration and the owner-approved one-line
+  `#[path = "sequence_design_preview/tests.rs"]` under `#[cfg(test)]` change
+  Rust. No runtime code, production serde/schema, algorithm, dependency or old
+  ten-case Phase 2 oracle changes. There is no expectation-regeneration mode.
+
+Keep the primary failures separate: initial test compilation and whole-project
+fmt stopped at main's missing test-module path. After the approved path repair,
+the first baseline run passed four tests and deliberately failed two unsealed
+capture assertions. Their literal values were then pinned without runtime
+changes; the final six pass. Slice 4 initially passed 13/14 in the sandbox:
+`UnixListener::bind` at its special-file fixture returned `EPERM`. The unchanged
+suite passes 14/14 on the approved host rerun. No assertion, timeout or safety
+check was weakened.
+
+All Rust commands below use `CARGO_INCREMENTAL=0`, `--locked --offline
+--no-default-features --lib -j1`; tests use `-- --test-threads=1`:
+
+| Command/filter | Result |
+| --- | --- |
+| `cargo test ... s2a_` | 6/6, no ignored tests |
+| `cargo test ... observed_transcript_structures` | 28/28 |
+| `cargo test ... observed_transcripts_` | 16/16 |
+| `cargo test ... primer_payload` | 48/48, including the ten-case serialized-row/work oracle |
+| `cargo test ... sequence_design_preview::tests` | 14/14 on host; retain the sandbox failure above |
+| `cargo check -q ...` | Pass; existing headless dead-code warnings |
+
+Filters overlap and must not be summed. The earlier `primer_payload_` filter
+passed 35 tests but is only a subset; use the full-module 48-test result.
+After confirming no active Cargo/rustc process, the owner-approved cleanup
+removed 9.1 GiB of inactive incremental cache, preserving sources, test binaries
+and `output/`. No new cache/profile setting is committed. This is not a build-
+performance or runtime-performance verdict.
+
+Execution identity: macOS/aarch64, Cargo `1.100.0-beta.5` (`7552a885e`), rustc
+`1.100.0-beta.5` (`8ea38001b9da1d6683ac5ebbc993cac89d3a09df`), LLVM 23.1.3.
+Unoptimized test profile: root debuginfo 1, dependencies debuginfo 0, 256 codegen
+units, incremental disabled by environment, default assertion/unwind behavior;
+`.cargo/config.toml` retains the 16-MiB test-thread stack.
+Cargo.lock SHA-256 remains
+`40ae5b6c9ba74ba080d39be11b4e57ad2dbc020dba5ecad7222e22f639f84918`.
+The 20-path Rust/Cargo/config source manifest at
+`/tmp/gentle-s2a-source-manifest.sha256` has SHA-256
+`58e1d6d328af6b23b1da3f96f31c33db366fb2bea172219cb8d037d1c0b3d5f3`.
+Test binary `target/debug/build/GENtle/002e669310863d66/out/gentle-002e669310863d66`
+has SHA-256
+`e79cffc89258bad13bce505498d808d94c396bfe046b70951315d5264952cf60`.
+Logs are local `/tmp/gentle-s2a-*.log`, not committed fixtures or release assets.
+
+Scoped rustfmt for all five changed Rust paths passes. Whole-workspace
+`cargo fmt --check` now resolves the test module but fails on 12 unrelated
+pre-existing Help/manual-adaptation files; leave them untouched. Fast checks
+include documentation status, 18 LF/CRLF documentation cases, and 16 observed/
+payload Python contract cases (15 passed, one binary-dependent skip).
+Full suite, default-feature GUI, actual CLI/VM processes, Windows/Linux/native,
+real-data/scientific and package acceptance are unrun. S2.0b remains separately
+gated, not authorized by passing these guards. No push or Glen dispatch.
 
 ### S2.0b: Private Core And Pure SAM Geometry
 
@@ -520,3 +608,6 @@ Documentation status, 18 LF/CRLF-aware documentation tests, five local plan/
 prompt link targets and whitespace checks pass. Session-close has 4 OK,
 2 warnings (intentional documentation diff/untouched `output/`, manual plan
 fidelity), no failures. No Rust build/test, implementation, commit or push.
+That paragraph records the earlier review-reconciliation session only; the
+separately authorized S2.0a implementation/execution ledger above supersedes its
+pre-implementation status, not its source-inspection limits.

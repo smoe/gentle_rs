@@ -6,6 +6,9 @@
 use super::*;
 use crate::engine::{PRIMER_PAYLOAD_ANNOTATION_SCHEMA, PrimerPayloadTranscript};
 
+#[path = "preservation_tests.rs"]
+mod preservation;
+
 fn sha(c: char) -> String {
     format!("sha256:{}", c.to_string().repeat(64))
 }

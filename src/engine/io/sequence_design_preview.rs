@@ -249,4 +249,5 @@ impl PreviewDestination {
 }
 
 #[cfg(test)]
+#[path = "sequence_design_preview/tests.rs"]
 mod tests;

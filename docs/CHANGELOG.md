@@ -41,6 +41,42 @@
   Help formatting groups are unchanged, verified by comparing formatter output
   against HEAD. No unrelated formatting edits are included.
 
+## 2026-10-28 - Add Test-Only Observed Transcript S2.0a Preservation Guards
+
+- Commit the reconciled plan as `36702cce`, then rebase onto local main
+  `550e6e0a` as `e84b3f73` before test work. The owner authorizes S2.0a only,
+  plus focused local Rust tests/check; no production refactor, SAM ingress or
+  push. Keep the configurable gene and every production payload/kernel path.
+- Add inline-synthetic frozen kernel byte/ID/work and error guards, segment
+  context/default/order checks, and an independent v1 request/report/data/table
+  replay against real S1 publication. Preserve actual paths and dependent
+  hashes rather than normalizing away provenance. Retain the existing ten-case
+  Phase 2 serialized-row/work oracle unchanged.
+- Initial library-test compilation and whole-workspace formatting were blocked
+  by main's missing test-module path in `sequence_design_preview.rs`; no tests
+  execute in that attempt. Headless locked/offline library Cargo check passes
+  with existing dead-code warnings. Keep this baseline defect distinct from
+  preservation-test results; no test pass or native/platform claim follows.
+- The owner approves only the missing `#[path]` under `#[cfg(test)]`, enabling
+  the existing Slice 4 tests without changing runtime code. Capture and seal
+  five fixed kernel byte/ID/work snapshots and ten errors; the first capture's
+  two deliberate pending assertions are not counted as passing tests.
+- Final macOS/aarch64 locked/offline headless runs pass new guards 6/6, S0
+  28/28, S1 16/16 and full payload 48/48 (filters overlap; the ten legacy cases
+  remain). The affected Slice 4 suite passes 14/14 on host after its sandbox
+  Unix-socket fixture returns `EPERM`; preserve the primary environmental error.
+  Headless Cargo check and scoped rustfmt pass; whole-workspace fmt exposes
+  pre-existing changes in 12 unrelated Help/manual-adaptation files, left alone.
+- Record exact source/binary/lock/toolchain/profile in the [S2.0a ledger](observed_transcript_structures_s2_plan.md#s20a-implementation-and-verification-2026-10-28).
+  After checking for active processes, the approved cleanup removes only 9.1 GiB
+  of inactive incremental cache, preserving binaries/sources/`output/`. No new
+  profile, runtime behavior, old fixture or dependency change. No S2.0b, push,
+  default-GUI/full-suite/platform/scientific or release acceptance follows.
+- On the owner's subsequent commit/rebase request, preserve the pre-commit
+  source/binary receipt separately from main's later lifecycle-preview work at
+  `b0521123`. The S2.0a commit contains only preservation tests, their approved
+  test-module path correction and status notes; S2.0b stays separately gated.
+
 ## 2026-10-28 - Reconcile The Supplied Observed Transcript S2 Review
 
 - Check Claude's source-only feedback at main `550e6e0a` against the identical
