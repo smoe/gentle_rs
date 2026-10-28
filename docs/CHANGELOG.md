@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-28 - Refresh Annotation Preparation Capability Projections
+
+- Regenerate S2.1c's two shell and two engine-operation parity rows from the
+  canonical registry. Refresh only the glossary hash in the four existing
+  capability-maturity projections, preserving their verdicts and evidence.
+- Matrix freshness and LF/CRLF byte-preservation checks pass; the previously
+  failing maturity checkout case passes in both modes, with all 13 focused
+  maturity checks green. Retain the original broader checkout failure and the
+  headless-only registry integration compile limitation in the [follow-up ledger](observed_transcript_structures_s2_plan.md#s21c-projection-follow-up-2026-10-28).
+- Preserve the concurrent S2.2a commit/rebase and its tested source separately.
+  Canonical generator inputs are unchanged by the rebase; no new merged-source,
+  desktop, native-platform or scientific acceptance is inferred.
+- Verify the separate S2.1 close-out prompt in the primary checkout: Part A
+  is only partly covered, B1-B5 remain pending, and its annotation-preparation
+  file reservation stays in force. This follow-up changes no reserved source.
+
 ## 2026-10-28 - Repair Help And Observed-Transcript Smoke Fixtures
 
 - Point synthetic Help clicks at an actual text row, excluding the galley's

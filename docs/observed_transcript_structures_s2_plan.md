@@ -1,11 +1,12 @@
 # Observed Transcript Structures S2: SAM And Annotation Preparation
 
-Status: **S2.0a/b retained; private S2.1a implemented with scoped verification**.
-S2.0b adds a private shared core and decoded, in-memory SAM normalization only.
-The owner subsequently authorized only S2.1a's pure GTF normalizer and focused
-local Rust tests/check; its working-diff verification is recorded below.
-Annotation file ingress/publication, operations/adapters and later slices remain
-proposals, not authorized by either private step.
+Status: **S2.0a/b and S2.1a/b/c implemented; private S2.2a verified locally**.
+The dated ledgers below retain each slice's authorization and tested source.
+S2.1 provides annotation preparation and named adapters; S2.2a decodes supplied
+raw SAM lines privately. Verified SAM file/unit ingress and S2.3 public SAM
+interpretation remain separate proposed slices.
+The separate [S2.1 hardening close-out](#s21-close-out-remains-pending) remains
+pending and retains its annotation-preparation file reservation.
 Prepared 2026-10-27 at local `main` = `gentle_rs_2_main` =
 `1804605f1ba42369f943213414d79fd9a40013cb`. No fetch or remote-tip claim.
 Tracked files were clean; unrelated untracked `output/` is untouched.
@@ -813,6 +814,91 @@ canonical protocol/discovery guards, then source-matched
 `gentle_examples_docs parity-matrix-generate`/`parity-matrix-check` and
 `scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes`.
 Do not dispatch CI, push or count this authored checklist as execution.
+
+#### S2.1c Projection Follow-up, 2026-10-28
+
+The owner requests cleaning and continuing the scoped verification. Generate
+the canonical matrix with the locked/offline headless `gentle_examples_docs`
+build at `284e5b70` plus the S2.2a working diff. The diff adds only the two
+annotation preparation/cancel shell rows, their two engine-operation rows and
+derived adapter totals. Refresh the four capability-maturity JSON projections:
+each changes only the stored glossary SHA-256 to
+`4e2add7c6eb16e6dc59d75f91cf6fec3f85953dab8d551c463c8c30d75607b0b`;
+all maturity verdicts and evidence remain unchanged.
+
+Matrix generation/check and the existing real LF/CRLF matrix regression pass.
+The initially failing maturity checkout case passes in both modes after that
+refresh; all 13 maturity/checkout tests in its focused rerun pass. The first
+broader checkout run had 83 cases with one failing method (two mode failures),
+not a blanket passing result. No freshness assertion or byte hash is weakened.
+
+During verification another task commits/rebases S2.2a as `c768d3c1` on
+`3b6eb465`. Preserve its separate execution ledger below. Git comparison
+confirms the canonical registry sources, glossary, Cargo files and maturity
+generator are byte-identical across that rebase; both generated-file checkers
+pass afterward. The helper binary has SHA-256
+`3baccdd100bb9136a76666250fee453e0c481839ad04280180b2e49ef242df50`.
+
+The broader `capability_registry_parity` integration target cannot compile
+under `--no-default-features`: its existing import of `gentle::app` requires
+`desktop-gui` (E0432). This is a feature-selection limitation, not a passing
+desktop registry test. A combined MCP run therefore never reaches execution;
+its separate retry is stopped when the concurrent rebase changes the checkout.
+Default-feature registry/MCP execution and native Windows/Linux acceptance
+remain unrun here. No operation, biology, dependency or build-profile change
+belongs to this projection follow-up.
+
+A final post-rebase
+`env CARGO_INCREMENTAL=0 cargo check -q --locked --offline --no-default-features --lib -j1`
+passes at `c768d3c1` with the projection/documentation diff. Existing headless
+dead-code warnings remain; this does not execute the newly rebased test fixtures.
+
+Reproduce the generated files with:
+
+```sh
+env CARGO_INCREMENTAL=0 cargo run --locked --offline --no-default-features -j1 --bin gentle_examples_docs -- parity-matrix-generate
+target/debug/gentle_examples_docs parity-matrix-check
+python3 scripts/generate_capability_maturity.py --write
+python3 scripts/generate_capability_maturity.py --check
+```
+
+Final fast source checks pass 17 cases with one expected actual-process skip;
+documentation status and whitespace pass. Session-close reports four OK,
+two warnings and no failures: the intentional projection/documentation diff
+with untouched `output/`, and the manual scope reminder. The projection edits
+are required to reconcile the already-landed annotation registration; they
+do not extend the private decoder or add new capability verdicts.
+
+##### S2.1 Close-Out Remains Pending
+
+The owner asks whether the separate close-out prompt still owns annotation
+preparation. The prompt is present as an untracked file in the primary checkout:
+`docs/observed_annotation_s21_closeout_codex_prompt_20261028.md`.
+It is not a tracked file in this worktree. Its companion observed-junction
+consequences prompt explicitly reserves these files for that close-out:
+
+- `src/engine/analysis/rna_panel/primer_payload/annotation_prepare/publication.rs`
+- `src/observed_transcript_structures/annotation/gtf.rs`
+- `src/observed_transcript_structures/annotation.rs`
+- `src/engine/protocol/observed_annotation.rs`
+
+This follow-up supplies only part of its Part A: scoped headless tests/check,
+canonical matrix regeneration and checkout coverage. The default-feature
+check and broader registry/discovery verification are not all complete.
+Part B remains pending: B1 closes staging/annotation handles before rename
+while preserving ownership-safe cleanup; B2 validates version attributes;
+B3 distinguishes absent from inconsistent versions in receipts; B4 documents
+effective resource ceilings and pins the dictionary boundary; B5 documents
+strict paths and pins the empty-attribute refusal. B2/B3 first require the
+prompt's compatibility audit and may need an owner grammar/schema decision.
+
+Current source still holds the handles across rename, restricts identifier
+validation to the two ID attributes, and represents versions with `Option`.
+These are not fixed by passing the existing tests or refreshing projections.
+No annotation-preparation source file changes in this follow-up. Preserve
+the close-out's file reservation and coordinate shared protocol/roadmap/
+changelog/S2-plan edits with later junction work. The landed S2.1a/b/c feature
+and the still-pending close-out are separate statuses.
 
 ### S2.2: Strict, Bounded SAM Intake And Query Accounting
 
