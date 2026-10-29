@@ -118,8 +118,11 @@ The synthetic CD274-like fixture is not real RNA evidence. Historical legacy
 `[5466826,5468192)`, exon-boundary label `5466826 -> 5468193`.
 CDS/ORF, UniProt and soluble-form hypotheses remain owner-gated J2/J3 work.
 
-Current frozen-producer limitation: Phase 2 requires nonempty search-limitations
-text, but S1 requires it empty to declare complete search. Consequently that
-producer path currently yields possible-only support. J1 preserves it. The
-synthetic definite recurrence unit test is not an end-to-end completeness proof;
-a separately reviewed producer compatibility fix is still needed.
+The Phase 2/S1 compatibility fix admits explicitly complete searches with
+`declared_complete=true` and an exactly empty `competitor_search_limitations`.
+S1's unchanged certainty rules can then produce definite support. Nonempty
+limitations, including `none`, remain conservative; incomplete declarations do
+not become definite. Whitespace-only descriptions are rejected rather than
+normalized into an empty declaration. Existing reports are not rewritten or
+promoted. The synthetic fixture exercises the saved Phase 2 -> S1 -> J1 path;
+it still does not establish real search exhaustiveness or RNA biology.

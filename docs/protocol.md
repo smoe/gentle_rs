@@ -57,6 +57,14 @@ batch, publish separate versioned evidence, and inspect/cancel through the same
 engine, shell/CLI, generic MCP and scripting paths. The new optional `OpResult`
 fields are omitted when absent, preserving old Phase 2 result serialization.
 See the [S1 request, publication and lifecycle contract](observed_transcript_structures.md).
+
+Phase 2/S1 v1 compatibility: the explicit combination `declared_complete=true`
+and `competitor_search_limitations=""` is admissible. Whitespace-only text and
+an empty description with `declared_complete=false` remain invalid. Nonempty
+limitations, including the literal `none`, keep their prior conservative meaning.
+No schema/serialized field, hash recipe, existing accepted result or S1 certainty
+rule changes. See the [producer declaration contract](primer_payload_evidence.md#claim-prerequisites).
+
 S1's focused macOS engine/shell/MCP-unit and lifecycle checks pass at the source
 recorded in its ledger. Actual process/VM, native, platform and scientific
 acceptance remain separate, not inherited by later main revisions.

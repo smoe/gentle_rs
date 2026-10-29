@@ -40,6 +40,9 @@ fn admission(request: &SummarizePrimerPayloadAlignmentsRequest) -> Result<(), En
     let mut batches = BTreeSet::new();
     let mut refs = BTreeSet::new();
     for batch in &request.batches {
+        // Nonempty text must never be trimmed into a no-limitations declaration.
+        let empty_limitations_allowed =
+            batch.declared_complete && batch.competitor_search_limitations.is_empty();
         if !safe_id(&batch.batch_id)
             || !batches.insert(&batch.batch_id)
             || !refs.insert(&batch.reference_id)
@@ -53,7 +56,7 @@ fn admission(request: &SummarizePrimerPayloadAlignmentsRequest) -> Result<(), En
                 .iter()
                 .any(|a| a.len() > 4096 || a.contains('\0'))
             || batch.producer_exit_code != 0
-            || batch.competitor_search_limitations.trim().is_empty()
+            || (batch.competitor_search_limitations.trim().is_empty() && !empty_limitations_allowed)
         {
             return Err(bad("primer_payload_batch_identity_or_provenance"));
         }
@@ -521,4 +524,116 @@ pub(super) fn validate_report(report: &PrimerPayloadAlignmentReport) -> Result<(
         return Err(bad("primer_payload_report_binding"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod completeness_tests {
+    use super::super::tests::{PAYLOAD, prepare, source};
+    use super::*;
+
+    fn request(root: &Path) -> (GentleEngine, SummarizePrimerPayloadAlignmentsRequest) {
+        let (engine, trace) = source(root, true, PAYLOAD);
+        let queries = engine
+            .prepare_primer_payload_alignment_queries(prepare(trace.clone(), root), &mut |_| true)
+            .unwrap();
+        let request = super::super::alignment_tests::request(root, trace, &queries);
+        (engine, request)
+    }
+
+    #[test]
+    fn primer_payload_completeness_admission_preserves_explicit_declarations_and_wire_shape() {
+        let root = tempfile::tempdir().unwrap();
+        let (engine, base) = request(root.path());
+        let before = encode(engine.state()).unwrap();
+        let journal = engine.journal_len();
+        for (i, (complete, limitations, admitted)) in [
+            (true, "", true),
+            (false, "", false),
+            (true, " ", false),
+            (false, "\t\r\n", false),
+            (true, "none", true),
+            (false, "producer did not finish the search", true),
+            (true, "subject cap limited competitors", true),
+            (true, "  limited search\r\n", true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut r = base.clone();
+            r.batches[0].declared_complete = complete;
+            r.batches[0].competitor_search_limitations = limitations.into();
+            r.output_dir = root.path().join(format!("case{i}")).display().to_string();
+            let result = engine.summarize_primer_payload_alignments(r.clone(), &mut |_| true);
+            if admitted {
+                let report = result.unwrap_or_else(|e| panic!("case {i}: {e}"));
+                assert_eq!(report.status, "completed");
+                assert_eq!(report.schema, PRIMER_PAYLOAD_REPORT_SCHEMA);
+                assert_eq!(report.request_sha256, hash(&r).unwrap());
+                assert_eq!(encode(&report.request).unwrap(), encode(&r).unwrap());
+                assert_eq!(
+                    report.request.batches[0].competitor_search_limitations,
+                    limitations
+                );
+                let binding =
+                    GentleEngine::primer_payload_alignment_result_binding(&r, &report).unwrap();
+                assert_eq!(binding.schema, "gentle.primer_payload_result_binding.v1");
+                let saved: PrimerPayloadAlignmentReport =
+                    serde_json::from_slice(&fs::read(&binding.report_path).unwrap()).unwrap();
+                assert_eq!(encode(&saved).unwrap(), encode(&report).unwrap());
+                GentleEngine::inspect_primer_payload(&binding.report_path, Some(&binding), 0, true)
+                    .unwrap();
+            } else {
+                assert_eq!(
+                    result.unwrap_err().message,
+                    "primer_payload_batch_identity_or_provenance",
+                    "case {i}"
+                );
+                assert!(!Path::new(&r.output_dir).exists());
+            }
+        }
+        assert_eq!(encode(engine.state()).unwrap(), before);
+        assert_eq!(engine.journal_len(), journal);
+    }
+
+    #[test]
+    fn primer_payload_completeness_does_not_default_or_bypass_producer_provenance() {
+        let root = tempfile::tempdir().unwrap();
+        let (engine, mut base) = request(root.path());
+        base.batches[0].declared_complete = true;
+        base.batches[0].competitor_search_limitations.clear();
+        for field in ["declared_complete", "competitor_search_limitations"] {
+            let mut json = serde_json::to_value(&base).unwrap();
+            json["batches"][0].as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<SummarizePrimerPayloadAlignmentsRequest>(json).is_err(),
+                "{field}"
+            );
+        }
+        for field in [
+            "producer",
+            "producer_version",
+            "producer_exit_code",
+            "arguments",
+            "query_manifest_sha256",
+        ] {
+            let mut r = base.clone();
+            match field {
+                "producer" => r.batches[0].producer.clear(),
+                "producer_version" => r.batches[0].producer_version = " ".into(),
+                "producer_exit_code" => r.batches[0].producer_exit_code = 1,
+                "arguments" => r.batches[0].arguments.push("bad\0argument".into()),
+                _ => r.batches[0].query_manifest_sha256 = format!("sha256:{}", "0".repeat(64)),
+            }
+            let output = r.output_dir.clone();
+            assert_eq!(
+                engine
+                    .summarize_primer_payload_alignments(r, &mut |_| true)
+                    .unwrap_err()
+                    .message,
+                "primer_payload_batch_identity_or_provenance",
+                "{field}"
+            );
+            assert!(!Path::new(&output).exists());
+        }
+    }
 }

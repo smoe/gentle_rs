@@ -70,6 +70,20 @@ supersedes its count/strict-load expansion, not its recorded authoring results.
   two new actual-process checks explicitly skipped without same-source binaries.
   Scoped formatting, documentation/manual freshness and whitespace passed.
 
+## 2026-10-29 - Reconcile Phase 2/S1 Search Completeness
+
+- Admit an exactly empty search-limitations string only with explicit
+  `declared_complete=true`. Retain whitespace rejection, producer provenance
+  gates and conservative treatment of every nonempty limitations description.
+  Preserve all v1 report formats, hashes, previously accepted results and S1
+  certainty logic; no saved report is promoted or rewritten.
+- Replace the synthetic junction fixture's in-memory certainty promotion with
+  actual saved Phase 2/S1/J1 processing, alongside limited/incomplete controls,
+  admission/provenance/round-trip tests and unchanged preservation oracles.
+  Declaration-conditioned definite support is not proof of real exhaustive
+  search, RNA identity, expression or scientific acceptance. See the
+  [compatibility verification](observed_junction_consequences_plan.md#completeness-compatibility-follow-up).
+
 ## 2026-10-29 - Assess Saved Observed Splice Junctions (J1)
 
 - Add a separate bounded, offline J1 request/report/binding and assess/show/cancel

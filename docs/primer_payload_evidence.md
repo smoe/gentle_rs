@@ -88,6 +88,19 @@ PAF requires contiguous query groups; a repeated group is a hard error. One
 batch per reference per request is supported. Every query has `mapped`,
 `producer_reported_unmapped` or `unassessed` accounting. Exit must be zero;
 search completion/limitations are producer declarations, not uniqueness proof.
+
+For the existing v1 batch fields, explicitly declare a complete search with
+`"declared_complete":true` and `"competitor_search_limitations":""`.
+Only that exact empty string has no declared limitations; do not write `none`
+or whitespace. Whitespace-only text is invalid, and `declared_complete=false`
+requires a nonempty limitations description. All nonempty descriptions are
+preserved verbatim and remain limitations, even if their wording says `none`.
+Neither field has a default. This compatibility fix changes admission only,
+not report formats, digest recipes or old evidence. S1's existing assessed-view
+and legal-chain rules can then yield definite support; the declaration alone
+does not guarantee it or prove that a real search was exhaustive. Execution
+status `completed` does not itself establish search completeness.
+
 cg/short or long cs must consume both spans consistently; contradictions, tag
 types, edit counts and length conflicts fail closed. MAPQ 0 is low/ambiguous,
 255 unavailable. tp is an aligner role, not a supplementary flag; SA text creates

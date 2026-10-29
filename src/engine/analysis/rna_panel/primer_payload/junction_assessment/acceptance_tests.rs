@@ -5,6 +5,22 @@ pub(super) fn cd274_like(
     root: &Path,
     incomplete: bool,
 ) -> (GentleEngine, AssessObservedSpliceJunctionsRequest) {
+    cd274_like_search(
+        root,
+        true,
+        if incomplete {
+            "synthetic incomplete search"
+        } else {
+            ""
+        },
+    )
+}
+
+fn cd274_like_search(
+    root: &Path,
+    declared_complete: bool,
+    limitations: &str,
+) -> (GentleEngine, AssessObservedSpliceJunctionsRequest) {
     use super::super::super::tests::{PAYLOAD, bound_file, limits, prepare, source};
     let (e, trace) = source(root, true, PAYLOAD);
     let old: RnaPrimerTraceReport =
@@ -94,12 +110,8 @@ pub(super) fn cd274_like(
     }).collect::<String>();
     fs::write(&phase2.batches[0].paf.path, paf).unwrap();
     phase2.batches[0].paf = bound_file(Path::new(&phase2.batches[0].paf.path));
-    phase2.batches[0].competitor_search_limitations = if incomplete {
-        "synthetic incomplete search"
-    } else {
-        "synthetic exhaustive intention; frozen producer still requires nonempty limitations"
-    }
-    .into();
+    phase2.batches[0].declared_complete = declared_complete;
+    phase2.batches[0].competitor_search_limitations = limitations.into();
     let p = e
         .summarize_primer_payload_alignments(phase2, &mut |_| true)
         .unwrap();
@@ -216,10 +228,24 @@ pub(super) fn cd274_like(
 
 #[test]
 fn junction_assessment_synthetic_cd274_like_3130_not_real_rna_evidence() {
-    for incomplete in [false, true] {
+    for (declared_complete, limitations, complete) in [
+        (true, "", true),
+        (true, "synthetic incomplete search", false),
+        (false, "producer did not complete the search", false),
+        (true, "none", false),
+    ] {
         let td = tempfile::tempdir().unwrap();
-        let (e, r) = cd274_like(td.path(), incomplete);
-        let request = r.clone();
+        let (e, r) = cd274_like_search(td.path(), declared_complete, limitations);
+        let l = loaded(&r);
+        let summary = l.data.analysis.as_ref().unwrap();
+        assert_eq!(l.report.status, "completed");
+        assert_eq!(l.report.counts.as_ref().unwrap().records, 11);
+        for record in &summary.records {
+            assert_eq!(record.search_declared_complete, complete);
+            assert!(record.all_query_views_assessed);
+            assert!(!record.possible_chains.is_empty());
+            assert_eq!(!record.definite_chains.is_empty(), complete);
+        }
         let report = e
             .assess_observed_splice_junctions(r, &mut |_| true)
             .unwrap();
@@ -248,9 +274,18 @@ fn junction_assessment_synthetic_cd274_like_3130_not_real_rna_evidence() {
                 .iter()
                 .find(|g| g.dimension == "library" && g.id == format!("L{i}"));
             let observed = support
-                .map(|g| g.counts.possible_only.qualified_only)
+                .map(|g| {
+                    if complete {
+                        g.counts.definite.qualified_only
+                    } else {
+                        g.counts.possible_only.qualified_only
+                    }
+                })
                 .unwrap_or(0);
-            assert_eq!(observed, n, "L{i} incomplete={incomplete}");
+            assert_eq!(
+                observed, n,
+                "L{i} declared_complete={declared_complete} limitations={limitations:?}"
+            );
             assert!(
                 data.libraries
                     .iter()
@@ -260,53 +295,22 @@ fn junction_assessment_synthetic_cd274_like_3130_not_real_rna_evidence() {
                     > n
             );
         }
-        assert_eq!(j.support.definite.qualified_only, 0);
-        assert_eq!(j.support.possible_only.qualified_only, 7);
-        assert_eq!(j.recurrence.as_ref().unwrap().status, "not_assessable");
-        if !incomplete {
-            // Pure synthetic contract test only: the frozen Phase 2 producer cannot
-            // emit search-complete S1 today. Never republish/promote its saved evidence.
-            let l = loaded(&request);
-            let mut summary = l.data.analysis.unwrap();
-            for record in &mut summary.records {
-                record.search_declared_complete = true;
-                record.all_query_views_assessed = true;
-                record.definite_chains = record.possible_chains.clone();
-            }
-            let mut meter = Meter {
-                b: &request.budgets,
-                input: 0,
-                work: 0,
-                comparisons: 0,
-            };
-            let mut progress = |_| true;
-            let mut ctl = Control::new(None, "synthetic".into(), 1, &mut progress).unwrap();
-            let manifest = source::manifest(&request, &mut meter, &mut ctl).unwrap();
-            let index = support::record_index(&summary, &l.contexts, &mut meter, &mut ctl).unwrap();
-            let records = &index[&(j.contig.clone(), j.skipped_interval)];
-            assert_eq!(support::counts(records).definite.qualified_only, 7);
-            assert_eq!(
-                support::recurrence(
-                    request.recurrence_policy.as_ref().unwrap(),
-                    records,
-                    &manifest,
-                    false
-                )
-                .status,
+        assert_eq!(
+            j.support.definite.qualified_only,
+            if complete { 7 } else { 0 }
+        );
+        assert_eq!(
+            j.support.possible_only.qualified_only,
+            if complete { 0 } else { 7 }
+        );
+        assert_eq!(
+            j.recurrence.as_ref().unwrap().status,
+            if complete {
                 "recurrent_candidate"
-            );
-            let groups = support::groups(records, &manifest);
-            for (i, n) in [3, 1, 3, 0].into_iter().enumerate() {
-                assert_eq!(
-                    groups
-                        .iter()
-                        .find(|g| g.dimension == "library" && g.id == format!("L{i}"))
-                        .map(|g| g.counts.definite.qualified_only)
-                        .unwrap_or(0),
-                    n
-                );
+            } else {
+                "not_assessable"
             }
-        }
+        );
         assert!(serde_json::to_value(j).unwrap().get("protein").is_none());
     }
 }

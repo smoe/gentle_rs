@@ -258,6 +258,10 @@ hash `sha256:` plus 64 `a`s and contig `synthetic_contig`, finds starts 57505 an
 
 ## J1 Execution Ledger
 
+The original J1 checkpoints below are historical. The separately authorized
+[completeness compatibility follow-up](#completeness-compatibility-follow-up)
+addresses their producer admission limitation without changing S1's v1 records.
+
 J0 is committed separately as `f0c8bdb7`. The owner then clarified the legacy
 coordinate convention above, then confirmed the sample/preparation order and
 synthetic recurrence/window settings. Historical certainty/qualification and
@@ -398,3 +402,61 @@ ancestor of HEAD; only the original untracked `output/` remains. The final
 locked/offline default `cargo check -q` exited 0 before this documentation-only
 rebase, after the module-order adjustment. No new runtime/platform/scientific
 acceptance is inferred from rebasing.
+
+## Completeness Compatibility Follow-Up
+
+Owner-authorized separately on 2026-10-29, starting at `186937bd`: allow Phase 2
+to admit `declared_complete=true` with exactly empty
+`competitor_search_limitations`. Retain rejection of whitespace-only text and
+incomplete+empty declarations. Preserve every prior nonempty limitations string
+and its conservative S1 interpretation, including `none`; no normalization or
+natural-language interpretation is added. All other producer/provenance checks,
+the report schemas/fields/digest recipes and S1 certainty logic stay unchanged.
+Previously saved reports are not rehashed, upgraded or interpreted differently.
+
+The existing synthetic CD274-like producer now supplies the actual declaration
+and passes saved Phase 2 evidence through S1 into J1. Definite 3/1/3/0 support
+and policy-bound recurrence must come from that real service path, not edited
+in-memory certainty flags. Countercases retain possible-only support for limited
+or incomplete producer declarations. These are still synthetic software tests;
+historical library certainty/qualification, real exhaustive search and biology
+are not inferred. J2/J3 and SAM ingress remain outside this fix.
+
+Verification on macOS arm64, Rust `1.100.0-beta.7`, 2026-10-29:
+
+- At `186937bd926449930b69a5d08d7bb33fcf5174d6` plus source overlay
+  `e2f4d23b37f3d7d13cd884195c7f419e61c3ee7095c698cfc62e711bbc1fa934`
+  (`git diff --binary -- src crates Cargo.lock assets | shasum -a 256`),
+  locked/offline headless library filters pass: `primer_payload` 103/103 and
+  `observed_transcript_structures` 70/70. Scopes overlap; they are not a full-suite
+  total. Existing S1 and Phase 2 preservation oracles pass unchanged, including
+  the saved producer-to-S1-to-J1 synthetic complete/limited/incomplete controls.
+- These runs used `CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
+  CARGO_BUILD_JOBS=1` to limit test-build overhead. The earlier normal-debug
+  pre-fix build was interrupted during compilation, before tests ran; it is not
+  recorded as a red or green test run. Existing headless unused-code and macOS
+  large-unwind-section linker warnings remain; no `-D warnings` claim is made.
+- Rebased onto local main `1fdeb1d97d15498630b88da72666fdd1eaaf8f6c`,
+  then onto its newer tip `1c98980cdda4c9f841593c2c0f52e35f492a9619`.
+  Retained both changelog additions when restoring the first uncommitted patch;
+  the second restore merged without conflicts.
+  The two changed Rust files are byte-identical to the tested pre-rebase files;
+  other upstream engine changes mean the preceding runtime results must not be
+  represented as post-rebase runs. S1 logic, frozen oracles and `Cargo.lock`
+  remain unchanged; lockfile SHA-256 remains
+  `a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+- At the final rebased source, 26 focused Python/source and documentation-checkout
+  tests pass
+  (8 contract + 18 documentation-status, with LF/CRLF replay). Documentation
+  status, manual and capability-maturity freshness, scoped Rust formatting and
+  whitespace checks pass. Default-feature `cargo check -q --locked --offline`
+  with `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1` exits 0 on both rebased bases.
+  Session-close has 4 ok/2 warnings/0 failures: the intentional uncommitted fix
+  and preserved untracked `output/`, plus the manual plan-fidelity reminder.
+  The diff remains the authorized completeness compatibility fix, its synthetic
+  regressions and directly related contracts/receipts, not S2.2 or a new feature.
+
+Still unverified: full suite, runtime rerun on the rebased engine, native
+Windows/Linux, actual CLI/MCP subprocess and script-VM execution, real CD274
+reference/library evidence and scientific acceptance. No new byte fixtures,
+dependencies, generated artifacts, output-format changes or scientific claims.

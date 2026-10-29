@@ -17,6 +17,23 @@ with the committed attributes, source text, binaries and verbatim records.
 Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
+## Phase 2/S1 Completeness Compatibility
+
+Owner-authorized 2026-10-29: resolve the admission conflict without changing
+the v1 requests, reports, digest recipes or S1 certainty logic. Phase 2 accepts
+an exactly empty `competitor_search_limitations` only with the explicit
+`declared_complete=true` declaration. Whitespace-only text is not an empty
+declaration; it stays invalid. Incomplete batches still require nonempty
+limitations. Nonempty text, including `none`, is preserved verbatim and cannot
+be interpreted as an unlimited search by a language heuristic.
+
+This admits a previously unreachable input; it does not reinterpret saved
+reports or promote any previously accepted limited search. S1 can derive
+definite support only when its existing completeness, assessed-view, geometry
+and legal-hypothesis conditions also hold. Producer-declared completeness is
+not independently verified exhaustive search, unique RNA or biological truth.
+Existing Phase 2/S1 byte/work preservation expectations remain unchanged.
+
 ## Observed Junction Structures: S0 Technical Boundary
 
 Owner-authorized 2026-10-27: implement the pure Rust S0 kernel from the
