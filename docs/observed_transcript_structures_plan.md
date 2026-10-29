@@ -700,6 +700,10 @@ distinguished in the [S1 contract](observed_transcript_structures.md).
    translation logic. The audit's assumed upstream canonical sequence and 343-aa
    prediction remain conditional, not part of initial structural inference.
 
+The independently authorized [junction assessment/consequences plan](observed_junction_consequences_plan.md)
+adds J1 as a saved-S1 consumer; J2/J3 coding/topology remain proposals and do
+not change this frozen S1 contract or authorize SAM ingress.
+
 The first useful delivery is S0/S1, not a TP53-specific port. S2 consumes an
 explicitly prepared SAM companion, not the ZIP/BAM automatically. The missing
 conversion artifact is a bounded follow-up, not an excuse to infer its contents.
