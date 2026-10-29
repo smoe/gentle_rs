@@ -12,6 +12,7 @@ pub(super) enum Policy {
     PayloadQueries(Box<crate::engine::PreparePrimerPayloadAlignmentQueriesRequest>),
     PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
     ObservedStructures(Box<crate::engine::SummarizeObservedTranscriptStructuresRequest>),
+    ObservedJunctions(Box<crate::engine::AssessObservedSpliceJunctionsRequest>),
     ObservedAnnotation(Box<crate::engine::PrepareObservedTranscriptAnnotationRequest>),
     Observe { expensive: bool },
     Control,
@@ -39,6 +40,15 @@ fn classify(op: Operation) -> Policy {
         Operation::SummarizeObservedTranscriptStructures { request } => {
             Policy::ObservedStructures(request)
         }
+        Operation::AssessObservedSpliceJunctions { request } => Policy::ObservedJunctions(request),
+        Operation::InspectObservedSpliceJunctions {
+            verify_artifacts,
+            rows,
+            ..
+        } => Policy::Observe {
+            expensive: verify_artifacts || rows > 0,
+        },
+        Operation::CancelObservedSpliceJunctions { .. } => Policy::Control,
         Operation::PrepareObservedTranscriptAnnotation { request } => {
             Policy::ObservedAnnotation(request)
         }
@@ -201,6 +211,9 @@ mod primer_trace_tests {
             "SummarizePrimerPayloadAlignments",
             "InspectPrimerPayload",
             "CancelPrimerPayload",
+            "AssessObservedSpliceJunctions",
+            "InspectObservedSpliceJunctions",
+            "CancelObservedSpliceJunctions",
         ] {
             let descriptor = discovery.output["capabilities"]
                 .as_array()
@@ -213,8 +226,12 @@ mod primer_trace_tests {
             let policy = classify(op);
             assert!(!policy.needs_project());
             match id {
-                "InspectPrimerPayload" => assert!(matches!(policy.lane(), Lane::Observation)),
-                "CancelPrimerPayload" => assert!(matches!(policy.lane(), Lane::Control)),
+                "InspectPrimerPayload" | "InspectObservedSpliceJunctions" => {
+                    assert!(matches!(policy.lane(), Lane::Observation))
+                }
+                "CancelPrimerPayload" | "CancelObservedSpliceJunctions" => {
+                    assert!(matches!(policy.lane(), Lane::Control))
+                }
                 _ => assert!(matches!(policy.lane(), Lane::Execution)),
             }
         }
@@ -324,6 +341,18 @@ pub(super) fn publication(
                     .map_err(|e| e.to_string())?;
             return Ok(Publication::ObservedAnnotation(binding));
         }
+        Policy::ObservedJunctions(request) => {
+            let report = serde_json::from_value(
+                output
+                    .pointer("/result/observed_splice_junctions")
+                    .ok_or("Junction assessment returned no typed report")?
+                    .clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let binding = GentleEngine::observed_splice_junction_result_binding(request, &report)
+                .map_err(|e| e.to_string())?;
+            return Ok(Publication::ObservedJunctions(binding));
+        }
         Policy::ObservedStructures(request) => {
             let report = serde_json::from_value(
                 output
@@ -383,6 +412,7 @@ pub(super) fn publication(
         | Policy::PayloadQueries(_)
         | Policy::PayloadAlignments(_)
         | Policy::ObservedStructures(_)
+        | Policy::ObservedJunctions(_)
         | Policy::ObservedAnnotation(_) => {
             unreachable!("handled above")
         }

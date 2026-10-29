@@ -12565,6 +12565,8 @@ Error: `{err}`"
                 observed_transcript_structures: None,
                 observed_transcript_structures_inspection: None,
                 observed_transcript_annotation: None,
+                observed_splice_junctions: None,
+                observed_splice_junction_inspection: None,
                 rna_primer_trace_inspection: None,
                 genome_edit_intent: None,
                 tube_profiles: None,

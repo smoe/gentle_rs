@@ -14283,6 +14283,7 @@ impl ShellCommand {
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
+                | Operation::InspectObservedSpliceJunctions { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
                     request.as_ref(),
@@ -19913,6 +19914,57 @@ fn observed_annotation_descriptor(id: &str) -> Value {
         "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
 }
 
+fn observed_junction_descriptor(id: &str) -> Value {
+    let inspect = matches!(
+        id,
+        "InspectObservedSpliceJunctions" | "rna-reads splice-junctions-show"
+    );
+    let cancel = matches!(
+        id,
+        "CancelObservedSpliceJunctions" | "rna-reads splice-junctions-cancel"
+    );
+    let mut descriptor = primer_payload_descriptor(if inspect {
+        "InspectPrimerPayload"
+    } else {
+        "SummarizePrimerPayloadAlignments"
+    });
+    let name = if inspect {
+        "InspectObservedSpliceJunctions"
+    } else if cancel {
+        "CancelObservedSpliceJunctions"
+    } else {
+        "AssessObservedSpliceJunctions"
+    };
+    let request = json!({"schema":"gentle.observed_splice_junction_assessment_request.v1",
+        "source":{"kind":"s1_report","result":{"schema":"gentle.observed_transcript_structures_result_binding.v1","request_sha256":"","report_content_sha256":"","report_path":"REPLACE_S1_REPORT","outcome":"REPLACE_ACTUAL_OUTCOME"},"report":{"path":"REPLACE_S1_REPORT","sha256":"","bytes":0}},
+        "reference_sequence":null,"sample_manifest":null,"near_window_bp":0,"recurrence_policy":null,
+        "budgets":{"max_input_bytes":0,"max_reference_bytes":0,"max_manifest_bytes":0,"max_distinct_junctions":0,"max_annotated_junctions_compared":0,"max_near_hits_per_junction":0,"max_total_work":0,"max_output_bytes":0},
+        "output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null});
+    descriptor["id"] = json!(id);
+    descriptor["request_template"] = if inspect {
+        Value::Null
+    } else {
+        request.clone()
+    };
+    descriptor["operation_template"] = if inspect {
+        json!({(name):{"path":"REPLACE_REPORT","expected_result":null,"table":"junction_assessment.tsv","rows":0,"verify_artifacts":false}})
+    } else {
+        json!({(name):{"request":request}})
+    };
+    descriptor["description"] = json!(
+        "Assess physical observed splice junctions from one exact saved S1 report. Annotation-relative offsets, optional verified/declared motif context and explicit recurrence policy; no realignment, expression, whole RNA or protein claim. Preserve project content."
+    );
+    descriptor["args"] = json!([{"name":"REQUEST_OR_PATH","required":true,"detail":"splice-junctions-assess|splice-junctions-cancel REQUEST_JSON_OR_@FILE; splice-junctions-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]"}]);
+    descriptor["template_contract"] = json!(
+        "Replace all bindings, choose near_window_bp=1..50 and all eight budgets explicitly. Zero placeholders are inadmissible. Recurrence requires a supplied context manifest and qualified flanks; no inferred independent samples."
+    );
+    descriptor["result_contract"] = json!(
+        "gentle.observed_splice_junction_assessment_result_binding.v1 binds completed/unavailable/cancelled/control_error reports. Absent counts are not zero. Saved inspection never reopens original sources. Write attempts require confirmation; cancel markers do not confirm termination."
+    );
+    descriptor["registry"] = json!(registry_metadata_for_introspection(id));
+    descriptor
+}
+
 fn observed_transcript_descriptor(id: &str) -> Value {
     let inspect = matches!(
         id,
@@ -22141,6 +22193,12 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rna_panel_descriptor("BuildRnaReadPanel"),
         primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
         observed_transcript_descriptor("SummarizeObservedTranscriptStructures"),
+        observed_junction_descriptor("AssessObservedSpliceJunctions"),
+        observed_junction_descriptor("InspectObservedSpliceJunctions"),
+        observed_junction_descriptor("CancelObservedSpliceJunctions"),
+        observed_junction_descriptor("rna-reads splice-junctions-assess"),
+        observed_junction_descriptor("rna-reads splice-junctions-show"),
+        observed_junction_descriptor("rna-reads splice-junctions-cancel"),
         observed_annotation_descriptor("PrepareObservedTranscriptAnnotation"),
         observed_annotation_descriptor("CancelObservedTranscriptAnnotation"),
         observed_annotation_descriptor("rna-reads transcript-annotation-prepare"),
@@ -66556,6 +66614,34 @@ fn execute_op_command(
                 output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
             });
         }
+        Operation::InspectObservedSpliceJunctions {
+            path,
+            expected_result,
+            table,
+            rows,
+            verify_artifacts,
+        } => {
+            let inspection = GentleEngine::inspect_observed_splice_junctions(
+                path,
+                expected_result.as_deref(),
+                table,
+                *rows,
+                *verify_artifacts,
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"observed_splice_junction_inspection":inspection}}),
+            });
+        }
+        Operation::CancelObservedSpliceJunctions { request } => {
+            let message = GentleEngine::cancel_observed_splice_junctions(request)
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
         Operation::InspectObservedTranscriptStructures {
             path,
             expected_result,
@@ -66709,6 +66795,7 @@ fn execute_op_command(
             | Operation::PreparePrimerPayloadAlignmentQueries { .. }
             | Operation::SummarizePrimerPayloadAlignments { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::AssessObservedSpliceJunctions { .. }
             | Operation::PrepareObservedTranscriptAnnotation { .. }
             | Operation::BuildRnaReadPanel { .. }
             | Operation::ScreenRnaReadPanel { .. }
@@ -66744,6 +66831,7 @@ fn execute_op_command(
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
+                | Operation::AssessObservedSpliceJunctions { .. }
                 | Operation::PrepareObservedTranscriptAnnotation { .. }
                 | Operation::ScreenRnaReadPanel { .. }
                 | Operation::ExportTssTfbsProfiles { .. }

@@ -40551,6 +40551,8 @@ impl GentleEngine {
             observed_transcript_structures: None,
             observed_transcript_structures_inspection: None,
             observed_transcript_annotation: None,
+            observed_splice_junctions: None,
+            observed_splice_junction_inspection: None,
             rna_primer_trace_inspection: None,
             rna_read_panel: None,
             rna_read_panel_screen: None,
@@ -52231,6 +52233,32 @@ impl GentleEngine {
                 }
                 Operation::CancelPrimerPayload { request } => {
                     result.messages.push(Self::cancel_primer_payload(&request)?);
+                }
+                Operation::AssessObservedSpliceJunctions { request } => {
+                    result.observed_splice_junctions = Some(Box::new(
+                        self.assess_observed_splice_junctions(*request, on_progress)?,
+                    ));
+                }
+                Operation::InspectObservedSpliceJunctions {
+                    path,
+                    expected_result,
+                    table,
+                    rows,
+                    verify_artifacts,
+                } => {
+                    result.observed_splice_junction_inspection =
+                        Some(Box::new(Self::inspect_observed_splice_junctions(
+                            &path,
+                            expected_result.as_deref(),
+                            &table,
+                            rows,
+                            verify_artifacts,
+                        )?));
+                }
+                Operation::CancelObservedSpliceJunctions { request } => {
+                    result
+                        .messages
+                        .push(Self::cancel_observed_splice_junctions(&request)?);
                 }
                 Operation::SummarizeObservedTranscriptStructures { request } => {
                     result.observed_transcript_structures = Some(Box::new(

@@ -3282,6 +3282,22 @@ pub enum Operation {
     SummarizePrimerPayloadAlignments {
         request: Box<SummarizePrimerPayloadAlignmentsRequest>,
     },
+    AssessObservedSpliceJunctions {
+        request: Box<AssessObservedSpliceJunctionsRequest>,
+    },
+    InspectObservedSpliceJunctions {
+        path: String,
+        #[serde(default)]
+        expected_result: Option<Box<ObservedSpliceJunctionResultBinding>>,
+        table: String,
+        #[serde(default)]
+        rows: usize,
+        #[serde(default)]
+        verify_artifacts: bool,
+    },
+    CancelObservedSpliceJunctions {
+        request: Box<AssessObservedSpliceJunctionsRequest>,
+    },
     SummarizeObservedTranscriptStructures {
         request: Box<SummarizeObservedTranscriptStructuresRequest>,
     },
@@ -10329,6 +10345,9 @@ impl GentleEngine {
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::CancelPrimerPayload { .. }
+                | Operation::AssessObservedSpliceJunctions { .. }
+                | Operation::InspectObservedSpliceJunctions { .. }
+                | Operation::CancelObservedSpliceJunctions { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
                 | Operation::CancelObservedTranscriptStructures { .. }

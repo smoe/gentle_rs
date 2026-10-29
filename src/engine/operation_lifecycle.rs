@@ -17,6 +17,9 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
         Operation::PlanDnaSequenceDesign { .. }
             | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::AssessObservedSpliceJunctions { .. }
+            | Operation::InspectObservedSpliceJunctions { .. }
+            | Operation::CancelObservedSpliceJunctions { .. }
             | Operation::InspectObservedTranscriptStructures { .. }
             | Operation::CancelObservedTranscriptStructures { .. }
             | Operation::PrepareObservedTranscriptAnnotation { .. }
@@ -57,7 +60,9 @@ impl OperationApprovalPolicy {
 /// `None` leaves an unmigrated operation's existing conservative rules intact.
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
-        Operation::SummarizeObservedTranscriptStructures { .. }
+        Operation::AssessObservedSpliceJunctions { .. }
+        | Operation::CancelObservedSpliceJunctions { .. }
+        | Operation::SummarizeObservedTranscriptStructures { .. }
         | Operation::CancelObservedTranscriptStructures { .. } => {
             Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
         }
