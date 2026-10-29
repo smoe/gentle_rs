@@ -1302,7 +1302,7 @@
         },
         {
           "id": "observed-transcripts",
-          "title": "Observed Transcript Structures",
+          "title": "Observed Transcript Structures And Junctions",
           "group": "RNA and sequencing reads",
           "path": "docs/cli/observed-transcripts.md",
           "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."

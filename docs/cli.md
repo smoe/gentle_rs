@@ -183,7 +183,7 @@ Choose a topic below for complete commands, examples and limitations.
 - [RNA Read Interpretation](cli/rna-reads.md)
 - [Primer-Anchored Read Trace](cli/primer-trace.md)
 - [Primer-Free Payload Evidence](cli/primer-payload.md)
-- [Observed Transcript Structures](cli/observed-transcripts.md)
+- [Observed Transcript Structures And Junctions](cli/observed-transcripts.md)
 - [Target Rescue Screen](cli/rescue-screen.md)
 - [RNA Secondary Structure](cli/rna-structure.md)
 - [MicroRNA Target Scans](cli/microrna.md)

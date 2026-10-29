@@ -1,6 +1,27 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["AssessObservedSpliceJunctions"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads splice-junctions-assess",
+         "summary": "Assess physical junctions from one exact saved S1 report with explicit near window, budgets and optional motif/sample bindings. No realignment, whole RNA, protein, expression or project-content mutation. Artifact writes require approval.",
+         "usage": "rna-reads splice-junctions-assess REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["InspectObservedSpliceJunctions"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads splice-junctions-show",
+         "summary": "Inspect saved J1 metadata or bounded verified rows without reopening S1, annotations or FASTA. Default zero rows; --verify-artifacts verifies all five artifacts to EOF.",
+         "usage": "rna-reads splice-junctions-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]"
+      },
+      {
+         "aliases": [], "engine_operations": ["CancelObservedSpliceJunctions"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads splice-junctions-cancel",
+         "summary": "Publish an exact-request J1 cancel marker. Requires approval; does not confirm termination or reopen scientific evidence.",
+         "usage": "rna-reads splice-junctions-cancel REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["PrepareObservedTranscriptAnnotation"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads transcript-annotation-prepare",

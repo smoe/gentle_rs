@@ -91,5 +91,5 @@ unit explicit.
 
 ---
 
-[CLI Manual](../cli.md) | [Previous: Observed Transcript Structures](observed-transcripts.md) | [Next: RNA Secondary Structure](rna-structure.md)
+[CLI Manual](../cli.md) | [Previous: Observed Transcript Structures And Junctions](observed-transcripts.md) | [Next: RNA Secondary Structure](rna-structure.md)
 <!-- manual-page-nav:end -->

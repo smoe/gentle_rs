@@ -57,7 +57,7 @@ own v1 schema IDs. No defaults supply biology, source bindings or resource limit
 | `source` | Tagged enum, initially `s1_report`, carrying the exact S1 result binding and raw report path/SHA-256/bytes. Verify raw bytes, semantic identity and every S1 artifact to EOF through existing inspection. A non-completed source yields unavailable with absent counts. Future tagged SAM sources require separate authorization. |
 | `reference_sequence` | Optional exact raw FASTA binding, `format=fasta_plain_v1`. Full assembly must hash to S1's assembly FASTA SHA-256 at EOF; authority is verified only then. Declared excerpt additionally binds contig, zero-based offset and length; its assembly relationship remains declared. Absence means motif not_assessable. |
 | `sample_manifest` | Optional raw binding of `gentle.observed_sample_manifest.v1`. Exact context `(sample_id,barcode,priming,file_id)` maps to library/prep/biological-sample IDs and optional cell line. Context mapping is unambiguous, library-to-prep and prep-to-sample are functions. Contradictions are binding errors; unused rows remain visible. |
-| `near_window_bp` | Required 1..50 engineering admission window; no default. Acceptance's proposed value 5 is not selected here. |
+| `near_window_bp` | Required 1..50 engineering admission window; no default. Owner confirmed 5 for the synthetic acceptance fixture only. |
 | `recurrence_policy` | Optional explicit unit, min_units >=2, definite or definite_or_possible certainty, and require_qualified_flanks=true. Without a policy there is no recurrence label. |
 | `budgets` | Positive explicit input/reference/manifest bytes, distinct junctions, annotated junction comparisons, near hits per junction, total work and output bytes. Overflow/exhaustion fails, never truncates. |
 | `output_dir`, `cancel_path` | Fresh output; optional exact-request marker. Writes require approval even for refusal/cancellation. |
@@ -165,9 +165,8 @@ authority, record counts not molecules and payload ends not RNA ends.
 All fixtures are inline synthetic code using existing file-backed S1/Phase 2
 helpers. Pin an offline-precomputed short-ID collision with its hash recipe;
 never search for it in the runtime test. A synthetic CD274-like contig uses
-LCG `state = state*1664525 + 1013904223 (mod 2^32)`, seed 274, bases selected
-from the upper two bits; planted motifs and declared geometry are fixture-only.
-Literal CD274 coordinate/count/recurrence acceptance stays gated below.
+LCG recipe recorded below; planted motifs and declared geometry are fixture-only.
+Historical certainty/qualification and scientific acceptance stay gated below.
 
 Derived assessment rows are byte-identical under reordered in-memory evidence
 with bindings held fixed. Reordered raw files necessarily have different raw
@@ -229,26 +228,40 @@ no evidence of translation, secretion, stability or soluble protein.
 | Decision | Recommendation/status, not selected by Codex |
 | --- | --- |
 | Literal 5466827 -> 5468193 convention | Resolved by the owner on 2026-10-29: none of the original A/B/C interpretations describes this legacy token. Its producer displayed start+1 -> end+1. Store **[5466826,5468192)**, 1366 bp; label exon boundaries **5466826 -> 5468193**; inclusive intron is 5466827-5468192. Keep the old token only as a marked legacy alias, not an input convention. |
-| Meaning of 3/1/3/0 | Confirm records versus reads, certainty and flank qualification; provide library/prep/sample/cell-line mapping. Do not infer independence. |
-| Acceptance recurrence | Recommend explicit library/min_units=2/definite only if independent; shared preps require prep/sample units. Await owner. |
-| Acceptance near window | Recommend explicit 5; no default is introduced. |
+| Meaning of 3/1/3/0 | Owner confirmed order: sample 1 original cDNA=3, sample 2 original cDNA=1, sample 1 second cDNA/sequencing preparation=3, sample 2 second preparation=0. These are two biological samples, not four. Cell-line names, historical distinct-record certainty and flank qualification remain unspecified; do not relabel real counts. |
+| Acceptance recurrence | Owner confirmed explicit library/min_units=2/definite/qualified flanks for the **synthetic fixture only**. This does not establish independence of real libraries. |
+| Acceptance near window | Owner confirmed explicit 5 for the synthetic fixture; no service default is introduced. |
 | Real CD274 ingress | Phase 2 -> S1 is available. BAM needs separately authorized verified SAM ingress plus external conversion; inherited private decoder is not a service. |
 | Real reference authority | Full assembly needs explicit large byte/work budgets; excerpt has declared authority only. |
 | J2 CDS format | Decide separate binding versus new S2.1 output; existing receipts stay unchanged. Decide whether to expose stop-to-last-junction distance as geometry only. |
 | J3 | Decide minimum extracellular residues, SIGNAL requirement, single-pass-only v1 and portable UniProt format. |
 
-Once confirmed, a generic synthetic fixture may use two independently bound
+A generic synthetic fixture uses two independently bound
 CD274-like sources that lack the chosen junction, including shared-last-donor
 geometry, four declared libraries with gene-coherent denominators above support,
 verified gt_ag, explicit recurrence policy and incomplete-search 0 definite / 3,1,3,0
 possible support. No human/GRCh38/CD274/plus/soluble default enters the service.
-Without confirmation this acceptance case is pending, not silently passed.
+The fixture declares the confirmed sample/preparation order with no cell-line
+names; its distinct qualified records are deliberately synthetic, not a
+reclassification of the historical counts. Real scientific acceptance remains open.
+
+Synthetic FASTA recipe: u64 LCG seed `0x4a31`, multiplier
+`6364136223846793005`, increment 1, wrapping arithmetic, bases from the high two
+bits in A/C/G/T order, contig length 5,468,300; plant GT at offset 5,466,826 and
+AG before 5,468,192. Wrap lines at 80 bases. Assembly is
+`synthetic_cd274_like_v1`, not GRCh38. All inputs are recreated in tests.
+Pinned 8-hex display collision: a bounded offline search over starts 1..300000,
+end=start+17, canonical JSON `(domain,reference,contig,interval)` with domain
+`gentle.observed_splice_junction.v1`, assembly `synthetic_collision_v1`, FASTA
+hash `sha256:` plus 64 `a`s and contig `synthetic_contig`, finds starts 57505 and
+62716 sharing `69d1a3a7`. The test pins both full hashes; full identities differ.
 
 ## J1 Execution Ledger
 
 J0 is committed separately as `f0c8bdb7`. The owner then clarified the legacy
-coordinate convention above; support meaning/hierarchy and synthetic recurrence
-settings remain unanswered at this point. Code contains no CD274 default.
+coordinate convention above, then confirmed the sample/preparation order and
+synthetic recurrence/window settings. Historical certainty/qualification and
+J2/J3 decisions remain open. Code contains no CD274 default.
 
 At `f0c8bdb7` plus the initial DTO/test skeleton, the fail-first command
 `env CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test -q --locked --offline --no-default-features --lib junction_assessment -- --test-threads=1`
@@ -258,4 +271,103 @@ The expanded tests additionally specify near/event/motif helpers and file-bound
 reference/manifest/cancel/error behavior before their implementation.
 The unchanged Cargo.lock SHA-256 is
 `a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
-No successful J1 runtime verification is claimed yet.
+At that fail-first checkpoint no successful J1 runtime verification was claimed.
+
+The first behavioral run on `515c721d` plus engine/adapter/test edits ran 22
+tests: 20 passed, 2 failed, 0 ignored. Primary failures: the complete synthetic
+fixture was refused by frozen Phase 2's nonempty
+`competitor_search_limitations` admission; the MCP response lacked the new
+compact binding envelope. No cascade failures occurred. The envelope is added.
+The frozen producer issue is **not changed**: `summarize.rs` refuses empty
+limitations, whereas S1 `observed.rs` requires exactly empty limitations for
+`search_complete`. Thus current end-to-end Phase 2 -> S1 sources remain
+possible-only even when the producer intended an exhaustive search.
+The saved-source CD274-like regression asserts that conservative behavior;
+the definite 3/1/3/0 recurrence case is a separately labelled synthetic
+in-memory derivation, never a rehashed/promoted source report. Completing the
+requested full-producer definite acceptance requires a separately reviewed
+compatibility fix; do not silently weaken frozen semantics here.
+
+### Final Local Verification (2026-10-29)
+
+Runtime/adapter implementation is `1c31d371`; closing publication ownership and
+typed discovery-fixture repair is
+`ac85d1e4d6c03feaf2ccff2ac407d2eea4645161`. J0 is `f0c8bdb7`,
+DTO/fail-first specification is `515c721d`. The final runs below use `ac85d1e4`
+plus the pending documented discovery/manual projections. The SHA-256 of
+`git diff --binary -- src crates Cargo.lock assets` at that checkpoint is
+`a83a29f11405a76a81eefbad41904748fcb41d3e829a7d947676fe38593fa3ee`.
+All dirty source/crate/asset entries were ours; no unrelated source change was
+included. `output/` was pre-existing, untracked and left untouched.
+
+Every Cargo result below uses the unchanged Cargo.lock SHA-256
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+Platform: macOS 27.0.1 build 26A434, aarch64-apple-darwin;
+rustc 1.100.0-beta.7 (`fd8e211ae301c84a86d13cf52a6d3ce08c589e2e`,
+2026-10-17), LLVM 23.1.4. The initial local `git rebase main` reported up to
+date on local main `c768d3c1`; no fetch/push/tag/CI dispatch was performed.
+
+Command prefix for every Cargo row is
+`env CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo`;
+every row uses `--locked --offline`. Filters overlap: do not sum their counts.
+
+| Command after prefix | Passed / failed / ignored, or check outcome |
+| --- | --- |
+| `test -q --locked --offline --no-default-features --lib junction_assessment -- --test-threads=1` | 27 / 0 / 0 |
+| `test -q --locked --offline --no-default-features --lib observed_transcript_structures -- --test-threads=1` | 70 / 0 / 0 |
+| `test -q --locked --offline --no-default-features --lib observed_transcripts -- --test-threads=1` | 16 / 0 / 0 |
+| `test -q --locked --offline --no-default-features --lib primer_payload -- --test-threads=1` | 101 / 0 / 0 |
+| `test -q --locked --offline --no-default-features --lib lifecycle_slice3 -- --test-threads=1` | 11 / 0 / 0 |
+| `test -q --locked --offline --no-default-features --lib engine_shell::tests::glossary_ -- --test-threads=1` | 12 / 0 / 0 |
+| `test -q --locked --offline --test capability_registry_parity -- --test-threads=1` | 21 / 0 / 0 |
+| `test -q --locked --offline --test mcp_capability_surface -- --test-threads=1` | 6 / 0 / 0 |
+| `check -q --locked --offline --no-default-features --lib --bin gentle_cli --bin gentle_mcp` | exit 0; no test count |
+| `check -q --locked --offline --tests` | exit 0; no test count |
+| `run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-generate` | canonical generation exit 0 (before the closing publication-only fix) |
+| `run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-check` | final freshness exit 0 |
+
+Additional deterministic receipts, repeated after the closing code checks:
+
+- `python3 -m unittest scripts.test_observed_transcript_contract -v`: 8/0/0.
+- `python3 -m unittest scripts.test_capability_maturity -q`: 12/0/0.
+- `python3 -m unittest scripts.test_tutorial_checkouts.DocumentationStatusTests -q`: 18/0/0, including LF/CRLF manual/catalog replay.
+- `python3 -m unittest scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes -v`: 1/0/0, including the bad-policy control and committed LF/CRLF replay.
+- `python3 scripts/check_documentation_status.py`, `python3 scripts/manual_docs.py` and `python3 scripts/generate_capability_maturity.py --check`: exit 0. The manual checker has no `--check` flag; an initial unsupported invocation was corrected to its default check mode.
+- `git diff --check`: exit 0. Scoped `rustfmt --edition 2024 --config skip_children=true --check` passes for the new/changed engine, DTO, adapter and new test files. Three legacy touched files (`app.rs`, `main_area_dna/tests.rs`, `engine_shell/tests.rs`) retain unrelated existing formatter differences; formatting baseline copies from `c768d3c1` reproduces those same requested changes. No workspace formatting churn was included.
+- `python3 scripts/maintenance_chore.py session-close --plan docs/observed_junction_consequences_plan.md`: 4 ok, 2 warnings, 0 failures before handoff. Warnings are intentional pending docs/generated files and manual plan-fidelity review; final worktree hygiene is checked after committing.
+
+Primary intermediate failures were repaired, not hidden: compile-red missing
+APIs/implementation type errors; incomplete synthetic producer admission;
+missing MCP compact envelope; synthetic crosswalk IDs inherited from a different
+toy reference (22/24 passed at that checkpoint); typed glossary smoke fixtures
+that still supplied `{}` (10/12 passed); and a direct manual-index edit caught
+by its canonical freshness guard (17/18 passed). The latter now derives from
+`manuals.json` and canonical generation. No mutex-poisoning/cascade failures
+were observed. Headless unused-code and macOS large-unwind-section linker
+warnings remain warnings, not a claim of `-D warnings` acceptance.
+
+The closing read-through also found an unknown-ownership cleanup gap in the new
+publisher. `ac85d1e4` never removes an output reservation when identity capture
+fails, discloses the orphan, and tests preservation of an empty replacement.
+This extra small fix stays inside J1 publication safety, not S2.1 or a new feature.
+
+Changed-file groups: `engine/protocol/observed_junctions.rs`, private
+`primer_payload/junction_assessment{.rs,/}` and inline fixtures; shared operation,
+shell/parser, lifecycle, managed execution, agent feedback, MCP and protocol-name
+registry wiring; required optional-result constructor additions in RNA/GUI tests;
+CLI/protocol/user/plan/changelog/roadmap docs and glossary. Canonical derived
+changes are the parity matrix, manual index/navigation/source inventory and
+four maturity projections (only the glossary source hash changes). No committed
+byte fixture, dependency, biological computation outside J1 or reserved S2.1
+file is changed.
+
+**Still unverified:** native Windows/Linux, full suite, actual CLI/MCP subprocess
+execution, feature-gated JS/Lua VM execution, real CD274/reference/library
+evidence and scientific acceptance. JS/Lua regression tests are present but
+neither no-default nor desktop-default builds enable `script-interfaces`; do not
+claim those tests ran or compiled. Existing generic engine routes remain shared.
+The requested full-producer definite recurrence acceptance is specifically
+**not closed**, for the frozen Phase 2/S1 completeness contradiction above.
+Historical 3/1/3/0 certainty/flank qualification, reference authority and J2/J3
+choices still need explicit evidence/owner decisions. No J2/J3 or SAM service
+implementation, protein/expression/novelty claim or downloaded reference is added.

@@ -1,4 +1,24 @@
-# Observed Transcript Structures
+# Observed Transcript Structures And Junctions
+
+## Saved Junction Assessment (J1)
+
+For source-relative near offsets, optional motif context and explicit declared
+sample recurrence, assess one exact saved S1 report without altering its bytes:
+
+```text
+rna-reads splice-junctions-assess REQUEST_JSON_OR_@FILE
+rna-reads splice-junctions-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]
+rna-reads splice-junctions-cancel REQUEST_JSON_OR_@FILE
+```
+
+Supply a strict `gentle.observed_splice_junction_assessment_request.v1` request
+with the semantic/raw S1 bindings, near window and all eight budgets explicitly.
+Optional FASTA authority and sample hierarchy remain separately declared.
+Read the [J1 request and interpretation contract](../observed_splice_junction_assessment.md)
+before choosing limits or interpreting support. No whole-RNA/protein/expression
+claim follows. Missing evidence is not zero. Generic MCP still requires approval.
+
+## Structural Intake (S1)
 
 <!-- manual-counterparts:start -->
 No direct GUI counterpart: This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it.

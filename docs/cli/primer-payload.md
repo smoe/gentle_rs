@@ -22,5 +22,5 @@ rna-reads primer-payload-cancel CONTROL_JSON_OR_@FILE
 
 ---
 
-[CLI Manual](../cli.md) | [Previous: Primer-Anchored Read Trace](primer-trace.md) | [Next: Observed Transcript Structures](observed-transcripts.md)
+[CLI Manual](../cli.md) | [Previous: Primer-Anchored Read Trace](primer-trace.md) | [Next: Observed Transcript Structures And Junctions](observed-transcripts.md)
 <!-- manual-page-nav:end -->

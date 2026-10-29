@@ -1,5 +1,9 @@
 # Observed Transcript Structures (Experimental S1)
 
+Source-relative near offsets, motif context and explicit sample recurrence use
+the separate [J1 assessment](observed_splice_junction_assessment.md). It consumes
+saved S1 evidence without changing this v1 contract.
+
 Interpret **saved genomic Phase 2 evidence**, not raw reads. Ask which exact
 splice patterns were observed and which supplied gene/transcript models remain
 compatible. A compatible RNA pattern does not establish a complete transcript,

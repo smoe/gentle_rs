@@ -1319,7 +1319,7 @@ pub(super) const CLI_SOURCES: &[ManualSource] = &[
     ManualSource {
         id: "observed-transcripts",
         path: "docs/cli/observed-transcripts.md",
-        title: "Observed Transcript Structures",
+        title: "Observed Transcript Structures And Junctions",
         group: "RNA and sequencing reads",
         markdown: include_str!("../../docs/cli/observed-transcripts.md"),
     },

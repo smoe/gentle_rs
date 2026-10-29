@@ -19,17 +19,20 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 65 | 800 | 0 |
-| gentle_cli | 506 | 383 | 0 |
-| MCP | 202 | 551 | 49 |
-| JS | 78 | 630 | 69 |
-| Lua | 77 | 631 | 69 |
+| GUI | 65 | 806 | 0 |
+| gentle_cli | 509 | 386 | 0 |
+| MCP | 205 | 554 | 49 |
+| JS | 78 | 636 | 69 |
+| Lua | 77 | 637 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
 
 | Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |
 |---|---|---|---|---|---|---|---|---|
+| rna-reads splice-junctions-assess | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads splice-junctions-show | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads splice-junctions-cancel | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads transcript-annotation-prepare | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads transcript-annotation-cancel | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads transcript-structures | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -652,6 +655,9 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | PreparePrimerPayloadAlignmentQueries | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizePrimerPayloadAlignments | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizeObservedTranscriptStructures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| AssessObservedSpliceJunctions | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| InspectObservedSpliceJunctions | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| CancelObservedSpliceJunctions | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectObservedTranscriptStructures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | CancelObservedTranscriptStructures | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PrepareObservedTranscriptAnnotation | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-29 - Assess Saved Observed Splice Junctions (J1)
+
+- Add a separate bounded, offline J1 request/report/binding and assess/show/cancel
+  engine/shared-shell routes, generic MCP and managed-job result handling.
+  Preserve S0/S1/Phase 2 records, output formats and biological semantics.
+- Retain exact physical coordinates, per-source near offsets and nonexclusive
+  geometry events, optional verified/declared motif context, per-record
+  certainty/qualification, declared sample hierarchy and policy-bound recurrence.
+  Publish five hashed artifacts before the no-clobber final report; inspection
+  never reopens original scientific sources.
+- Add generated synthetic fixtures, including corrected legacy CD274-like
+  coordinates, 3/1/3/0 library support and incomplete-search controls. These are
+  software regressions, not real RNA/scientific acceptance. CDS/ORF, UniProt,
+  expression and verified SAM ingress remain out of scope. See the
+  [source-bound verification ledger](observed_junction_consequences_plan.md#j1-execution-ledger).
+
 ## 2026-10-29 - Harden S2.1 Annotation Preparation Close-Out
 
 - Keep staging/annotation handles out of the artifact-directory rename. Acquire

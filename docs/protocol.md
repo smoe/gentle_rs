@@ -1,5 +1,37 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Observed Splice-Junction Assessment (J1)
+
+`AssessObservedSpliceJunctions`, `InspectObservedSpliceJunctions` and
+`CancelObservedSpliceJunctions` expose the separate
+`gentle.observed_splice_junction_assessment_{request,report,result_binding}.v1`
+contract. See the [full request, limits and interpretation](observed_splice_junction_assessment.md).
+`OpResult.observed_splice_junctions` and
+`OpResult.observed_splice_junction_inspection` are optional, omitted when absent.
+All S0/S1/Phase 2 serialized records and evidence semantics remain unchanged.
+
+The only v1 source tag is `s1_report`: exact semantic result binding plus raw
+report path/SHA-256/size. Verify all S1 artifacts to EOF. Original bound normalized
+annotation catalogs supply geometry; missing catalogs remain not_assessable,
+changed bytes refuse assessment. Optional FASTA is streamed: `full_assembly`
+requires the S1 digest, `declared_excerpt` preserves declared-only authority.
+Optional exact context manifests declare, never authenticate, hierarchy.
+Near offsets never snap; model orientation and motif authority remain separate.
+Full junction identities are authoritative despite short display collisions.
+Support counts are mutually exclusive by certainty/qualification per original
+record; grouping dimensions are nonadditive and independent recurrence uses
+only the explicit, flank-qualified policy. No whole-RNA/protein/expression claim.
+
+Five hashed artifacts precede report-last no-clobber publication. Saved inspection
+does not reopen sources, defaults to zero rows and optionally verifies every
+artifact. Assessment/cancel preserve project content but require artifact-write
+approval. Raw operations retain audit entries without content undo checkpoints;
+managed jobs publish `observed_junctions_result` without committing a project.
+Oversized managed responses use `gentle.command_observed_junction_result.v1`.
+Unavailable/cancelled/control_error outcomes are not successful analysis.
+Generic MCP `op` retains `confirm:true`; shared-shell and scripting routes use
+the same engine. CDS/ORF/topology consequences and SAM ingress are not added.
+
 ## Observed Junction Structures (S0 Kernel And S1 Intake)
 
 `observed_transcript_structures::summarize(&Input)` is a pure, experimental
