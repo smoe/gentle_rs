@@ -1187,7 +1187,11 @@ fn run_on_worker() -> Result<(), String> {
 fn cli_error_payload(message: &str) -> String {
     let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed")
         .with_cause(message);
-    serde_json::to_string(&error.portable_payload(vec![])).unwrap_or_else(|_| message.to_string())
+    let notes = gentle::cli_support::candidate_store_failure_note(message)
+        .map(str::to_string)
+        .into_iter()
+        .collect();
+    serde_json::to_string(&error.portable_payload(notes)).unwrap_or_else(|_| message.to_string())
 }
 
 fn classify_cli_error(message: &str) -> ErrorCode {
@@ -1461,6 +1465,27 @@ mod tests {
     use tempfile::tempdir;
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn candidate_store_unresolved_cli_error_discloses_transient_results_and_external_effects() {
+        let payload: serde_json::Value = serde_json::from_str(&cli_error_payload(
+            "InvalidInput: candidate_store_unavailable: synthetic",
+        ))
+        .unwrap();
+        let causes = payload["cause_chain"].as_array().unwrap();
+        assert!(causes.iter().any(|cause| {
+            cause.as_str().is_some_and(|text| {
+                text.contains("discarded when the invocation ends")
+                    && text.contains("not rolled back")
+            })
+        }));
+        let ordinary: serde_json::Value =
+            serde_json::from_str(&cli_error_payload("synthetic ordinary refusal")).unwrap();
+        assert_eq!(
+            ordinary["cause_chain"],
+            serde_json::json!(["synthetic ordinary refusal"])
+        );
+    }
 
     #[test]
     fn genome_edit_intent_cli_preserves_missing_existing_and_refused_state_files() {

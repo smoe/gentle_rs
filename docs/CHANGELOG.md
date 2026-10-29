@@ -1,23 +1,31 @@
 # GENtle Changelog
 
-## 2026-10-29 - Guard Saves After Degraded Candidate-Store Loading
+## 2026-10-29 - Guard Degraded Candidate-Store Use And Persistence
 
-- Implement owner-authorized Lifecycle Slice 6: retain unresolved references and
-  structured load diagnostics, keep legacy warning-only states unresolved, and
-  refuse shared saves/Save As/implicit saves before save-owned filesystem changes.
-  Recovery requires restoring the original dependency/backup and reopening.
-- Make candidate access fallible across engine/shell/GUI consumers; missing data
-  is unavailable, not zero candidates. Validate sidecar counts before hydration,
-  propagate unknown candidate facts and disclose unavailability to the agent.
-  Healthy empty stores and intentional sidecar cleanup keep their semantics.
-- Add synthetic missing/corrupt/truncated, LF/CRLF, quoted-path, save-target,
-  strict/legacy/recovery and healthy controls; author opt-in CLI/MCP and JS/Lua
-  boundary tests. Update tutorial 06.07, interface docs and Glen's bounded handoff.
-  Rust/VM/process/native acceptance remains external; no local Rust or push.
-  No automatic repair/discard, global rollback, exporter migration or goal resumption.
-- Authoring verification: 37 Python/source tests passed, including LF/CRLF;
-  two new actual-process checks explicitly skipped without same-source binaries.
-  Scoped formatting, documentation/manual freshness and whitespace passed.
+- Implement the owner-authorized Claude revision, reusing a scoped snapshot of
+  overlapping main-checkout work without editing that checkout. Preserve raw
+  failed references and versioned diagnostics; guard shared candidate access
+  and project saves before save-owned filesystem changes. Propagate unavailable
+  facts/agent context instead of asserting empty candidate collections.
+- Keep unknown schemas and legacy warning-only projects loadable but block
+  candidate use/save. Preserve existing strict hydration behavior and count/
+  schema defaults; defer count tightening, separator migration and general
+  mutation preflight. Recovery is restore/backup plus reopen, never guessing.
+- Surface GUI save failures without clearing dirty state/path/pending actions.
+  One-shot CLI/MCP errors disclose transient-state loss and non-rollback of
+  separately published files. No new resolver, repair/discard command, queue,
+  approval exception or scientific change.
+- Author eight engine safety regressions plus GUI, CLI/MCP feedback and public
+  VM load/save controls, and extend the existing opt-in actual-process companion.
+  Update tutorial 06.07, canonical interface/decision docs and the existing
+  roadmap line. Rust/process/VM/native execution remains Glen/CI work, not an
+  acceptance claim from source checks. Preserve unrelated `outputs/`, the paused
+  goal and primary-checkout changes; no build, capture, model call or push.
+- Local checks pass 19 source/teaching cases and two real LF/CRLF checkout
+  cases; 15 actual-binary checks explicitly skip. Documentation/manual freshness
+  and whitespace pass. Apply formatting only to changed Rust lines, preserving
+  baseline drift. Session-close: 4 OK, 2 expected warnings, 0 failures; roadmap
+  remains 400 lines. These are not compilation or runtime acceptance results.
 
 ## 2026-10-29 - Reconcile The Reported Lifecycle Slice 3/5 Return
 
@@ -39,6 +47,28 @@
   Documentation only; no runtime/scientific/approval change, build, Claude or
   provider call, native capture, push or goal resumption. Preserve unrelated
   `outputs/`.
+
+## 2026-10-29 - Guard Saves After Degraded Candidate-Store Loading
+
+Historical foundation at `1fdeb1d9`; the later Claude-reconciled entry above
+supersedes its count/strict-load expansion, not its recorded authoring results.
+
+- Implement owner-authorized Lifecycle Slice 6: retain unresolved references and
+  structured load diagnostics, keep legacy warning-only states unresolved, and
+  refuse shared saves/Save As/implicit saves before save-owned filesystem changes.
+  Recovery requires restoring the original dependency/backup and reopening.
+- Make candidate access fallible across engine/shell/GUI consumers; missing data
+  is unavailable, not zero candidates. Validate sidecar counts before hydration,
+  propagate unknown candidate facts and disclose unavailability to the agent.
+  Healthy empty stores and intentional sidecar cleanup keep their semantics.
+- Add synthetic missing/corrupt/truncated, LF/CRLF, quoted-path, save-target,
+  strict/legacy/recovery and healthy controls; author opt-in CLI/MCP and JS/Lua
+  boundary tests. Update tutorial 06.07, interface docs and Glen's bounded handoff.
+  Rust/VM/process/native acceptance remains external; no local Rust or push.
+  No automatic repair/discard, global rollback, exporter migration or goal resumption.
+- Authoring verification: 37 Python/source tests passed, including LF/CRLF;
+  two new actual-process checks explicitly skipped without same-source binaries.
+  Scoped formatting, documentation/manual freshness and whitespace passed.
 
 ## 2026-10-29 - Assess Saved Observed Splice Junctions (J1)
 

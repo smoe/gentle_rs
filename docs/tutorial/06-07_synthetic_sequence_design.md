@@ -314,6 +314,15 @@ No automatic repair/discard or rollback of earlier edits/exports is provided.
 Healthy projects retain their existing save behavior. See the
 [project persistence reference](../cli/projects.md#unavailable-candidate-sidecars).
 
+In the GUI, read the save error in the status area: a refused save does not mark
+the project clean or continue a pending New/Open/Close action. Keep the unsaved
+session open until you have deliberately secured that work. In a one-shot
+CLI/MCP invocation, any transient edits are not saved and disappear when that
+invocation ends. A report/export already written to its own file is **not rolled
+back**. This safeguard is not a whole-command transaction or a new check of
+declared record counts. Unknown-schema and old warning-only projects remain
+inspectable, even with strict loading, but cannot be saved or used as candidates.
+
 ## Executable checks and independent review
 
 Fast, standard-library-only source/teaching checks:

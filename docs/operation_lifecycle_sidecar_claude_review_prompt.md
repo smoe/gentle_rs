@@ -5,6 +5,14 @@ implementation authorization.** No Claude invocation or verdict is claimed.
 The previous goal stays paused. Rust, actual-process/VM and native verification
 remain with Glen/CI; no push or new release gate.
 
+Status update, 2026-10-29: the owner supplied Claude's read-only review and then
+authorized the [reconciled Slice 6](operation_lifecycle_slice6_plan.md).
+Unknown-schema load compatibility, fail-closed legacy warning-only saves and
+deferred general mutation preflight are explicit decisions. The original prompt
+below is historical; it is not another pending review or authorization request.
+No additional Claude invocation is claimed, and authored work is not execution
+or native acceptance.
+
 ---
 
 Please critique the proposed next lifecycle slice below. Verify the current

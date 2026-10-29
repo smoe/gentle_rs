@@ -165,8 +165,19 @@ class LifecycleSlice6SourceTests(unittest.TestCase):
         loader = source.split("pub fn load_from_path(", 1)[1].split("pub fn ensure_candidate_store_available", 1)[0]
         self.assertNotIn("remove(CANDIDATE_SETS_METADATA_KEY)", loader)
         self.assertIn("else if had_external_reference", loader)
-        for field in ('"status": "unresolved"', '"code": "candidate_store_unavailable"', '"cause": err'):
+        for field in ('"status": "unresolved"', '"code": "candidate_store_unavailable"', '"message": err.message'):
             self.assertIn(field, loader)
+        self.assertNotIn("state.ensure_candidate_store_available()?", loader, "strict load compatibility is not tightened")
+
+    def test_candidate_reads_and_one_shot_failures_keep_their_distinctions(self):
+        source = (ROOT / "src/engine.rs").read_text()
+        reader = source.split("fn read_candidate_store(", 1)[1].split("fn read_isoform_panel_store_from_metadata", 1)[0]
+        self.assertEqual(reader.count("self.state.ensure_candidate_store_available()?"), 2)
+        self.assertIn("candidate_store_failure_note", (ROOT / "src/bin/gentle_cli.rs").read_text())
+        self.assertIn("candidate_store_failure_note", (ROOT / "src/mcp_server.rs").read_text())
+        note = (ROOT / "src/cli_support.rs").read_text()
+        self.assertIn("discarded when the invocation ends", note)
+        self.assertIn("not rolled back", note)
 
     def test_unavailable_is_not_zero_or_a_closed_world_absence(self):
         metrics = (ROOT / "src/engine/analysis/candidate_metrics.rs").read_text()
@@ -331,6 +342,7 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.assertEqual(self.state.read_bytes(), before)
 
     def test_slice6_degraded_store_refuses_save_as_and_cli_mcp_autosaves(self):
+        self.state = self.work / "synthetic's \u00e9 project.json"
         mutation = {"SetParameter": {"name": "max_fragments_per_container", "value": 123}}
         for ending in ("\n", "\r\n"):
             for fault in ("missing_index", "corrupt_index", "corrupt_records"):
@@ -346,18 +358,37 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
                         index.write_bytes(b"not JSON")
                     else:
                         records.write_bytes(b"not JSON\r\n")
+                    (index.parent / "intact-sibling.jsonl").write_bytes(b"synthetic intact sibling\n")
                     before = {p.relative_to(self.work): p.read_bytes() if p.is_file() else None
                               for p in self.work.rglob("*")}
                     target = self.work / "absent folder's name/new project.json"
                     for command in (("candidates", "list"), ("save-project", str(target)),
+                                    ("export-state", str(target)), ("import-state", str(self.state)),
                                     ("shell", "save-project " + quote(str(target))),
+                                    ("shell", "load-project " + quote(str(self.state))),
                                     ("op", json.dumps(mutation))):
                         run = self.run_cli(*command, ok=False)
                         self.assertIn(b"candidate_store_unavailable", run.stderr)
+                        self.assertIn(b"not rolled back", run.stderr)
                     for tool, args in (("op", {"operation": mutation}),
                                        ("workflow", {"workflow": workflow([mutation])})):
                         result = self.mcp_call(tool, dict(args, confirm=True), ok=False)
                         self.assertIn("candidate_store_unavailable", json.dumps(result))
+                        self.assertIn("not rolled back", json.dumps(result))
+                    sys.path.insert(0, str(ROOT / "integrations/python"))
+                    from gentle_py.client import GentleClient
+                    client = GentleClient(state_path=str(self.state), cli_cmd=[str(self.cli)], cwd=str(self.work))
+                    old_env = os.environ.get("GENTLE_CANDIDATE_STORE_STRICT_LOAD")
+                    os.environ["GENTLE_CANDIDATE_STORE_STRICT_LOAD"] = "0"
+                    try:
+                        with self.assertRaises(Exception) as refused:
+                            client.op(mutation)
+                        self.assertIn("candidate_store_unavailable", str(refused.exception))
+                    finally:
+                        if old_env is None:
+                            os.environ.pop("GENTLE_CANDIDATE_STORE_STRICT_LOAD", None)
+                        else:
+                            os.environ["GENTLE_CANDIDATE_STORE_STRICT_LOAD"] = old_env
                     self.run_cli("state-summary")
                     self.run_cli("op", json.dumps(plan(loaded=True)))
                     self.assertEqual({p.relative_to(self.work): p.read_bytes() if p.is_file() else None
@@ -383,6 +414,21 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.assertIn(b"candidate_store_unavailable", run.stderr)
         self.assertEqual({p.relative_to(self.work): p.read_bytes() if p.is_file() else None
                           for p in self.work.rglob("*")}, before)
+
+    def test_slice6_save_refusal_does_not_undo_an_explicitly_published_report(self):
+        value = self.initialize(candidates=True)
+        index = self.work / value["metadata"]["candidate_sets"]["index_path"]
+        index.unlink()
+        before = {p.relative_to(self.work): p.read_bytes() if p.is_file() else None for p in self.work.rglob("*")}
+        report = self.work / "approved-preview.json"
+        run = self.run_cli("workflow", json.dumps(workflow([plan(str(report), loaded=True),
+                           {"SetParameter": {"name": "max_fragments_per_container", "value": 123}}])), ok=False)
+        self.assertIn(b"candidate_store_unavailable", run.stderr)
+        self.assertIn(b"not rolled back", run.stderr)
+        self.assertTrue(report.is_file(), "an explicit artifact survives a later autosave refusal")
+        self.assertEqual(json.loads(report.read_bytes())["output_sequence"], "ATGTTTAAGTAA")
+        after = {p.relative_to(self.work): p.read_bytes() if p.is_file() else None for p in self.work.rglob("*") if p != report}
+        self.assertEqual(after, before)
 
     def test_python_real_client_op_workflow_and_shell(self):
         sys.path.insert(0, str(ROOT / "integrations/python"))

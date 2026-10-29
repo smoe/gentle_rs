@@ -1081,13 +1081,15 @@ efficacy/off-target prediction, observed genotype or laboratory execution.
 The shared project loader retains an unresolved `metadata.candidate_sets`
 reference verbatim. Its `candidate_sets_load_warning` diagnostic adds schema
 `gentle.candidate_store_load_diagnostic.v1`, status `unresolved`, code
-`candidate_store_unavailable`, source-project spelling, message and original
-structured cause. Strict loading refuses; permissive loading keeps unaffected
-inspection available. Missing/corrupt indexes or records and inconsistent
-declared counts cannot become an empty collection. The versioned index requires
-an explicit set array/set count and per-set record counts; ancillary legacy
-defaults remain readable. Legacy warning-only metadata
-remains blocking, including through JSON/JS/Lua state transfer.
+`candidate_store_unavailable` and a message (the existing `strict_env` hint is
+retained). Strict loading keeps its previous hydration-error behavior;
+permissive loading keeps unaffected inspection available. Missing/malformed
+index or record failures preserve unavailable evidence, not an empty collection.
+Unknown candidate schemas retain load compatibility, including strict mode,
+but cannot be used or saved. Warning-only legacy projects also remain loadable
+but blocked for candidate use and persistence, including JSON/JS/Lua transfer.
+Index/count defaults and duplicate/count validation are not tightened here;
+parseable truncation is not newly detected by this slice.
 
 Shared saves refuse with `InvalidInput`/`candidate_store_unavailable:` before
 cloning/staging or any save-owned filesystem change, including Save As and
@@ -1101,6 +1103,9 @@ Older consumers ignoring this qualification cannot establish candidate absence.
 Restore the original dependency/backup and reopen with successful full hydration.
 An existing degraded session stays blocked. No reference guessing, automatic
 repair/discard, global rollback, new approval or exporter/wrapper migration.
+GUI save refusal is visible and does not clear dirty state or advance a pending
+project action. One-shot CLI/MCP failures disclose that transient changes are
+discarded at invocation end; separately written files are not rolled back.
 Healthy absent/empty stores keep existing persistence/cleanup behavior. See
 [Slice 6](operation_lifecycle_slice6_plan.md) and its pending external checks.
 

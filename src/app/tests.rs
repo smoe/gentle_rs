@@ -10587,12 +10587,30 @@ fn lifecycle_slice6_gui_save_refuses_before_dialog_without_rebinding_or_marking_
         app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         app.current_project_path = path.clone();
         app.clean_state_revision = 123;
+        app.pending_project_action = Some(ProjectAction::New);
         assert!(!app.save_current_project());
         assert!(app.app_status.contains("candidate_store_unavailable"));
         assert_eq!(app.current_project_path, path);
         assert_eq!(app.clean_state_revision, 123);
+        assert!(matches!(
+            app.pending_project_action,
+            Some(ProjectAction::New)
+        ));
         assert_eq!(std::fs::read(&target).unwrap(), b"preserve existing bytes");
     }
+}
+
+#[test]
+fn lifecycle_slice6_gui_save_io_failure_remains_visible_and_does_not_mark_clean() {
+    // A synthetic directory cannot be atomically replaced as a project file.
+    let temp = tempdir().unwrap();
+    let mut app = GENtleApp::default();
+    app.current_project_path = Some(temp.path().to_str().unwrap().into());
+    app.clean_state_revision = 123;
+    assert!(!app.save_current_project());
+    assert!(app.app_status.starts_with("Project was not saved:"));
+    assert_eq!(app.clean_state_revision, 123);
+    assert_eq!(app.current_project_path.as_deref(), temp.path().to_str());
 }
 
 #[test]

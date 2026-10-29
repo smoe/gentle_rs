@@ -1436,7 +1436,7 @@ mod tests {
     "#;
 
     #[test]
-    fn lifecycle_slice6_js_warning_survives_vm_and_refuses_save_before_io() {
+    fn candidate_store_unresolved_js_load_and_save_refuse_without_io() {
         let td = tempdir().unwrap();
         let target = td.path().join("absent folder's name/project.json");
         let mut state = ProjectState::default();
@@ -1444,21 +1444,28 @@ mod tests {
             "candidate_sets_load_warning".into(),
             serde_json::json!({"message":"synthetic legacy lost reference"}),
         );
+        let source = td.path().join("source's project.json");
+        let before = serde_json::to_vec(&state).unwrap();
+        fs::write(&source, &before).unwrap();
         let mut js = JavaScriptInterface::new();
         js.run_checked(format!(
             r#"
-            const input = {};
+            const source = {};
+            const input = load_project(source);
             const before = JSON.stringify(input);
-            let refused = false;
-            try {{ save_project(input, {}); }}
-            catch (e) {{ refused = String(e).includes('candidate_store_unavailable'); }}
-            if (!refused) throw Error('degraded save must refuse');
+            for (const target of [source, {}]) {{
+                let refused = false;
+                try {{ save_project(input, target); }}
+                catch (e) {{ refused = String(e).includes('candidate_store_unavailable'); }}
+                if (!refused) throw Error('degraded save must refuse');
+            }}
             if (JSON.stringify(input) !== before) throw Error('save changed VM state');
         "#,
-            serde_json::to_string(&state).unwrap(),
+            serde_json::to_string(source.to_str().unwrap()).unwrap(),
             serde_json::to_string(target.to_str().unwrap()).unwrap()
         ))
         .unwrap();
+        assert_eq!(fs::read(&source).unwrap(), before);
         assert!(!target.parent().unwrap().exists());
     }
 

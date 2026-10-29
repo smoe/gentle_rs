@@ -78,41 +78,41 @@ fn unavailable(error: EngineError) {
 }
 
 #[test]
-fn lifecycle_slice6_degraded_load_preserves_reference_and_refuses_save_and_save_as() {
+fn candidate_store_unresolved_load_preserves_reference_and_refuses_save_and_save_as() {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
     for ending in ["\n", "\r\n"] {
         for fault in [
             "missing_index",
             "corrupt_index",
-            "empty_index",
-            "unlabelled_index",
-            "missing_index_count",
-            "missing_reference_count",
+            "unsupported_index",
             "missing_records",
             "corrupt_records",
-            "truncated_records",
+            "malformed_reference",
+            "backslash_path",
         ] {
             let td = tempdir().unwrap();
             let mut f = fixture(td.path(), ending);
+            fs::write(
+                f.index.parent().unwrap().join("intact-sibling.jsonl"),
+                b"synthetic sibling\n",
+            )
+            .unwrap();
             match fault {
                 "missing_index" => fs::remove_file(&f.index).unwrap(),
                 "corrupt_index" => fs::write(&f.index, b"not json").unwrap(),
-                "empty_index" => fs::write(&f.index, b"{}").unwrap(),
-                "unlabelled_index" => {
+                "unsupported_index" => {
                     let mut value: serde_json::Value =
                         serde_json::from_slice(&fs::read(&f.index).unwrap()).unwrap();
-                    value.as_object_mut().unwrap().remove("schema");
+                    value["schema"] = json!("synthetic.unsupported_index.v9");
                     fs::write(&f.index, serde_json::to_vec(&value).unwrap()).unwrap();
                 }
-                "missing_index_count" => {
-                    let mut value: serde_json::Value =
-                        serde_json::from_slice(&fs::read(&f.index).unwrap()).unwrap();
-                    value.as_object_mut().unwrap().remove("set_count");
-                    fs::write(&f.index, serde_json::to_vec(&value).unwrap()).unwrap();
-                }
-                "missing_reference_count" => {
-                    f.reference.as_object_mut().unwrap().remove("set_count");
+                "malformed_reference" | "backslash_path" => {
+                    f.reference["index_path"] = if fault == "malformed_reference" {
+                        json!(42)
+                    } else {
+                        json!("absent-synthetic.candidates\\index.json")
+                    };
                     let mut value: serde_json::Value =
                         serde_json::from_slice(&fs::read(&f.project).unwrap()).unwrap();
                     value["metadata"][CANDIDATE_SETS_METADATA_KEY] = f.reference.clone();
@@ -120,11 +120,19 @@ fn lifecycle_slice6_degraded_load_preserves_reference_and_refuses_save_and_save_
                 }
                 "missing_records" => fs::remove_file(&f.records).unwrap(),
                 "corrupt_records" => fs::write(&f.records, b"not json\n").unwrap(),
-                "truncated_records" => fs::write(&f.records, b"").unwrap(),
                 _ => unreachable!(),
             }
             let existing = td.path().join("existing's target.json");
             fs::write(&existing, b"preserve destination").unwrap();
+            let destination = td.path().join("destination");
+            fs::create_dir(&destination).unwrap();
+            let decoy = destination.join(f.index.parent().unwrap().file_name().unwrap());
+            fs::create_dir(&decoy).unwrap();
+            fs::write(
+                decoy.join("index.json"),
+                b"do not hydrate or replace this foreign index",
+            )
+            .unwrap();
             let before = tree(td.path());
             let state = ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap();
             assert_eq!(state.metadata[CANDIDATE_SETS_METADATA_KEY], f.reference);
@@ -132,11 +140,11 @@ fn lifecycle_slice6_degraded_load_preserves_reference_and_refuses_save_and_save_
             assert_eq!(warning["schema"], CANDIDATE_STORE_LOAD_DIAGNOSTIC_SCHEMA);
             assert_eq!(warning["status"], "unresolved");
             assert_eq!(warning["code"], "candidate_store_unavailable");
-            assert_eq!(warning["source_project"], f.project.to_str().unwrap());
-            assert!(warning["cause"]["message"].is_string());
+            assert!(warning["message"].is_string());
             for target in [
                 &f.project,
                 &existing,
+                &destination.join("save-as.json"),
                 &td.path().join("absent parent/new project.json"),
             ] {
                 unavailable(state.save_to_path(target.to_str().unwrap()).unwrap_err());
@@ -151,7 +159,7 @@ fn lifecycle_slice6_degraded_load_preserves_reference_and_refuses_save_and_save_
 }
 
 #[test]
-fn lifecycle_slice6_candidate_reads_and_writes_refuse_without_hiding_other_sequences() {
+fn candidate_store_unresolved_reads_and_writes_refuse_without_hiding_other_sequences() {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
     let td = tempdir().unwrap();
@@ -230,6 +238,10 @@ fn lifecycle_slice6_candidate_reads_and_writes_refuse_without_hiding_other_seque
         "legacy graph reading stays additive"
     );
     let context = crate::agent_bridge::build_agent_introspection_context(&graph);
+    assert_eq!(
+        serde_json::to_value(&wire).unwrap(),
+        json!({"schema":PROJECT_FACT_GRAPH_SCHEMA, "facts":[]})
+    );
     assert!(
         !context
             .fact_type_counts
@@ -247,7 +259,7 @@ fn lifecycle_slice6_candidate_reads_and_writes_refuse_without_hiding_other_seque
 }
 
 #[test]
-fn lifecycle_slice6_warning_only_and_unhydrated_json_cannot_be_silently_healed() {
+fn candidate_store_unresolved_warning_only_and_unhydrated_json_cannot_be_silently_healed() {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
     let td = tempdir().unwrap();
@@ -286,12 +298,12 @@ fn lifecycle_slice6_warning_only_and_unhydrated_json_cannot_be_silently_healed()
 }
 
 #[test]
-fn lifecycle_slice6_recovery_requires_reopen_and_preserves_healthy_empty_controls() {
+fn candidate_store_unresolved_recovery_requires_reopen_and_preserves_healthy_empty_controls() {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
     let td = tempdir().unwrap();
     let f = fixture(td.path(), "\r\n");
-    // Ancillary legacy defaults remain accepted; missing data counts do not.
+    // Existing ancillary defaults remain accepted; no count-validation policy change.
     let mut index: serde_json::Value =
         serde_json::from_slice(&fs::read(&f.index).unwrap()).unwrap();
     index.as_object_mut().unwrap().remove("updated_at_unix_ms");
@@ -332,6 +344,23 @@ fn lifecycle_slice6_recovery_requires_reopen_and_preserves_healthy_empty_control
             .candidate_count,
         1
     );
+    let before_deletion = tree(td.path());
+    let mut deleting = GentleEngine::from_state(healthy);
+    deleting
+        .apply(Operation::DeleteCandidateSet {
+            set_name: "windows".into(),
+        })
+        .unwrap();
+    deleting
+        .state()
+        .save_to_path(f.project.to_str().unwrap())
+        .unwrap();
+    assert_ne!(
+        tree(td.path()),
+        before_deletion,
+        "negative control detects intentional deletion"
+    );
+    assert!(!ProjectState::candidate_store_sidecar_dir(&f.project).exists());
     let empty = ProjectState::default();
     assert!(
         GentleEngine::from_state(empty.clone())
@@ -347,7 +376,8 @@ fn lifecycle_slice6_recovery_requires_reopen_and_preserves_healthy_empty_control
 }
 
 #[test]
-fn lifecycle_slice6_strict_load_still_refuses_missing_and_legacy_warning_only_stores() {
+fn candidate_store_unresolved_strict_load_still_refuses_missing_but_keeps_legacy_load_compatibility()
+ {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "1");
     let td = tempdir().unwrap();
@@ -365,5 +395,99 @@ fn lifecycle_slice6_strict_load_still_refuses_missing_and_legacy_warning_only_st
         json!({"message":"legacy"}),
     );
     fs::write(&f.project, serde_json::to_vec(&legacy).unwrap()).unwrap();
-    unavailable(ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap_err());
+    let loaded = ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap();
+    unavailable(
+        loaded
+            .save_to_path(f.project.to_str().unwrap())
+            .unwrap_err(),
+    );
+}
+
+#[test]
+fn candidate_store_unresolved_unknown_schemas_load_but_cannot_be_used_or_saved() {
+    let _lock = candidate_store_env_lock().lock().unwrap();
+    let td = tempdir().unwrap();
+    let project = td.path().join("unknown.json");
+    for strict in ["0", "1"] {
+        let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, strict);
+        for value in [
+            json!({"schema":"synthetic.future_reference.v9", "index_path":"not-read/index.json"}),
+            json!({"schema":"synthetic.future_inline.v9", "sets":{}}),
+        ] {
+            let mut state = ProjectState::default();
+            state
+                .metadata
+                .insert(CANDIDATE_SETS_METADATA_KEY.into(), value.clone());
+            fs::write(&project, serde_json::to_vec(&state).unwrap()).unwrap();
+            let before = tree(td.path());
+            let loaded = ProjectState::load_from_path(project.to_str().unwrap()).unwrap();
+            assert_eq!(loaded.metadata[CANDIDATE_SETS_METADATA_KEY], value);
+            unavailable(loaded.save_to_path(project.to_str().unwrap()).unwrap_err());
+            unavailable(
+                GentleEngine::from_state(loaded)
+                    .list_candidate_sets()
+                    .unwrap_err(),
+            );
+            assert_eq!(tree(td.path()), before);
+        }
+    }
+}
+
+#[test]
+fn candidate_store_unresolved_status_survives_history_snapshots_and_serialization() {
+    let mut state = ProjectState::default();
+    state.metadata.insert(
+        CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY.into(),
+        json!({"message":"synthetic legacy warning"}),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateSequenceFromText {
+            sequence_text: "ACGT".into(),
+            output_id: Some("unrelated_synthetic".into()),
+            name: None,
+            circular: false,
+        })
+        .unwrap();
+    unavailable(engine.list_candidate_sets().unwrap_err());
+    engine.undo_last_operation().unwrap();
+    unavailable(engine.list_candidate_sets().unwrap_err());
+    engine.redo_last_operation().unwrap();
+    let fork = engine.fork_detached_execution();
+    unavailable(fork.engine().list_candidate_sets().unwrap_err());
+    let mut imported = engine.fork_detached_execution();
+    imported.import_checkpoint_engine(engine.clone());
+    unavailable(imported.engine().list_candidate_sets().unwrap_err());
+    let round_trip: ProjectState =
+        serde_json::from_value(serde_json::to_value(imported.engine().state()).unwrap()).unwrap();
+    unavailable(
+        GentleEngine::from_state(round_trip)
+            .list_candidate_sets()
+            .unwrap_err(),
+    );
+}
+
+#[test]
+fn candidate_store_unresolved_does_not_tighten_existing_index_count_defaults() {
+    let _lock = candidate_store_env_lock().lock().unwrap();
+    let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "1");
+    let td = tempdir().unwrap();
+    let f = fixture(td.path(), "\n");
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fs::read(&f.index).unwrap()).unwrap();
+    index.as_object_mut().unwrap().remove("schema");
+    index.as_object_mut().unwrap().remove("set_count");
+    index["sets"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("candidate_count");
+    fs::write(&f.index, serde_json::to_vec(&index).unwrap()).unwrap();
+    let loaded = ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap();
+    assert_eq!(
+        GentleEngine::from_state(loaded)
+            .list_candidate_sets()
+            .unwrap()[0]
+            .candidate_count,
+        1
+    );
 }

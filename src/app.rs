@@ -16269,10 +16269,13 @@ Error: `{err}`"
             return false;
         }
         if let Some(path) = self.current_project_path.clone() {
-            if self.save_project_to_file(&path).is_ok() {
-                self.record_recent_project_path(&path);
-                self.mark_clean_snapshot();
-                return true;
+            match self.save_project_to_file(&path) {
+                Ok(()) => {
+                    self.record_recent_project_path(&path);
+                    self.mark_clean_snapshot();
+                    return true;
+                }
+                Err(err) => self.app_status = format!("Project was not saved: {err}"),
             }
             return false;
         }
@@ -16283,10 +16286,13 @@ Error: `{err}`"
             .save_file()
         {
             let path = path.display().to_string();
-            if self.save_project_to_file(&path).is_ok() {
-                self.set_current_project_path_and_track_recent(&path);
-                self.mark_clean_snapshot();
-                return true;
+            match self.save_project_to_file(&path) {
+                Ok(()) => {
+                    self.set_current_project_path_and_track_recent(&path);
+                    self.mark_clean_snapshot();
+                    return true;
+                }
+                Err(err) => self.app_status = format!("Project was not saved: {err}"),
             }
         }
         false

@@ -85,9 +85,9 @@ contents and mutation/structural revisions separately from operation-log count.
 Missing project files remain missing. Empty, noncanonical, LF/CRLF project files
 and candidate sidecar bytes remain untouched when no explicit writer targets
 them. In-memory preservation starts **after** the existing loader, including
-sidecar hydration and warning metadata. Permissive loading can still remove a
-broken candidate reference in memory; unmigrated autosaving routes can persist
-that loss. This residual was not repaired by Slice 3. The separately authorized
+sidecar hydration and warning metadata. At Slice 3 authoring, permissive loading
+could remove a broken candidate reference in memory and autosaving routes could
+persist that loss. This was not repaired by Slice 3. The separately authorized
 [Slice 6](operation_lifecycle_slice6_plan.md) now preserves unresolved references
 and guards saves/candidate access; its runtime/native acceptance remains pending.
 

@@ -580,8 +580,10 @@ below has its own pending verification; S2 remains separate.
 Owner-authorized [Lifecycle Slice 6](operation_lifecycle_slice6_plan.md): a
 failed candidate sidecar load is unavailable evidence, not an empty collection.
 Permissive loading retains the original reference and a structured unresolved
-diagnostic; strict loading still refuses. Historical warning-only states remain
-unresolved. Only full hydration of an original reference on reopening clears
+diagnostic; strict loading retains its existing hydration-error refusals.
+Unknown schemas and warning-only projects remain loadable but cannot be used as
+candidate evidence or saved. Only successful existing hydration of an original
+reference on reopening clears
 that diagnostic; no inferred reference, silent repair or discard is allowed.
 
 The shared project saver refuses before any save-owned filesystem change while
@@ -592,6 +594,10 @@ Healthy empty-store cleanup remains intentional. This is not rollback of prior
 in-memory commands/external writes, a hostile-parent/crash-durability guarantee,
 or authorization for exporter/wrapper/queue migration. Runtime/native checks
 remain source-bound and external under the current no-local-Rust restriction.
+Do not add strict-load failures for warning-only/unknown-schema projects, tighten
+index/count defaults, or normalize cross-platform path separators in this slice.
+Legacy warning-only recovery requires a pre-loss backup; no discard command is
+authorized. Ordinary unrelated mutation preflight remains deferred.
 
 ## Sequence-Design Preview Report Approval
 

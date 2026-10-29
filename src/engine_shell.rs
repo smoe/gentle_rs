@@ -5498,8 +5498,13 @@ fn apply_cross_port_semantics(engine: &GentleEngine, report: &mut MacroTemplateP
         let kind = normalize_port_kind(&row.kind);
         if !existing_cache.contains_key(&kind) {
             match existing_values_for_port_kind(engine, &kind) {
-                Ok(values) => { existing_cache.insert(kind.clone(), values); }
-                Err(err) => { report.errors.push(err); continue; }
+                Ok(values) => {
+                    existing_cache.insert(kind.clone(), values);
+                }
+                Err(err) => {
+                    report.errors.push(err);
+                    continue;
+                }
             }
         }
         let existing = &existing_cache[&kind];
@@ -52593,7 +52598,9 @@ fn execute_candidates_analysis_command(
 ) -> Result<ShellRunResult, String> {
     match command {
         ShellCommand::CandidatesList => {
-            let sets = engine.list_candidate_sets().map_err(|err| err.to_string())?;
+            let sets = engine
+                .list_candidate_sets()
+                .map_err(|err| err.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -70665,7 +70672,9 @@ fn execute_shell_command_with_options_inner(
             }
         }
         ShellCommand::CandidatesList => {
-            let sets = engine.list_candidate_sets().map_err(|err| err.to_string())?;
+            let sets = engine
+                .list_candidate_sets()
+                .map_err(|err| err.to_string())?;
             ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -70686,7 +70695,10 @@ fn execute_shell_command_with_options_inner(
                     set_name: set_name.clone(),
                 })
                 .map_err(|e| e.to_string())?;
-            let remaining = engine.list_candidate_sets().map_err(|err| err.to_string())?.len();
+            let remaining = engine
+                .list_candidate_sets()
+                .map_err(|err| err.to_string())?
+                .len();
             let after = engine
                 .state()
                 .metadata

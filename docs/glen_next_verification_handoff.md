@@ -2,58 +2,64 @@
 
 ## Lifecycle Slice 6, 2026-10-29
 
-Verify the newly integrated degraded candidate-store safety extension, not a
-rerun of the completed `284e5b70` rehearsal or unrelated RNA/gel checks.
-The [scope](operation_lifecycle_slice6_plan.md) retains exact unresolved references
-and structured diagnostics. Shared project saves/Save As/implicit saves refuse
-before save-owned filesystem changes; candidate reads/writes refuse instead of
-reporting zero data. Candidate facts are unknown and agent context discloses
-unavailability. Legacy warning-only states stay blocked. Strict loading and
-healthy persistence/intentional empty cleanup remain controls. No automatic
-repair/discard, broader rollback, wrapper/exporter migration or S2 authorization.
+This reconciles the overlapping foundation committed on main as `1fdeb1d9`.
+That commit separately recorded 37 Python/source passes and two new process
+skips; retain those historical results at their source, not as execution of the
+revised compatibility/tests below. Its old strict/count checklist is superseded.
 
-On the integrated source when execution is available, require nonzero counts:
+Verify the [Claude-reconciled degraded-sidecar slice](operation_lifecycle_slice6_plan.md)
+on the integrated source; do not repeat unrelated RNA or historical Slice 3/5
+audits. The owner approved unknown schemas staying loadable but unavailable for
+candidate use/save, legacy warning-only states failing closed, and no general
+pre-mutation refusal. Existing strict hydration errors and count defaults stay
+unchanged. Shared access/save guards, unavailable facts and agent notes, visible
+GUI failures and one-shot persistence/non-rollback feedback are authored.
 
-```sh
-cargo check --locked --tests -j1
-cargo check --locked --no-default-features --lib -j1
-cargo test --locked --lib -j1 candidate_store -- --test-threads=1
-cargo test --locked --lib -j1 lifecycle_slice6_gui_save -- --test-threads=1
-cargo test --locked --lib -j1 candidates_ -- --test-threads=1
-cargo test --locked --lib -j1 --features js-interface lifecycle_slice6 -- --test-threads=1
-cargo test --locked --lib -j1 --features lua-interface lifecycle_slice6 -- --test-threads=1
-```
-
-The candidate-store group must include all five new `lifecycle_slice6_` engine
-tests; each VM feature adds its own real-runtime refusal test. Retain fact
-unknown/healthy-absence and agent disclosure controls, not only error strings.
-Run the two new actual-process tests with a freshly built/source-matched CLI/MCP:
+No Rust, VM, actual-process or native execution is claimed here. Require nonzero
+counts and source/binary/toolchain/features/platform receipts:
 
 ```sh
-GENTLE_LIFECYCLE_BIN_DIR=/absolute/path/to/bin python3 -m unittest -v \
- scripts.test_operation_lifecycle_slice3.LifecycleSlice3ProcessTests.test_slice6_degraded_store_refuses_save_as_and_cli_mcp_autosaves \
- scripts.test_operation_lifecycle_slice3.LifecycleSlice3ProcessTests.test_slice6_legacy_warning_refuses_and_restored_sidecar_reopens
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo test --locked --no-default-features -j1 --lib candidate_store_ -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib candidate_sidecar_is_missing -- --test-threads=1
+cargo test --locked --no-default-features -j1 --lib lifecycle_slice3_ -- --test-threads=1
+cargo test --locked -j1 --lib lifecycle_slice6_gui_save -- --test-threads=1
+cargo test --locked -j1 --bin gentle_cli candidate_store_unresolved_ -- --test-threads=1
+cargo test --locked --no-default-features --features js-interface -j1 --lib candidate_store_unresolved_ -- --test-threads=1
+cargo test --locked --no-default-features --features lua-interface -j1 --lib candidate_store_unresolved_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+GENTLE_LIFECYCLE_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_operation_lifecycle_slice3 -v
 ```
 
-Check missing/corrupt/truncated indexes/records and declared-count mismatch;
-exact retained references/diagnostics through state transfer; no staging, new
-parent, replacement or sidecar deletion at original/existing/new save targets;
-unaffected inspection; restore-then-reopen recovery, never silent warning removal.
-An autosaving command may already have transient edits/separate approved external
-outputs before refusal; do not describe save safety as global rollback.
+The new engine module contains eight `candidate_store_unresolved_` tests; other
+filters overlap and add feedback/VM controls, not a sum of independent totals.
+Two GUI helper tests cover early refusal and an ordinary I/O failure; one CLI
+and one MCP test exercise structured feedback. VM tests use public loaders on
+warning-only files and try same-path save plus Save As. Three new process tests
+cover CLI/export/import/shared shell, confirmed MCP, Python and survival of an
+explicitly written report after a later refused autosave. No supplied binary
+means those process checks skip, not pass; never auto-build from Python.
 
-Native GUI/Windows: show the diagnostic, keep unaffected DNA inspectable and
-candidate controls unavailable, refuse Save/Save As without a false saved state
-or rebound filename, preserve spaced/apostrophe paths and close handles before
-repair/reopen. Keep native, full-suite, packaging and scientific verdicts separate.
-Return actual tested SHA, binary hashes, lock/toolchain/features/platform,
-commands/nonzero counts, failures/skips and retained evidence through Steffen.
-No new intermediate freeze, push, dispatch, model/provider call or publication;
-the previous goal stays paused. Rust, VM, real-process and native execution of
-this slice remain unrun locally; source/Python checks are not runtime acceptance.
-Authoring verification: 37 Python/source checks passed, including LF/CRLF
-checkouts; two new actual-process tests skipped without supplied binaries.
-Scoped formatting, documentation/manual freshness and whitespace checks passed.
+Verify exact retained reference/diagnostic, untouched derived folder and intact
+sibling files, Save As with a foreign decoy and absent parents, legacy warning
+and unknown-schema load compatibility, candidate unknown-versus-empty, history/
+snapshot/serde status, restore-and-reopen recovery and intentional deletion as
+the preservation oracle's negative control. Do not require newly rejected count
+defaults or claim parseable truncation is detected. Preserve healthy payloads.
+
+Native GUI/Windows remain separate: show save errors, keep dirty/path/pending
+actions unchanged, inspect unaffected DNA and preserve correct path/handle
+behavior. Retain the backslash-path refusal case without a separator migration.
+Keep new-source full-suite, package, scientific and performance verdicts
+separate. Check scoped formatting against the baseline; do not mass-format
+unrelated files. No push, dispatch, model call, capture or goal resumption here.
+
+Local authoring validation: 19 source/teaching passes, 15 explicit optional
+binary skips, two real LF/CRLF checkout passes, documentation/manual freshness
+and whitespace OK. Formatting is scoped to changed Rust lines; no build/type-
+check or current runtime acceptance follows. Session-close: 4 OK, 2 expected
+working-tree/plan-review warnings, 0 failures; unrelated `outputs/` is untouched.
 
 ## Claude-Reported Lifecycle Rust Results At 284e5b70, 2026-10-29
 

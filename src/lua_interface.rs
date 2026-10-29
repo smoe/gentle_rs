@@ -2107,7 +2107,7 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_slice6_lua_warning_survives_vm_and_refuses_save_before_io() {
+    fn candidate_store_unresolved_lua_load_and_save_refuse_without_io() {
         let td = tempdir().unwrap();
         let target = td.path().join("absent folder's name/project.json");
         let mut state = ProjectState::default();
@@ -2115,19 +2115,25 @@ mod tests {
             "candidate_sets_load_warning".into(),
             serde_json::json!({"message":"synthetic legacy lost reference"}),
         );
+        let source = td.path().join("source's project.json");
+        let before = serde_json::to_vec(&state).unwrap();
+        std::fs::write(&source, &before).unwrap();
         let interface = LuaInterface::new();
         interface.register_rust_functions().unwrap();
         let lua = interface.lua();
         lua.globals()
-            .set("input", lua.to_value(&state).unwrap())
+            .set("source", source.to_str().unwrap())
             .unwrap();
         lua.globals()
             .set("target", target.to_str().unwrap())
             .unwrap();
         lua.load(
             r#"
-            local ok, err = pcall(save_project, input, target)
-            assert(not ok and tostring(err):find('candidate_store_unavailable', 1, true))
+            input = load_project(source)
+            for _, destination in ipairs({source, target}) do
+                local ok, err = pcall(save_project, input, destination)
+                assert(not ok and tostring(err):find('candidate_store_unavailable', 1, true))
+            end
         "#,
         )
         .exec()
@@ -2139,6 +2145,7 @@ mod tests {
             serde_json::to_value(retained).unwrap(),
             serde_json::to_value(state).unwrap()
         );
+        assert_eq!(std::fs::read(&source).unwrap(), before);
         assert!(!target.parent().unwrap().exists());
     }
 

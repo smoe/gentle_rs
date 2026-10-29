@@ -19,6 +19,13 @@ slice order records current scope. S2 and wider exporter/security changes remain
 separately gated. Original review prompt:
 [read-only Claude request](operation_lifecycle_claude_review_prompt_20261025.md).
 
+Separately authorized 2026-10-29 after the supplied Claude review:
+[Slice 6](operation_lifecycle_slice6_plan.md) guards degraded candidate-store
+access and saves without changing existing strict-load compatibility or count
+defaults. Earlier deferred-loader language is historical for this narrow
+boundary; wider loader/exporter/wrapper work stays gated. Runtime/native
+verification of the new slice remains with Glen/CI.
+
 ## Source And Scope
 
 Repository: `/Users/u005069/.codex/worktrees/47dd/gentle_rs`.

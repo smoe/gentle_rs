@@ -1,72 +1,97 @@
 # Lifecycle Slice 6: Degraded Candidate-Store Save Safety
 
-Status, 2026-10-29: owner-authorized implementation and synthetic regressions
-authored on main, following source inspection at `186937bd`. Rust/actual-process,
-VM and native Windows acceptance remain with Glen/CI. No local Rust build or
-push; the previous goal stays paused. This is a separate extension, not an
-unfinished promise of Slice 5. The plan was not Claude-reviewed.
+Status, 2026-10-29: owner authorized the Claude-revised implementation, including
+the recommended unknown-schema and legacy-warning decisions. Runtime changes
+and synthetic regressions are authored; Rust, actual-process/VM and native
+verification remain with Glen/CI. No push or resumption of the previous goal.
 
-## Shared Boundary
+## Review And Reconciliation
 
-Permissive `ProjectState::load_from_path` preserves the exact unresolved
-`candidate_sets` reference and adds `candidate_sets_load_warning`, schema
-`gentle.candidate_store_load_diagnostic.v1`, status `unresolved`, stable reason
-`candidate_store_unavailable`, original source-project spelling and cause.
-Index/set and record counts must agree; incomplete records cannot become an
-apparently healthy empty store. Strict loading still refuses failed hydration.
+The [original read-only prompt](operation_lifecycle_sidecar_claude_review_prompt.md)
+proposed retaining unresolved references, guarding saves and candidate use, and
+keeping unaffected inspection available. The owner supplied Claude's review of
+`186937bd`, then requested implementation. No further Claude invocation was made.
 
-An old warning-only state remains unresolved: no path/reference is guessed,
-and neither JSON/VM round-tripping nor opening an inline/empty replacement
-silently clears its warning. Only reopening an original external reference
-with successful complete hydration clears a prior warning. An unhydrated raw
-reference also cannot be saved relative to a new destination.
-Hydration establishes readability/schema/count consistency, not authenticated
-provenance or proof that replacement files are the lost originals.
+Claude confirmed the destructive derived-sidecar removal path and required
+guards at candidate read/write boundaries as well as the saver. It also found
+silent GUI save errors, legacy warnings cleared on reload, and Save As resolving
+retained relative references against another destination. Accept these repairs.
 
-`ProjectState::save_to_path` checks availability before cloning, staging,
-directory creation, replacement or sidecar cleanup. This covers GUI Save/Save As,
-CLI/shared-shell/MCP project saves and implicit saves, plus JS/Lua save bindings
-and CLI-backed Python. Candidate access also refuses; listing returns a Result
-instead of presenting unavailable data as zero rows. The GUI displays that error.
-Facts mark `candidate_set.exists` unavailable, so closed-world evaluation returns
-unknown; agent context omits its zero count and discloses the missing evidence.
-Unrelated sequence/state inspection remains possible. Healthy absent/empty
-stores and intentional empty-store cleanup retain their existing behavior.
+Reuse the overlapping main-checkout work through a scoped source snapshot,
+without editing that checkout. Remove its extra post-load strict check, count/
+duplicate validation and diagnostic source/cause duplication. The existing
+reference/index hydration grammar and count defaults remain unchanged. This
+worktree starts from `5411ad10`; later-source integration needs its own checks.
+During commit/rebase the overlapping foundation landed as `1fdeb1d9`. Retain
+its historical authoring evidence separately; the reconciled runtime/scripts
+are unchanged from this worktree's reviewed pre-rebase implementation.
 
-This protects the save operation, not all preceding work. An autosaving command
-may already have changed its transient engine or written a separately approved
-external artifact before save refusal. There is no new rollback or checkpoint
-policy, parser, approval bypass, payload resolver, queue or exporter migration.
+## Approved Minimal Contract
 
-## Recovery And Exclusions
+1. Failed permissive hydration keeps the exact raw `candidate_sets` value and
+   adds `candidate_sets_load_warning`, schema
+   `gentle.candidate_store_load_diagnostic.v1`, status `unresolved`, stable code
+   `candidate_store_unavailable`, message and existing strict-env hint. Only
+   successful existing hydration of an original reference clears a prior warning.
+2. One in-memory `ensure_candidate_store_available` check rejects a warning,
+   unhydrated reference, malformed inline data or unsupported candidate schema.
+   It never retries I/O or resolves a reference relative to a save destination.
+3. Shared readers/writers/listing use that check. Listing returns a Result,
+   shell/routine/GUI consumers report unavailable, and project fact graphs add
+   `unavailable_facts` only when nonempty. Candidate absence is unknown, not false;
+   deterministic inner-agent context omits the zero count and explains the gap.
+4. `save_to_path` checks before cloning, staging, mkdir, replacement or cleanup.
+   This protects Save, autosave, Save As and existing project-copy routes through
+   shared persistence. Healthy absent/inline/empty-store cleanup is unchanged.
+5. GUI save failures are visible without clearing dirty state, rebinding a path
+   or continuing a pending project action. CLI/MCP one-shot failures explain
+   discarded transient state and non-rollback of separately published files.
 
-Restore the original sidecar or an intact project/sidecar backup, then reopen
-the original project. Restoring a file does not silently authorize an already
-degraded in-memory session to save. Keep that session's unsaved work separate;
-this slice provides no merge or repair command. Warning-only files whose
-reference was already lost require an intact backup, not an inferred filename.
+Decisions: unknown schemas keep existing load compatibility (including strict
+mode), but candidate use and saves fail closed. Legacy warning-only states also
+remain loadable but cannot be saved; only a pre-loss backup can restore a lost
+reference. General pre-mutation refusal remains deferred. Strict mode still
+returns the original error on actual hydration failure; its default is unchanged.
 
-No automatic repair, discard command, recovery overwrite, external retrieval,
-crash-durability guarantee or hostile parent-directory race protection is added.
-Opaque wrappers, generic journals/concurrency and base/prime-editing S2 remain
-separate. Arbitrary trusted code that edits metadata or writes raw JSON itself
-is outside the shared persistence contract.
+## Recovery And Non-Goals
 
-## Verification
+Restore the source sidecar or an intact project/sidecar backup, then reopen the
+original project. The existing degraded session is not silently unlocked. Keep
+unsaved GUI work separate; no new recovery merge, discard, force-save or repair
+command is provided. Diagnostics are not authenticated; intentionally removing
+both the reference and warning in raw JSON is outside this persistence contract.
+Successful hydration establishes readability under the existing parser, not
+authenticated provenance or proof that replacement files are the lost originals.
 
-Inline, explicitly synthetic Rust fixtures recreate real saver-produced indexes
-and JSONL records in temporary folders. Tests cover missing/corrupt/truncated
-files, LF/CRLF, quoted paths, exact references/diagnostics, unchanged project and
-sidecar trees, new/existing Save As destinations, unknown facts, read/mutation
-refusals, legacy warning-only JSON, strict loading and healthy recovery/cleanup.
-The companion extends existing opt-in CLI/MCP tests; no binary is auto-built.
+No automatic repair, new payload resolver, journal/queue migration, wider
+exporter rewrite, count/duplicate validation, Windows-separator migration,
+staging cleanup refactor, crash-durability or hostile-parent guarantee. Parseable
+truncation is not newly detected. File publication is not reversed by a later
+project-save refusal. Prior lifecycle/S2/scientific/release gates stay separate.
 
-Authoring checks: 37 Python/source tests passed, including real disposable
-LF/CRLF checkouts. The two new actual-process checks were explicitly skipped
-without same-source binaries. Scoped rustfmt, documentation/manual freshness
-and whitespace checks passed; none constitutes Rust/runtime or native acceptance.
+## Authored Verification And Remaining Checks
 
-Follow the [bounded Glen handoff](glen_next_verification_handoff.md#lifecycle-slice-6-2026-10-29).
-Require nonzero Rust/process counts and retain native Windows path/handle and
-GUI Save/Save As refusal verdicts separately. Python/source checks alone are
-not runtime, cross-platform, package or scientific acceptance.
+Inline synthetic fixtures recreate saver-produced indexes/JSONL in temporary
+folders. They cover actual missing/malformed failures, unknown schemas, warning-
+only state, same-path/Save As refusal with intact siblings and a foreign decoy,
+LF/CRLF, restoration/reopen, intentional deletion as a negative control, history/
+snapshot/serde transfer and unavailable facts. VM tests load warning-only files
+through public loaders and refuse both same-path saves and Save As. The existing
+process companion adds CLI/shared-shell/MCP/Python refusal and report-survival
+cases without auto-building binaries. GUI helper tests do not establish native
+dialog or platform acceptance. All new Rust/process/VM checks are authored,
+not executed here; source/Python checks alone do not prove runtime behavior.
+
+Use the [bounded Glen handoff](glen_next_verification_handoff.md#lifecycle-slice-6-2026-10-29)
+for exact filters, source/binary/platform receipts and remaining native checks.
+Preserve the separately reported Slice 3/5 results and rehearsal; do not create
+another old-source audit campaign or claim a new scientific verdict.
+
+Local authoring checks: 19 source/teaching checks pass; 15 optional actual-binary
+cases skip explicitly. Two real LF/CRLF checkout tests, documentation status,
+manual freshness and whitespace pass. Formatter output is applied only to new/
+changed Rust lines, retaining unrelated baseline formatting; this is not Cargo
+type checking. Session-close: 4 OK, 2 expected working-tree/manual-plan warnings,
+0 failures. The roadmap remains 400 lines. Runtime/VM/native tests and Cargo
+checks stay unrun; all working changes are scoped to this slice and unrelated
+`outputs/` is preserved.

@@ -1973,8 +1973,6 @@ impl ProjectState {
                     "status": "unresolved",
                     "code": "candidate_store_unavailable",
                     "message": err.message,
-                    "source_project": path,
-                    "cause": err,
                     "strict_env": CANDIDATE_STORE_STRICT_LOAD_ENV,
                 }),
             );
@@ -1983,9 +1981,6 @@ impl ProjectState {
             state
                 .metadata
                 .remove(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY);
-        }
-        if strict_load {
-            state.ensure_candidate_store_available()?;
         }
         Ok(state)
     }
@@ -2000,9 +1995,9 @@ impl ProjectState {
         }
         if let Some(value) = self.metadata.get(CANDIDATE_SETS_METADATA_KEY) {
             let schema = value.get("schema").and_then(serde_json::Value::as_str);
-            if schema == Some(CANDIDATE_SETS_REF_SCHEMA)
-                || !(value.get("sets").is_some_and(serde_json::Value::is_object)
-                    || schema == Some(CANDIDATE_SETS_SCHEMA))
+            if schema
+                .is_some_and(|schema| !schema.trim().is_empty() && schema != CANDIDATE_SETS_SCHEMA)
+                || Self::parse_inline_candidate_store_value(value).is_none()
             {
                 return Err(Self::candidate_store_unavailable(
                     "Candidate metadata is unresolved or has not been hydrated".into(),
@@ -2293,7 +2288,7 @@ impl ProjectState {
 
             cause_chain: vec![],
         })?;
-        let index_value: serde_json::Value =
+        let index: CandidateStoreDiskIndex =
             serde_json::from_str(&index_text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -2303,31 +2298,7 @@ impl ProjectState {
 
                 cause_chain: vec![],
             })?;
-        let explicit_counts = index_value
-            .get("set_count")
-            .and_then(serde_json::Value::as_u64)
-            .is_some()
-            && index_value
-                .get("sets")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|sets| {
-                    sets.iter().all(|entry| {
-                        entry
-                            .get("candidate_count")
-                            .and_then(serde_json::Value::as_u64)
-                            .is_some()
-                    })
-                });
-        if !explicit_counts {
-            return Err(EngineError::invalid_input(
-                "Candidate-store index has unavailable counts",
-            ));
-        }
-        let index: CandidateStoreDiskIndex =
-            serde_json::from_value(index_value).map_err(|err| {
-                EngineError::invalid_input(format!("Invalid candidate-store index: {err}"))
-            })?;
-        if index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
+        if !index.schema.trim().is_empty() && index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -2338,11 +2309,6 @@ impl ProjectState {
 
                 cause_chain: vec![],
             });
-        }
-        if index.set_count != index.sets.len() || reference.set_count != index.sets.len() {
-            return Err(EngineError::invalid_input(
-                "Candidate-store index set count mismatch",
-            ));
         }
         let index_dir = index_path
             .parent()
@@ -2396,11 +2362,6 @@ impl ProjectState {
                     })?;
                 candidates.push(candidate);
             }
-            if entry.candidate_count != candidates.len() || sets.contains_key(&entry.name) {
-                return Err(EngineError::invalid_input(
-                    "Candidate-store record count mismatch or duplicate set name",
-                ));
-            }
             sets.insert(
                 entry.name.clone(),
                 CandidateSet {
@@ -2428,15 +2389,6 @@ impl ProjectState {
         if Self::parse_inline_candidate_store_value(&value).is_some() {
             return Ok(());
         }
-        if value
-            .get("set_count")
-            .and_then(serde_json::Value::as_u64)
-            .is_none()
-        {
-            return Err(EngineError::invalid_input(
-                "Candidate-store reference has unavailable set count",
-            ));
-        }
         let reference: CandidateStoreReference =
             serde_json::from_value(value.clone()).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
@@ -2448,7 +2400,7 @@ impl ProjectState {
                 cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
-            return Err(EngineError::invalid_input("Unsupported candidate-store reference metadata"));
+            return Ok(());
         }
         let store = Self::load_candidate_store_from_ref(Path::new(project_path), &reference)?;
         let store_value = serde_json::to_value(store).map_err(|e| EngineError {
@@ -2481,7 +2433,7 @@ impl ProjectState {
                 cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
-            return Err(Self::candidate_store_unavailable("Invalid candidate-store metadata".into()));
+            return Ok(None);
         }
         let store = Self::load_candidate_store_from_ref(project_path, &reference)?;
         Ok(Some(store))

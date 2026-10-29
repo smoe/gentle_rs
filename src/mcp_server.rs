@@ -1623,6 +1623,13 @@ fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value
 }
 
 fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value {
+    let text = match (
+        is_error,
+        crate::cli_support::candidate_store_failure_note(&text),
+    ) {
+        (true, Some(note)) => format!("{text}\n{note}"),
+        _ => text,
+    };
     let structured_content = if is_error {
         json!({
             "format": format,
@@ -1652,11 +1659,25 @@ fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value
 }
 
 fn tool_result_json(value: Value, is_error: bool) -> Value {
-    let structured_content = if is_error {
+    let mut structured_content = if is_error {
         normalize_error_structured_content(value)
     } else {
         value
     };
+    if is_error {
+        let note = structured_content
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .and_then(crate::cli_support::candidate_store_failure_note);
+        if let Some(note) = note {
+            if let Some(causes) = structured_content
+                .pointer_mut("/error/cause_chain")
+                .and_then(Value::as_array_mut)
+            {
+                causes.push(json!(note));
+            }
+        }
+    }
     let text = serde_json::to_string_pretty(&structured_content)
         .unwrap_or_else(|_| structured_content.to_string());
     json!({
@@ -4072,6 +4093,41 @@ mod tests {
     };
     use std::{fs, io::Cursor, path::Path, thread, time::Duration};
     use tempfile::tempdir;
+
+    #[test]
+    fn candidate_store_unresolved_mcp_errors_disclose_transient_and_external_effects() {
+        let error = EngineError::invalid_input("candidate_store_unavailable: synthetic");
+        let result = tool_result_json(json!({"error":error}), true);
+        assert_eq!(result["isError"], true);
+        assert!(
+            result["structuredContent"]["error"]["cause_chain"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|cause| cause
+                    .as_str()
+                    .is_some_and(|text| text.contains("not rolled back")))
+        );
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("transient engine")
+        );
+        let text = tool_result_text(
+            "candidate_store_unavailable: synthetic".into(),
+            "text",
+            true,
+        );
+        assert!(
+            text["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("discarded when the invocation ends")
+        );
+        let healthy = tool_result_json(json!({"result":"unchanged"}), false);
+        assert_eq!(healthy["structuredContent"], json!({"result":"unchanged"}));
+    }
 
     fn normalize_construct_reasoning_status_output(
         mut value: serde_json::Value,

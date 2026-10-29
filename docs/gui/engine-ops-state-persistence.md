@@ -24,7 +24,9 @@ still inspect unaffected DNA. Candidates are **unavailable, not an empty list**;
 the candidate panel displays the refusal instead of offering replacement data.
 Save, Save As and shared implicit saves return `candidate_store_unavailable`
 before save-owned files/directories change. A failed save must not be treated
-as a saved project. This does not roll back earlier edits or separate exports.
+as a saved project. The status message shows the refusal; dirty state and a
+pending New/Open/Close action are not cleared or advanced. This does not roll
+back earlier edits or separate exports.
 
 Keep unsaved work separate. Restore the original sidecar or an intact
 project/sidecar backup, then reopen the original project; restoring files does

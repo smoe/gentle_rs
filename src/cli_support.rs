@@ -144,6 +144,13 @@ pub fn load_state_or_default(path: &str) -> Result<ProjectState, String> {
     ProjectState::load_from_path(path).map_err(|e| e.to_string())
 }
 
+/// Context for one-shot CLI/MCP failures, not a claim of transactional rollback.
+pub fn candidate_store_failure_note(message: &str) -> Option<&'static str> {
+    message.contains("candidate_store_unavailable:").then_some(
+        "A refused candidate-store save leaves project and sidecar files unchanged by that save. Any command changes made only in this invocation's transient engine are not saved and are discarded when the invocation ends. Separately written reports or exports are not rolled back.",
+    )
+}
+
 /// Builds the standard machine-readable `svg-png` JSON summary used by CLI
 /// binaries that rasterize an SVG into a PNG.
 pub fn svg_png_summary_json(summary: &SvgPngRenderSummary) -> Value {
@@ -182,6 +189,17 @@ pub fn svg_pdf_summary_json(summary: &SvgPdfRenderSummary) -> Value {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn candidate_store_unresolved_failure_note_does_not_claim_global_rollback() {
+        let note =
+            candidate_store_failure_note("InvalidInput: candidate_store_unavailable: synthetic")
+                .unwrap();
+        assert!(note.contains("transient engine"));
+        assert!(note.contains("discarded when the invocation ends"));
+        assert!(note.contains("not rolled back"));
+        assert!(candidate_store_failure_note("unrelated I/O failure").is_none());
+    }
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
