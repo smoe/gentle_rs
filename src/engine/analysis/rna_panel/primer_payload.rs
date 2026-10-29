@@ -12,10 +12,10 @@ mod alignment_tests;
 mod evidence;
 #[path = "primer_payload/inspect.rs"]
 mod inspect;
-#[path = "primer_payload/observed.rs"]
-mod observed;
 #[path = "primer_payload/junction_assessment.rs"]
 mod junction_assessment;
+#[path = "primer_payload/observed.rs"]
+mod observed;
 #[cfg(test)]
 #[path = "primer_payload/observed_tests.rs"]
 mod observed_tests;

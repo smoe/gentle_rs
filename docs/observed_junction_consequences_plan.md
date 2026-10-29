@@ -371,3 +371,13 @@ The requested full-producer definite recurrence acceptance is specifically
 Historical 3/1/3/0 certainty/flank qualification, reference authority and J2/J3
 choices still need explicit evidence/owner decisions. No J2/J3 or SAM service
 implementation, protein/expression/novelty claim or downloaded reference is added.
+
+Closing hygiene caught the newly added private module declaration out of
+rustfmt's lexical order in `primer_payload.rs`. Only that new declaration is
+reordered; the baseline formatting exceptions above are left alone. The runtime
+counts/source overlay above predate this declaration-order-only adjustment and
+the documentation commit `4fe68c42`; they are not mislabelled as new runtime
+runs. The declaration and all new modules then pass scoped formatting, and a
+locked/offline default Cargo check is run before final handoff. Final
+session-close has 4 ok/2 warnings/0 failures: only the preserved untracked
+`output/` and the manual plan-fidelity reminder remain.
