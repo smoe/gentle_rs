@@ -228,7 +228,7 @@ no evidence of translation, secretion, stability or soluble protein.
 
 | Decision | Recommendation/status, not selected by Codex |
 | --- | --- |
-| Literal 5466827 -> 5468193 convention | A: donor-last/acceptor-first 1-based gives [5466827,5468192), 1365 bp; B: intron-first/last inclusive gives [5466826,5468193), 1367 bp; C: half-open gives [5466827,5468193), 1366 bp. Await confirmation. |
+| Literal 5466827 -> 5468193 convention | Resolved by the owner on 2026-10-29: none of the original A/B/C interpretations describes this legacy token. Its producer displayed start+1 -> end+1. Store **[5466826,5468192)**, 1366 bp; label exon boundaries **5466826 -> 5468193**; inclusive intron is 5466827-5468192. Keep the old token only as a marked legacy alias, not an input convention. |
 | Meaning of 3/1/3/0 | Confirm records versus reads, certainty and flank qualification; provide library/prep/sample/cell-line mapping. Do not infer independence. |
 | Acceptance recurrence | Recommend explicit library/min_units=2/definite only if independent; shared preps require prep/sample units. Await owner. |
 | Acceptance near window | Recommend explicit 5; no default is introduced. |
@@ -243,3 +243,19 @@ geometry, four declared libraries with gene-coherent denominators above support,
 verified gt_ag, explicit recurrence policy and incomplete-search 0 definite / 3,1,3,0
 possible support. No human/GRCh38/CD274/plus/soluble default enters the service.
 Without confirmation this acceptance case is pending, not silently passed.
+
+## J1 Execution Ledger
+
+J0 is committed separately as `f0c8bdb7`. The owner then clarified the legacy
+coordinate convention above; support meaning/hierarchy and synthetic recurrence
+settings remain unanswered at this point. Code contains no CD274 default.
+
+At `f0c8bdb7` plus the initial DTO/test skeleton, the fail-first command
+`env CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test -q --locked --offline --no-default-features --lib junction_assessment -- --test-threads=1`
+exits 101 with four E0599 errors for absent assess/binding/inspection methods.
+This is an actual compile-red result, not executed tests or a zero-match pass.
+The expanded tests additionally specify near/event/motif helpers and file-bound
+reference/manifest/cancel/error behavior before their implementation.
+The unchanged Cargo.lock SHA-256 is
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+No successful J1 runtime verification is claimed yet.

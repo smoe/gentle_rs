@@ -14,6 +14,8 @@ mod evidence;
 mod inspect;
 #[path = "primer_payload/observed.rs"]
 mod observed;
+#[path = "primer_payload/junction_assessment.rs"]
+mod junction_assessment;
 #[cfg(test)]
 #[path = "primer_payload/observed_tests.rs"]
 mod observed_tests;

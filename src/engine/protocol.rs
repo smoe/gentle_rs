@@ -36,6 +36,9 @@ pub use primer_payload::*;
 #[path = "protocol/observed_transcripts.rs"]
 mod observed_transcripts;
 pub use observed_transcripts::*;
+#[path = "protocol/observed_junctions.rs"]
+mod observed_junctions;
+pub use observed_junctions::*;
 #[path = "protocol/observed_annotation.rs"]
 mod observed_annotation;
 pub use observed_annotation::*;
