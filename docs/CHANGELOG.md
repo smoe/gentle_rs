@@ -19,6 +19,27 @@
   two new actual-process checks explicitly skipped without same-source binaries.
   Scoped formatting, documentation/manual freshness and whitespace passed.
 
+## 2026-10-29 - Reconcile The Reported Lifecycle Slice 3/5 Return
+
+- Record the owner's forwarded Claude result at `284e5b70`: 28 Rust passes on
+  macOS/default features, comprising 17 Slice 5 tests and 11 Slice 3 controls,
+  with unchanged lockfile. Attribute the report; no raw log/toolchain/binary
+  receipt or new Codex Rust run is claimed. Keep the process/macOS rehearsal
+  and its inconclusive native long-job/cancel outcome separate.
+- Mark the shipped C1--C7 safeguards and follow-up tests as reviewed/reported
+  passing at that source, not still-unimplemented or universally unrun. Preserve
+  new-source, headless, VM/parity, other-suite and platform acceptance limits.
+- Correct Cargo filter guidance: one before `--`, multiple test-binary filters
+  after it. Retain the repository formatting gate while separating Claude's
+  historical unrelated drift from scoped failures; do not mass-format or weaken
+  the cosmetic busy-message guard. Update lifecycle status/handoff and the
+  existing roadmap line, without adding a Done entry or new release gate.
+- Include the separately prepared read-only degraded-sidecar review prompt;
+  it requests critique of load/save safety, not implementation authorization.
+  Documentation only; no runtime/scientific/approval change, build, Claude or
+  provider call, native capture, push or goal resumption. Preserve unrelated
+  `outputs/`.
+
 ## 2026-10-29 - Assess Saved Observed Splice Junctions (J1)
 
 - Add a separate bounded, offline J1 request/report/binding and assess/show/cancel

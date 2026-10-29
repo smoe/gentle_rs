@@ -1,7 +1,9 @@
 # Lifecycle Slice 5: Snapshot-Bound Preview Publication
 
-Status, 2026-10-28: **owner authorized the revised scope, DEC-026 exception and
-absence of project History rows; implementation/tests authored**. The later
+Status, 2026-10-29: **implemented in `b0521123`, with follow-up tests in
+`98f69995`; the owner-forwarded Claude report records 28 passing Rust tests at
+`284e5b70`**. See the [scoped reported result](#claude-reported-rust-verification-at-284e5b70),
+not a new-source or native acceptance claim. The later
 owner-authorized [284e5b70 rehearsal](glen_next_verification_handoff.md#synthetic-lifecycle-rehearsal-at-284e5b70-2026-10-28)
 passes 25 source/process checks and scoped macOS GUI observations. Native
 cancellation/concurrency is inconclusive; remaining platform/VM/full-suite
@@ -30,7 +32,7 @@ whether a result commits. Also accept a separate publication branch, explicit
 cancel ordering, existing bounded receipts instead of a new audit store, and
 unchanged conservative S1/workflow controls. No generic journal merge.
 
-Codex qualifications, not independently Claude-reviewed:
+Codex qualifications at authoring, before the later shipped-code review:
 
 - `dna_design_source` already rejects an occupied output ID during preview as
   well as Apply. Keep that validation; a later collision is caught by structural
@@ -46,8 +48,14 @@ Codex qualifications, not independently Claude-reviewed:
 - A held engine write lock alone does not establish the computed-before-
   publication cancellation window. Tests must also synchronize on actual
   completion of work, not timing. Never sleep and assume publication was reached.
-- Cargo accepts one positional test filter per invocation. Split the supplied
-  multi-filter command into separate invocations; require nonzero test counts.
+- Cargo accepts one positional filter before `--`; multiple filters after it
+  are test-binary arguments. Separate Cargo-filter invocations remain valid.
+  Require nonzero counts and record which filters actually executed.
+
+The owner-forwarded shipped-code review accepts request/report binding and the
+stronger delayed display/sharing safeguards. Do not retain a blanket claim that
+those additions remain Claude-unreviewed, or infer an audit of every separate
+qualification from that source review.
 
 ## Owner Decisions Accepted, 2026-10-28
 
@@ -197,7 +205,24 @@ These checks execute no GENtle binary, Rust tests, VM, native GUI or model.
 Session-close: 4 OK, 2 warnings (intentional working changes/unrelated `outputs/`
 and the manual plan-fidelity reminder), 0 failures. Roadmap remains 400 lines.
 
-## Glen/CI Verification, Not Executed Here
+## Claude-Reported Rust Verification At 284e5b70
+
+Received through the owner on 2026-10-29: Claude reports running
+`cargo test --locked --lib -- lifecycle_slice5 lifecycle_slice3` on macOS with
+default features at `284e5b7049016e42ea19dd4bd50d7e93516d7ca7`: **28 passed,
+zero failed**, comprising 17 Slice 5 tests (three GUI consumer unit tests) and
+11 Slice 3 controls. `Cargo.lock` was reported unchanged. This is attributed
+external evidence, not a Codex rerun; raw logs, toolchain and binary hashes were
+not supplied in the forwarded comment. The three GUI tests are not native GUI
+acceptance. See the [consolidated return](glen_next_verification_handoff.md#claude-reported-lifecycle-rust-results-at-284e5b70-2026-10-29)
+for source review, formatting limits and outstanding checks.
+
+The authoring-time unrun statements above/below are historical for this executed
+subset. Current-source headless, other suites, VM/parity and native/platform
+acceptance remain separate. Preserve the inconclusive long-job/cancellation
+rehearsal, rather than treating these unit results as its completion.
+
+## Remaining Glen/CI Verification
 
 Owner-requested continuation, 2026-10-28: a further source pass at integrated
 `a52c7b74` identified two missing test boundaries, not a confirmed runtime bug.
@@ -207,7 +232,8 @@ Apply after an unrelated edit, changed source DNA, changed annotations or an
 occupied output ID. An unrelated edit can make a preview historical without
 invalidating its actual source; the other three controls must refuse. Tutorial
 06.07 now explains that distinction. Runtime, policy and scientific contracts
-are unchanged; these Rust regressions are authored and remain unrun locally.
+are unchanged. They were unrun at authoring; the reported 17-test Slice 5 return
+above includes the two follow-up tests at its historical source.
 Continuation checks pass 13 Python source/teaching cases with 12 process skips
 (25 total), the targeted real LF/CRLF checkout test, scoped rustfmt and
 documentation-status/whitespace checks. Session-close: 4 OK, 2 intentional
@@ -229,6 +255,12 @@ cargo test --locked -j1 --lib agent_execution::tests::sequence_design -- --test-
 cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
 cargo fmt --check
 ```
+
+Claude reports scoped Slice 5 rustfmt passing but repository-wide formatting
+failing with about 78 unrelated diffs at `284e5b70`. Do not treat that estimate
+as current-source evidence or mass-format unrelated files. Retain the repository
+gate, separate baseline drift from changed-file regressions and report scoped
+formatting against the source actually checked; a global failure is not a pass.
 
 Keep existing raw CLI/MCP/scripting scientific parity and source-matched
 lifecycle/tutorial companions passing. Native checks: preview alongside a long

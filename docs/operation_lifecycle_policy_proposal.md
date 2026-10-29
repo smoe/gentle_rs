@@ -9,7 +9,11 @@ remains with Glen/CI. The owner subsequently authorized revised Slice 4's
 Plan-only fresh writer/host binding, now authored with separate pending external
 checks. Owner-authorized [Slice 5](operation_lifecycle_slice5_plan.md) now authors
 snapshot-bound standalone no-path Plan publication without a live journal or
-History row; all execution/native acceptance remains with Glen/CI.
+History row. The later [owner-forwarded Claude return](glen_next_verification_handoff.md#claude-reported-lifecycle-rust-results-at-284e5b70-2026-10-29)
+reports 28 Rust passes at `284e5b70`; a separate process/macOS rehearsal records
+its own subset. Only remaining/affected-source checks stay with Glen/CI; native
+long-job cancellation/concurrency remains inconclusive. Do not reissue these
+implemented slices or their executed subsets as wholly pending work.
 Original review/source observations below are historical; the revised
 slice order records current scope. S2 and wider exporter/security changes remain
 separately gated. Original review prompt:

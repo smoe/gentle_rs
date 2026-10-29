@@ -55,6 +55,53 @@ Authoring verification: 37 Python/source checks passed, including LF/CRLF
 checkouts; two new actual-process tests skipped without supplied binaries.
 Scoped formatting, documentation/manual freshness and whitespace checks passed.
 
+## Claude-Reported Lifecycle Rust Results At 284e5b70, 2026-10-29
+
+Owner-forwarded older review, received 2026-10-29: Slice 5 is implemented in
+`b0521123` with additional tests in `98f69995`, not a pending implementation
+plan. Claude reports this command at
+`284e5b7049016e42ea19dd4bd50d7e93516d7ca7`, macOS/default features:
+
+```sh
+cargo test --locked --lib -- lifecycle_slice5 lifecycle_slice3
+```
+
+**Reported: 28 passed, zero failed**: 17 Slice 5 tests, including three GUI
+consumer unit tests, and 11 Slice 3 controls; `Cargo.lock` unchanged. Attribute
+this result to Claude's supplied report. No raw log, exact toolchain or test
+binary identity was supplied, and Codex did not rerun Rust. Counts are separate
+from the 25-check binary rehearsal below; do not sum or promote them to native,
+headless, whole-suite or newer-main acceptance.
+
+Codex's current source inspection confirms the reported safeguards: project
+snapshots for Preview, engine-read/job-lock publication order, owner/structural/
+cancel/request checks, GUI result-owner gating and retained freshness stamps
+for explicit sharing. The reviewed Preview branch, GUI consumer and test
+bodies are unchanged since the reported source; shared files gained unrelated
+junction support. That is source continuity, not execution of the newer source.
+Claude's C1--C7 findings are closed in that scoped shipped-code review.
+
+Formatting: Claude reports scoped rustfmt passing and whole-repository
+`cargo fmt --check` failing with about 78 unrelated diffs at that source. Keep
+the whole-repository check and its failure visible, distinguish baseline drift
+from changed-file failures, and avoid unrelated formatting churn. Do not reuse
+the historical diff count as a current measurement. Cargo accepts one filter
+before `--`; the two filters above are passed after it to the test binary.
+
+Remaining work uses the [existing Slice 5 commands](#lifecycle-slice-5-2026-10-28),
+reusing unaffected source-matched receipts where available: headless test-target
+check, uncovered sequence-design/lifecycle/agent suites, JS/Lua VM and parity
+checks, native Windows and affected-source CI. Do not repeat the reported
+28-test run solely because older authoring notes say unrun.
+
+Native long-job concurrency/cancellation is still inconclusive. The rehearsal
+below observed no History row, historical sharing, project replacement and
+Apply/undo/redo, but did not complete the long-job/cancel or full structural-
+versus-display native checks. Do not classify all native work as unrun or all
+as accepted. Keep the brief fail-closed "Project is busy" display as a cosmetic
+observation, not authority to weaken lock/owner checks or expand this repair.
+The previous goal remains paused; no new build, model call, capture or push.
+
 ## Help And Observed-Transcript Smoke Fixtures, 2026-10-28
 
 The owner reports 4706 library passes, three failures and 16 ignored tests;
@@ -231,9 +278,12 @@ separate from Slice 5 failures. No Rust/runtime/native acceptance is implied.
 Session-close has 4 OK, 2 expected working-tree/manual-review warnings and no
 failures. Unrelated `outputs/`, the paused goal and existing stashes are untouched.
 
-Rust/native/process/VM tests are authored, not executed locally. Use nonzero
-counts at the normally integrated full SHA and reuse unaffected same-source
-results; do not repeat every older evidence bundle:
+The authoring-time checks above did not execute Rust/native/process/VM tests.
+The [later Claude-reported return](#claude-reported-lifecycle-rust-results-at-284e5b70-2026-10-29)
+and [process/native rehearsal](#synthetic-lifecycle-rehearsal-at-284e5b70-2026-10-28)
+supersede that unrun status only for their named source/subsets. Use nonzero
+counts for remaining checks at the integrated full SHA; do not repeat every
+older evidence bundle:
 
 ```sh
 cargo check -q --locked --tests
@@ -268,7 +318,8 @@ reports/Apply still work. Keep existing raw CLI/MCP/JS/Lua/Python companions and
 scientific parity passing. Return exact source/binary/platform/features/counts,
 failures and unrun checks. No push/dispatch or previous-goal resumption here.
 
-Additional source-pass tests authored after `b0521123` (unrun):
+Additional source-pass tests authored after `b0521123` (unrun at authoring,
+included in Claude's reported Slice 5 return at `284e5b70`):
 `lifecycle_slice5_preview_tolerates_a_read_only_journal_append_after_snapshot`
 must preserve the intervening S1 audit and the live engine/history, and
 `lifecycle_slice5_published_preview_apply_revalidates_only_its_actual_constraints`

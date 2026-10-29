@@ -10,6 +10,13 @@ new payload-resolution layer. No further Claude call was made. See the
 and [verification handoff](glen_next_verification_handoff.md#lifecycle-slice-3-2026-10-27).
 No release gate, S2 authorization or scientific acceptance follows from this slice.
 
+Status update, 2026-10-29: the owner forwards Claude's report of 11 Slice 3
+controls and 17 Slice 5 tests passing at `284e5b70`, macOS/default features.
+See the [attributed return](glen_next_verification_handoff.md#claude-reported-lifecycle-rust-results-at-284e5b70-2026-10-29)
+and the separate process/macOS rehearsal there. Authoring-time unrun statements
+below are historical for those subsets, not new-source, headless, VM or full
+native acceptance. Do not plan the implemented slices again.
+
 Superseded narrowly on 2026-10-28: owner-authorized [Slice 5](operation_lifecycle_slice5_plan.md)
 removes live journal/History publication only for standalone managed no-path
 Plan. Its project snapshot remains; S1, with-path Plan, workflows and other
