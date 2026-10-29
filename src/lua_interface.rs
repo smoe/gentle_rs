@@ -2107,6 +2107,42 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_slice6_lua_warning_survives_vm_and_refuses_save_before_io() {
+        let td = tempdir().unwrap();
+        let target = td.path().join("absent folder's name/project.json");
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            "candidate_sets_load_warning".into(),
+            serde_json::json!({"message":"synthetic legacy lost reference"}),
+        );
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        lua.globals()
+            .set("input", lua.to_value(&state).unwrap())
+            .unwrap();
+        lua.globals()
+            .set("target", target.to_str().unwrap())
+            .unwrap();
+        lua.load(
+            r#"
+            local ok, err = pcall(save_project, input, target)
+            assert(not ok and tostring(err):find('candidate_store_unavailable', 1, true))
+        "#,
+        )
+        .exec()
+        .unwrap();
+        let retained: ProjectState = lua
+            .from_value(lua.globals().get::<Value>("input").unwrap())
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(retained).unwrap(),
+            serde_json::to_value(state).unwrap()
+        );
+        assert!(!target.parent().unwrap().exists());
+    }
+
+    #[test]
     fn lifecycle_slice3_lua_runtime_preserves_state_and_legacy_controls() {
         use crate::engine::lifecycle_slice3_tests as fixture;
         let interface = LuaInterface::new();

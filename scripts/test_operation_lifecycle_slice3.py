@@ -1,4 +1,4 @@
-"""Lifecycle Slice 3/4 source and opt-in actual-process synthetic file tests.
+"""Lifecycle Slice 3--6 source and opt-in actual-process synthetic file tests.
 
 All input is invented inline or tutorial 06.07's existing literal CDS. Temporary
 projects/sidecars are recreated through the supplied CLI, never private inputs.
@@ -156,6 +156,44 @@ class LifecycleSlice5SourceTests(unittest.TestCase):
                 self.assertIn(required, text)
 
 
+class LifecycleSlice6SourceTests(unittest.TestCase):
+    def test_shared_save_guard_precedes_staging_and_preserves_unresolved_references(self):
+        source = (ROOT / "src/engine.rs").read_text()
+        saver = source.split("pub fn save_to_path(", 1)[1].split("fn candidate_store_sidecar_basename", 1)[0]
+        self.assertLess(saver.index("ensure_candidate_store_available()?"), saver.index("self.clone()"))
+        self.assertLess(saver.index("ensure_candidate_store_available()?"), saver.index("prepare_candidate_store_sidecar_transaction"))
+        loader = source.split("pub fn load_from_path(", 1)[1].split("pub fn ensure_candidate_store_available", 1)[0]
+        self.assertNotIn("remove(CANDIDATE_SETS_METADATA_KEY)", loader)
+        self.assertIn("else if had_external_reference", loader)
+        for field in ('"status": "unresolved"', '"code": "candidate_store_unavailable"', '"cause": err'):
+            self.assertIn(field, loader)
+
+    def test_unavailable_is_not_zero_or_a_closed_world_absence(self):
+        metrics = (ROOT / "src/engine/analysis/candidate_metrics.rs").read_text()
+        self.assertIn("Result<Vec<CandidateSetSummary>, EngineError>", metrics)
+        self.assertEqual(metrics.count("self.read_candidate_store()?"), 3)
+        facts = (ROOT / "src/engine/state/sequence_ops.rs").read_text()
+        evaluator = facts.split("fn evaluate_fact_atom(", 1)[1].split("/// Cheap molecule-kind", 1)[0]
+        self.assertLess(evaluator.index("unavailable_facts"), evaluator.index("ClosedWorld"))
+        self.assertIn("unavailable, not an empty collection", (ROOT / "src/agent_bridge.rs").read_text())
+
+    def test_recovery_and_limits_are_taught(self):
+        guide = (ROOT / "docs/tutorial/06-07_synthetic_sequence_design.md").read_text()
+        for text in ("candidate_store_unavailable", "Save As", "restore", "reopen", "not an empty"):
+            self.assertIn(text, guide)
+        plan = (ROOT / "docs/operation_lifecycle_slice6_plan.md").read_text()
+        for text in ("warning-only", "before", "Windows", "No automatic repair"):
+            self.assertIn(text, plan)
+
+    def test_gui_save_uses_shared_guard_before_any_save_dialog(self):
+        app = (ROOT / "src/app.rs").read_text()
+        save = app.split("fn save_current_project(", 1)[1].split("fn execute_project_action", 1)[0]
+        self.assertLess(save.index("ensure_candidate_store_available"), save.index("rfd::FileDialog"))
+        self.assertLess(save.index("self.app_status = err.to_string()"), save.index("mark_clean_snapshot"))
+        tests = (ROOT / "src/app/tests.rs").read_text()
+        self.assertIn("lifecycle_slice6_gui_save_refuses_before_dialog_without_rebinding_or_marking_clean", tests)
+
+
 @unittest.skipUnless(BIN_DIR, "Supply same-source binaries through GENTLE_LIFECYCLE_BIN_DIR; no auto-build")
 class LifecycleSlice3ProcessTests(unittest.TestCase):
     def setUp(self):
@@ -291,6 +329,60 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.env["GENTLE_CANDIDATE_STORE_STRICT_LOAD"] = "1"
         self.run_cli("op", json.dumps(plan(loaded=True)), ok=False)
         self.assertEqual(self.state.read_bytes(), before)
+
+    def test_slice6_degraded_store_refuses_save_as_and_cli_mcp_autosaves(self):
+        mutation = {"SetParameter": {"name": "max_fragments_per_container", "value": 123}}
+        for ending in ("\n", "\r\n"):
+            for fault in ("missing_index", "corrupt_index", "corrupt_records"):
+                with self.subTest(ending=repr(ending), fault=fault):
+                    value = self.initialize(ending, candidates=True)
+                    index = self.work / value["metadata"]["candidate_sets"]["index_path"]
+                    index_bytes = index.read_bytes()
+                    index_value = json.loads(index_bytes)
+                    records = index.parent / index_value["sets"][0]["records_path"]
+                    if fault == "missing_index":
+                        index.unlink()
+                    elif fault == "corrupt_index":
+                        index.write_bytes(b"not JSON")
+                    else:
+                        records.write_bytes(b"not JSON\r\n")
+                    before = {p.relative_to(self.work): p.read_bytes() if p.is_file() else None
+                              for p in self.work.rglob("*")}
+                    target = self.work / "absent folder's name/new project.json"
+                    for command in (("candidates", "list"), ("save-project", str(target)),
+                                    ("shell", "save-project " + quote(str(target))),
+                                    ("op", json.dumps(mutation))):
+                        run = self.run_cli(*command, ok=False)
+                        self.assertIn(b"candidate_store_unavailable", run.stderr)
+                    for tool, args in (("op", {"operation": mutation}),
+                                       ("workflow", {"workflow": workflow([mutation])})):
+                        result = self.mcp_call(tool, dict(args, confirm=True), ok=False)
+                        self.assertIn("candidate_store_unavailable", json.dumps(result))
+                    self.run_cli("state-summary")
+                    self.run_cli("op", json.dumps(plan(loaded=True)))
+                    self.assertEqual({p.relative_to(self.work): p.read_bytes() if p.is_file() else None
+                                      for p in self.work.rglob("*")}, before)
+
+    def test_slice6_legacy_warning_refuses_and_restored_sidecar_reopens(self):
+        value = self.initialize(candidates=True)
+        index = self.work / value["metadata"]["candidate_sets"]["index_path"]
+        original = index.read_bytes()
+        index.unlink()
+        self.run_cli("save-project", str(self.work / "new.json"), ok=False)
+        index.write_bytes(original)
+        self.run_cli("candidates", "list")
+        target = self.work / "recovered folder's name/project.json"
+        self.run_cli("save-project", str(target))
+        self.assertIn("candidate_sets", json.loads(target.read_bytes())["metadata"])
+        value["metadata"].pop("candidate_sets")
+        value["metadata"]["candidate_sets_load_warning"] = {"message": "legacy lost reference"}
+        self.state.write_bytes(json.dumps(value).encode())
+        before = {p.relative_to(self.work): p.read_bytes() if p.is_file() else None
+                  for p in self.work.rglob("*")}
+        run = self.run_cli("save-project", str(target), ok=False)
+        self.assertIn(b"candidate_store_unavailable", run.stderr)
+        self.assertEqual({p.relative_to(self.work): p.read_bytes() if p.is_file() else None
+                          for p in self.work.rglob("*")}, before)
 
     def test_python_real_client_op_workflow_and_shell(self):
         sys.path.insert(0, str(ROOT / "integrations/python"))

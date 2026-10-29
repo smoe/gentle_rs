@@ -23884,7 +23884,13 @@ impl MainAreaDna {
 
         let (set_summaries, sequence_ids) = {
             let guard = engine.read().expect("Engine lock poisoned");
-            let mut set_summaries = guard.list_candidate_sets();
+            let mut set_summaries = match guard.list_candidate_sets() {
+                Ok(sets) => sets,
+                Err(err) => {
+                    ui.colored_label(egui::Color32::RED, err.to_string());
+                    return;
+                }
+            };
             set_summaries.sort_by(|a, b| a.name.cmp(&b.name));
             let mut sequence_ids = guard.state().sequences.keys().cloned().collect::<Vec<_>>();
             sequence_ids.sort_unstable();

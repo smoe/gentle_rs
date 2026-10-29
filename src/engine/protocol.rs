@@ -2711,6 +2711,9 @@ pub struct ProjectFactGraph {
     #[serde(default = "project_fact_graph_schema")]
     pub schema: String,
     pub facts: Vec<ProjectFact>,
+    /// Unavailable families cannot support closed-world absence conclusions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unavailable_facts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

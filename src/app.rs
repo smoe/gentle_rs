@@ -16258,6 +16258,16 @@ Error: `{err}`"
     }
 
     fn save_current_project(&mut self) -> bool {
+        let availability = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .ensure_candidate_store_available();
+        if let Err(err) = availability {
+            self.app_status = err.to_string();
+            return false;
+        }
         if let Some(path) = self.current_project_path.clone() {
             if self.save_project_to_file(&path).is_ok() {
                 self.record_recent_project_path(&path);

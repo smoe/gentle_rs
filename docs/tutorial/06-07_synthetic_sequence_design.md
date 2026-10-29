@@ -297,6 +297,23 @@ To inspect History while keeping this preview in the result panel, open
 **Windows > Show Operation History**. Running `/history` is also local, but
 replaces the latest command result, so inspect/share the preview first.
 
+### If Opening The Project Reports Missing Candidate Data
+
+An unavailable candidate sidecar is **not an empty** candidate collection.
+GENtle preserves its unresolved reference and a structured load diagnostic;
+unaffected sequence inspection and this no-path preview remain available.
+Candidate operations and project saves (including **Save As** and implicit
+saves) refuse with `candidate_store_unavailable` before save-owned filesystem
+changes. This is not permission to replace missing candidates or discard them.
+
+Keep unsaved work separate, restore the original dependency or an intact
+project/sidecar backup, then **reopen** the original project. Restoring files
+does not silently unlock the degraded session. An older warning-only file may
+already have lost its reference and needs a backup; GENtle does not guess it.
+No automatic repair/discard or rollback of earlier edits/exports is provided.
+Healthy projects retain their existing save behavior. See the
+[project persistence reference](../cli/projects.md#unavailable-candidate-sidecars).
+
 ## Executable checks and independent review
 
 Fast, standard-library-only source/teaching checks:

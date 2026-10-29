@@ -205,7 +205,7 @@ impl GentleEngine {
             });
         }
         let generated = candidates.len();
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let replaced_existing = store
             .sets
             .insert(
@@ -425,7 +425,7 @@ impl GentleEngine {
         }
 
         let generated = candidates.len();
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let replaced_existing = store
             .sets
             .insert(
@@ -1278,7 +1278,7 @@ impl GentleEngine {
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
         let set_name = Self::normalize_candidate_set_name(&set_name)?;
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let removed = store.sets.remove(&set_name).is_some();
         self.write_candidate_store(store)?;
         if removed {
@@ -1303,7 +1303,7 @@ impl GentleEngine {
         let set_name = Self::normalize_candidate_set_name(&set_name)?;
         let metric_name = Self::normalize_metric_name(&metric);
         let expr = Self::parse_metric_expression(&expression)?;
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
@@ -1391,7 +1391,7 @@ impl GentleEngine {
             );
         }
 
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
@@ -1550,7 +1550,7 @@ impl GentleEngine {
             });
         }
 
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let input = store
             .sets
             .get(&input_set)
@@ -1675,7 +1675,7 @@ impl GentleEngine {
         let left_set = Self::normalize_candidate_set_name(&left_set)?;
         let right_set = Self::normalize_candidate_set_name(&right_set)?;
         let output_set = Self::normalize_candidate_set_name(&output_set)?;
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let left = store
             .sets
             .get(&left_set)
@@ -1846,7 +1846,7 @@ impl GentleEngine {
             compiled.push((metric, term.weight, term.direction));
         }
 
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
@@ -1988,7 +1988,7 @@ impl GentleEngine {
         let direction = direction.unwrap_or_default();
         let tie_break = tie_break.unwrap_or_default();
 
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let input = store
             .sets
             .get(&input_set)
@@ -2157,7 +2157,7 @@ impl GentleEngine {
             });
         }
 
-        let mut store = self.read_candidate_store();
+        let mut store = self.read_candidate_store()?;
         let input = store
             .sets
             .get(&input_set)

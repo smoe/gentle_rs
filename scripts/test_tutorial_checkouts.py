@@ -1093,6 +1093,9 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertNotIn(b"\r", guide_bytes,
                                  "Repository LF policy overrides the CRLF checkout mode")
                 self.assertEqual(fenced_request(guide_bytes.decode("utf-8")), request)
+                self.assertIn(b"candidate_store_unavailable", guide_bytes)
+                self.assertIn(b"not an empty", guide_bytes)
+                self.assertIn(b"**reopen**", guide_bytes)
                 self.assertEqual(json.loads((target / request_path).read_bytes()), request)
                 self.assertEqual(json.loads((target / source_path).read_bytes()), source)
 

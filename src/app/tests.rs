@@ -10572,6 +10572,30 @@ fn save_current_project_writes_known_path_without_save_as_dialog() {
 }
 
 #[test]
+fn lifecycle_slice6_gui_save_refuses_before_dialog_without_rebinding_or_marking_clean() {
+    // Synthetic warning and sentinel bytes; no native dialog or user project.
+    let temp = tempdir().unwrap();
+    let target = temp.path().join("project's file.json");
+    std::fs::write(&target, b"preserve existing bytes").unwrap();
+    for path in [None, Some(target.to_str().unwrap().to_string())] {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            "candidate_sets_load_warning".into(),
+            serde_json::json!({"message":"synthetic legacy lost reference"}),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.current_project_path = path.clone();
+        app.clean_state_revision = 123;
+        assert!(!app.save_current_project());
+        assert!(app.app_status.contains("candidate_store_unavailable"));
+        assert_eq!(app.current_project_path, path);
+        assert_eq!(app.clean_state_revision, 123);
+        assert_eq!(std::fs::read(&target).unwrap(), b"preserve existing bytes");
+    }
+}
+
+#[test]
 fn can_close_project_is_enabled_for_unsaved_project_with_content() {
     let mut state = ProjectState::default();
     state.sequences.insert(

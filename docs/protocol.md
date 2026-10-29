@@ -1076,6 +1076,34 @@ sidecar hydration/load warnings remain part of the existing loader boundary.
 There is no dedicated editing command, GUI designer, guide/profile selection,
 efficacy/off-target prediction, observed genotype or laboratory execution.
 
+## Degraded Candidate-Store Persistence
+
+The shared project loader retains an unresolved `metadata.candidate_sets`
+reference verbatim. Its `candidate_sets_load_warning` diagnostic adds schema
+`gentle.candidate_store_load_diagnostic.v1`, status `unresolved`, code
+`candidate_store_unavailable`, source-project spelling, message and original
+structured cause. Strict loading refuses; permissive loading keeps unaffected
+inspection available. Missing/corrupt indexes or records and inconsistent
+declared counts cannot become an empty collection. The versioned index requires
+an explicit set array/set count and per-set record counts; ancillary legacy
+defaults remain readable. Legacy warning-only metadata
+remains blocking, including through JSON/JS/Lua state transfer.
+
+Shared saves refuse with `InvalidInput`/`candidate_store_unavailable:` before
+cloning/staging or any save-owned filesystem change, including Save As and
+implicit saves. Candidate listing now returns `Result<Vec<CandidateSetSummary>,
+EngineError>`; reads and mutations refuse unresolved stores. Fact graphs add
+optional `unavailable_facts` (omitted when empty); `candidate_set.exists` evaluates
+unknown, not closed-world false, for this state. Introspection preserves that
+qualification; agent context discloses unavailability instead of a zero count.
+Older consumers ignoring this qualification cannot establish candidate absence.
+
+Restore the original dependency/backup and reopen with successful full hydration.
+An existing degraded session stays blocked. No reference guessing, automatic
+repair/discard, global rollback, new approval or exporter/wrapper migration.
+Healthy absent/empty stores keep existing persistence/cleanup behavior. See
+[Slice 6](operation_lifecycle_slice6_plan.md) and its pending external checks.
+
 ## Synthetic Sequence Design
 
 `PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous

@@ -1539,7 +1539,11 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
-        for set in self.list_candidate_sets() {
+        let (candidate_sets, unavailable_facts) = match self.list_candidate_sets() {
+            Ok(sets) => (sets, vec![]),
+            Err(_) => (vec![], vec!["candidate_set.exists".to_string()]),
+        };
+        for set in candidate_sets {
             facts.push(ProjectFact {
                 fact: "candidate_set.exists".to_string(),
                 subject: fact_subject(FactSubjectKind::Other, set.name),
@@ -1851,6 +1855,7 @@ impl GentleEngine {
         ProjectFactGraph {
             schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
             facts,
+            unavailable_facts,
         }
     }
 
@@ -2026,6 +2031,9 @@ impl GentleEngine {
     }
 
     fn evaluate_fact_atom(atom: &FactAtom, graph: &ProjectFactGraph) -> FactTruth {
+        if graph.unavailable_facts.contains(&atom.fact) {
+            return FactTruth::Unknown;
+        }
         let Some(spec) = project_fact_type_spec(atom.fact.as_str()) else {
             return FactTruth::Unknown;
         };

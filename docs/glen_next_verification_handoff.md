@@ -1,5 +1,60 @@
 # Glen: Next Verification And Return
 
+## Lifecycle Slice 6, 2026-10-29
+
+Verify the newly integrated degraded candidate-store safety extension, not a
+rerun of the completed `284e5b70` rehearsal or unrelated RNA/gel checks.
+The [scope](operation_lifecycle_slice6_plan.md) retains exact unresolved references
+and structured diagnostics. Shared project saves/Save As/implicit saves refuse
+before save-owned filesystem changes; candidate reads/writes refuse instead of
+reporting zero data. Candidate facts are unknown and agent context discloses
+unavailability. Legacy warning-only states stay blocked. Strict loading and
+healthy persistence/intentional empty cleanup remain controls. No automatic
+repair/discard, broader rollback, wrapper/exporter migration or S2 authorization.
+
+On the integrated source when execution is available, require nonzero counts:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 candidate_store -- --test-threads=1
+cargo test --locked --lib -j1 lifecycle_slice6_gui_save -- --test-threads=1
+cargo test --locked --lib -j1 candidates_ -- --test-threads=1
+cargo test --locked --lib -j1 --features js-interface lifecycle_slice6 -- --test-threads=1
+cargo test --locked --lib -j1 --features lua-interface lifecycle_slice6 -- --test-threads=1
+```
+
+The candidate-store group must include all five new `lifecycle_slice6_` engine
+tests; each VM feature adds its own real-runtime refusal test. Retain fact
+unknown/healthy-absence and agent disclosure controls, not only error strings.
+Run the two new actual-process tests with a freshly built/source-matched CLI/MCP:
+
+```sh
+GENTLE_LIFECYCLE_BIN_DIR=/absolute/path/to/bin python3 -m unittest -v \
+ scripts.test_operation_lifecycle_slice3.LifecycleSlice3ProcessTests.test_slice6_degraded_store_refuses_save_as_and_cli_mcp_autosaves \
+ scripts.test_operation_lifecycle_slice3.LifecycleSlice3ProcessTests.test_slice6_legacy_warning_refuses_and_restored_sidecar_reopens
+```
+
+Check missing/corrupt/truncated indexes/records and declared-count mismatch;
+exact retained references/diagnostics through state transfer; no staging, new
+parent, replacement or sidecar deletion at original/existing/new save targets;
+unaffected inspection; restore-then-reopen recovery, never silent warning removal.
+An autosaving command may already have transient edits/separate approved external
+outputs before refusal; do not describe save safety as global rollback.
+
+Native GUI/Windows: show the diagnostic, keep unaffected DNA inspectable and
+candidate controls unavailable, refuse Save/Save As without a false saved state
+or rebound filename, preserve spaced/apostrophe paths and close handles before
+repair/reopen. Keep native, full-suite, packaging and scientific verdicts separate.
+Return actual tested SHA, binary hashes, lock/toolchain/features/platform,
+commands/nonzero counts, failures/skips and retained evidence through Steffen.
+No new intermediate freeze, push, dispatch, model/provider call or publication;
+the previous goal stays paused. Rust, VM, real-process and native execution of
+this slice remain unrun locally; source/Python checks are not runtime acceptance.
+Authoring verification: 37 Python/source checks passed, including LF/CRLF
+checkouts; two new actual-process tests skipped without supplied binaries.
+Scoped formatting, documentation/manual freshness and whitespace checks passed.
+
 ## Help And Observed-Transcript Smoke Fixtures, 2026-10-28
 
 The owner reports 4706 library passes, three failures and 16 ignored tests;

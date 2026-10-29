@@ -575,6 +575,24 @@ preserve existing adapter gates. Slice 3's authored regressions await external
 Rust/VM/native execution. The separately authorized Plan-only Slice 4 writer
 below has its own pending verification; S2 remains separate.
 
+## Degraded Candidate-Store Persistence
+
+Owner-authorized [Lifecycle Slice 6](operation_lifecycle_slice6_plan.md): a
+failed candidate sidecar load is unavailable evidence, not an empty collection.
+Permissive loading retains the original reference and a structured unresolved
+diagnostic; strict loading still refuses. Historical warning-only states remain
+unresolved. Only full hydration of an original reference on reopening clears
+that diagnostic; no inferred reference, silent repair or discard is allowed.
+
+The shared project saver refuses before any save-owned filesystem change while
+that dependency is unresolved, including Save As and implicit saves. Candidate
+reads/writes also refuse; unrelated inspection stays available. Project facts
+carry unavailable families so missing candidate evidence cannot prove absence.
+Healthy empty-store cleanup remains intentional. This is not rollback of prior
+in-memory commands/external writes, a hostile-parent/crash-durability guarantee,
+or authorization for exporter/wrapper/queue migration. Runtime/native checks
+remain source-bound and external under the current no-local-Rust restriction.
+
 ## Sequence-Design Preview Report Approval
 
 Owner-authorized 2026-10-26: migrate only the conversation-approval facet of

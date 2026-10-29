@@ -5184,6 +5184,7 @@ fn validate_port_values(
             if direction == RoutinePortDirection::Input {
                 let names = engine
                     .list_candidate_sets()
+                    .map_err(|err| err.to_string())?
                     .into_iter()
                     .map(|set| set.name)
                     .collect::<HashSet<_>>();
@@ -5266,8 +5267,11 @@ fn is_entity_port_kind(kind: &str) -> bool {
     )
 }
 
-fn existing_values_for_port_kind(engine: &GentleEngine, kind: &str) -> HashSet<String> {
-    match normalize_port_kind(kind).as_str() {
+fn existing_values_for_port_kind(
+    engine: &GentleEngine,
+    kind: &str,
+) -> Result<HashSet<String>, String> {
+    Ok(match normalize_port_kind(kind).as_str() {
         "sequence" => engine
             .state()
             .sequences
@@ -5283,6 +5287,7 @@ fn existing_values_for_port_kind(engine: &GentleEngine, kind: &str) -> HashSet<S
             .collect::<HashSet<_>>(),
         "candidate_set" => engine
             .list_candidate_sets()
+            .map_err(|err| err.to_string())?
             .into_iter()
             .map(|set| set.name)
             .collect::<HashSet<_>>(),
@@ -5297,7 +5302,7 @@ fn existing_values_for_port_kind(engine: &GentleEngine, kind: &str) -> HashSet<S
             .map(|set| set.oligo_set_id)
             .collect::<HashSet<_>>(),
         _ => HashSet::new(),
-    }
+    })
 }
 
 fn sequence_anchor_matches_filter(
@@ -5491,9 +5496,13 @@ fn apply_cross_port_semantics(engine: &GentleEngine, report: &mut MacroTemplateP
             continue;
         }
         let kind = normalize_port_kind(&row.kind);
-        let existing = existing_cache
-            .entry(kind.clone())
-            .or_insert_with(|| existing_values_for_port_kind(engine, &kind));
+        if !existing_cache.contains_key(&kind) {
+            match existing_values_for_port_kind(engine, &kind) {
+                Ok(values) => { existing_cache.insert(kind.clone(), values); }
+                Err(err) => { report.errors.push(err); continue; }
+            }
+        }
+        let existing = &existing_cache[&kind];
         for value in &row.values {
             if existing.contains(value) {
                 report.warnings.push(format!(
@@ -18150,6 +18159,9 @@ fn introspection_facts_payload(
         let mut entry = json!({ "facts": facts });
         if domain == ProjectFactDomain::Project {
             entry["schema"] = json!("gentle.project_fact_graph.v1");
+            if !graph.unavailable_facts.is_empty() {
+                entry["unavailable_facts"] = json!(graph.unavailable_facts);
+            }
         }
         if domain == ProjectFactDomain::View {
             entry["host_attached"] = json!(ui_host_available);
@@ -52581,7 +52593,7 @@ fn execute_candidates_analysis_command(
 ) -> Result<ShellRunResult, String> {
     match command {
         ShellCommand::CandidatesList => {
-            let sets = engine.list_candidate_sets();
+            let sets = engine.list_candidate_sets().map_err(|err| err.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -52643,6 +52655,7 @@ fn execute_candidates_analysis_command(
                 .map_err(|e| e.to_string())?;
             let candidate_count = engine
                 .list_candidate_sets()
+                .map_err(|err| err.to_string())?
                 .into_iter()
                 .find(|summary| summary.name == *set_name)
                 .map(|summary| summary.candidate_count)
@@ -70652,7 +70665,7 @@ fn execute_shell_command_with_options_inner(
             }
         }
         ShellCommand::CandidatesList => {
-            let sets = engine.list_candidate_sets();
+            let sets = engine.list_candidate_sets().map_err(|err| err.to_string())?;
             ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -70673,7 +70686,7 @@ fn execute_shell_command_with_options_inner(
                     set_name: set_name.clone(),
                 })
                 .map_err(|e| e.to_string())?;
-            let remaining = engine.list_candidate_sets().len();
+            let remaining = engine.list_candidate_sets().map_err(|err| err.to_string())?.len();
             let after = engine
                 .state()
                 .metadata
@@ -70809,6 +70822,7 @@ fn execute_shell_command_with_options_inner(
                 .map_err(|e| e.to_string())?;
             let candidate_count = engine
                 .list_candidate_sets()
+                .map_err(|err| err.to_string())?
                 .into_iter()
                 .find(|summary| summary.name == *set_name)
                 .map(|summary| summary.candidate_count)

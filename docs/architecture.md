@@ -835,6 +835,10 @@ defines the procedure. Embedded help must be refreshed rather than deleted.
     - staged/rollback-aware sidecar replacement
     - strict-load opt-in via env (`GENTLE_CANDIDATE_STORE_STRICT_LOAD`)
       with non-strict warning fallback metadata
+    - [Slice 6](operation_lifecycle_slice6_plan.md) preserves unresolved references
+      and load diagnostics, refuses shared saves/candidate access before save-owned
+      filesystem changes, and retains unavailable facts instead of false absence;
+      recovery requires restoring the dependency/backup and reopening
 - `lineage: LineageGraph`
   - `nodes` (sequence lineage nodes with origin + creation op)
   - `seq_to_node` (current sequence id -> latest lineage node)

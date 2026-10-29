@@ -17,6 +17,22 @@ Project aliases:
 - `save-project PATH` aliases `export-state PATH`
 - `load-project PATH` aliases `import-state PATH`
 
+### Unavailable Candidate Sidecars
+
+A permissive load can open unaffected sequences when a candidate sidecar is
+missing, corrupt or incomplete. Its original reference and structured
+`candidate_sets_load_warning` remain available in project metadata; this is not
+an empty candidate collection. Candidate commands and project Save/Save As,
+including implicit CLI/MCP saves, refuse with `candidate_store_unavailable`.
+The saver creates no staging/output directories and does not replace the project
+or remove its sidecars on this refusal. A command may already have changed its
+transient engine or written a separate approved artifact; this is not rollback.
+
+Restore the original dependency or intact project/sidecar backup and reopen.
+Old warning-only states cannot recover a lost reference by guessing a filename.
+There is no automatic repair/discard command. `state-summary` and unaffected
+inspection remain available; strict-load opt-in still rejects degraded loading.
+
 
 - Shared shell:
   - Commands:

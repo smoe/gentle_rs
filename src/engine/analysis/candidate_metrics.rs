@@ -29,12 +29,12 @@ impl GentleEngine {
         )
     }
 
-    /// Summarize all stored candidate sets in deterministic name order.
-    pub fn list_candidate_sets(&self) -> Vec<CandidateSetSummary> {
-        let store = self.read_candidate_store();
+    /// Summarize stored sets, refusing unresolved data rather than reporting zero sets.
+    pub fn list_candidate_sets(&self) -> Result<Vec<CandidateSetSummary>, EngineError> {
+        let store = self.read_candidate_store()?;
         let mut set_names: Vec<String> = store.sets.keys().cloned().collect();
         set_names.sort();
-        set_names
+        Ok(set_names
             .iter()
             .filter_map(|name| store.sets.get(name))
             .map(|set| CandidateSetSummary {
@@ -44,7 +44,7 @@ impl GentleEngine {
                 candidate_count: set.candidates.len(),
                 metrics: Self::metric_names_for_candidate_set(set),
             })
-            .collect()
+            .collect())
     }
 
     /// Return one paged candidate-set slice plus total-count pagination data.
@@ -63,7 +63,7 @@ impl GentleEngine {
             });
         }
         let set_name = Self::normalize_candidate_set_name(set_name)?;
-        let store = self.read_candidate_store();
+        let store = self.read_candidate_store()?;
         let mut set = store
             .sets
             .get(&set_name)
@@ -91,7 +91,7 @@ impl GentleEngine {
         set_name: &str,
     ) -> Result<Vec<CandidateMetricSummary>, EngineError> {
         let set_name = Self::normalize_candidate_set_name(set_name)?;
-        let store = self.read_candidate_store();
+        let store = self.read_candidate_store()?;
         let set = store.sets.get(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),

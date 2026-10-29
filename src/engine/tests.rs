@@ -9,6 +9,8 @@
 //! - bug-regression coverage that spans multiple extracted engine submodules
 
 use super::*;
+#[path = "tests/candidate_store_safety.rs"]
+mod candidate_store_safety;
 use crate::allele_hash_screen::{
     AlleleHashScreenRequest, AlleleReadClassification, AlleleReadSourceOrigin,
     AllelicExpressionSupportScope, AllelicExpressionWeightBasis, AllelicRepresentationCaveat,
@@ -44620,7 +44622,7 @@ fn test_candidate_store_save_externalizes_and_load_hydrates() {
         CANDIDATE_SETS_SCHEMA
     );
     let loaded_engine = GentleEngine::from_state(loaded);
-    let summaries = loaded_engine.list_candidate_sets();
+    let summaries = loaded_engine.list_candidate_sets().unwrap();
     assert_eq!(summaries.len(), 1);
     assert_eq!(summaries[0].name, "windows");
     assert_eq!(summaries[0].candidate_count, 3);
@@ -44651,7 +44653,10 @@ fn test_project_state_load_degrades_when_candidate_sidecar_is_missing() {
     .expect("write project");
     let loaded = ProjectState::load_from_path(project_path.to_string_lossy().as_ref())
         .expect("load in degraded mode");
-    assert!(!loaded.metadata.contains_key(CANDIDATE_SETS_METADATA_KEY));
+    assert_eq!(
+        loaded.metadata[CANDIDATE_SETS_METADATA_KEY],
+        project_json["metadata"][CANDIDATE_SETS_METADATA_KEY]
+    );
     let warning = loaded
         .metadata
         .get(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY)
@@ -44773,6 +44778,7 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
         .expect("generate all gene-anchored candidates");
     let gene_all_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "gene_all")
         .map(|s| s.candidate_count)
@@ -44795,6 +44801,7 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
         .expect("generate regex-anchored candidates");
     let regex_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "tp53_only")
         .map(|s| s.candidate_count)
@@ -44819,6 +44826,7 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
         .expect("generate windows");
     let windows_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "windows")
         .map(|s| s.candidate_count)
@@ -44837,6 +44845,7 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
         .expect("quantile full-range filter");
     let windows_all_q_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "windows_all_q")
         .map(|s| s.candidate_count)
@@ -44856,6 +44865,7 @@ fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
         .expect("top quantile filter");
     let top_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "windows_top_q")
         .map(|s| s.candidate_count)
@@ -44943,6 +44953,7 @@ fn test_generate_candidate_set_between_two_sequence_anchors() {
 
     let summary = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|set| set.name == "between")
         .expect("between set summary");
@@ -45019,12 +45030,14 @@ fn test_candidate_generation_feature_parts_ignores_multipart_gaps() {
 
     let span_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "span_mode")
         .map(|s| s.candidate_count)
         .expect("span_mode exists");
     let parts_count = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|s| s.name == "parts_mode")
         .map(|s| s.candidate_count)
@@ -45161,6 +45174,7 @@ fn test_candidate_generation_feature_strand_relation_filters_plus_and_minus() {
     let count_for = |set_name: &str| -> usize {
         engine
             .list_candidate_sets()
+            .unwrap()
             .into_iter()
             .find(|set| set.name == set_name)
             .map(|set| set.candidate_count)
@@ -45350,6 +45364,7 @@ fn test_candidate_optimizer_weighted_topk_and_pareto() {
         .expect("pareto frontier selection");
     let pareto_summary = engine
         .list_candidate_sets()
+        .unwrap()
         .into_iter()
         .find(|set| set.name == "cand_pareto")
         .expect("pareto set summary");

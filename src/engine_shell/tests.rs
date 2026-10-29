@@ -15647,6 +15647,7 @@ fn execute_candidates_template_registry_and_run() {
     assert!(
         engine
             .list_candidate_sets()
+            .unwrap()
             .iter()
             .any(|set| set.name == "hits")
     );
@@ -19746,7 +19747,7 @@ fn execute_candidates_macro_runs_multiple_statements() {
     assert!(out.state_changed);
     assert_eq!(out.output["executed"].as_u64(), Some(3));
     assert_eq!(out.output["transactional"].as_bool(), Some(false));
-    let sets = engine.list_candidate_sets();
+    let sets = engine.list_candidate_sets().unwrap();
     assert!(sets.iter().any(|s| s.name == "win"));
     assert!(sets.iter().any(|s| s.name == "win_top"));
 }
@@ -19768,7 +19769,7 @@ fn execute_candidates_macro_transactional_rolls_back_on_error() {
         )
         .unwrap_err();
     assert!(err.contains("rolled back"));
-    let sets = engine.list_candidate_sets();
+    let sets = engine.list_candidate_sets().unwrap();
     assert!(
         !sets.iter().any(|s| s.name == "win"),
         "transactional macro should roll back earlier statements"

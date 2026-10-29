@@ -1436,6 +1436,33 @@ mod tests {
     "#;
 
     #[test]
+    fn lifecycle_slice6_js_warning_survives_vm_and_refuses_save_before_io() {
+        let td = tempdir().unwrap();
+        let target = td.path().join("absent folder's name/project.json");
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            "candidate_sets_load_warning".into(),
+            serde_json::json!({"message":"synthetic legacy lost reference"}),
+        );
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(
+            r#"
+            const input = {};
+            const before = JSON.stringify(input);
+            let refused = false;
+            try {{ save_project(input, {}); }}
+            catch (e) {{ refused = String(e).includes('candidate_store_unavailable'); }}
+            if (!refused) throw Error('degraded save must refuse');
+            if (JSON.stringify(input) !== before) throw Error('save changed VM state');
+        "#,
+            serde_json::to_string(&state).unwrap(),
+            serde_json::to_string(target.to_str().unwrap()).unwrap()
+        ))
+        .unwrap();
+        assert!(!target.parent().unwrap().exists());
+    }
+
+    #[test]
     fn lifecycle_slice3_js_runtime_preserves_state_and_legacy_controls() {
         use crate::engine::lifecycle_slice3_tests as fixture;
         // The public loader creates the buffer-backed VM representation used by scripts.

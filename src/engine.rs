@@ -836,6 +836,7 @@ const CANDIDATE_SETS_SCHEMA: &str = "gentle.candidate_sets.v1";
 const CANDIDATE_SETS_REF_SCHEMA: &str = "gentle.candidate_sets.ref.v1";
 const CANDIDATE_SETS_DISK_INDEX_SCHEMA: &str = "gentle.candidate_sets.disk_index.v1";
 const CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY: &str = "candidate_sets_load_warning";
+const CANDIDATE_STORE_LOAD_DIAGNOSTIC_SCHEMA: &str = "gentle.candidate_store_load_diagnostic.v1";
 const CANDIDATE_STORE_STRICT_LOAD_ENV: &str = "GENTLE_CANDIDATE_STORE_STRICT_LOAD";
 pub const GUIDE_DESIGN_METADATA_KEY: &str = "guide_design";
 const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
@@ -1954,25 +1955,69 @@ impl ProjectState {
 
             cause_chain: vec![],
         })?;
+        let strict_load = Self::strict_candidate_store_load_enabled();
+        let had_external_reference = state
+            .metadata
+            .get(CANDIDATE_SETS_METADATA_KEY)
+            .and_then(|value| value.get("schema"))
+            .and_then(serde_json::Value::as_str)
+            == Some(CANDIDATE_SETS_REF_SCHEMA);
         if let Err(err) = state.hydrate_candidate_store_from_external_ref(path) {
-            if Self::strict_candidate_store_load_enabled() {
+            if strict_load {
                 return Err(err);
             }
-            let warning = err.message;
-            state.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
             state.metadata.insert(
                 CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY.to_string(),
                 json!({
-                    "message": warning,
+                    "schema": CANDIDATE_STORE_LOAD_DIAGNOSTIC_SCHEMA,
+                    "status": "unresolved",
+                    "code": "candidate_store_unavailable",
+                    "message": err.message,
+                    "source_project": path,
+                    "cause": err,
                     "strict_env": CANDIDATE_STORE_STRICT_LOAD_ENV,
                 }),
             );
-        } else {
+        } else if had_external_reference {
+            // Only a fully hydrated original reference can clear an earlier warning.
             state
                 .metadata
                 .remove(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY);
         }
+        if strict_load {
+            state.ensure_candidate_store_available()?;
+        }
         Ok(state)
+    }
+
+    /// Refuse candidate-dependent work or persistence after an unresolved load.
+    ///
+    /// This is an in-memory check: it never retries I/O or resolves a reference
+    /// relative to a Save As destination. Restore the dependency/backup and reopen.
+    pub fn ensure_candidate_store_available(&self) -> Result<(), EngineError> {
+        if let Some(warning) = self.metadata.get(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY) {
+            return Err(Self::candidate_store_unavailable(warning.to_string()));
+        }
+        if let Some(value) = self.metadata.get(CANDIDATE_SETS_METADATA_KEY) {
+            let schema = value.get("schema").and_then(serde_json::Value::as_str);
+            if schema == Some(CANDIDATE_SETS_REF_SCHEMA)
+                || !(value.get("sets").is_some_and(serde_json::Value::is_object)
+                    || schema == Some(CANDIDATE_SETS_SCHEMA))
+            {
+                return Err(Self::candidate_store_unavailable(
+                    "Candidate metadata is unresolved or has not been hydrated".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn candidate_store_unavailable(cause: String) -> EngineError {
+        EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "candidate_store_unavailable: restore the original candidate sidecar or project backup, then reopen; saving and candidate access are refused".into(),
+            cause_chain: vec![cause],
+        }
     }
 
     /// Save project state JSON to disk using atomic replacement semantics.
@@ -1980,6 +2025,7 @@ impl ProjectState {
     /// Candidate-set sidecar data is staged/committed in lockstep to avoid
     /// partially-written project metadata.
     pub fn save_to_path(&self, path: &str) -> Result<(), EngineError> {
+        self.ensure_candidate_store_available()?;
         let mut state_for_disk = self.clone();
         let project_path = Path::new(path);
         let sidecar_tx =
@@ -2247,7 +2293,7 @@ impl ProjectState {
 
             cause_chain: vec![],
         })?;
-        let index: CandidateStoreDiskIndex =
+        let index_value: serde_json::Value =
             serde_json::from_str(&index_text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -2257,7 +2303,31 @@ impl ProjectState {
 
                 cause_chain: vec![],
             })?;
-        if !index.schema.trim().is_empty() && index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
+        let explicit_counts = index_value
+            .get("set_count")
+            .and_then(serde_json::Value::as_u64)
+            .is_some()
+            && index_value
+                .get("sets")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|sets| {
+                    sets.iter().all(|entry| {
+                        entry
+                            .get("candidate_count")
+                            .and_then(serde_json::Value::as_u64)
+                            .is_some()
+                    })
+                });
+        if !explicit_counts {
+            return Err(EngineError::invalid_input(
+                "Candidate-store index has unavailable counts",
+            ));
+        }
+        let index: CandidateStoreDiskIndex =
+            serde_json::from_value(index_value).map_err(|err| {
+                EngineError::invalid_input(format!("Invalid candidate-store index: {err}"))
+            })?;
+        if index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
@@ -2268,6 +2338,11 @@ impl ProjectState {
 
                 cause_chain: vec![],
             });
+        }
+        if index.set_count != index.sets.len() || reference.set_count != index.sets.len() {
+            return Err(EngineError::invalid_input(
+                "Candidate-store index set count mismatch",
+            ));
         }
         let index_dir = index_path
             .parent()
@@ -2321,6 +2396,11 @@ impl ProjectState {
                     })?;
                 candidates.push(candidate);
             }
+            if entry.candidate_count != candidates.len() || sets.contains_key(&entry.name) {
+                return Err(EngineError::invalid_input(
+                    "Candidate-store record count mismatch or duplicate set name",
+                ));
+            }
             sets.insert(
                 entry.name.clone(),
                 CandidateSet {
@@ -2348,6 +2428,15 @@ impl ProjectState {
         if Self::parse_inline_candidate_store_value(&value).is_some() {
             return Ok(());
         }
+        if value
+            .get("set_count")
+            .and_then(serde_json::Value::as_u64)
+            .is_none()
+        {
+            return Err(EngineError::invalid_input(
+                "Candidate-store reference has unavailable set count",
+            ));
+        }
         let reference: CandidateStoreReference =
             serde_json::from_value(value.clone()).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
@@ -2359,7 +2448,7 @@ impl ProjectState {
                 cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
-            return Ok(());
+            return Err(EngineError::invalid_input("Unsupported candidate-store reference metadata"));
         }
         let store = Self::load_candidate_store_from_ref(Path::new(project_path), &reference)?;
         let store_value = serde_json::to_value(store).map_err(|e| EngineError {
@@ -2392,7 +2481,7 @@ impl ProjectState {
                 cause_chain: vec![],
             })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
-            return Ok(None);
+            return Err(Self::candidate_store_unavailable("Invalid candidate-store metadata".into()));
         }
         let store = Self::load_candidate_store_from_ref(project_path, &reference)?;
         Ok(Some(store))
@@ -12807,24 +12896,22 @@ impl GentleEngine {
         }
     }
 
-    fn read_candidate_store_from_metadata(value: Option<&serde_json::Value>) -> CandidateStore {
-        let mut store = value
-            .cloned()
-            .and_then(|v| serde_json::from_value::<CandidateStore>(v).ok())
-            .unwrap_or_default();
-        if store.schema.trim().is_empty() {
-            store.schema = CANDIDATE_SETS_SCHEMA.to_string();
+    fn read_candidate_store(&self) -> Result<CandidateStore, EngineError> {
+        self.state.ensure_candidate_store_available()?;
+        match self.state.metadata.get(CANDIDATE_SETS_METADATA_KEY) {
+            None => Ok(CandidateStore::default()),
+            Some(value) => {
+                ProjectState::parse_inline_candidate_store_value(value).ok_or_else(|| {
+                    ProjectState::candidate_store_unavailable(
+                        "Invalid inline candidate store".into(),
+                    )
+                })
+            }
         }
-        store
-    }
-
-    fn read_candidate_store(&self) -> CandidateStore {
-        Self::read_candidate_store_from_metadata(
-            self.state.metadata.get(CANDIDATE_SETS_METADATA_KEY),
-        )
     }
 
     fn write_candidate_store(&mut self, mut store: CandidateStore) -> Result<(), EngineError> {
+        self.state.ensure_candidate_store_available()?;
         if store.sets.is_empty() {
             self.state.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
             return Ok(());

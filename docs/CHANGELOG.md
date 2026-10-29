@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-29 - Guard Saves After Degraded Candidate-Store Loading
+
+- Implement owner-authorized Lifecycle Slice 6: retain unresolved references and
+  structured load diagnostics, keep legacy warning-only states unresolved, and
+  refuse shared saves/Save As/implicit saves before save-owned filesystem changes.
+  Recovery requires restoring the original dependency/backup and reopening.
+- Make candidate access fallible across engine/shell/GUI consumers; missing data
+  is unavailable, not zero candidates. Validate sidecar counts before hydration,
+  propagate unknown candidate facts and disclose unavailability to the agent.
+  Healthy empty stores and intentional sidecar cleanup keep their semantics.
+- Add synthetic missing/corrupt/truncated, LF/CRLF, quoted-path, save-target,
+  strict/legacy/recovery and healthy controls; author opt-in CLI/MCP and JS/Lua
+  boundary tests. Update tutorial 06.07, interface docs and Glen's bounded handoff.
+  Rust/VM/process/native acceptance remains external; no local Rust or push.
+  No automatic repair/discard, global rollback, exporter migration or goal resumption.
+- Authoring verification: 37 Python/source tests passed, including LF/CRLF;
+  two new actual-process checks explicitly skipped without same-source binaries.
+  Scoped formatting, documentation/manual freshness and whitespace passed.
+
 ## 2026-10-29 - Assess Saved Observed Splice Junctions (J1)
 
 - Add a separate bounded, offline J1 request/report/binding and assess/show/cancel

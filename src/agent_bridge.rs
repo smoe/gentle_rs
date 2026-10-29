@@ -1700,6 +1700,13 @@ pub fn build_agent_introspection_context_for_request(
     }
     let included_fact_count = facts.len();
     let omitted_fact_count = total_fact_count.saturating_sub(included_fact_count);
+    let mut notes = agent_introspection_notes();
+    for family in &graph.unavailable_facts {
+        fact_type_counts.remove(family);
+        notes.push(format!(
+            "{family}: unavailable, not an empty collection or proof of absence"
+        ));
+    }
 
     AgentIntrospectionContext {
         schema: AGENT_INTROSPECTION_CONTEXT_SCHEMA.to_string(),
@@ -1720,7 +1727,7 @@ pub fn build_agent_introspection_context_for_request(
         selection_explanations,
         facts,
         retrieval_routes: agent_introspection_routes(),
-        notes: agent_introspection_notes(),
+        notes,
     }
 }
 
@@ -7403,6 +7410,7 @@ mod tests {
         let graph = ProjectFactGraph {
             schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
             facts,
+            unavailable_facts: vec![],
         };
 
         let context = build_agent_introspection_context(&graph);
@@ -7577,6 +7585,7 @@ mod tests {
         use crate::engine::{FactSubject, FactSubjectKind};
         let graph = ProjectFactGraph {
             schema: PROJECT_FACT_GRAPH_SCHEMA.into(),
+            unavailable_facts: vec![],
             facts: ["seq1", "seq10", "other", "sample-marker"]
                 .into_iter()
                 .map(|id| ProjectFact {
@@ -7726,6 +7735,7 @@ mod tests {
         let graph = ProjectFactGraph {
             schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
             facts: vec![test_project_fact(1, "sequence.exists")],
+            unavailable_facts: vec![],
         };
         let context = build_agent_introspection_context(&graph);
 

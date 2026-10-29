@@ -80,8 +80,9 @@ and candidate sidecar bytes remain untouched when no explicit writer targets
 them. In-memory preservation starts **after** the existing loader, including
 sidecar hydration and warning metadata. Permissive loading can still remove a
 broken candidate reference in memory; unmigrated autosaving routes can persist
-that loss. This residual is not repaired globally here. Strict/permissive load
-behavior and explicit saves are unchanged.
+that loss. This residual was not repaired by Slice 3. The separately authorized
+[Slice 6](operation_lifecycle_slice6_plan.md) now preserves unresolved references
+and guards saves/candidate access; its runtime/native acceptance remains pending.
 
 ## Workflows, Managed Jobs And Failures
 
