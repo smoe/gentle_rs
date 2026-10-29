@@ -381,3 +381,20 @@ runs. The declaration and all new modules then pass scoped formatting, and a
 locked/offline default Cargo check is run before final handoff. Final
 session-close has 4 ok/2 warnings/0 failures: only the preserved untracked
 `output/` and the manual plan-fidelity reminder remain.
+
+### Final Rebase Receipt
+
+Local main advanced during verification to
+`e39469bdbc64b3e03ea540cd9954bc40c9744243` (documentation/tutorial-history
+changes, not Rust engine changes). The closing `git rebase main` succeeds
+without conflicts. Original verification SHAs above are retained as historical
+receipts, not relabelled as fresh runs. Current equivalents are J0 `83ebee85`,
+DTO/tests `ba4bb4b1`, engine/adapters `f5d5b7c5`, publication/discovery fix
+`4044d322`, docs/projections `eb6ae3e8` and module ordering `656ce1ee`.
+`git diff --quiet 803f32a5 HEAD -- src crates Cargo.lock assets` plus the three
+ClawBio maturity projections exits 0: the final rebased Rust/lock/asset trees
+are byte-identical to their verified pre-rebase counterparts. Main is an
+ancestor of HEAD; only the original untracked `output/` remains. The final
+locked/offline default `cargo check -q` exited 0 before this documentation-only
+rebase, after the module-order adjustment. No new runtime/platform/scientific
+acceptance is inferred from rebasing.
