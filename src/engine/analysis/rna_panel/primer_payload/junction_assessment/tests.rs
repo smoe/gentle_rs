@@ -746,6 +746,40 @@ fn junction_assessment_publication_is_report_last_and_discloses_unowned_orphans(
 }
 
 #[test]
+fn junction_assessment_failed_reservation_identity_preserves_even_empty_replacement() {
+    let td = tempfile::tempdir().unwrap();
+    let (e, req) = fixture(td.path());
+    let mut r = e
+        .assess_observed_splice_junctions(req, &mut |_| true)
+        .unwrap();
+    let d = data(&r);
+    r.request.output_dir = td.path().join("unowned reservation").display().to_string();
+    let stage = staging(&r.request.output_dir).unwrap();
+    r.artifacts = publication::artifacts(stage.path(), &d, &r).unwrap();
+    let out = PathBuf::from(&r.request.output_dir);
+    let err = publication::publish(stage, &r, &mut |phase| {
+        if matches!(phase, publication::Phase::ReservationCreated) {
+            fs::remove_dir(&out).unwrap();
+            fs::create_dir(&out).unwrap();
+            return Err(bad("injected_reservation_identity_failure"));
+        }
+        Ok(())
+    })
+    .unwrap_err();
+    assert!(
+        out.is_dir(),
+        "unknown ownership must never authorize cleanup"
+    );
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
+    assert!(
+        err.message
+            .contains("injected_reservation_identity_failure")
+    );
+    assert!(err.message.contains("junction_assessment_orphaned_output"));
+    assert!(!out.join("report.json").exists());
+}
+
+#[test]
 fn junction_assessment_s1_tampering_and_noncompleted_sources_do_not_become_counts() {
     for unavailable in [false, true] {
         let td = tempfile::tempdir().unwrap();

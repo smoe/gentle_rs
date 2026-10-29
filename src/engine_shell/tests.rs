@@ -1988,6 +1988,9 @@ fn smoke_command_line_for_glossary_command(
     scratch: &Path,
 ) -> String {
     let observed_descriptor = match command.path.as_str() {
+        "rna-reads splice-junctions-assess" | "rna-reads splice-junctions-cancel" => {
+            Some(observed_junction_descriptor(&command.path))
+        }
         "rna-reads transcript-annotation-prepare" | "rna-reads transcript-annotation-cancel" => {
             Some(observed_annotation_descriptor(&command.path))
         }
@@ -2461,7 +2464,11 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
-    if path == "rna-reads transcript-structures-show" && flag == "--binding" {
+    if matches!(
+        path,
+        "rna-reads transcript-structures-show" | "rna-reads splice-junctions-show"
+    ) && flag == "--binding"
+    {
         let mut tokens = split_shell_words(line).expect("split observed-transcript smoke command");
         let index = tokens
             .iter()
@@ -2469,7 +2476,11 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
             .unwrap();
         let digest = format!("sha256:{}", "0".repeat(64));
         let binding = json!({
-            "schema":"gentle.observed_transcript_structures_result_binding.v1",
+            "schema":if path == "rna-reads splice-junctions-show" {
+                "gentle.observed_splice_junction_assessment_result_binding.v1"
+            } else {
+                "gentle.observed_transcript_structures_result_binding.v1"
+            },
             "request_sha256":digest,
             "report_content_sha256":digest,
             "report_path":tokens[2],
@@ -2557,6 +2568,8 @@ fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation()
         "rna-reads transcript-annotation-cancel",
         "rna-reads transcript-structures",
         "rna-reads transcript-structures-cancel",
+        "rna-reads splice-junctions-assess",
+        "rna-reads splice-junctions-cancel",
     ] {
         let entry = glossary
             .commands
@@ -2565,6 +2578,8 @@ fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation()
             .unwrap();
         let descriptor = if path.contains("transcript-annotation-") {
             observed_annotation_descriptor(path)
+        } else if path.contains("splice-junctions-") {
+            observed_junction_descriptor(path)
         } else {
             observed_transcript_descriptor(path)
         };

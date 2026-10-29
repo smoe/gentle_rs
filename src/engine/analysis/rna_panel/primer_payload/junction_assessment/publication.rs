@@ -202,6 +202,7 @@ pub(super) fn artifacts(
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Phase {
     BeforeReserve,
+    ReservationCreated,
     ArtifactsVisible,
     ReportReady,
 }
@@ -241,12 +242,15 @@ pub(super) fn publish(
     hook(Phase::BeforeReserve)?;
     let out = Path::new(&r.request.output_dir);
     fs::create_dir(out).map_err(|e| bad(e.to_string()))?;
-    let owner = match same_file::Handle::from_path(out) {
+    let owner = match hook(Phase::ReservationCreated)
+        .and_then(|_| same_file::Handle::from_path(out).map_err(|e| bad(e.to_string())))
+    {
         Ok(h) => h,
         Err(e) => {
-            let _ = fs::remove_dir(out);
             return Err(bad(format!(
-                "junction_assessment_reservation_identity: {e}"
+                "junction_assessment_reservation_identity: {}; junction_assessment_orphaned_output: {}",
+                e.message,
+                out.display()
             )));
         }
     };
