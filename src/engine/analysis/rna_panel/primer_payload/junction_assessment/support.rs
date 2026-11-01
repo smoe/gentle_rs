@@ -228,6 +228,9 @@ pub(super) fn metadata(
         gene: BTreeSet<s1::ReadRecord>,
         excluded: BTreeSet<s1::ReadRecord>,
         unassessed: BTreeSet<s1::ReadRecord>,
+        search_not_complete: BTreeSet<s1::ReadRecord>,
+        query_views_unassessed: BTreeSet<s1::ReadRecord>,
+        gene_unassessed: BTreeSet<s1::ReadRecord>,
     }
     let mut used = BTreeSet::new();
     let mut libraries = BTreeMap::<String, Sets>::new();
@@ -284,6 +287,15 @@ pub(super) fn metadata(
                 {
                     sets.unassessed.insert(record.record.clone());
                 }
+                if !record.search_declared_complete {
+                    sets.search_not_complete.insert(record.record.clone());
+                }
+                if !record.all_query_views_assessed {
+                    sets.query_views_unassessed.insert(record.record.clone());
+                }
+                if !gene_assessed {
+                    sets.gene_unassessed.insert(record.record.clone());
+                }
             } else {
                 unassessed.push(ObservedJunctionUnassessedContext {
                     record: record.record.clone(),
@@ -306,6 +318,9 @@ pub(super) fn metadata(
                 gene_coherent_records: s.gene.len(),
                 excluded_records: s.excluded.len(),
                 unassessed_records: s.unassessed.len(),
+                search_not_declared_complete_records: Some(s.search_not_complete.len()),
+                query_views_unassessed_records: Some(s.query_views_unassessed.len()),
+                gene_unassessed_records: Some(s.gene_unassessed.len()),
                 context_coverage_complete: complete,
             })
             .collect(),

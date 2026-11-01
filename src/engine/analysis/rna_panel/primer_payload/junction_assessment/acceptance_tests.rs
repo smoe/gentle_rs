@@ -291,13 +291,21 @@ fn junction_assessment_synthetic_cd274_like_3130_not_real_rna_evidence() {
                 observed, n,
                 "L{i} declared_complete={declared_complete} limitations={limitations:?}"
             );
-            assert!(
-                data.libraries
-                    .iter()
-                    .find(|l| l.library_id == format!("L{i}"))
-                    .unwrap()
-                    .gene_coherent_records
-                    > n
+            let library = data
+                .libraries
+                .iter()
+                .find(|l| l.library_id == format!("L{i}"))
+                .unwrap();
+            assert!(library.gene_coherent_records > n);
+            assert_eq!(
+                library.search_not_declared_complete_records,
+                Some(if complete { 0 } else { library.total_records })
+            );
+            assert_eq!(library.query_views_unassessed_records, Some(0));
+            assert_eq!(library.gene_unassessed_records, Some(0));
+            assert_eq!(
+                library.unassessed_records,
+                if complete { 0 } else { library.total_records }
             );
         }
         assert_eq!(

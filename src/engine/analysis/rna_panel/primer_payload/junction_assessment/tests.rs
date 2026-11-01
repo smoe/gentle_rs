@@ -734,6 +734,77 @@ fn junction_assessment_full_identity_survives_pinned_short_prefix_collision() {
 }
 
 #[test]
+fn junction_assessment_library_unassessed_causes_are_overlapping_sets_not_summed() {
+    let td = tempfile::tempdir().unwrap();
+    let (_, req) = fixture(td.path());
+    let loaded = loaded(&req);
+    let mut summary = loaded.data.analysis.unwrap();
+    let template = summary.records[0].clone();
+    let (rows, mut manifest) = synthetic_support(4, "possible", "qualified_only");
+    for row in manifest.values_mut() {
+        row.library_id = "L".into();
+    }
+    let contexts = rows
+        .iter()
+        .map(|row| (row.record.clone(), vec![row.contexts[0].clone(); 2]))
+        .collect();
+    summary.records = rows
+        .iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let mut record = template.clone();
+            record.record = row.record.clone();
+            record.search_declared_complete = i & 1 == 0;
+            record.all_query_views_assessed = i & 2 == 0;
+            record
+        })
+        .collect();
+    for gene_assessed in [true, false] {
+        for resolution in &mut summary.gene_resolutions {
+            resolution.resolution = if gene_assessed {
+                s1::GeneResolution::Resolved
+            } else {
+                s1::GeneResolution::MissingGene
+            };
+        }
+        let metadata = support::metadata(
+            &summary,
+            &contexts,
+            &manifest,
+            &loaded.report,
+            &loaded.data.unavailable,
+        );
+        assert_eq!(metadata.libraries.len(), 1);
+        let library = &metadata.libraries[0];
+        assert_eq!(
+            library.total_records, 4,
+            "duplicate contexts do not duplicate records"
+        );
+        assert_eq!(library.search_not_declared_complete_records, Some(2));
+        assert_eq!(library.query_views_unassessed_records, Some(2));
+        assert_eq!(
+            library.gene_unassessed_records,
+            Some(if gene_assessed { 0 } else { 4 })
+        );
+        assert_eq!(
+            library.unassessed_records,
+            if gene_assessed { 3 } else { 4 }
+        );
+    }
+}
+
+#[test]
+fn junction_assessment_legacy_denominator_missing_causes_remain_unknown() {
+    let legacy = json!({"library_id":"L", "total_records":4, "gene_coherent_records":4,
+        "excluded_records":0, "unassessed_records":3, "context_coverage_complete":true});
+    let denominator: ObservedLibraryDenominator = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(denominator.search_not_declared_complete_records, None);
+    assert_eq!(denominator.query_views_unassessed_records, None);
+    assert_eq!(denominator.gene_unassessed_records, None);
+    assert_eq!(serde_json::to_value(denominator).unwrap(), legacy);
+}
+
+#[test]
 fn junction_assessment_unknown_contexts_and_zero_gene_coherent_denominators() {
     let td = tempfile::tempdir().unwrap();
     let (_, req) = fixture(td.path());

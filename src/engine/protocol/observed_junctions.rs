@@ -260,7 +260,15 @@ pub struct ObservedLibraryDenominator {
     pub total_records: usize,
     pub gene_coherent_records: usize,
     pub excluded_records: usize,
+    /// Union of the overlapping cause sets below, not their sum.
     pub unassessed_records: usize,
+    /// Missing in earlier v1 artifacts; never infer zero from a missing cause.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_not_declared_complete_records: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_views_unassessed_records: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_unassessed_records: Option<usize>,
     pub context_coverage_complete: bool,
 }
 
