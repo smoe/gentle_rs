@@ -1436,6 +1436,75 @@ mod tests {
     "#;
 
     #[test]
+    fn junction_assessment_js_vm_assess_and_inspect_match_engine_without_project_writes() {
+        let td = tempdir().unwrap();
+        let (engine, mut request) = GentleEngine::observed_junctions_test_fixture(td.path());
+        let expected = engine
+            .assess_observed_splice_junctions(request.clone(), &mut |_| true)
+            .unwrap();
+        request.output_dir = td.path().join("JS junction's result").display().to_string();
+        let project = td.path().join("JS project's state.json");
+        engine
+            .state()
+            .save_to_path(project.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&project).unwrap();
+        let operation = crate::engine::Operation::AssessObservedSpliceJunctions {
+            request: Box::new(request.clone()),
+        };
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(r#"
+            {oracle}
+            const input = load_project({project});
+            const expectedState = load_project({project});
+            const assessed = apply_operation(input, {operation});
+            const report = assessed.result.observed_splice_junctions;
+            const expected = {expected};
+            if (report.status !== 'completed') throw Error('assessment did not complete');
+            if (report.request_sha256 === expected.request_sha256) throw Error('fresh destination must change request binding');
+            function scientificReport(value) {{
+                const copy = JSON.parse(JSON.stringify(value));
+                // Only the deliberately different output location and its two envelope hashes differ.
+                copy.request.output_dir = '';
+                delete copy.request_sha256;
+                delete copy.content_sha256;
+                return copy;
+            }}
+            if (!eq(scientificReport(report), scientificReport(expected))) throw Error('VM assessment differs from engine');
+            if (!eq(assessed.state, expectedState) || !eq(input, expectedState)) throw Error('assessment changed project');
+        "#, oracle=LIFECYCLE_STATE_ORACLE,
+            project=serde_json::to_string(project.to_str().unwrap()).unwrap(),
+            operation=serde_json::to_string(&operation).unwrap(),
+            expected=serde_json::to_string(&expected).unwrap())).unwrap();
+        let path = std::path::Path::new(&request.output_dir).join("report.json");
+        let report: crate::engine::ObservedSpliceJunctionAssessmentReport =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let binding =
+            GentleEngine::observed_splice_junction_result_binding(&request, &report).unwrap();
+        let expected = GentleEngine::inspect_observed_splice_junctions(
+            path.to_str().unwrap(),
+            Some(&binding),
+            "junction_assessment.tsv",
+            1,
+            true,
+        )
+        .unwrap();
+        let operation = crate::engine::Operation::InspectObservedSpliceJunctions {
+            path: path.display().to_string(),
+            expected_result: Some(Box::new(binding)),
+            table: "junction_assessment.tsv".into(),
+            rows: 1,
+            verify_artifacts: true,
+        };
+        js.run_checked(format!(r#"
+            const inspected = apply_operation(input, {operation});
+            if (!eq(inspected.result.observed_splice_junction_inspection, {expected})) throw Error('VM inspection differs from engine');
+            if (!eq(inspected.state, expectedState) || !eq(input, expectedState)) throw Error('inspection changed project');
+        "#, operation=serde_json::to_string(&operation).unwrap(), expected=serde_json::to_string(&expected).unwrap())).unwrap();
+        assert_eq!(fs::read(&project).unwrap(), before);
+    }
+
+    #[test]
     fn candidate_store_unresolved_js_load_and_save_refuse_without_io() {
         let td = tempdir().unwrap();
         let target = td.path().join("absent folder's name/project.json");

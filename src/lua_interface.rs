@@ -2107,6 +2107,102 @@ mod tests {
     }
 
     #[test]
+    fn junction_assessment_lua_vm_assess_and_inspect_match_engine_without_project_writes() {
+        let td = tempdir().unwrap();
+        let (engine, mut request) = GentleEngine::observed_junctions_test_fixture(td.path());
+        let mut expected = engine
+            .assess_observed_splice_junctions(request.clone(), &mut |_| true)
+            .unwrap();
+        request.output_dir = td
+            .path()
+            .join("Lua junction's result")
+            .display()
+            .to_string();
+        let project = td.path().join("Lua project's state.json");
+        engine
+            .state()
+            .save_to_path(project.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&project).unwrap();
+        let expected_state = serde_json::to_value(engine.state()).unwrap();
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        lua.globals()
+            .set("project", project.to_str().unwrap())
+            .unwrap();
+        let operation = crate::engine::Operation::AssessObservedSpliceJunctions {
+            request: Box::new(request.clone()),
+        };
+        lua.globals()
+            .set("operation", serde_json::to_string(&operation).unwrap())
+            .unwrap();
+        lua.load("input = load_project(project); assessed = apply_operation(input, operation)")
+            .exec()
+            .unwrap();
+        let output: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("assessed").unwrap())
+            .unwrap();
+        let mut actual: crate::engine::ObservedSpliceJunctionAssessmentReport =
+            serde_json::from_value(output["result"]["observed_splice_junctions"].clone()).unwrap();
+        assert_eq!(actual.status, "completed");
+        assert_ne!(actual.request_sha256, expected.request_sha256);
+        let binding =
+            GentleEngine::observed_splice_junction_result_binding(&request, &actual).unwrap();
+        // Normalize only the fresh output location and its two envelope hashes.
+        for report in [&mut actual, &mut expected] {
+            report.request.output_dir.clear();
+            report.request_sha256.clear();
+            report.content_sha256.clear();
+        }
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert_eq!(lifecycle_output_state_json(lua, "assessed"), expected_state);
+        let expected = GentleEngine::inspect_observed_splice_junctions(
+            &binding.report_path,
+            Some(&binding),
+            "junction_assessment.tsv",
+            1,
+            true,
+        )
+        .unwrap();
+        let operation = crate::engine::Operation::InspectObservedSpliceJunctions {
+            path: binding.report_path.clone(),
+            expected_result: Some(Box::new(binding)),
+            table: "junction_assessment.tsv".into(),
+            rows: 1,
+            verify_artifacts: true,
+        };
+        lua.globals()
+            .set("operation", serde_json::to_string(&operation).unwrap())
+            .unwrap();
+        lua.load("inspected = apply_operation(input, operation)")
+            .exec()
+            .unwrap();
+        let output: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("inspected").unwrap())
+            .unwrap();
+        let actual: crate::engine::ObservedSpliceJunctionInspection =
+            serde_json::from_value(output["result"]["observed_splice_junction_inspection"].clone())
+                .unwrap();
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert_eq!(
+            lifecycle_output_state_json(lua, "inspected"),
+            expected_state
+        );
+        let input: ProjectState = lua
+            .from_value(lua.globals().get::<Value>("input").unwrap())
+            .unwrap();
+        assert_eq!(serde_json::to_value(input).unwrap(), expected_state);
+        assert_eq!(fs::read(&project).unwrap(), before);
+    }
+
+    #[test]
     fn candidate_store_unresolved_lua_load_and_save_refuse_without_io() {
         let td = tempdir().unwrap();
         let target = td.path().join("absent folder's name/project.json");
