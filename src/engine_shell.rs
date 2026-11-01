@@ -14297,6 +14297,7 @@ impl ShellCommand {
                 | Operation::InspectPrimerTrace { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
+                | Operation::InspectObservedTranscriptStructuresFromSam { .. }
                 | Operation::InspectObservedSpliceJunctions { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. } => true,
                 Operation::GelWorkbench { request } => matches!(
@@ -20037,6 +20038,40 @@ fn observed_transcript_descriptor(id: &str) -> Value {
     descriptor
 }
 
+fn observed_sam_descriptor(id: &str) -> Value {
+    let inspect = matches!(id, "InspectObservedTranscriptStructuresFromSam" | "rna-reads transcript-structures-from-sam-show");
+    let cancel = matches!(id, "CancelObservedTranscriptStructuresFromSam" | "rna-reads transcript-structures-from-sam-cancel");
+    let mut descriptor = observed_transcript_descriptor("SummarizeObservedTranscriptStructures");
+    let bound = json!({"path":"REPLACE_EXACT_FILE","sha256":"","bytes":0});
+    let request = json!({
+        "schema":"gentle.observed_sam_structures_request.v1",
+        "sam":bound,"dictionary":bound,"manifest":bound,
+        "conversion":{"kind":"direct_sam","producer":"REPLACE_PRODUCER","version":"REPLACE_VERSION","arguments":[],"selection_scope":"REPLACE_SCOPE"},
+        "reference_id":"REPLACE_REFERENCE_ID","reference":{"assembly":"REPLACE_ASSEMBLY","fasta_sha256":""},
+        "reference_gene":{"source_id":"REPLACE_SOURCE","gene_id":"REPLACE_EXACT_GENE_ID"},
+        "comparison_genes":[],"annotation_sources":[],"version_policy":"strict16",
+        "unpadded_reference":true,"required_flank_bases":0,
+        "text_budgets":{"max_input_bytes":0,"max_line_bytes":0,"max_lines":0,"max_rows":0,"max_dictionary_entries":0,"max_header_ids":0,"max_fields_per_line":0,"max_operations":0,"max_sa_entries":0,"max_retained_bytes":0,"max_work":0},
+        "kernel_budgets":descriptor["request_template"]["kernel_budgets"],
+        "budgets":{"max_input_bytes":0,"max_annotation_bytes":0,"max_output_bytes":0,"max_output_row_bytes":0,"max_units":0,"max_retained_bytes":0,"max_projection_work":0},
+        "output_dir":"REPLACE_FRESH_OUTPUT","cancel_path":null
+    });
+    let name = if inspect { "InspectObservedTranscriptStructuresFromSam" }
+        else if cancel { "CancelObservedTranscriptStructuresFromSam" }
+        else { "SummarizeObservedTranscriptStructuresFromSam" };
+    descriptor["id"] = json!(id);
+    descriptor["request_template"] = if inspect { Value::Null } else { request.clone() };
+    descriptor["operation_template"] = if inspect {
+        json!({(name):{"path":"REPLACE_REPORT","expected_result":null,"table":"query_structures.tsv","rows":0,"verify_artifacts":false}})
+    } else { json!({(name):{"request":request}}) };
+    descriptor["description"] = json!("Interpret exact hash-bound SAM text and declared query units with source-bound annotation. Separate optimal-path membership, mapping certainty, flank qualification and declared coordinate authority. No BAM/aligner launch, original-read identity, RNA/protein/expression claim or project-content mutation.");
+    descriptor["args"] = json!([{"name":"REQUEST_OR_PATH","required":true,"detail":"transcript-structures-from-sam|transcript-structures-from-sam-cancel REQUEST_JSON_OR_@FILE; transcript-structures-from-sam-show REPORT [--table TABLE.tsv] [--rows 0..1000] [--binding JSON_OR_@FILE] [--verify-artifacts]"}]);
+    descriptor["template_contract"] = json!("Replace all file/selector/provenance bindings and choose all engineering budgets explicitly. Zero placeholders cannot execute. Strict SAM 1.6 by default; legacy10_to16 is explicit opt-in. Every alignment row must be assigned exactly once in the bound query-unit manifest. Missing masks never mean no masks. Prepared annotations require exact receipt selectors.");
+    descriptor["result_contract"] = json!("gentle.observed_sam_structures_result_binding.v1 retains completed/cancelled/control_error independently of project freshness. Missing counts are not zero. Annotation refusal/missing-gene stays explicit. Seven saved artifacts, bounded offline inspection. Writes and cancellation markers require approval; markers do not confirm termination.");
+    descriptor["registry"] = json!(registry_metadata_for_introspection(id));
+    descriptor
+}
+
 fn primer_payload_descriptor(id: &str) -> Value {
     let inspect = matches!(id, "InspectPrimerPayload" | "rna-reads primer-payload-show");
     let prepare = matches!(
@@ -22210,6 +22245,12 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rna_panel_descriptor("BuildRnaReadPanel"),
         primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
         observed_transcript_descriptor("SummarizeObservedTranscriptStructures"),
+        observed_sam_descriptor("SummarizeObservedTranscriptStructuresFromSam"),
+        observed_sam_descriptor("InspectObservedTranscriptStructuresFromSam"),
+        observed_sam_descriptor("CancelObservedTranscriptStructuresFromSam"),
+        observed_sam_descriptor("rna-reads transcript-structures-from-sam"),
+        observed_sam_descriptor("rna-reads transcript-structures-from-sam-show"),
+        observed_sam_descriptor("rna-reads transcript-structures-from-sam-cancel"),
         observed_junction_descriptor("AssessObservedSpliceJunctions"),
         observed_junction_descriptor("InspectObservedSpliceJunctions"),
         observed_junction_descriptor("CancelObservedSpliceJunctions"),
@@ -66626,6 +66667,25 @@ fn execute_op_command(
     let op = resolve_operation_payload(payload)?;
     // These file-only observation/control routes never append a project journal.
     match &op {
+        Operation::InspectObservedTranscriptStructuresFromSam {
+            path, expected_result, table, rows, verify_artifacts,
+        } => {
+            let inspection = GentleEngine::inspect_observed_transcript_structures_from_sam(
+                path, expected_result.as_deref(), table, *rows, *verify_artifacts,
+            ).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"observed_sam_inspection":inspection}}),
+            });
+        }
+        Operation::CancelObservedTranscriptStructuresFromSam { request } => {
+            let message = GentleEngine::cancel_observed_transcript_structures_from_sam(request)
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
         Operation::CancelObservedTranscriptAnnotation { request } => {
             let message = GentleEngine::cancel_observed_transcript_annotation(request)
                 .map_err(|e| e.to_string())?;
@@ -66815,6 +66875,7 @@ fn execute_op_command(
             | Operation::PreparePrimerPayloadAlignmentQueries { .. }
             | Operation::SummarizePrimerPayloadAlignments { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
             | Operation::AssessObservedSpliceJunctions { .. }
             | Operation::PrepareObservedTranscriptAnnotation { .. }
             | Operation::BuildRnaReadPanel { .. }
@@ -66851,6 +66912,7 @@ fn execute_op_command(
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
+                | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
                 | Operation::AssessObservedSpliceJunctions { .. }
                 | Operation::PrepareObservedTranscriptAnnotation { .. }
                 | Operation::ScreenRnaReadPanel { .. }

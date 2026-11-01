@@ -70,6 +70,7 @@ enum Publication {
     PrimerTrace(crate::engine::RnaPrimerTraceResultBinding),
     PrimerPayload(crate::engine::PrimerPayloadResultBinding),
     ObservedStructures(crate::engine::ObservedTranscriptStructuresResultBinding),
+    ObservedSam(crate::engine::ObservedSamResultBinding),
     ObservedJunctions(crate::engine::ObservedSpliceJunctionResultBinding),
     ObservedAnnotation(crate::engine::ObservedTranscriptAnnotationResultBinding),
     Observation,
@@ -141,6 +142,8 @@ pub struct CommandReceipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_structures_result:
         Option<crate::engine::ObservedTranscriptStructuresResultBinding>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_sam_result: Option<crate::engine::ObservedSamResultBinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_junctions_result: Option<crate::engine::ObservedSpliceJunctionResultBinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -426,6 +429,7 @@ impl CommandExecutionService {
                     observed_structures_result: None,
                     observed_junctions_result: None,
                     observed_annotation_result: None,
+                    observed_sam_result: None,
                     requires_project_commit: needs_project,
                     rna_progress: None,
                 },
@@ -522,6 +526,11 @@ impl CommandExecutionService {
                         run.output=serde_json::json!({"schema":"gentle.command_observed_structures_result.v1","observed_structures_result":binding,"full_output_retained_in_report":true});
                         bytes=bounded_output(&run.output);
                     }
+                    if let Publication::ObservedSam(binding) = &publication {
+                        let resolutions = run.output.pointer("/result/observed_sam_structures/gene_resolutions").cloned();
+                        run.output=serde_json::json!({"schema":"gentle.command_observed_sam_result.v1","observed_sam_result":binding,"gene_resolutions":resolutions,"full_output_retained_in_report":true});
+                        bytes=bounded_output(&run.output);
+                    }
                     if let Publication::ObservedJunctions(binding) = &publication {
                         run.output=serde_json::json!({"schema":"gentle.command_observed_junction_result.v1","observed_junctions_result":binding,"full_output_retained_in_report":true});
                         bytes=bounded_output(&run.output);
@@ -583,6 +592,10 @@ impl CommandExecutionService {
                             job.receipt.publication="artifact_only";
                             job.receipt.observed_structures_result=Some(binding);
                         }
+                        Publication::ObservedSam(binding) => {
+                            job.receipt.publication="artifact_only";
+                            job.receipt.observed_sam_result=Some(binding);
+                        }
                         Publication::ObservedJunctions(binding) => {
                             job.receipt.publication="artifact_only";
                             job.receipt.observed_junctions_result=Some(binding);
@@ -629,6 +642,7 @@ impl CommandExecutionService {
                     .map(|b| b.outcome.clone()).or_else(|| job.receipt.primer_trace_result.as_ref().map(|b| b.outcome.clone()))
                     .or_else(||job.receipt.primer_payload_result.as_ref().map(|b|b.outcome.clone()))
                     .or_else(||job.receipt.observed_structures_result.as_ref().map(|b|b.outcome.clone()))
+                    .or_else(||job.receipt.observed_sam_result.as_ref().map(|b|b.outcome.clone()))
                     .or_else(||job.receipt.observed_junctions_result.as_ref().map(|b|b.outcome.clone()))
                     .or_else(||job.receipt.observed_annotation_result.as_ref().map(|b|b.outcome.clone()));
                 job.receipt.state = match outcome.as_deref() {

@@ -110,6 +110,36 @@ impl AgentExecutionStatus {
                 _ => Self::Failed,
             };
         }
+        if let Some(report) = output.pointer("/result/observed_sam_structures") {
+            if report["schema"] != "gentle.observed_sam_structures_report.v1" {
+                return Self::Failed;
+            }
+            return match report["status"].as_str() {
+                Some("cancelled") => Self::Cancelled,
+                Some("completed") => match report["gene_resolutions"].as_array() {
+                    Some(rows) if !rows.is_empty() && rows.iter().all(|r| r["availability"] == "available" && r["comparison"]["resolution"] == "resolved") => Self::Completed,
+                    Some(_) => Self::Partial,
+                    None => Self::Failed,
+                },
+                _ => Self::Failed,
+            };
+        }
+        if output.get("schema").and_then(Value::as_str)
+            == Some("gentle.command_observed_sam_result.v1")
+        {
+            if output.pointer("/observed_sam_result/schema").and_then(Value::as_str)
+                != Some("gentle.observed_sam_structures_result_binding.v1") {
+                return Self::Failed;
+            }
+            return match output.pointer("/observed_sam_result/outcome").and_then(Value::as_str) {
+                Some("cancelled") => Self::Cancelled,
+                Some("completed") => match output["gene_resolutions"].as_array() {
+                    Some(rows) if !rows.is_empty() && rows.iter().all(|r| r["availability"] == "available" && r["comparison"]["resolution"] == "resolved") => Self::Completed,
+                    _ => Self::Partial,
+                },
+                _ => Self::Failed,
+            };
+        }
         if output.get("schema").and_then(Value::as_str)
             == Some("gentle.command_observed_structures_result.v1")
         {
@@ -505,6 +535,28 @@ impl AgentExecutionFeedback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observed_sam_feedback_distinguishes_execution_and_annotation_availability() {
+        for (status, availability, resolution, expected) in [
+            ("completed", "available", "resolved", AgentExecutionStatus::Completed),
+            ("completed", "available", "missing_gene", AgentExecutionStatus::Partial),
+            ("completed", "available", "ambiguous_locus", AgentExecutionStatus::Partial),
+            ("completed", "refused", "unmapped_source", AgentExecutionStatus::Partial),
+            ("completed", "missing_gene", "missing_gene", AgentExecutionStatus::Partial),
+            ("cancelled", "available", "resolved", AgentExecutionStatus::Cancelled),
+            ("control_error", "available", "resolved", AgentExecutionStatus::Failed),
+        ] {
+            let rows = serde_json::json!([{"source_id":"synthetic", "availability":availability,
+                "comparison":{"resolution":resolution}}]);
+            let full = serde_json::json!({"result":{"observed_sam_structures":{
+                "schema":"gentle.observed_sam_structures_report.v1","status":status,"gene_resolutions":rows}}});
+            let compact = serde_json::json!({"schema":"gentle.command_observed_sam_result.v1",
+                "observed_sam_result":{"schema":"gentle.observed_sam_structures_result_binding.v1","outcome":status},"gene_resolutions":rows});
+            assert_eq!(AgentExecutionStatus::from_shell_output(&full), expected);
+            assert_eq!(AgentExecutionStatus::from_shell_output(&compact), expected);
+        }
+    }
 
     #[test]
     fn primer_payload_feedback_preserves_partial_and_control_error_outcomes() {

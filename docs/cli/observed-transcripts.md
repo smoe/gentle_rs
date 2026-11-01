@@ -89,7 +89,58 @@ existing marker is idempotent; a stale/malformed marker is never overwritten.
 Managed standalone preparation retains its artifact-only result without a live
 project/journal merge. Workflows retain their conservative project-bound host
 policy. No SAM ingress, new alignment, transcript interpretation or GUI is
-introduced by reference preparation; those remain later slices.
+introduced by reference preparation; SAM interpretation is the separate S2.3
+route below.
+
+## Interpret Supplied SAM (S2.3)
+
+Use a SAM text export you prepared externally, an exact ordered reference
+dictionary, and a manifest assigning every alignment row to a declared query
+unit. GENtle does not open BAM or run a converter/aligner. Supply exact file
+hashes/byte counts, a source-bound gene ID, annotation bindings and all budgets;
+the [SAM request contract](../protocol.md#s23-bound-sam-interpretation) explains
+the required fields and nonclaims.
+
+```text
+rna-reads transcript-structures-from-sam REQUEST_JSON_OR_@FILE
+rna-reads transcript-structures-from-sam-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]
+rna-reads transcript-structures-from-sam-cancel REQUEST_JSON_OR_@FILE
+```
+
+For example, with your **reviewed and fully bound** request file:
+
+```sh
+gentle_cli rna-reads transcript-structures-from-sam '@my SAM request.json'
+gentle_cli rna-reads transcript-structures-from-sam-show 'my evidence/report.json' --table junction_catalog.tsv --rows 20 --verify-artifacts
+```
+
+These file-only routes do not autosave or repair the active project. Writes
+require approval in agent/managed contexts; generic MCP `op` also requires
+`confirm:true`. Inspection is read-only, works when original sources are offline,
+and defaults to metadata only. Use the returned exact result binding to reject
+a different report. Table names are `query_structures.tsv`,
+`alignment_observations.tsv`, `structure_catalog.tsv`,
+`reference_compatibility.tsv`, `junction_catalog.tsv`, `unavailable.tsv`.
+
+`version_policy` defaults to `strict16`. Choose `legacy10_to16` explicitly for
+older version labels, retaining the same strict supported-feature subset.
+Do not re-header inputs silently. Use exact S2.1 receipt selectors, preserving
+version spellings; a selector mismatch is an error, not a missing gene.
+Prepared sources retain refusals; normalized sources require real nonempty
+geometry. Search/view completeness and mask qualification are separate inputs.
+
+Read counts as **declared query units**, not molecules or independent samples.
+All admitted observations are inspectable, but nonoptimal observations do not
+contribute catalog support. Mapping certainty and flank qualification remain
+separate. Successful publication is not proof of transcript identity, novel RNA,
+exhaustive mapping, verified reference bytes or protein consequences. Cancelled
+or control-error analysis has absent counts, not zeros. A completed run can
+still disclose missing/refused annotation; inspect those source outcomes.
+
+Cancel requires the identical request and its explicit `cancel_path`, writes
+only that request's marker and does not confirm termination. Late cancellation
+cannot invalidate an already published completed report. Existing S1 and
+Phase 2 report formats remain unchanged.
 
 <!-- manual-page-nav:start -->
 

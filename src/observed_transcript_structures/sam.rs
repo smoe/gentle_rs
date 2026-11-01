@@ -5,8 +5,9 @@
 
 use super::*;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct UnitKey {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct UnitKey {
     pub source_sha256: String,
     pub unit_id: String,
 }
@@ -52,14 +53,18 @@ pub(super) struct SamInput {
     pub max_rows: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub(super) enum Unavailable {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Unavailable {
     NotProvided,
     Unmapped,
     Paired,
     PaddedReference,
     CigarNotProvided,
+    QnameNotProvided,
     NoSupportedBases,
+    UnanchoredSkip,
+    TerminalDeletion,
     CgOrPlaceholder,
     QueryAxisUnsupported,
 }
@@ -94,6 +99,19 @@ struct Normalized {
     target: Interval,
     operations: Vec<(char, usize)>,
     clipping: core::Clipping,
+}
+
+fn unanchored_gap(operations: &[(char, usize)]) -> Option<Unavailable> {
+    let first = operations.iter().position(|(c, _)| "M=X".contains(*c))?;
+    let last = operations.iter().rposition(|(c, _)| "M=X".contains(*c))?;
+    let mut deletion = false;
+    for &(kind, _) in operations[..first].iter().chain(&operations[last + 1..]) {
+        if kind == 'N' {
+            return Some(Unavailable::UnanchoredSkip);
+        }
+        deletion |= kind == 'D';
+    }
+    deletion.then_some(Unavailable::TerminalDeletion)
 }
 
 fn add(a: usize, b: usize) -> Result<usize, EngineError> {
@@ -214,6 +232,11 @@ pub(super) fn validate_decoded_row(
     validate_target(row, normalized.as_ref(), dictionary)
 }
 
+/// Manifest accounting uses the same clip arithmetic as interpretation, never SEQ length alone.
+pub(super) fn normalized_axis_length(row: &Row) -> Result<Option<usize>, EngineError> {
+    Ok(normalize(row)?.map(|geometry| geometry.axis_length))
+}
+
 impl core::Identity<UnitKey> for SamIdentity<'_> {
     fn context_id(&self) -> Result<String, EngineError> {
         digest(&("gentle.observed_sam_context.private.v1", self.0))
@@ -325,8 +348,9 @@ pub(super) fn analyze(
             }
             if row.ordinal == 0
                 || !ordinals.insert(row.ordinal)
-                || !name(&row.qname)
-                || qname.replace(&row.qname).is_some_and(|q| q != &row.qname)
+                || (row.qname != "*"
+                    && (!name(&row.qname)
+                        || qname.replace(&row.qname).is_some_and(|q| q != &row.qname)))
                 || row.flag & !0xfff != 0
             {
                 return Err(bad("observed_sam_row_binding"));
@@ -368,7 +392,9 @@ pub(super) fn analyze(
                 diagnostic.axis_length = Some(g.axis_length);
             }
             let axis_length = geometry.as_ref().map(|g| g.axis_length);
-            let unavailable = if row.flag & 0xeb != 0 {
+            let unavailable = if row.qname == "*" {
+                Some(Unavailable::QnameNotProvided)
+            } else if row.flag & 0xeb != 0 {
                 Some(Unavailable::Paired)
             } else if row.flag & 4 != 0 {
                 Some(Unavailable::Unmapped)
@@ -395,7 +421,7 @@ pub(super) fn analyze(
             {
                 Some(Unavailable::NoSupportedBases)
             } else {
-                None
+                unanchored_gap(&geometry.as_ref().unwrap().operations)
             };
             // Even an unsupported mapped row must not conceal malformed target bounds.
             validate_target(row, geometry.as_ref(), &input.dictionary)?;

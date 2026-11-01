@@ -40549,6 +40549,8 @@ impl GentleEngine {
             primer_payload_alignments: None,
             primer_payload_inspection: None,
             observed_transcript_structures: None,
+            observed_sam_structures: None,
+            observed_sam_inspection: None,
             observed_transcript_structures_inspection: None,
             observed_transcript_annotation: None,
             observed_splice_junctions: None,
@@ -52264,6 +52266,23 @@ impl GentleEngine {
                     result.observed_transcript_structures = Some(Box::new(
                         self.summarize_observed_transcript_structures(*request, on_progress)?,
                     ));
+                }
+                Operation::SummarizeObservedTranscriptStructuresFromSam { request } => {
+                    result.observed_sam_structures = Some(Box::new(
+                        self.summarize_observed_transcript_structures_from_sam(*request, on_progress)?,
+                    ));
+                }
+                Operation::InspectObservedTranscriptStructuresFromSam {
+                    path, expected_result, table, rows, verify_artifacts,
+                } => {
+                    result.observed_sam_inspection = Some(Box::new(
+                        Self::inspect_observed_transcript_structures_from_sam(
+                            &path, expected_result.as_deref(), &table, rows, verify_artifacts,
+                        )?,
+                    ));
+                }
+                Operation::CancelObservedTranscriptStructuresFromSam { request } => {
+                    result.messages.push(Self::cancel_observed_transcript_structures_from_sam(&request)?);
                 }
                 Operation::PrepareObservedTranscriptAnnotation { request } => {
                     result.observed_transcript_annotation = Some(Box::new(

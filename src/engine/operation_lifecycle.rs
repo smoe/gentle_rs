@@ -17,6 +17,9 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
         Operation::PlanDnaSequenceDesign { .. }
             | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
+            | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+            | Operation::InspectObservedTranscriptStructuresFromSam { .. }
+            | Operation::CancelObservedTranscriptStructuresFromSam { .. }
             | Operation::AssessObservedSpliceJunctions { .. }
             | Operation::InspectObservedSpliceJunctions { .. }
             | Operation::CancelObservedSpliceJunctions { .. }
@@ -63,6 +66,8 @@ pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationAppro
         Operation::AssessObservedSpliceJunctions { .. }
         | Operation::CancelObservedSpliceJunctions { .. }
         | Operation::SummarizeObservedTranscriptStructures { .. }
+        | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+        | Operation::CancelObservedTranscriptStructuresFromSam { .. }
         | Operation::CancelObservedTranscriptStructures { .. } => {
             Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
         }

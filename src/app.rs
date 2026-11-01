@@ -12563,6 +12563,8 @@ Error: `{err}`"
                 primer_payload_alignments: None,
                 primer_payload_inspection: None,
                 observed_transcript_structures: None,
+                observed_sam_structures: None,
+                observed_sam_inspection: None,
                 observed_transcript_structures_inspection: None,
                 observed_transcript_annotation: None,
                 observed_splice_junctions: None,

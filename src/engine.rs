@@ -3343,6 +3343,22 @@ pub enum Operation {
     SummarizeObservedTranscriptStructures {
         request: Box<SummarizeObservedTranscriptStructuresRequest>,
     },
+    SummarizeObservedTranscriptStructuresFromSam {
+        request: Box<SummarizeObservedTranscriptStructuresFromSamRequest>,
+    },
+    InspectObservedTranscriptStructuresFromSam {
+        path: String,
+        #[serde(default)]
+        expected_result: Option<Box<ObservedSamResultBinding>>,
+        table: String,
+        #[serde(default)]
+        rows: usize,
+        #[serde(default)]
+        verify_artifacts: bool,
+    },
+    CancelObservedTranscriptStructuresFromSam {
+        request: Box<SummarizeObservedTranscriptStructuresFromSamRequest>,
+    },
     PrepareObservedTranscriptAnnotation {
         request: Box<PrepareObservedTranscriptAnnotationRequest>,
     },
@@ -10391,6 +10407,9 @@ impl GentleEngine {
                 | Operation::InspectObservedSpliceJunctions { .. }
                 | Operation::CancelObservedSpliceJunctions { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
+                | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+                | Operation::InspectObservedTranscriptStructuresFromSam { .. }
+                | Operation::CancelObservedTranscriptStructuresFromSam { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
                 | Operation::CancelObservedTranscriptStructures { .. }
                 | Operation::PrepareObservedTranscriptAnnotation { .. }

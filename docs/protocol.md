@@ -93,6 +93,133 @@ RG/SA/CG metadata are not producer-verified query units or interpretation.
 Reference genes remain explicit in the existing interpretation context; the
 decoder chooses none. See the [subset and execution ledger](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28).
 
+### S2.3 Bound SAM Interpretation
+
+`SummarizeObservedTranscriptStructuresFromSam`,
+`InspectObservedTranscriptStructuresFromSam` and
+`CancelObservedTranscriptStructuresFromSam` provide the separate strict
+`gentle.observed_sam_structures_{request,report,data,result_binding}.v1`
+contracts. `OpResult.observed_sam_structures` and
+`OpResult.observed_sam_inspection` are omitted when absent. The private decoder
+above remains I/O-free; this service owns file verification and publication.
+S0/S1/Phase 2 requests, outputs, hashes and scoring remain unchanged.
+
+The request requires bound `sam`, `manifest` and `dictionary` files (`path`,
+raw `sha256`, `bytes`), `conversion`, explicit `reference_id`,
+`reference:{assembly,fasta_sha256}`, `reference_gene:{source_id,gene_id}`,
+`comparison_genes`, `annotation_sources`, `unpadded_reference`,
+`required_flank_bases`, `text_budgets`, `kernel_budgets`, service `budgets`,
+fresh `output_dir` and nullable `cancel_path`. No gene, assembly, provider,
+coordinate, gap or biological threshold is selected implicitly. Paths are
+checked lexically before normalization: no empty/dot/dot-dot components,
+trailing separators, controls, whitespace-only paths or Windows-ambiguous
+spellings. Parents of a new output directory must already exist.
+
+`version_policy` defaults to `strict16`: an existing `@HD VN` must be `1.6`.
+Explicit `legacy10_to16` admits labels `1.0` through `1.6` under the **same**
+strict supported-feature checks, not historical grammar emulation. Missing
+`@HD` stays explicitly absent. Original labels are recorded; headers are never
+rewritten. Conversion is `direct_sam:{producer,version,arguments,selection_scope}`
+or `bam_conversion` with those declarations plus `bam_sha256`. GENtle launches
+neither an aligner nor a BAM converter and does not verify that a declared
+conversion command was run.
+
+The manifest schema `gentle.observed_sam_query_units.v1` has `sam_sha256` and
+`units`. Each unit declares a distinct `unit_id`, nullable
+`unclipped_axis_length`, `rows:[{ordinal,qname,read_group}]`, nullable `masks`,
+optional `ends` and nullable `search`. Alignment ordinals are 1-based, exclude
+headers and include unmapped rows. Assign every supplied alignment row exactly
+once, with exact QNAME/RG witnesses and unclipped-axis agreement. Repeated
+QNAMEs can belong to different declared units; row order need not be grouped.
+These keys are **not original read indices, independent molecules or samples**.
+No compact QNAME-uniqueness shortcut is implemented.
+
+Masks declare `coordinate_convention:"zero_based_half_open_unclipped_query"`, axis length,
+intervals, source digest and derivation. `null` means unassessed, not unmasked.
+Search declares independent `search_complete` and `views_complete`, limitations,
+producer/version/arguments/scope. Missing actual same-unit `SA` companions
+withhold complete views; tag entries never become invented alignment rows.
+Whole units containing unsupported geometry, including unanchored `N` or
+terminal `D` around the actual aligned bases, contribute no interpreted
+segments. Their reasons/rows remain inspectable. Exact SAM/dictionary/manifest
+hashes, lengths, stable file identity and EOF are checked; hashes do not verify
+exhaustiveness or reference FASTA bytes.
+
+Each annotation source is exactly one of:
+- `prepared:{selector,report,annotation}`: bound S2.1 receipt plus nullable bound
+  normalized annotation. Require exact source/gene/reference agreement and,
+  for completed usable preparation, the annotation's raw hash/length and
+  snapshot release. A missing/refused/cancelled receipt is retained as such,
+  without fabricated empty geometry. Annotation is forbidden for an unusable
+  receipt. Copying both files is allowed; the original GTF/preparation directory
+  need not exist. Absent/declared/inconsistent receipt versions remain distinct;
+  IDs are never automatically version-qualified.
+- `normalized:{selector,provider,annotation}`: bound existing nonempty v1
+  geometry with matching reference identity, no fabricated preparation receipt.
+  Missing genes and ambiguous loci remain comparison outcomes, not guessed IDs.
+
+Selectors cover the reference/comparison sources exactly once. Saved analysis
+retains receipts, binding declarations and independent source availability.
+`coordinate_authority` is `declared`, with `reference_verification:null`.
+`verified` is reserved and refused by this producer/inspector; dictionary hashes,
+annotation matches and physical chain equality cannot upgrade authority.
+
+The existing masked-supported-base DAG objective is unchanged. All admitted
+observations remain saved, with `on_optimal_path`; only retained best-equivalent
+legal hypotheses contribute chain/junction catalogs. No NM/AS reranking occurs.
+A longer unspliced alternative can displace a shorter spliced observation.
+Chain/junction membership is deduplicated per declared unit, with separate
+`definite`/`possible_only` mapping certainty and exclusive `qualified_only`,
+`insufficient_only`, `unassessed_only`, `mixed` qualification groups. A physical
+junction common to every retained hypothesis can be definite even if no full
+chain is. Search/view declarations gate certainty; masks independently gate
+flank qualification. Unqualified/unannotated skips do not establish novel RNA.
+SEQ/QUAL strings are not retained; row diagnostics keep their lengths only.
+
+Service budgets explicitly require `max_input_bytes`, `max_annotation_bytes`,
+`max_output_bytes`, `max_output_row_bytes`, `max_units`, `max_retained_bytes`,
+`max_projection_work`. Byte/retained caps are at most 128 MiB, row JSON at most
+8 MiB, units at most 4,096 and projection work at most 100,000,000. The text
+consumer independently caps rows at 65,536, physical lines at 1,000,000,
+line bytes at 1 MiB, dictionary entries/header IDs at 100,000, fields at
+11..1,035, operators at 1,000,000 and SA entries at 65,536. All three budget
+groups are required; zero examples from discovery cannot execute. Conservative
+JSON/retained-geometry admission can refuse inputs below raw caps; these are
+engineering charges, not allocator/RSS or throughput promises. Exhaustion
+refuses publication, never truncates biological evidence.
+
+Seven artifacts (`analysis.json`, `query_structures.tsv`,
+`alignment_observations.tsv`, `structure_catalog.tsv`,
+`reference_compatibility.tsv`, `junction_catalog.tsv`, `unavailable.tsv`)
+precede a final `report.json` in a fresh immutable directory. TSVs have one
+`row_json` column; the producer enforces row and total-byte limits. Canonical
+sorted-key request/policy/context/report hashes are separate from raw artifact
+hashes. Report content hashing omits `content_sha256` itself. Publication uses
+closed staging handles, no-clobber report-last commit and identity-scoped cleanup;
+foreign replacement files are retained and disclosed, never recursively removed.
+
+Execution `completed`, `cancelled` and `control_error` is separate from annotation
+availability. Interrupted analysis has null counts/context, not measured zeros.
+Successful execution can still have refused/missing/ambiguous annotation sources.
+Inspection defaults to zero rows; `--rows 0..1000` reads a selected bounded table,
+`--verify-artifacts` hashes all seven saved artifacts to EOF. No original SAM,
+annotation, dictionary, manifest or GTF is reopened. Saved report paths are
+bound to the original resolved output directory; relocation is not automatic.
+Cancel writes only the identical request's explicit marker, idempotently without
+overwriting another request or requiring original inputs; this is not confirmed
+worker termination. A late cancel cannot retract committed completed artifacts.
+
+Shared shell/CLI/agent/scripting routes use these named operations. Produce/cancel
+require artifact-write approval; read-only inspection adds no shell confirmation.
+Generic MCP `op` keeps `confirm:true`. No implicit project repair/save or content
+undo checkpoint is introduced; raw operations can retain audit journal entries.
+Managed producer results are artifact-only and independent of live-project
+freshness; inspection/control use separate bounded lanes. Compact MCP/oversized
+managed responses use `gentle.command_observed_sam_result.v1` with
+`observed_sam_result` and source resolutions. Agent feedback distinguishes
+execution success from unavailable annotation comparison. No GUI, expression,
+protein consequence, natural RNA-end or biological-novelty claim is added.
+
 ### S2.1b Annotation Preparation (Direct Engine Only)
 
 `GentleEngine::prepare_observed_transcript_annotation(request, progress)` verifies
@@ -151,8 +278,8 @@ has `analysis:null` and no annotation, never zero counts or `missing_gene`.
 Late interruption retains complete analysis/artifact with `cancelled` or
 `control_error` execution status. Invalid data, hashes and exhausted budgets
 publish no final receipt. No original-file completeness or biological claim is
-inferred from successful supplied-input verification. Future SAM intake must
-require a matched receipt/annotation pair; legacy readers do not enforce it.
+inferred from successful supplied-input verification. S2.3 prepared-source SAM
+intake enforces matched receipt/annotation bindings; legacy readers do not.
 
 Raw GTF and dictionary bytes share a 128-MiB total ceiling; dictionary JSON has
 an independent explicit ceiling (at most 8 MiB). Conservative JSON allocation

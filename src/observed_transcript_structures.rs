@@ -1,4 +1,4 @@
-//! Pure observed-junction kernel; no file access, project mutation or isoform/protein assertion.
+//! Pure observed-junction APIs and private verified SAM intake; no project mutation or RNA claim.
 //!
 //! Callers bind and verify input bytes. This S0 API validates in-memory geometry,
 //! retains alternatives, and compares explicit stable gene IDs in existing payload
@@ -20,6 +20,10 @@ mod kernel;
 // S2.0b is deliberately private until a separately reviewed ingress contract exists.
 #[allow(dead_code)]
 mod sam;
+// Verified private file/unit intake; public report/adapters belong to the following boundary.
+#[allow(dead_code)]
+mod sam_intake;
+mod sam_report;
 // S2.2a decodes supplied raw lines only; verified file/unit ingress stays separate.
 #[allow(dead_code)]
 mod sam_text;
@@ -29,6 +33,25 @@ mod tests;
 pub use geometry::Block as SupportedBlock;
 pub use kernel::summarize;
 pub use kernel::summarize_with_control;
+pub use sam::{Unavailable as ObservedSamUnavailableReason, UnitKey as ObservedSamQueryUnitKey};
+#[cfg(test)]
+pub(crate) use sam_intake::tests::fixture as sam_intake_test_fixture;
+pub use sam_intake::{
+    Conversion as ObservedSamConversion, Manifest as ObservedSamQueryUnitManifest,
+    MaskWitness as ObservedSamMaskWitness, MissingCompanion as ObservedSamMissingCompanion,
+    Receipt as ObservedSamIntakeEvidence, RowWitness as ObservedSamRowWitness,
+    SearchDeclaration as ObservedSamSearchDeclaration, Unit as ObservedSamQueryUnit,
+};
+pub(crate) use sam_intake::{
+    Request as SamIntakeRequest, path as validate_sam_raw_path,
+    verified_json as read_sam_bound_json,
+};
+pub(crate) use sam_report::summarize_bound as summarize_sam_bound;
+pub use sam_report::*;
+pub use sam_text::{
+    Companion as ObservedSamCompanion, Counts as ObservedSamRowCounts,
+    Limits as ObservedSamTextBudgets, VersionPolicy as ObservedSamVersionPolicy,
+};
 
 pub type Interval = (usize, usize);
 

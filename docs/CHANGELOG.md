@@ -46,6 +46,46 @@
   freshness and whitespace pass. Session-close: 4 OK, 2 expected warnings,
   0 failures; the roadmap stays 400 lines. Rust runtime acceptance is pending.
 
+## 2026-10-29 - Expose Separate Bound SAM Structure Reports
+
+- Add versioned SAM request/report/data/result bindings, exact S2.1 receipt
+  joins and standalone report-last publication with saved offline inspection.
+  Reuse the existing DAG/comparison kernel; preserve S0/S1/Phase 2 bytes and
+  scientific scoring. Keep declared query units distinct from original reads.
+- Retain nonoptimal observations while restricting catalogs to optimal paths;
+  deduplicate certainty/qualification support independently. Source refusal,
+  declared coordinate authority, cancellation and control errors remain explicit.
+- Wire named shared operations/parser routes, approval/no-save lifecycle,
+  independent managed publication, MCP compact receipts and agent feedback.
+  Tests use temporary synthetic SAM/GTF, never live tools or provider data.
+  See the [S2.3 ledger](observed_transcript_structures_s2_plan.md#s23-shared-interpretation-saved-evidence-and-adapters)
+  for actual verification and remaining platform/scientific limits. No new GUI,
+  BAM/aligner launch, reference verification, RNA/protein identity or novelty claim.
+- Close the 2026-10-30 implementation audit with exact output-limit and forged
+  approval regressions, 243 headless passes, nonzero reruns of all five close-out
+  filters and both Cargo checks. Extend the actual CLI/framed-MCP smoke to
+  opposite-strand gene contexts and reversed annotation-source order. Preserve
+  the separate default-feature/parity receipts; optional Lua execution stops
+  before compilation on an uncached locked dependency, with no download. Native,
+  VM and real-data acceptance remain explicitly separate in the ledger.
+
+## 2026-10-29 - Harden Private SAM Admission And Bind File/Unit Intake
+
+- Exclude whole declared query units with unanchored skips or terminal deletions,
+  retaining distinct reasons and unaffected independent units. Preserve the
+  Phase 2 geometry walker, S1 wire bytes and existing biological scoring.
+- Preserve strict-1.6 header admission by default; add an explicit private legacy
+  version-label policy with the same supported-feature checks and original-version
+  disclosure, not automatic header rewriting or full historical SAM support.
+- Add private bounded, identity/hash/EOF-verified SAM/dictionary/manifest intake,
+  exact row-to-unit witnesses, conversion/mask/search declarations and same-unit
+  SA completeness checks. No QNAME identity inference, source mutation, implicit
+  alignment/conversion or reference verification is introduced.
+- Add inline synthetic file/admission/resource/cancellation regressions. Follow
+  the [source-bound S2.2b ledger](observed_transcript_structures_s2_plan.md#s22b-private-fileunit-intake-2026-10-29)
+  for private verification; the separate public S2.3 work is recorded above. Native,
+  real-provider and scientific acceptance is not inferred from these private APIs.
+
 ## 2026-10-29 - Guard Degraded Candidate-Store Use And Persistence
 
 - Implement the owner-authorized Claude revision, reusing a scoped snapshot of

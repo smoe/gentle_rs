@@ -12,6 +12,7 @@ pub(super) enum Policy {
     PayloadQueries(Box<crate::engine::PreparePrimerPayloadAlignmentQueriesRequest>),
     PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
     ObservedStructures(Box<crate::engine::SummarizeObservedTranscriptStructuresRequest>),
+    ObservedSam(Box<crate::engine::SummarizeObservedTranscriptStructuresFromSamRequest>),
     ObservedJunctions(Box<crate::engine::AssessObservedSpliceJunctionsRequest>),
     ObservedAnnotation(Box<crate::engine::PrepareObservedTranscriptAnnotationRequest>),
     Observe { expensive: bool },
@@ -40,6 +41,11 @@ fn classify(op: Operation) -> Policy {
         Operation::SummarizeObservedTranscriptStructures { request } => {
             Policy::ObservedStructures(request)
         }
+        Operation::SummarizeObservedTranscriptStructuresFromSam { request } => Policy::ObservedSam(request),
+        Operation::InspectObservedTranscriptStructuresFromSam { verify_artifacts, rows, .. } => Policy::Observe {
+            expensive: verify_artifacts || rows > 0,
+        },
+        Operation::CancelObservedTranscriptStructuresFromSam { .. } => Policy::Control,
         Operation::AssessObservedSpliceJunctions { request } => Policy::ObservedJunctions(request),
         Operation::InspectObservedSpliceJunctions {
             verify_artifacts,
@@ -366,6 +372,15 @@ pub(super) fn publication(
                     .map_err(|e| e.to_string())?;
             return Ok(Publication::ObservedStructures(binding));
         }
+        Policy::ObservedSam(request) => {
+            let report = serde_json::from_value(
+                output.pointer("/result/observed_sam_structures")
+                    .ok_or("Observed SAM structures returned no typed report")?.clone(),
+            ).map_err(|e| e.to_string())?;
+            let binding = GentleEngine::observed_sam_result_binding(request, &report)
+                .map_err(|e| e.to_string())?;
+            return Ok(Publication::ObservedSam(binding));
+        }
         Policy::PayloadQueries(request) => {
             let report = serde_json::from_value(
                 output
@@ -412,6 +427,7 @@ pub(super) fn publication(
         | Policy::PayloadQueries(_)
         | Policy::PayloadAlignments(_)
         | Policy::ObservedStructures(_)
+        | Policy::ObservedSam(_)
         | Policy::ObservedJunctions(_)
         | Policy::ObservedAnnotation(_) => {
             unreachable!("handled above")

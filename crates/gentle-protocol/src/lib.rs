@@ -5723,6 +5723,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PreparePrimerPayloadAlignmentQueries",
     "SummarizePrimerPayloadAlignments",
     "SummarizeObservedTranscriptStructures",
+    "SummarizeObservedTranscriptStructuresFromSam",
+    "InspectObservedTranscriptStructuresFromSam",
+    "CancelObservedTranscriptStructuresFromSam",
     "AssessObservedSpliceJunctions",
     "InspectObservedSpliceJunctions",
     "CancelObservedSpliceJunctions",
@@ -7786,6 +7789,8 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
             | "PreparePrimerPayloadAlignmentQueries"
             | "SummarizePrimerPayloadAlignments"
             | "SummarizeObservedTranscriptStructures"
+            | "SummarizeObservedTranscriptStructuresFromSam"
+            | "CancelObservedTranscriptStructuresFromSam"
             | "AssessObservedSpliceJunctions"
             | "CancelObservedSpliceJunctions"
             | "CancelObservedTranscriptStructures"

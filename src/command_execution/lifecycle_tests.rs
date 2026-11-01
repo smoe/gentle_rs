@@ -22,6 +22,45 @@ fn wait(service: &CommandExecutionService, id: u64) -> Result<ShellRunResult, St
 }
 
 #[test]
+fn observed_sam_managed_publication_and_control_do_not_acquire_the_live_project() {
+    use crate::engine::{Operation, ObservedSamExecutionStatus};
+    for cancelled in [false, true] {
+        let (root, mut request) = GentleEngine::observed_sam_test_fixture();
+        request.cancel_path = Some(root.path().join("cancel SAM").display().to_string());
+        let service = CommandExecutionService::default();
+        let engine = Arc::new(RwLock::new(fixture::live_with_redo()));
+        let held = engine.write().unwrap();
+        let before = serde_json::to_value(held.state()).unwrap();
+        let journal = held.journal_len();
+        if cancelled {
+            let command = ShellCommand::Op { payload: serde_json::to_string(
+                &Operation::CancelObservedTranscriptStructuresFromSam { request: Box::new(request.clone()) }
+            ).unwrap() };
+            let id = service.submit_parsed(engine.clone(), command, "cancel SAM".into(), Default::default()).unwrap();
+            assert_eq!(wait(&service, id).unwrap().output["termination_confirmed"], false);
+        }
+        let command = format!("rna-reads transcript-structures-from-sam {}",
+            crate::engine_shell::quote_shell_arg(&serde_json::to_string(&request).unwrap()));
+        let parsed = crate::engine_shell::parse_shell_line(&command).unwrap();
+        let id = service.submit_parsed(engine.clone(), parsed, command, Default::default()).unwrap();
+        let result = wait(&service, id).unwrap();
+        let report: crate::engine::ObservedSamReport = serde_json::from_value(
+            result.output["result"]["observed_sam_structures"].clone()).unwrap();
+        assert_eq!(report.status, if cancelled { ObservedSamExecutionStatus::Cancelled } else { ObservedSamExecutionStatus::Completed });
+        let receipt = service.status(id).unwrap();
+        assert_eq!(receipt.publication, "artifact_only");
+        assert_eq!(receipt.committed_operations, 0);
+        assert!(!receipt.requires_project_commit);
+        assert_eq!(receipt.observed_sam_result.as_ref().unwrap().outcome, if cancelled { "cancelled" } else { "completed" });
+        assert_eq!(crate::agent_feedback::AgentExecutionStatus::from_shell_output(&result.output),
+            if cancelled { crate::agent_feedback::AgentExecutionStatus::Cancelled } else { crate::agent_feedback::AgentExecutionStatus::Completed });
+        assert_eq!(serde_json::to_value(held.state()).unwrap(), before);
+        assert_eq!(held.journal_len(), journal);
+        assert!(!service.cancel(id));
+    }
+}
+
+#[test]
 fn observed_transcripts_managed_publication_keeps_live_project_and_journal_unchanged() {
     let td = tempfile::tempdir().unwrap();
     let (_, request) = GentleEngine::observed_transcripts_test_fixture(td.path());

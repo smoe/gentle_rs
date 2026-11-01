@@ -1,10 +1,11 @@
 # Observed Transcript Structures S2: SAM And Annotation Preparation
 
-Status: **S2.0a/b and S2.1a/b/c implemented; private S2.2a verified locally**.
+Status: **S2.0-S2.3 implemented; focused local verification recorded below**.
 The dated ledgers below retain each slice's authorization and tested source.
 S2.1 provides annotation preparation and named adapters; S2.2a decodes supplied
-raw SAM lines privately. Verified SAM file/unit ingress and S2.3 public SAM
-interpretation remain separate proposed slices.
+raw SAM lines privately. Verified SAM file/unit ingress and separate S2.3
+reports/routes are implemented in the working tree; their new-source checks
+are recorded below, without inheriting earlier test receipts.
 The separate [S2.1 hardening close-out](#s21c-execution-and-close-out-2026-10-29)
 has its implementation and required local checks complete; native-platform,
 real-provider and scientific acceptance remain separate.
@@ -1286,6 +1287,131 @@ The owner-requested post-commit rebase must retain both changelog entries,
 the disjoint roadmap changes and unrelated working edits; recheck the source
 manifest rather than inheriting a merged-source/native acceptance claim.
 
+#### S2.2b Private File/Unit Intake, 2026-10-29
+
+The owner authorizes proceeding with the identified implementation gaps as one
+continuing objective. This section records the file/admission dependency, not
+completion of the later public report/adapter work. Base is main `b6863907`;
+unrelated untracked `output/` is preserved. S2.1 close-out stays complete and
+its older receipts are not rewritten. No real-provider gap, transcript-row,
+budget or original-molecule policy is selected here.
+
+- **N2:** private SAM interpretation excludes a whole unit when a row has an
+  `N` without aligned `M`/`=`/`X` support on both sides, or a terminal deletion.
+  Distinct `UnanchoredSkip` and `TerminalDeletion` diagnostics retain the reason.
+  Test the actual aligned support bounds, not just the first/last opcode:
+  insertions, padding and asymmetric clipping must not hide an unanchored gap.
+  Internal gaps and terminal insertions remain supported. Both orientations,
+  a good companion row in the same excluded unit and an independent unaffected
+  unit are covered. The shared Phase 2 walker and S1 certainty/bytes are unchanged.
+- **N1:** retain the existing `Consumer::new` strict-1.6 default. A separate
+  explicit `Legacy10To16` policy admits the finite 1.0--1.6 version labels under
+  the same strict feature subset, not all historical grammars. Retain the
+  original declared version, including absence of `@HD`; never rewrite a
+  header or infer a version. Tests retain dictionary/feature rejection and
+  refuse future/malformed version labels under either policy. The public-service
+  policy choice was offered to the owner; no default widening is assumed.
+- New private `sam_intake` reads bound SAM, exact-name dictionary and query-unit
+  manifest files with no output writes. Verify the exact consumed bytes, EOF,
+  length, modification state and opened-file identity. Validate raw paths before
+  component normalization. Bound JSON allocation, parser scratch, annotations,
+  units/rows/operations and SA matching; cancellation returns no partial intake.
+  JSON is charged at `64 * bytes + 65,536` per sidecar before parsing. Retained
+  context reserves 4 KiB plus 16 KiB per selector, 128 KiB per source (including
+  empty sources), and 32 KiB + 2 KiB per transcript, plus 128 bytes per exon and
+  `64 + 2 * id_bytes` per transcript gene ID. These conservative representation
+  charges reduce the remaining decoder budget; independent count ceilings are
+  not simultaneous capacity or RSS/whole-provider throughput promises.
+- Every alignment-row ordinal must occur exactly once in the manifest, with
+  exact QNAME/read-group witnesses. Repeated QNAMEs in distinct declared units
+  remain distinct; arbitrary input/manifest row order is allowed. Consistent
+  unclipped axes use the existing normalizer, not a second clip formula. A
+  zero-row unit remains `not_provided`. An unavailable `*` QNAME is accounted
+  for with `QnameNotProvided` and withholds the whole unit's support, rather
+  than synthesizing an identity or discarding the row from the denominator.
+- Preserve direct-SAM/BAM-conversion producer/version/arguments/selection-scope
+  declarations, the raw and semantic manifest bindings and explicit unpadded
+  policy. A BAM hash is not verified BAM bytes or a command to execute. An exact
+  hashed dictionary still gives only `producer_declared` coordinate authority.
+- Require explicit same-axis mask provenance; unknown masks stay unknown and
+  an empty interval list requires an explicit witness. Search completeness is
+  independent: absent declarations, nonempty limitations (including `none`),
+  or an SA companion missing from the same unit cannot strengthen certainty.
+  Do not manufacture SA rows. Retain the original manifest and each missing
+  companion in the private receipt for the later saved-report boundary.
+
+All fixtures are hand-crafted in temporary directories by the inline Rust
+tests; no committed sequence/byte fixture or live tool/network is used. New
+cases cover repeated names, exact assignments, tampering, LF/CRLF, masking and
+search independence, SA scope, cancellation and exact/one-under memory/input
+ceilings, metadata-only sources, spaced S2.1 reference labels and unavailable
+QNAME witnesses.
+
+##### Source-Bound Intake Verification
+
+Tested base is `b68639078614fd9ada856e95073ed77598e06647` plus the seven
+changed/new Rust files above, on macOS arm64 with Rust
+`1.100.0-beta.7 (fd8e211ae 2026-10-17)`. The SHA-256 of the following command's
+output is `86b0627b6e117ac743148ed8ce8d0b06b8df5d6e6959f456b670bef2413b9a7d`:
+
+```sh
+shasum -a 256 Cargo.lock src/observed_transcript_structures.rs \
+  src/observed_transcript_structures/{sam.rs,sam_tests.rs,sam_text.rs,sam_text_tests.rs,sam_intake.rs,sam_intake_tests.rs}
+```
+
+This includes the two new, initially untracked intake files, not just the Git
+diff. The lockfile remains
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`;
+no dependency, Cargo profile or repository build configuration is edited.
+
+All final Rust commands use `--locked --offline`, `CARGO_INCREMENTAL=0` and
+`CARGO_BUILD_JOBS=1`. Library tests additionally use the transient
+`CARGO_PROFILE_TEST_DEBUG=0` override, not a persisted profile change:
+
+| Command Tail | Passed | Failed | Ignored |
+| --- | ---: | ---: | ---: |
+| `cargo test -q --no-default-features --lib observed_transcript_structures -- --test-threads=1` | 85 | 0 | 0 |
+| `cargo test -q --no-default-features --lib primer_payload -- --test-threads=1` | 103 | 0 | 0 |
+| `cargo test -q --no-default-features --lib s2a_ -- --test-threads=1` | 6 | 0 | 0 |
+| `cargo check -q --no-default-features --lib` | exit 0 | 0 | n/a |
+| `cargo check -q` | exit 0 | 0 | n/a |
+
+Filters overlap and are not a full-suite total. The first 80-case run had one
+new test-fixture failure: a tampered contig was correctly refused by dictionary
+validation before EOF/hash verification. Change only the synthetic tamper to a
+valid changed QNAME so the test exercises checksum refusal, not an earlier
+parser refusal. Do not relax hashing or parser expectations. Final tests also
+cover the subsequent metadata and anonymous-QNAME hardening. Existing headless
+dead-code and macOS large-unwind-section linker warnings remain visible.
+
+The broader experimental command
+`cargo check -q --locked --offline --no-default-features --lib --tests` fails
+on the existing `tests/capability_registry_parity.rs` import of `gentle::app`,
+which is disabled without `desktop-gui`. Neither that test nor `src/lib.rs` is
+changed. Use the intended headless library test/check scope and the default
+feature check above; do not claim a broad headless integration or full-suite
+pass. No mutex-poisoning cascade or new production compile failure is observed.
+
+`python3 -m unittest scripts.test_observed_transcript_contract scripts.test_primer_payload_contract scripts.test_tutorial_checkouts.DocumentationStatusTests -q`
+passes 35 cases with one explicit opt-in actual-payload-CLI skip (36 total),
+including real LF/CRLF checkout replay. Documentation status, manual and
+capability-maturity freshness, scoped Rust formatting and whitespace checks
+pass. `git diff --quiet` confirms the shared core/walker, S1 producer, frozen
+Phase 2/S1 preservation oracles, lockfile and Cargo configuration are unchanged.
+Session-close has 4 OK/2 expected warnings/0 failures: this deliberate working
+diff and preserved `output/`, plus the manual plan-fidelity reminder. No commit,
+push, CI dispatch, new capture, model consultation, live tool or private-data
+publication is performed. This closes the verified private dependency, not the
+continuing objective below.
+
+**Continuing objective at the private-intake handoff:** S2.3 must still define and implement separate public
+request/report/data/binding/inspection/cancellation records and shared engine,
+CLI/MCP/agent routes; verify annotation/receipt selector bindings, expose optimal
+path membership and qualification-split unit catalogs, and preserve offline
+inspection with report-last safe publication. Private intake does not advertise
+a SAM command or close the full objective. Native Windows/Linux, actual-process,
+real-provider and scientific acceptance remain separate and unverified.
+
 ### S2.3: Shared Interpretation, Saved Evidence And Adapters
 
 Normalize admitted SAM geometry into the private S2.0 seam; use the existing
@@ -1332,14 +1458,204 @@ source revalidation. Optional bounded source-verification is explicit, not idle
 work. Do not rewrite/import SAM observations as Phase 2 evidence or project DNA.
 
 Use shared engine operations/parser/executor for CLI, generic MCP and agent
-discovery, with thin scripting access. Tentative producer commands are
+discovery, with thin scripting access. The producer commands are
 `rna-reads transcript-annotation-prepare` and
 `rna-reads transcript-structures-from-sam`, both with strict JSON requests.
 Specify typed saved-result inspection and request-bound cancellation companions
 in the protocol before coding; reuse S1 helpers, not its strict v1 request type.
-The annotation preparation name is now registered by S2.1c. The SAM producer,
-inspection/cancellation companions and their public contracts remain
-**proposed, not currently available commands**. No GUI in S2.
+The annotation preparation name was registered by S2.1c. The SAM producer,
+inspection/cancellation companions are now implemented through separate
+`gentle.observed_sam_structures_{request,report,data,result_binding}.v1`
+contracts; see the [exact request and evidence semantics](protocol.md#s23-bound-sam-interpretation)
+and [shared CLI routes](cli/observed-transcripts.md#interpret-supplied-sam-s23).
+Their new-source runtime/parity checks are recorded below, not inferred from
+the private-intake receipt. No GUI in S2.
+
+#### S2.3 Implementation And Verification, 2026-10-29
+
+New modules separate portable protocol, pure optimal-path/qualification
+projection and engine file/publication/inspection boundaries. The metadata-only
+S2.1 receipt check is shared without weakening its existing path/raw binding
+method. Copied receipts/annotations work with the original GTF and preparation
+directory offline. Prepared source refusal is retained without fabricated models;
+normalized catalogs remain explicit independent inputs. Whole-SAM status does
+not conceal missing/ambiguous/refused source comparison.
+
+The three named operations and their shared-shell routes use explicit approval,
+project-preservation/no-save and no-content-checkpoint policies. Managed jobs
+publish typed artifact-only results without a live project lock or journal merge;
+inspection/control use existing independent bounded lanes. MCP returns compact
+bindings and source resolutions; agent feedback distinguishes execution from
+annotation availability. JS/Lua reach the same typed operation, with no parallel
+biological implementation. No live agent, BAM converter, aligner or provider is
+called. All new runtime fixtures are synthetic and recreated in tempdirs.
+
+##### First S2.3 Source-Bound Verification
+
+This receipt precedes the additional tests in the completion audit below.
+Local base `main` = `gentle_rs_2_main` =
+`b68639078614fd9ada856e95073ed77598e06647`, plus this uncommitted working diff;
+no fetch, push, new dependency or lockfile edit. macOS arm64, Rust
+`1.100.0-beta.7 (fd8e211ae 2026-10-17)`. Cargo.lock SHA-256 remains
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+The SHA-256 of `git diff HEAD -- src crates Cargo.lock Cargo.toml .cargo/config.toml`
+is `552901c78b3b9edb76f506e6ffe9e77fa2a2fd02a380c5bf18e290a8edcda2ba`.
+That alone omits new files: the SHA-256 of the following command's output is
+`6cfdfa88f4d4c46001a664a0346b1f3cf9f2167954b28a10a89bef5af6f2d1de`:
+
+```sh
+shasum -a 256 Cargo.lock src/engine/protocol/observed_sam.rs \
+  src/observed_transcript_structures/{sam_intake.rs,sam_intake_tests.rs,sam_report.rs,sam_report_tests.rs} \
+  src/engine/analysis/rna_panel/primer_payload/observed_sam.rs \
+  src/engine/analysis/rna_panel/primer_payload/observed_sam/{publication.rs,tests.rs}
+```
+
+All Rust commands below use `--locked --offline`, `CARGO_INCREMENTAL=0`,
+`CARGO_BUILD_JOBS=1`. Library/integration tests use the transient
+`CARGO_PROFILE_TEST_DEBUG=0`; the generator/default check also use
+`CARGO_PROFILE_DEV_DEBUG=0`. This limits local build storage without changing
+repository profiles. The protocol-crate test uses its ordinary profile.
+
+| Command/filter | Passed | Failed | Ignored |
+| --- | ---: | ---: | ---: |
+| `cargo test -q --lib -- observed_sam_ sam_report_ observed_annotation_ s2a_ observed_transcript_structures glossary_observed_transcript introspect_all_capability primer_payload --test-threads=1` | 214 | 0 | 0 |
+| Same command with `--no-default-features` before `--lib` | 214 | 0 | 0 |
+| `cargo test -q -p gentle-protocol --lib` | 116 | 0 | 0 |
+| `cargo test -q --test capability_registry_parity --test mcp_capability_surface --test parity_matrix_freshness` | 21 + 6 + 1 | 0 | 0 |
+| `cargo check -q` (default features) | exit 0 | 0 | n/a |
+| `cargo run -q --bin gentle_examples_docs -- parity-matrix-generate` | exit 0 | 0 | n/a |
+| `target/debug/gentle_examples_docs parity-matrix-check` | exit 0 | 0 | n/a |
+
+Counts overlap; do not sum filtered runs as independent cases. The first
+service-only headless pass was 9/9. A subsequent 137-case run found one **test
+setup** error: it held the live project lock while using conservative text
+submission instead of existing `submit_parsed` independent admission. Correct
+the test to use the frozen shared-parser API without relaxing the held-lock
+assertion; both final 214-case runs pass. No production admission policy was
+weakened. Baseline headless dead-code and large macOS linker-unwind warnings
+remain; these are not compilation/test failures. Frozen Phase 2/S1 core,
+geometry, intake and preservation-oracle files are unchanged.
+
+The durable public-process smoke is explicit opt-in, with script SHA-256
+`dd83b2b47867af832daf91d677604939309b22377cc2dfa6bc9df99a4e381a36`:
+
+```sh
+GENTLE_CONTRACT_CLI="$PWD/target/debug/gentle_cli" \
+GENTLE_CONTRACT_MCP="$PWD/target/debug/gentle_mcp" \
+python3 -m unittest scripts.test_observed_transcript_contract -q
+```
+
+All 9 cases pass, none skipped. The process case invokes the real CLI producer,
+removes every original SAM/dictionary/manifest/normalized-annotation file, then
+inspects saved evidence through real CLI and **Content-Length-framed** MCP stdio.
+It checks one definite qualified synthetic unit and that no project file is
+implicitly created. No prepared report, natural sequence or provider result is
+fabricated. An earlier ad-hoc MCP harness sent unframed JSON and got no response;
+correcting the harness to the existing transport required no server change.
+
+Without opt-in binaries, the broader source/doc/checkout command
+`python3 -m unittest scripts.test_observed_transcript_contract scripts.test_primer_payload_contract scripts.test_tutorial_checkouts.DocumentationStatusTests -q`
+passes 35 with 2 explicit process skips (37 total). Capability-maturity tests plus
+the existing real LF/CRLF maturity/matrix checkout controls pass 14/14; the
+post-regeneration matrix checkout control also passes 1/1. Manual catalog,
+documentation-status, scoped new-module rustfmt and whitespace checks pass.
+Canonical maturity generation changes only four bound glossary hashes; no
+capability maturity is promoted. New matrix rows are the six required SAM
+command/operation rows; unrelated parity gaps are not changed.
+
+Native Windows/Linux file-handle/path acceptance, real-provider/scientific data,
+live agent/native GUI, optional JS/Lua VM execution and full-workspace/clippy
+remain unrun. Conditional JS/Lua operation/serialization/offline-inspection tests
+are authored; no V8 download or optional-tool installation was attempted.
+Headless broad integration checks still encounter the pre-existing desktop-only
+`tests/capability_registry_parity.rs` import of `gentle::app`; use headless
+library checks and default-feature integration checks as recorded, not a waived
+parity failure. Unrelated untracked `output/` stays untouched. Session-close
+has 4 OK, 2 expected working-tree/manual-fidelity warnings, 0 failures. No commit
+or push is performed in this continuation.
+
+##### Completion Audit, 2026-10-30
+
+Rechecked the actual worktree against both Claude threads and the required
+verification table, not only against the private intake slice. Production Rust
+and lockfile are unchanged from the preceding receipt; the tracked Rust diff
+SHA-256 is still `552901c78b3b9edb76f506e6ffe9e77fa2a2fd02a380c5bf18e290a8edcda2ba`.
+Two additional SAM service tests change the new-file bundle digest (using the
+same `shasum` command above) to
+`5405e39068e2d833bc97006e6c00446f9b86fb3af011f6fb0f877c63981e475e`.
+The expanded process-smoke script SHA-256 is
+`e67fcb3accf74c4124d641f02e5f2b81038f71be202f747562f91822eeff5247`.
+
+| Requirement | Authoritative implementation and exercised evidence |
+| --- | --- |
+| S2.1 Part A and B1-B5 | Earlier close-out ledger; unchanged preparation formats/handles/version rules. Current-source annotation 31, preservation 6, S1 16 and all required filters below pass after the metadata-only helper extraction. |
+| F1 / legacy preservation | Shared `core`/identity seam remains unchanged. Frozen S1/Phase 2 report/data/table/digest/work/oracle files are unmodified; current preservation and payload filters pass. |
+| F2 / F3 | `sam_masks_and_search_completeness_are_independent_axes`, whole-unit competitor refusals and private intake checks. Unknown defaults stay unassessed; explicit complete declarations can yield definite support without implying verified exhaustive search. |
+| F4 / F5 | Existing strict GTF whole-file duplicate, overlap/touching and positive-gap policy tests; legacy geometry untouched. No real-data gap is chosen. |
+| F6 | `observed_sam_joins_prepared_selectors_exactly_without_version_or_symbol_guessing`: copied receipt/artifact works offline, exact selector/version spelling mismatch fails. Refused preparation is retained, not converted into empty geometry. |
+| F7 | `sam_report_nonoptimal_spliced_observations_do_not_contribute_to_catalogs`: all admitted observations remain visible, with optimal membership; unchanged DAG scoring controls support. |
+| F8 | Exclusive/deduplicated qualification groups and shared-junction versus full-chain certainty tests; multi-source actual MCP output still counts one declared unit, not one per annotation. |
+| F9 | Public declared authority/no verification receipt; forged verified authority and mismatched bindings rejected. Physical chain keys stay independent of gene context. |
+| N1 | Strict-1.6 default plus explicit `legacy10_to16`, original versions retained; decoder/intake version tests pass. No automatic header rewriting or unsupported version emulation. |
+| N2 | Actual aligned-base boundary checks reject unanchored skips/terminal deletions as whole unavailable units; internal gaps/other independent units stay intact. |
+| S2.2b | Exact raw SAM/dictionary/manifest bytes, identity and EOF; arbitrary row order, repeated QNAMEs, exact row witnesses, missing/duplicate/foreign rows, masks/search independence and same-unit SA accounting tested. |
+| S2.3 report/publication/inspection | Separate four schemas plus unit manifest, seven bounded artifacts, report-last publication, source-independent saved inspection, exact cancellation and control outcomes; corruption, replacement/orphan, late-cancel and output refusal tests pass. |
+| Approval/lifecycle | New forged-agent-flags test proves both producer and cancel reject unconfirmed dispatch before writes, preserving state/history/redo. Held-lock managed test uses independent frozen-parser admission; raw/CLI/MCP routes retain project/no-save policies. |
+| Resource edges | New service test measures real table JSON-cell sizes and total published bytes; exact row/total budgets pass, one-under refuses with no final output. Private parser/intake/model/work limits retain their boundary/cancellation tests. |
+| Gene variability / actual processes | Expanded opt-in smoke runs two CLI gene contexts at distinct loci/opposite model strands: same physical family, different context/comparison. Actual MCP producer accepts reversed source input order, resolves the explicit genes and retains unique-unit counts. Offline CLI/MCP inspection succeeds after all original sources are removed; no project file is created. |
+| Shared discovery/parity | Three named operations and three shared routes, strict parser bindings, registry metadata, fact annotations, generic MCP command paths and canonical matrix checks pass. JS/Lua production wrappers deserialize the same `Operation`, use `LifecycleRequest`, then serialize the complete `OpResult`; no adapter biology or field-filtering branch is added. |
+
+Final expanded headless command (same locked/offline/single-job/test-debug-zero
+recipe) passes **243/0/0**:
+
+```sh
+cargo test -q --locked --offline --no-default-features --lib -- \
+  observed_sam_ sam_report_ observed_annotation_ s2a_ \
+  observed_transcript_structures glossary_observed_transcript \
+  introspect_all_capability primer_payload observed_transcripts_ \
+  lifecycle_slice3 lifecycle_slice5 --test-threads=1
+```
+
+The five original close-out filters were also run separately on this source,
+all with nonzero matching cases: `observed_annotation_` 31, `primer_payload` 114,
+`observed_transcript_structures` 92, `s2a_` 6 and `observed_transcripts_` 16.
+Both `cargo check -q --locked --offline` and the headless
+`--no-default-features --lib` check pass. The earlier default-feature 214-case
+receipt covers the unchanged production implementation; it is not relabelled
+as a default-feature execution of the two later test bodies. The expanded
+actual CLI/MCP script passes all 9 tests with no skips.
+
+Optional Lua verification was attempted with
+`cargo test -q --locked --offline --no-default-features --features lua-interface --lib observed_sam_lua_operation -- --test-threads=1`.
+It stops **before compilation** because locked `erased-serde v0.4.11` is not
+cached. This is missing optional build input, not a Lua pass or a code failure;
+no network/download/install was attempted. No cached V8 archive was found, so
+the JS VM build was not attempted. Conditional VM tests remain a separate
+execution handoff, as do native Windows/Linux and real-provider/scientific
+acceptance. GTF-first, mandatory exact unit manifests and explicit real-data
+gap/mask/search policies remain the agreed scope; genePred, a QNAME shortcut,
+reference-byte verification, GUI and protein consequences are not silently
+implemented or claimed. No outstanding implementation item from these two
+threads is reclassified as private-only completion. No commit/push or Glen
+request is made.
+
+##### Commit And Rebase Integration, 2026-11-01
+
+Owner-requested commit/rebase targets local `main` at `d9b1015c`, preserving its
+five newer J1/VM-test/Save-As commits. Resolve the two additive conflicts by
+retaining both changelog histories and all 11 contract-test methods, including
+the newer J1 source guards and the SAM process smoke. AST comparison verifies
+method bodies against both branches; automatically merged Rust retains the
+incoming production fixes and both sets of optional VM tests.
+
+On the integrated tree, locked/offline default-feature `cargo check -q` passes
+with the same single-job/debug-zero recipe. Source/documentation/checkout
+checks pass 37 with 2 explicit process skips (39 total); manual, documentation-
+status, maturity freshness and whitespace checks pass. No full Rust suite or
+actual-process/VM replay is repeated during this rebase. Earlier runtime counts
+remain attached to their recorded pre-rebase sources, not promoted to merged-
+source runtime acceptance. Unrelated untracked `output/` remains excluded;
+no fetch, push, dependency/profile change or provider call is performed.
 
 ## SAM Geometry Admission Contract
 

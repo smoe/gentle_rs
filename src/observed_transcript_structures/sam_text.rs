@@ -7,12 +7,30 @@
 use super::*;
 use ring::digest::{Context, SHA256};
 
+/// Version labels admitted under the same strict feature subset, not full historical grammars.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VersionPolicy {
+    #[default]
+    Strict16,
+    Legacy10To16,
+}
+
+impl VersionPolicy {
+    fn permits(self, version: &str) -> bool {
+        version == "1.6"
+            || (self == Self::Legacy10To16
+                && matches!(version, "1.0" | "1.1" | "1.2" | "1.3" | "1.4" | "1.5"))
+    }
+}
+
 #[cfg(test)]
 #[path = "sam_text_tests.rs"]
 mod tests;
 
-#[derive(Debug, Clone)]
-pub(super) struct Limits {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Limits {
     pub max_input_bytes: usize,
     pub max_line_bytes: usize,
     pub max_lines: usize,
@@ -28,8 +46,9 @@ pub(super) struct Limits {
 }
 
 /// A tag-declared companion, never an invented alignment row or completeness proof.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Companion {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Companion {
     pub target: String,
     pub position_1based: usize,
     pub strand: char,
@@ -44,8 +63,9 @@ pub(super) struct DecodedRow {
     pub companions: Vec<Companion>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(super) struct Counts {
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Counts {
     pub lines: usize,
     pub header_lines: usize,
     pub alignment_rows: usize,
@@ -59,6 +79,8 @@ pub(super) struct Counts {
 #[derive(Debug)]
 pub(super) struct Document {
     pub grammar: &'static str,
+    pub version_policy: VersionPolicy,
+    pub declared_version: Option<String>,
     pub raw_sha256: String,
     pub raw_bytes: usize,
     pub dictionary_order: Vec<String>,
@@ -281,12 +303,23 @@ pub(super) struct Consumer<'a> {
     rows: Vec<DecodedRow>,
     unterminated: bool,
     poisoned: bool,
+    version_policy: VersionPolicy,
+    declared_version: Option<String>,
 }
 
 impl<'a> Consumer<'a> {
     pub(super) fn new(
         expected: &'a BTreeMap<String, usize>,
         limits: &'a Limits,
+        check: &mut dyn FnMut() -> Result<(), EngineError>,
+    ) -> Result<Self, EngineError> {
+        Self::with_version_policy(expected, limits, VersionPolicy::Strict16, check)
+    }
+
+    pub(super) fn with_version_policy(
+        expected: &'a BTreeMap<String, usize>,
+        limits: &'a Limits,
+        version_policy: VersionPolicy,
         check: &mut dyn FnMut() -> Result<(), EngineError>,
     ) -> Result<Self, EngineError> {
         check()?;
@@ -347,6 +380,8 @@ impl<'a> Consumer<'a> {
             rows: Vec::new(),
             unterminated: false,
             poisoned: false,
+            version_policy,
+            declared_version: None,
         })
     }
 
@@ -449,9 +484,12 @@ impl<'a> Consumer<'a> {
         };
         match f[0] {
             "@HD" => {
-                if self.counts.lines != 1 || required("VN")? != "1.6" {
+                let version = required("VN")?;
+                if self.counts.lines != 1 || !self.version_policy.permits(version) {
                     return Err(fail("header_version_or_order"));
                 }
+                self.meter.retain(version.len())?;
+                self.declared_version = Some(version.into());
             }
             "@SQ" => {
                 let name = required("SN")?;
@@ -691,6 +729,8 @@ impl<'a> Consumer<'a> {
             .collect::<String>();
         Ok(Document {
             grammar: "sam_text_strict.private.v1",
+            version_policy: self.version_policy,
+            declared_version: self.declared_version,
             raw_sha256: format!("sha256:{hex}"),
             raw_bytes: self.bytes,
             dictionary_order: self.dictionary_order,

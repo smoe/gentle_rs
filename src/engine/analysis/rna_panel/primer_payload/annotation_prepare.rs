@@ -263,6 +263,46 @@ fn prepare(
     Ok((p, dictionary.contigs.len(), retained))
 }
 
+/// Pure receipt metadata validation shared with saved SAM ingress; no original path lookup.
+pub(super) fn validate_receipt_metadata(
+    report: &ObservedTranscriptAnnotationReport,
+) -> Result<(), EngineError> {
+    let request = &report.request;
+    limits(request)?;
+    let memory = request.budgets.max_retained_bytes;
+    let identity = semantic_hash(request, memory)?;
+    let mut basis = report.clone();
+    basis.content_sha256.clear();
+    let analysis = report.analysis.as_ref();
+    let complete_gene = analysis.is_some_and(|a| a.outcome == ObservedAnnotationOutcome::Completed);
+    let status = report.status;
+    if report.schema != OBSERVED_ANNOTATION_REPORT_SCHEMA
+        || semantic_hash(&report.request, memory)? != identity
+        || report.request_sha256 != identity
+        || semantic_hash(&basis, memory)? != report.content_sha256
+        || report.gtf_verified && !report.dictionary_verified
+        || analysis.is_some() && !(report.gtf_verified && report.dictionary_verified)
+        || (status == ObservedAnnotationExecutionStatus::Completed && analysis.is_none())
+        || ((status == ObservedAnnotationExecutionStatus::ControlError)
+            != report.control_error.is_some())
+        || report.control_error.as_ref().is_some_and(|s| s.is_empty())
+        || complete_gene != report.annotation.is_some()
+        || report.annotation.as_ref().is_some_and(|a| {
+            a.path != "artifacts/annotation.json" || a.bytes == 0 || !is_hash(&a.sha256)
+        })
+        || analysis.is_some_and(|a| {
+            a.grammar != "gtf_strict.v1"
+                || a.coordinate_authority != "declared"
+                || a.raw_sha256 != request.gtf.sha256
+                || a.raw_bytes as u64 != request.gtf.bytes
+                || a.snapshot_release != format!("snapshot-{}", request.gtf.sha256)
+        })
+    {
+        return Err(bad("observed_annotation_result_binding"));
+    }
+    Ok(())
+}
+
 impl GentleEngine {
     /// Correlate typed emitted metadata with the executed request. No source re-analysis.
     pub fn observed_transcript_annotation_result_binding(
@@ -273,36 +313,15 @@ impl GentleEngine {
         let report = &result.report;
         let memory = request.budgets.max_retained_bytes;
         let identity = semantic_hash(request, memory)?;
-        let mut basis = report.clone();
-        basis.content_sha256.clear();
+        if semantic_hash(&report.request, memory)? != identity || report.request_sha256 != identity
+        {
+            return Err(bad("observed_annotation_result_binding"));
+        }
+        validate_receipt_metadata(report)?;
         let analysis = report.analysis.as_ref();
         let complete_gene =
             analysis.is_some_and(|a| a.outcome == ObservedAnnotationOutcome::Completed);
         let status = report.status;
-        if report.schema != OBSERVED_ANNOTATION_REPORT_SCHEMA
-            || semantic_hash(&report.request, memory)? != identity
-            || report.request_sha256 != identity
-            || semantic_hash(&basis, memory)? != report.content_sha256
-            || report.gtf_verified && !report.dictionary_verified
-            || analysis.is_some() && !(report.gtf_verified && report.dictionary_verified)
-            || (status == ObservedAnnotationExecutionStatus::Completed && analysis.is_none())
-            || ((status == ObservedAnnotationExecutionStatus::ControlError)
-                != report.control_error.is_some())
-            || report.control_error.as_ref().is_some_and(|s| s.is_empty())
-            || complete_gene != report.annotation.is_some()
-            || report.annotation.as_ref().is_some_and(|a| {
-                a.path != "artifacts/annotation.json" || a.bytes == 0 || !is_hash(&a.sha256)
-            })
-            || analysis.is_some_and(|a| {
-                a.grammar != "gtf_strict.v1"
-                    || a.coordinate_authority != "declared"
-                    || a.raw_sha256 != request.gtf.sha256
-                    || a.raw_bytes as u64 != request.gtf.bytes
-                    || a.snapshot_release != format!("snapshot-{}", request.gtf.sha256)
-            })
-        {
-            return Err(bad("observed_annotation_result_binding"));
-        }
         // Correlate the returned canonical publication path. This resolves only
         // the output directory; it does not reread reports, annotations or inputs.
         let expected = fs::canonicalize(&request.output_dir)

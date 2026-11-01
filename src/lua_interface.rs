@@ -2408,6 +2408,40 @@ mod tests {
     }
 
     #[test]
+    fn observed_sam_lua_operation_preserves_portable_report_and_project_content() {
+        let (_root, request) = GentleEngine::observed_sam_test_fixture();
+        let state = ProjectState::default();
+        let before = serde_json::to_value(&state).unwrap();
+        let operation = Operation::SummarizeObservedTranscriptStructuresFromSam {
+            request: Box::new(request.clone()),
+        };
+        let lua = LuaInterface::new();
+        lua.register_rust_functions().unwrap();
+        lua.lua().globals().set("state_in", lua.lua().to_value(&state).unwrap()).unwrap();
+        lua.lua().globals().set("op_json", serde_json::to_string(&operation).unwrap()).unwrap();
+        lua.lua().load("out = apply_operation(state_in, op_json)").exec().unwrap();
+        let out: Value = lua.lua().globals().get("out").unwrap();
+        let out: serde_json::Value = lua.lua().from_value(out).unwrap();
+        assert_eq!(out["state"], before);
+        let report: crate::engine::ObservedSamReport = serde_json::from_value(out["result"]["observed_sam_structures"].clone()).unwrap();
+        assert_eq!(report.counts.as_ref().unwrap().query_units, 4);
+        let binding = GentleEngine::observed_sam_result_binding(&request, &report).unwrap();
+        for source in [&request.sam, &request.manifest, &request.dictionary] {
+            std::fs::remove_file(&source.path).unwrap();
+        }
+        let operation = Operation::InspectObservedTranscriptStructuresFromSam {
+            path: binding.report_path.clone(), expected_result: Some(Box::new(binding)),
+            table: "query_structures.tsv".into(), rows: 1, verify_artifacts: true,
+        };
+        lua.lua().globals().set("op_json", serde_json::to_string(&operation).unwrap()).unwrap();
+        lua.lua().load("out = apply_operation(state_in, op_json)").exec().unwrap();
+        let out: Value = lua.lua().globals().get("out").unwrap();
+        let out: serde_json::Value = lua.lua().from_value(out).unwrap();
+        assert_eq!(out["result"]["observed_sam_inspection"]["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(out["state"], before);
+    }
+
+    #[test]
     fn lua_apply_operation_runs_full_transcript_assay_panel_contract() {
         let (state, operation) = transcript_assay_panel_adapter_fixture();
         let lua = LuaInterface::new();

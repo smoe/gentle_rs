@@ -16,6 +16,8 @@ mod inspect;
 mod junction_assessment;
 #[path = "primer_payload/observed.rs"]
 mod observed;
+#[path = "primer_payload/observed_sam.rs"]
+mod observed_sam;
 #[cfg(test)]
 #[path = "primer_payload/observed_tests.rs"]
 mod observed_tests;

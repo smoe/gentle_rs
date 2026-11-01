@@ -1988,6 +1988,9 @@ fn smoke_command_line_for_glossary_command(
     scratch: &Path,
 ) -> String {
     let observed_descriptor = match command.path.as_str() {
+        "rna-reads transcript-structures-from-sam" | "rna-reads transcript-structures-from-sam-cancel" => {
+            Some(observed_sam_descriptor(&command.path))
+        }
         "rna-reads splice-junctions-assess" | "rna-reads splice-junctions-cancel" => {
             Some(observed_junction_descriptor(&command.path))
         }
@@ -2560,6 +2563,48 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
 }
 
 #[test]
+fn observed_sam_shared_routes_roundtrip_no_checkpoint_and_saved_inspection() {
+    use crate::engine::ObservedSamReport;
+    let (root, request) = GentleEngine::observed_sam_test_fixture();
+    let request_path = root.path().join("request's SAM.json");
+    fs::write(&request_path, serde_json::to_vec(&request).unwrap()).unwrap();
+    let command = parse_shell_line(&format!("rna-reads transcript-structures-from-sam {}",
+        quote_shell_arg(&format!("@{}", request_path.display())))).unwrap();
+    assert!(command.is_state_mutating(), "artifact writes require confirmation");
+    let mut engine = GentleEngine::new();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history = engine.history_summary();
+    let result = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!result.state_changed);
+    let report: ObservedSamReport = serde_json::from_value(result.output["result"]["observed_sam_structures"].clone()).unwrap();
+    let binding = GentleEngine::observed_sam_result_binding(&request, &report).unwrap();
+    let mut duplicate = serde_json::to_string(&binding).unwrap();
+    duplicate.pop();
+    duplicate.push_str(",\"outcome\":\"completed\"}");
+    assert!(parse_shell_line(&format!(
+        "rna-reads transcript-structures-from-sam-show report --binding {}",
+        quote_shell_arg(&duplicate))).unwrap_err().contains("duplicate field"));
+    assert_eq!(engine.undo_available(), history.undo_count);
+    assert_eq!(engine.redo_available(), history.redo_count);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    for file in [&request.sam, &request.dictionary, &request.manifest] {
+        fs::remove_file(&file.path).unwrap();
+    }
+    let journal = engine.journal_len();
+    let inspect = parse_shell_line(&format!(
+        "rna-reads transcript-structures-from-sam-show {} --table query_structures.tsv --rows 1 --binding {} --verify-artifacts",
+        quote_shell_arg(&binding.report_path), quote_shell_arg(&serde_json::to_string(&binding).unwrap()))).unwrap();
+    assert!(!inspect.is_state_mutating());
+    let result = execute_shell_command(&mut engine, &inspect).unwrap();
+    assert_eq!(result.output["result"]["observed_sam_inspection"]["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(engine.journal_len(), journal);
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    for suffix in ["--rows 1001", "--rows 1 --rows 2", "--unknown value"] {
+        assert!(parse_shell_line(&format!("rna-reads transcript-structures-from-sam-show report {suffix}")).is_err());
+    }
+}
+
+#[test]
 fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation() {
     let glossary = glossary_fixture();
     let scratch = tempdir().unwrap();
@@ -2568,6 +2613,8 @@ fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation()
         "rna-reads transcript-annotation-cancel",
         "rna-reads transcript-structures",
         "rna-reads transcript-structures-cancel",
+        "rna-reads transcript-structures-from-sam",
+        "rna-reads transcript-structures-from-sam-cancel",
         "rna-reads splice-junctions-assess",
         "rna-reads splice-junctions-cancel",
     ] {
@@ -2576,7 +2623,9 @@ fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation()
             .iter()
             .find(|entry| entry.path == path)
             .unwrap();
-        let descriptor = if path.contains("transcript-annotation-") {
+        let descriptor = if path.contains("transcript-structures-from-sam") {
+            observed_sam_descriptor(path)
+        } else if path.contains("transcript-annotation-") {
             observed_annotation_descriptor(path)
         } else if path.contains("splice-junctions-") {
             observed_junction_descriptor(path)

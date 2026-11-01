@@ -99,6 +99,38 @@ No SAM text/file parser, public schema, operation, annotation preparation,
 publication, GUI or biological acceptance is authorized by this private slice.
 See the [implementation and verification scope](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28).
 
+### Observed Structures S2.2 Private Intake Boundary
+
+Owner-authorized continuation, 2026-10-29: verify exact SAM, dictionary and
+query-unit manifest bytes without changing Phase 2/S1. The manifest owns unit
+identity and exact row assignment; QNAME equality cannot merge units. EOF,
+producer-declared exhaustive search, available views, mask qualification and
+coordinate authority are independent facts. Retain explicit conversion/mask/
+search provenance and original header versions; no tool execution, BAM replay,
+header rewriting or implicit reference verification occurs.
+
+Unsupported unanchored skips/terminal deletions withhold the whole unit rather
+than allowing its remaining rows to strengthen support. Apply that policy only
+at SAM admission, not the legacy geometry walker. Private intake does not imply
+public SAM reports, operations or adapters; those remain the next S2.3 boundary.
+See the [intake ledger](observed_transcript_structures_s2_plan.md#s22b-private-fileunit-intake-2026-10-29).
+
+### Observed Structures S2.3 Public SAM Boundary
+
+The separately versioned SAM service consumes verified files and exact declared
+query units, never synthesizes original-read identities or Phase 2 evidence.
+Prepared annotation joins verify the portable S2.1 receipt's metadata and exact
+selector/reference/artifact binding without requiring its original GTF/path.
+Existing S2.1 result-binding validation retains its original path/raw checks.
+Refused preparation is unavailable comparison, not an empty reference model.
+Only retained optimal hypotheses contribute catalogs; mapping certainty and
+flank qualification stay independent, with unique-unit exclusive count groups.
+Reference authority remains declared unless an explicit future verifier exists.
+Named approval/no-save/artifact-only policies apply to SAM produce/inspect/cancel
+without changing legacy formats, scoring, checkpoints or implicit-save rules.
+Saved inspection never replays original SAM; cancellation is an exact marker,
+not confirmed termination or retraction of already committed artifacts.
+
 ### Observed Structures S2.1a Pure Preparation Boundary
 
 Owner-authorized 2026-10-28: implement the reconciled strict GTF subset as a

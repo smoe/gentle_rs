@@ -648,6 +648,111 @@ fn sam_unsupported_competitor_clears_entire_unit_not_just_bad_row() {
 }
 
 #[test]
+fn sam_unanchored_gaps_withhold_the_whole_unit_without_changing_other_units() {
+    for (ops, reason) in [
+        (
+            vec![('S', 5), ('N', 10), ('M', 25)],
+            Unavailable::UnanchoredSkip,
+        ),
+        (
+            vec![('M', 25), ('N', 10), ('S', 5)],
+            Unavailable::UnanchoredSkip,
+        ),
+        (
+            vec![('I', 5), ('N', 10), ('M', 25)],
+            Unavailable::UnanchoredSkip,
+        ),
+        (
+            vec![('M', 25), ('N', 10), ('I', 5)],
+            Unavailable::UnanchoredSkip,
+        ),
+        (
+            vec![('H', 2), ('S', 3), ('P', 1), ('I', 2), ('N', 10), ('M', 23)],
+            Unavailable::UnanchoredSkip,
+        ),
+        (vec![('D', 10), ('M', 30)], Unavailable::TerminalDeletion),
+        (vec![('M', 30), ('D', 10)], Unavailable::TerminalDeletion),
+        (
+            vec![('I', 5), ('D', 10), ('M', 25)],
+            Unavailable::TerminalDeletion,
+        ),
+        (
+            vec![('M', 25), ('D', 10), ('I', 5)],
+            Unavailable::TerminalDeletion,
+        ),
+        (
+            vec![('M', 23), ('D', 10), ('I', 2), ('P', 1), ('S', 3), ('H', 2)],
+            Unavailable::TerminalDeletion,
+        ),
+    ] {
+        for reverse in [false, true] {
+            let mut a = input();
+            let mut independent = a.units[0].clone();
+            independent.unit_id = "independent".into();
+            independent.rows[0].ordinal = 3;
+            let mut unsupported = row(ops.clone());
+            unsupported.ordinal = 2;
+            unsupported.flag = 2048 | if reverse { 16 } else { 0 };
+            // Text admission still validates syntax/bounds; interpretation owns support refusal.
+            validate_decoded_row(&unsupported, &a.dictionary).unwrap();
+            a.units[0].rows.push(unsupported);
+            a.units.push(independent);
+            let result = run(&a);
+            assert_eq!(result.units[0].unavailable, BTreeSet::from([reason]));
+            assert_eq!(result.units[0].rows[1].unavailable, Some(reason));
+            let excluded = result
+                .summary
+                .supports
+                .iter()
+                .find(|s| s.key.unit_id == "unit_a")
+                .unwrap();
+            assert_eq!(excluded.reconciliation, Reconciliation::Unassessed);
+            assert!(excluded.hypotheses.is_empty());
+            assert!(excluded.possible_chains.is_empty());
+            assert!(excluded.definite_chains.is_empty());
+            assert_eq!(result.summary.observations.len(), 1);
+            assert!(
+                result
+                    .summary
+                    .observations
+                    .iter()
+                    .all(|o| o.key.unit_id == "independent")
+            );
+            assert!(
+                result
+                    .summary
+                    .families
+                    .iter()
+                    .all(|f| f.supporting_keys == 1)
+            );
+        }
+    }
+}
+
+#[test]
+fn sam_internal_gaps_and_terminal_insertions_preserve_supported_geometry() {
+    for ops in [
+        vec![('I', 5), ('M', 10), ('N', 10), ('M', 15)],
+        vec![('M', 10), ('D', 2), ('M', 20)],
+        vec![('M', 10), ('N', 10), ('M', 15), ('I', 5)],
+        vec![('=', 10), ('P', 1), ('N', 10), ('X', 20)],
+    ] {
+        for reverse in [false, true] {
+            let mut a = input();
+            a.units[0].rows = vec![row(ops.clone())];
+            a.units[0].rows[0].flag = if reverse { 16 } else { 0 };
+            let result = run(&a);
+            assert!(result.units[0].unavailable.is_empty());
+            assert_eq!(
+                result.summary.supports[0].reconciliation,
+                Reconciliation::Agreement
+            );
+            assert_eq!(result.summary.observations.len(), 1);
+        }
+    }
+}
+
+#[test]
 fn sam_zero_row_and_unmapped_units_keep_unknown_axes() {
     let mut a = input();
     a.units[0].rows.clear();

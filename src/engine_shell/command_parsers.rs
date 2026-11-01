@@ -13396,6 +13396,22 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
             })
         }
+        "transcript-structures-from-sam" | "transcript-structures-from-sam-cancel" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads transcript-structures-from-sam|transcript-structures-from-sam-cancel REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = Box::new(parse_required_json_payload::<
+                crate::engine::SummarizeObservedTranscriptStructuresFromSamRequest,
+            >(&tokens[2], "observed SAM request")?);
+            let op = if tokens[1] == "transcript-structures-from-sam" {
+                Operation::SummarizeObservedTranscriptStructuresFromSam { request }
+            } else {
+                Operation::CancelObservedTranscriptStructuresFromSam { request }
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
+            })
+        }
         "transcript-structures" | "transcript-structures-cancel" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads transcript-structures|transcript-structures-cancel REQUEST_JSON_OR_@FILE".into());
@@ -13412,7 +13428,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
             })
         }
-        "transcript-structures-show" => {
+        "transcript-structures-show" | "transcript-structures-from-sam-show" => {
             if tokens.len() < 3 {
                 return Err("Use rna-reads transcript-structures-show REPORT [--table TABLE.tsv] [--rows N] [--binding JSON_OR_@FILE] [--verify-artifacts]".into());
             }
@@ -13431,11 +13447,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                     }
                     "--table" if table.is_none() => table = Some(value.clone()),
                     "--binding" if binding.is_none() => {
-                        binding = Some(Box::new(parse_required_json_payload::<
-                            crate::engine::ObservedTranscriptStructuresResultBinding,
-                        >(
-                            value, "observed transcript result binding"
-                        )?))
+                        binding = Some(value.clone())
                     }
                     _ => {
                         return Err("Unknown or duplicate transcript-structures-show option".into());
@@ -13447,12 +13459,26 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             if rows > 1000 {
                 return Err("Rows must be 0..1000".into());
             }
-            let op = Operation::InspectObservedTranscriptStructures {
-                path: tokens[2].clone(),
-                expected_result: binding,
-                table: table.unwrap_or_else(|| "read_structures.tsv".into()),
-                rows,
-                verify_artifacts: verify,
+            let op = if tokens[1] == "transcript-structures-from-sam-show" {
+                Operation::InspectObservedTranscriptStructuresFromSam {
+                    path: tokens[2].clone(),
+                    expected_result: binding.map(|raw| parse_required_json_payload::<
+                        crate::engine::ObservedSamResultBinding,
+                    >(&raw, "observed SAM result binding").map(Box::new)).transpose()?,
+                    table: table.unwrap_or_else(|| "query_structures.tsv".into()),
+                    rows,
+                    verify_artifacts: verify,
+                }
+            } else {
+                Operation::InspectObservedTranscriptStructures {
+                    path: tokens[2].clone(),
+                    expected_result: binding.map(|raw| parse_required_json_payload::<
+                        crate::engine::ObservedTranscriptStructuresResultBinding,
+                    >(&raw, "observed transcript result binding").map(Box::new)).transpose()?,
+                    table: table.unwrap_or_else(|| "read_structures.tsv".into()),
+                    rows,
+                    verify_artifacts: verify,
+                }
             };
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,

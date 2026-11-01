@@ -1423,6 +1423,9 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "rna-reads primer-payload-show",
             "rna-reads primer-payload-cancel",
             "rna-reads transcript-structures",
+            "rna-reads transcript-structures-from-sam",
+            "rna-reads transcript-structures-from-sam-show",
+            "rna-reads transcript-structures-from-sam-cancel",
             "rna-reads splice-junctions-assess",
             "rna-reads splice-junctions-show",
             "rna-reads splice-junctions-cancel",
@@ -3659,6 +3662,16 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         }
     }
     // Transport only: large populations remain in the engine-owned report, not the model response.
+    if let Some(report) = result.observed_sam_structures.as_deref() {
+        return match GentleEngine::observed_sam_result_binding(&report.request, report) {
+            Ok(binding) => tool_result_json(
+                json!({"schema":"gentle.command_observed_sam_result.v1","state_path":state_path,
+                    "observed_sam_result":binding,"gene_resolutions":report.gene_resolutions,
+                    "full_output_retained_in_report":true}), false,
+            ),
+            Err(error) => tool_result_json(json!({"state_path":state_path,"error":error}), true),
+        };
+    }
     if let Some(report) = result.observed_splice_junctions.as_deref() {
         return match GentleEngine::observed_splice_junction_result_binding(&report.request, report)
         {
@@ -5458,6 +5471,9 @@ mod tests {
             "InspectPrimerPayload",
             "CancelPrimerPayload",
             "SummarizeObservedTranscriptStructures",
+            "SummarizeObservedTranscriptStructuresFromSam",
+            "InspectObservedTranscriptStructuresFromSam",
+            "CancelObservedTranscriptStructuresFromSam",
             "InspectObservedTranscriptStructures",
             "CancelObservedTranscriptStructures",
             "AssessObservedSpliceJunctions",
@@ -5470,6 +5486,41 @@ mod tests {
             );
             assert_eq!(result["isError"], true);
             assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn observed_sam_mcp_reports_offline_inspection_and_approval_preserve_state_bytes() {
+        let (root, request) = GentleEngine::observed_sam_test_fixture();
+        let state = root.path().join("SAM project.json");
+        ProjectState::default().save_to_path(&state.display().to_string()).unwrap();
+        let before = fs::read(&state).unwrap();
+        let operation = json!({"SummarizeObservedTranscriptStructuresFromSam":{"request":request}});
+        let denied = op_tool_result(&state.display().to_string(), &json!({"operation":operation}));
+        assert_eq!(denied["isError"], true);
+        assert!(!Path::new(&request.output_dir).exists());
+        let result = op_tool_result(&state.display().to_string(), &json!({"confirm":true,"operation":operation}));
+        assert_ne!(result["isError"], true, "{result}");
+        let binding = &result["structuredContent"]["observed_sam_result"];
+        assert_eq!(binding["schema"], "gentle.observed_sam_structures_result_binding.v1");
+        assert_eq!(binding["outcome"], "completed");
+        for source in [&request.sam, &request.dictionary, &request.manifest] {
+            fs::remove_file(&source.path).unwrap();
+        }
+        for source in &request.annotation_sources {
+            if let crate::engine::ObservedSamAnnotationBinding::Normalized { annotation, .. } = source {
+                fs::remove_file(&annotation.path).unwrap();
+            }
+        }
+        let inspected = op_tool_result(&state.display().to_string(), &json!({"confirm":true,"operation":{
+            "InspectObservedTranscriptStructuresFromSam":{"path":binding["report_path"],"expected_result":binding,
+                "table":"alignment_observations.tsv","rows":2,"verify_artifacts":true}
+        }}));
+        assert_ne!(inspected["isError"], true, "{inspected}");
+        assert_eq!(inspected["structuredContent"]["result"]["observed_sam_inspection"]["rows"].as_array().unwrap().len(), 2);
+        assert_eq!(before, fs::read(&state).unwrap());
+        for path in ["rna-reads transcript-structures-from-sam", "rna-reads transcript-structures-from-sam-show", "rna-reads transcript-structures-from-sam-cancel"] {
+            assert!(tool_command_paths("op").contains(&path));
         }
     }
 

@@ -42,6 +42,9 @@ pub use observed_junctions::*;
 #[path = "protocol/observed_annotation.rs"]
 mod observed_annotation;
 pub use observed_annotation::*;
+#[path = "protocol/observed_sam.rs"]
+mod observed_sam;
+pub use observed_sam::*;
 
 #[path = "protocol/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
@@ -5536,6 +5539,10 @@ pub struct OpResult {
     pub primer_payload_inspection: Option<Box<PrimerPayloadInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_transcript_structures: Option<Box<ObservedTranscriptStructuresReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_sam_structures: Option<Box<ObservedSamReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_sam_inspection: Option<Box<ObservedSamInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_transcript_structures_inspection:
         Option<Box<ObservedTranscriptStructuresInspection>>,

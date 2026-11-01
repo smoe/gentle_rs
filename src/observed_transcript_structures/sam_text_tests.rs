@@ -112,6 +112,61 @@ fn sam_text_lf_crlf_hashes_ordinals_and_nonexclusive_flag_counts() {
 }
 
 #[test]
+fn sam_text_legacy_version_labels_need_explicit_opt_in_and_remain_observable() {
+    let d = dictionary();
+    let b = limits();
+    for version in ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"] {
+        let raw = format!("{HEADER}{MAPPED}\n").replace("VN:1.6", &format!("VN:{version}"));
+        let strict = decode(raw.as_bytes(), &d, &b, &mut || Ok(()));
+        assert_eq!(strict.is_ok(), version == "1.6");
+        if let Err(error) = strict {
+            assert_eq!(error.message, "observed_sam_text_header_version_or_order");
+        }
+        let mut consumer =
+            Consumer::with_version_policy(&d, &b, VersionPolicy::Legacy10To16, &mut || Ok(()))
+                .unwrap();
+        for line in raw.as_bytes().split_inclusive(|&c| c == b'\n') {
+            consumer.push_line(line, &mut || Ok(())).unwrap();
+        }
+        let decoded = consumer.finish(&mut || Ok(())).unwrap();
+        assert_eq!(decoded.version_policy, VersionPolicy::Legacy10To16);
+        assert_eq!(decoded.declared_version.as_deref(), Some(version));
+        assert_eq!(
+            decoded.raw_sha256,
+            crate::digest_utils::sha256_prefixed_bytes(raw.as_bytes())
+        );
+        assert_eq!(decoded.rows.len(), 1);
+    }
+    for version in ["1.7", "2.0", "1.06", "1", "", "1.6 "] {
+        let mut consumer =
+            Consumer::with_version_policy(&d, &b, VersionPolicy::Legacy10To16, &mut || Ok(()))
+                .unwrap();
+        assert!(
+            consumer
+                .push_line(format!("@HD\tVN:{version}\n").as_bytes(), &mut || Ok(()))
+                .is_err()
+        );
+        assert_eq!(
+            consumer.finish(&mut || Ok(())).unwrap_err().message,
+            "observed_sam_text_poisoned"
+        );
+    }
+    let no_hd = format!("{HEADER}{MAPPED}\n").replacen("@HD\tVN:1.6\tSO:unsorted\n", "", 1);
+    assert_eq!(run(&no_hd).declared_version, None);
+    // Opting in does not relax dictionary or feature validation.
+    let mut consumer =
+        Consumer::with_version_policy(&d, &b, VersionPolicy::Legacy10To16, &mut || Ok(())).unwrap();
+    consumer
+        .push_line(b"@HD\tVN:1.4\n", &mut || Ok(()))
+        .unwrap();
+    assert!(
+        consumer
+            .push_line(b"@SQ\tSN:ctg_a\tLN:999\n", &mut || Ok(()))
+            .is_err()
+    );
+}
+
+#[test]
 fn sam_text_consumes_only_rg_sa_cg_without_retaining_sequence_scores_or_commands() {
     let seq = "ACGTTGCAACGTAGCTTGCATGCAACGTAC";
     assert_eq!(seq.len(), 30);

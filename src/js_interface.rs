@@ -1663,6 +1663,32 @@ mod tests {
     }
 
     #[test]
+    fn observed_sam_js_operation_preserves_portable_report_and_project_content() {
+        let (_root, request) = GentleEngine::observed_sam_test_fixture();
+        let state = ProjectState::default();
+        let before = serde_json::to_value(&state).unwrap();
+        let op = Operation::SummarizeObservedTranscriptStructuresFromSam {
+            request: Box::new(request.clone()),
+        };
+        let response = apply_operation_impl(state, &serde_json::to_string(&op).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&response.state).unwrap(), before);
+        let report = response.result.observed_sam_structures.as_deref().unwrap();
+        assert_eq!(report.schema, crate::engine::OBSERVED_SAM_REPORT_SCHEMA);
+        assert_eq!(report.counts.as_ref().unwrap().query_units, 4);
+        let binding = GentleEngine::observed_sam_result_binding(&request, report).unwrap();
+        for source in [&request.sam, &request.manifest, &request.dictionary] {
+            std::fs::remove_file(&source.path).unwrap();
+        }
+        let op = Operation::InspectObservedTranscriptStructuresFromSam {
+            path: binding.report_path.clone(), expected_result: Some(Box::new(binding)),
+            table: "query_structures.tsv".into(), rows: 1, verify_artifacts: true,
+        };
+        let response = apply_operation_impl(response.state, &serde_json::to_string(&op).unwrap()).unwrap();
+        assert_eq!(response.result.observed_sam_inspection.unwrap().rows.len(), 1);
+        assert_eq!(serde_json::to_value(&response.state).unwrap(), before);
+    }
+
+    #[test]
     fn js_apply_operation_runs_full_transcript_assay_panel_contract() {
         let (state, operation) = transcript_assay_panel_adapter_fixture();
         let response = apply_operation_impl(
