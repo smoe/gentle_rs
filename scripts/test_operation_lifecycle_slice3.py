@@ -13,7 +13,9 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN_DIR = os.environ.get("GENTLE_LIFECYCLE_BIN_DIR")
@@ -221,11 +223,11 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         self.assertTrue(self.mcp.is_file(), self.mcp)
         self.env = dict(os.environ, GENTLE_CANDIDATE_STORE_STRICT_LOAD="0")
 
-    def run_cli(self, *args, ok=True):
+    def run_cli(self, *args, ok=True, json_stdout=True):
         run = subprocess.run([str(self.cli), "--state", str(self.state), *args], cwd=self.work,
                              env=self.env, capture_output=True, timeout=90)
         self.assertEqual(run.returncode == 0, ok, run.stderr.decode(errors="replace"))
-        return json.loads(run.stdout) if ok else run
+        return json.loads(run.stdout) if ok and json_stdout else run
 
     def initialize(self, ending="\n", candidates=False):
         self.state.unlink(missing_ok=True)
@@ -378,14 +380,14 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
                         self.assertIn("candidate_store_unavailable", json.dumps(result))
                         self.assertIn("not rolled back", json.dumps(result))
                     sys.path.insert(0, str(ROOT / "integrations/python"))
-                    from gentle_py.client import GentleClient
+                    from gentle_py.client import GentleClient, GentleCliError
                     client = GentleClient(state_path=str(self.state), cli_cmd=[str(self.cli)], cwd=str(self.work))
                     old_env = os.environ.get("GENTLE_CANDIDATE_STORE_STRICT_LOAD")
                     os.environ["GENTLE_CANDIDATE_STORE_STRICT_LOAD"] = "0"
                     try:
-                        with self.assertRaises(Exception) as refused:
+                        with self.assertRaises(GentleCliError) as refused:
                             client.op(mutation)
-                        self.assertIn("candidate_store_unavailable", str(refused.exception))
+                        self.assertIn("candidate_store_unavailable", refused.exception.stderr)
                     finally:
                         if old_env is None:
                             os.environ.pop("GENTLE_CANDIDATE_STORE_STRICT_LOAD", None)
@@ -405,7 +407,7 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
         index.write_bytes(original)
         self.run_cli("candidates", "list")
         target = self.work / "recovered folder's name/project.json"
-        self.run_cli("save-project", str(target))
+        self.run_cli("save-project", str(target), json_stdout=False)
         self.assertIn("candidate_sets", json.loads(target.read_bytes())["metadata"])
         value["metadata"].pop("candidate_sets")
         value["metadata"]["candidate_sets_load_warning"] = {"message": "legacy lost reference"}
@@ -515,6 +517,38 @@ class LifecycleSlice3ProcessTests(unittest.TestCase):
             client.op(plan(str(hard)))
         self.assertEqual(sentinel.read_bytes(), b"unchanged\r\n")
         self.assertTrue(os.path.samefile(sentinel, hard))
+
+
+class LifecycleHarnessTests(unittest.TestCase):
+    """Offline harness regressions: no executable, Cargo fallback or real process."""
+
+    def test_cli_plain_text_opt_out_preserves_json_default_and_exit_checks(self):
+        harness = SimpleNamespace(cli=Path("synthetic-cli"), state=Path("synthetic.json"),
+                                  work=ROOT, env={}, assertEqual=self.assertEqual)
+        run = subprocess.CompletedProcess([], 0, b"Saved project from source to target\n", b"")
+        with mock.patch.object(subprocess, "run", return_value=run) as execute:
+            with self.assertRaises(json.JSONDecodeError):
+                LifecycleSlice3ProcessTests.run_cli(harness, "state-summary")
+            self.assertIs(LifecycleSlice3ProcessTests.run_cli(harness, "save-project", "target", json_stdout=False), run)
+            run.stdout = b'{"schema":"synthetic_summary"}'
+            self.assertEqual(LifecycleSlice3ProcessTests.run_cli(harness, "state-summary"), {"schema": "synthetic_summary"})
+            run.returncode = 1
+            run.stderr = b"synthetic refusal"
+            with self.assertRaises(AssertionError):
+                LifecycleSlice3ProcessTests.run_cli(harness, "save-project", "target", json_stdout=False)
+            self.assertIs(LifecycleSlice3ProcessTests.run_cli(harness, "save-project", "target", ok=False), run)
+            self.assertEqual(execute.call_count, 5)
+
+    def test_python_client_refusal_has_typed_error_and_separate_stderr(self):
+        with mock.patch.object(sys, "path", [str(ROOT / "integrations/python"), *sys.path]):
+            from gentle_py.client import GentleClient, GentleCliError
+        client = GentleClient(cli_cmd=["synthetic-cli"])
+        run = subprocess.CompletedProcess([], 1, "", "candidate_store_unavailable: synthetic refusal")
+        with mock.patch("gentle_py.client.subprocess.run", return_value=run):
+            with self.assertRaises(GentleCliError) as refused:
+                client.op({"SetParameter": {"name": "synthetic", "value": 1}})
+        self.assertIn("candidate_store_unavailable", refused.exception.stderr)
+        self.assertNotIn("candidate_store_unavailable", str(refused.exception))
 
 
 if __name__ == "__main__":

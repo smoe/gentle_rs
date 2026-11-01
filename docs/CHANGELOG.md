@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-01 - Repair Slice 6 Companion Error And Output Assertions
+
+- Retain Claude's pending harness corrections: assert the specific
+  `GentleCliError` and its stderr; opt out of JSON only for successful
+  plain-text recovery Save As. Keep JSON defaults, exit-status checks and exact
+  byte-preservation oracles intact; production behavior is unchanged.
+- Add two offline mock regressions for stdout/exit handling and the Python
+  client's typed stderr boundary, without starting binaries or Cargo.
+- Attribute Claude's reported 24/24 corrected companion pass to `d9b1015c`
+  binaries plus the uncommitted harness overlay. Preserve its supplied scoped
+  Rust/VM receipts without claiming a Codex rerun, newer-main/J1 VM, native
+  Windows/GUI, full-suite or package acceptance. Update the handoff, plan and
+  existing roadmap line so completed checks are not reissued as still failing.
+  No push, local Rust build/test/check, model call or goal resumption.
+- Local authoring checks: 33 passes, 11 explicit process skips; documentation/
+  manual freshness and whitespace pass. Session-close: 4 OK, 2 expected warnings,
+  0 failures; roadmap stays 400 lines. Claude's real-process result stays separate.
+
 ## 2026-11-01 - Reconcile J1 Geometry, Denominators And Producer Policy
 
 - Address Claude's A1/A2 follow-up: same-contig nonoverlap with the selected

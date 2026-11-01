@@ -1,12 +1,13 @@
 # Lifecycle Slice 6: Degraded Candidate-Store Save Safety
 
-Status, 2026-10-30: implemented; Glen's scoped Linux verification at `b6863907`
-found one primary healthy Save-As defect, with poisoned-lock cascades in the
-candidate-store/VM aggregates. The parent-before-staging repair and regressions
-are authored; repaired-source Rust, actual-process/VM and native acceptance
-remain with Glen/CI. Preserve the passing controls in the
-[source-bound return](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30).
-No push or resumption of the previous goal.
+Status, 2026-11-01: implemented. Glen's `b6863907` return found the Save-As
+parent defect; `82fb250c` repairs it. Claude now reports scoped macOS Rust/VM
+passes and 24/24 companion tests using `d9b1015c` binaries plus the two harness
+corrections. The old Python exception/stdout failures were harness defects;
+their final byte-preservation oracles reportedly now run and pass. Preserve the
+[attributed return](glen_next_verification_handoff.md#claude-reported-lifecycle-slice-6-results-at-d9b1015c-2026-11-01)
+separately from native Windows/GUI, full-suite, packaging and newer integrated
+source acceptance. Codex did not rerun Rust/process checks. No push or goal resumption.
 
 ## Review And Reconciliation
 

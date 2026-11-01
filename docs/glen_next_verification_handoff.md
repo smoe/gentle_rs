@@ -14,8 +14,9 @@ selection remain gated. The untracked Claude prompt is not modified/included.
 Reuse your completed [b6863907 return](#glen-return-at-b6863907-2026-10-30)
 for unchanged S1/primer/glossary/lifecycle scopes. It already verifies the
 rebased completeness path, contrary to the older prompt's first-runtime claim.
-New J1 semantics/DTOs and VM tests need their own nonzero counts; the preceding
-Save-As repair remains independently pending. No local Rust/VM execution or
+New J1 semantics/DTOs and VM tests need their own nonzero counts; retain the
+[reported Slice 6 pass at d9b1015c](#claude-reported-lifecycle-slice-6-results-at-d9b1015c-2026-11-01)
+separately rather than reissuing its completed checks. No new Codex Rust/VM execution or
 whole-suite acceptance is claimed from source checks.
 
 ```sh
@@ -88,14 +89,17 @@ after the unresolved-store guard. New synthetic regressions cover populated
 and empty healthy saves, missing nested parents, LF/CRLF source bytes,
 spaces/apostrophes/Unicode, unchanged source/state, no staging leftovers and a
 non-directory parent. Existing degraded-store no-mkdir oracles remain unchanged.
-This repair is authored, not Rust-verified; use the narrowed Slice 6 checks below.
+At this authoring checkpoint the repair was not Rust-verified; the later
+[d9b1015c report](#claude-reported-lifecycle-slice-6-results-at-d9b1015c-2026-11-01)
+supersedes that status only for its specified scopes.
 Local repair validation: 19 source/teaching checks and 20 documentation/checkout
 checks passed; 15 binary-dependent tests explicitly skipped. Scoped rustfmt,
 documentation/manual freshness and whitespace passed. Session-close: 4 OK,
 2 expected working-tree/plan-review warnings, 0 failures; roadmap stays 400 lines.
 No local Rust build/test/check was run.
-Finalized on main on 2026-11-01 after repeating these same non-Rust checks;
-repaired-source Rust/VM/process/native verdicts remain pending.
+Finalized on main on 2026-11-01 after repeating these same non-Rust checks.
+The later report supplies scoped Rust/VM/process results; native and
+newer-integrated-source verdicts remain separate.
 
 J1 is implemented with scoped synthetic verification, not protein consequence
 prediction. J2/J3 remain proposals: no current altered-ORF, transmembrane-anchor
@@ -118,11 +122,12 @@ pre-mutation refusal. Existing strict hydration errors and count defaults stay
 unchanged. Shared access/save guards, unavailable facts and agent notes, visible
 GUI failures and one-shot persistence/non-rollback feedback are authored.
 
-The authoring-only statements below are superseded only within the source-bound
-return above. After the repair is available, rerun the failed aggregates and
-new regressions; reuse the unchanged passing controls rather than reissuing the
-RNA/primer/lifecycle audits. Require nonzero counts and source/binary/toolchain/
-features/platform receipts:
+The authoring-only statements below are superseded within the
+[d9b1015c reported return](#claude-reported-lifecycle-slice-6-results-at-d9b1015c-2026-11-01).
+The commands are retained as the acceptance baseline, not a request to repeat
+completed unchanged checks. Verify affected newer-source/platform/native gaps
+with their own nonzero counts and source/binary/toolchain/features/platform
+receipts; do not reissue the RNA/primer/lifecycle audit campaign:
 
 ```sh
 cargo check -q --locked --tests
@@ -165,6 +170,53 @@ Historical authoring validation before Glen's return: 19 source/teaching passes,
 and whitespace OK. Formatting is scoped to changed Rust lines; no build/type-
 check or current runtime acceptance follows. Session-close: 4 OK, 2 expected
 working-tree/plan-review warnings, 0 failures; unrelated `outputs/` is untouched.
+
+## Claude-Reported Lifecycle Slice 6 Results At d9b1015c, 2026-11-01
+
+Owner-forwarded feedback and its accompanying uncommitted note report the
+[Slice 6 commands](#lifecycle-slice-6-2026-10-29) at
+`d9b1015cf27c7dfc2c8b73a675c11c232ded3bf4`, which includes the `82fb250c`
+Save As parent fix. Platform: macOS 27.2/ARM64, rustc 1.101.0-nightly
+(41089d07a 2026-10-27). Cargo calls used `--locked`; test invocations used
+`--test-threads=1`, not `-j1`. `Cargo.lock` was unchanged. Counts/toolchain are
+attributed to Claude's supplied note, not independently rerun by Codex; no raw
+logs or binary hashes were supplied with this return.
+
+- Both `cargo check` commands: clean.
+- No-default `candidate_store_`: 14 passed. GUI `lifecycle_slice6_gui_save`: 2
+  passed. JS and Lua `candidate_store_`: 15 passed each; these overlap and
+  include both VM tests.
+- Parity: 21 + 1 passed. Extra controls: `candidate_sidecar_is_missing` 2
+  passed, `--bin gentle_cli candidate_store_unresolved_` 1 passed.
+- Process suite against same-source `target/debug` binaries, first run: 22 of 24
+  tests passed. The degraded-store test failed in all six LF/CRLF × fault
+  subtests, and the legacy-warning test errored. Both were harness defects.
+- Corrected companion at the same binary SHA: **24/24 tests passed, zero
+  failures**, including all six LF/CRLF × fault cases and legacy recovery.
+  This is the combined source/process companion, not 24 independent process
+  cases; do not add its counts to overlapping filters.
+
+The harness now expects the specific `GentleCliError` and checks `.stderr`,
+not `str(exception)`, which omits CLI stderr. Recovery Save As explicitly opts
+out of JSON parsing for its successful plain-text message; all other successful
+calls keep strict JSON parsing and exit-status assertions. No production code
+changed. The final directory/file-byte preservation oracles, previously not
+reached, now reportedly run and pass. Both script corrections were uncommitted
+when Claude supplied this result; execution binds d9b1015c binaries plus that
+harness overlay, not a claim of byte-identical committed test scripts.
+
+Two subsequent offline mock regressions guard these harness contracts without
+spawning binaries. They are not part of Claude's historical 24-test count.
+Codex's local authoring check ran the companion with `GENTLE_LIFECYCLE_BIN_DIR`
+unset plus `DocumentationStatusTests`: 33 passed, 11 explicit process skips.
+Documentation/manual freshness and whitespace passed. Session-close: 4 OK,
+2 expected working-tree/plan-review warnings, 0 failures; roadmap stays 400 lines.
+
+Native GUI, native Windows, the full suite and packaging remain unrun. Do not
+promote these counts to newer-main/SAM or J1 VM acceptance. Glen's remaining
+native checks still require visible save refusal, unchanged dirty/path/pending
+actions and Windows path/handle behavior. No renewed same-source build campaign
+is requested solely to repeat these passes.
 
 ## Claude-Reported Lifecycle Rust Results At 284e5b70, 2026-10-29
 
