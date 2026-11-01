@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-30 - Repair Candidate-Store Save As Parent Ordering
+
+- Reconcile Glen's reported verification at `b6863907`: retain passing J1,
+  observed-transcript, primer-payload, glossary and lifecycle controls. Record
+  the independently reproduced healthy Save-As failure as the primary defect,
+  not its three mutex-poison cascades or a protein-interpretation failure.
+  Exact-source Linux/Windows full-suite CI failed; Windows attribution lacked
+  raw logs and macOS was skipped. No cross-platform acceptance is inferred.
+- Move existing parent-directory creation before sidecar staging in the shared
+  saver, still after the unresolved-store guard. Preserve load/count defaults,
+  refusal-before-I/O, atomic JSON replacement and sidecar rollback behavior.
+  Add synthetic populated/empty, nested-parent, LF/CRLF, quoted/Unicode-path and
+  non-directory-parent regressions without relaxing existing refusal oracles.
+- Narrow Glen's next checks to the failed aggregates, repair and remaining
+  process/native/platform gaps. Correct J1's stale unverified heading; J2/J3
+  remain proposals without protein/solubility or real-RNA acceptance. No local
+  Rust build/test/check, model call, push or goal resumption.
+- Local repair checks: 19 source/teaching and 20 documentation/checkout cases
+  pass; 15 actual-binary cases skip. Scoped rustfmt, documentation/manual
+  freshness and whitespace pass. Session-close: 4 OK, 2 expected warnings,
+  0 failures; the roadmap stays 400 lines. Rust runtime acceptance is pending.
+
 ## 2026-10-29 - Guard Degraded Candidate-Store Use And Persistence
 
 - Implement the owner-authorized Claude revision, reusing a scoped snapshot of

@@ -2023,6 +2023,16 @@ impl ProjectState {
         self.ensure_candidate_store_available()?;
         let mut state_for_disk = self.clone();
         let project_path = Path::new(path);
+        let parent = project_path.parent().unwrap_or_else(|| Path::new("."));
+        // Sidecar staging needs the project parent before the atomic JSON writer runs.
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create parent directory '{}' for state save: {e}",
+                parent.display()
+            ),
+            cause_chain: vec![],
+        })?;
         let sidecar_tx =
             state_for_disk.prepare_candidate_store_sidecar_transaction(project_path)?;
         let text = serde_json::to_string_pretty(&state_for_disk).map_err(|e| EngineError {
@@ -2086,15 +2096,6 @@ impl ProjectState {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        std::fs::create_dir_all(&parent).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not create parent directory '{}' for state save: {e}",
-                parent.display()
-            ),
-
-            cause_chain: vec![],
-        })?;
         let mut tmp = NamedTempFile::new_in(&parent).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(

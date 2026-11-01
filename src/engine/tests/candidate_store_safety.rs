@@ -298,6 +298,71 @@ fn candidate_store_unresolved_warning_only_and_unhydrated_json_cannot_be_silentl
 }
 
 #[test]
+fn candidate_store_save_as_creates_missing_parents_before_sidecar_staging() {
+    let _lock = candidate_store_env_lock().lock().unwrap();
+    let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
+    for ending in ["\n", "\r\n"] {
+        let td = tempdir().unwrap();
+        let source = td.path().join("original");
+        let f = fixture(&source, ending);
+        let healthy = ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap();
+        let state_before = serde_json::to_value(&healthy).unwrap();
+        let source_before = tree(&source);
+        let empty = ProjectState::default();
+        for (name, state) in [("populated", &healthy), ("empty", &empty)] {
+            let target = td
+                .path()
+                .join(format!("{name}/new parent's \u{03b4}/project.json"));
+            assert!(!target.parent().unwrap().exists());
+            state.save_to_path(target.to_str().unwrap()).unwrap();
+            let reopened = ProjectState::load_from_path(target.to_str().unwrap()).unwrap();
+            assert_eq!(
+                serde_json::to_value(&reopened).unwrap(),
+                serde_json::to_value(state).unwrap(),
+                "Save As must preserve the hydrated project"
+            );
+            assert_eq!(
+                ProjectState::candidate_store_sidecar_dir(&target).is_dir(),
+                name == "populated"
+            );
+            assert_eq!(
+                fs::read_dir(target.parent().unwrap()).unwrap().count(),
+                if name == "populated" { 2 } else { 1 },
+                "no temporary project, sidecar staging or backup may remain"
+            );
+        }
+        assert_eq!(tree(&source), source_before, "source bytes stay unchanged");
+        assert_eq!(serde_json::to_value(&healthy).unwrap(), state_before);
+    }
+}
+
+#[test]
+fn candidate_store_save_as_parent_file_refuses_before_sidecar_staging() {
+    let _lock = candidate_store_env_lock().lock().unwrap();
+    let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
+    let td = tempdir().unwrap();
+    let f = fixture(&td.path().join("original"), "\n");
+    let healthy = ProjectState::load_from_path(f.project.to_str().unwrap()).unwrap();
+    let blocked_parent = td.path().join("parent's file");
+    fs::write(&blocked_parent, b"preserve this non-directory").unwrap();
+    let before = tree(td.path());
+    let target = blocked_parent.join("nested/project.json");
+    let empty = ProjectState::default();
+    for state in [&healthy, &empty] {
+        let state_before = serde_json::to_value(state).unwrap();
+        let error = state.save_to_path(target.to_str().unwrap()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Io);
+        assert!(
+            error
+                .message
+                .starts_with("Could not create parent directory")
+        );
+        assert_eq!(tree(td.path()), before);
+        assert_eq!(serde_json::to_value(state).unwrap(), state_before);
+    }
+}
+
+#[test]
 fn candidate_store_unresolved_recovery_requires_reopen_and_preserves_healthy_empty_controls() {
     let _lock = candidate_store_env_lock().lock().unwrap();
     let _env = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");

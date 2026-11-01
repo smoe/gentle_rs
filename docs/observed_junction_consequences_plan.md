@@ -1,6 +1,9 @@
 # Observed Splice-Junction Assessment And Conditional Consequences
 
-Status: J0 recorded; J1 authorized for implementation, not yet verified.
+Status, 2026-10-30: J0 recorded; J1 implemented with scoped synthetic verification,
+including Glen's reported 27/27 Linux tests at `b6863907`. See the
+[integrated return](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30);
+full-suite, actual-process/VM, native and scientific acceptance remain separate.
 J2/J3 are proposals only. Biological acceptance choices below remain with the
 owner/Glen. Keep implemented software, synthetic regression, real RNA evidence
 and unproven biology separate.

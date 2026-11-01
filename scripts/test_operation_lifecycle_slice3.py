@@ -162,6 +162,8 @@ class LifecycleSlice6SourceTests(unittest.TestCase):
         saver = source.split("pub fn save_to_path(", 1)[1].split("fn candidate_store_sidecar_basename", 1)[0]
         self.assertLess(saver.index("ensure_candidate_store_available()?"), saver.index("self.clone()"))
         self.assertLess(saver.index("ensure_candidate_store_available()?"), saver.index("prepare_candidate_store_sidecar_transaction"))
+        self.assertLess(saver.index("ensure_candidate_store_available()?"), saver.index("std::fs::create_dir_all"))
+        self.assertLess(saver.index("std::fs::create_dir_all"), saver.index("prepare_candidate_store_sidecar_transaction"))
         loader = source.split("pub fn load_from_path(", 1)[1].split("pub fn ensure_candidate_store_available", 1)[0]
         self.assertNotIn("remove(CANDIDATE_SETS_METADATA_KEY)", loader)
         self.assertIn("else if had_external_reference", loader)

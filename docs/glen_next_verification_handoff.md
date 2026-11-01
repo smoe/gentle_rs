@@ -1,5 +1,55 @@
 # Glen: Next Verification And Return
 
+## Glen Return At b6863907, 2026-10-30
+
+Owner-supplied `GENtle_verification_b6863907.md` (SHA-256
+`5b601b74b7f747604657962c4784d57ddd6ec47d7fa3eca3bbf1628af4fd4da9`)
+reports exact source `b68639078614fd9ada856e95073ed77598e06647`, Debian
+forky/Linux x86_64, Rust/Cargo 1.97.1 and lockfile SHA-256
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+The supplied handoff matched that source byte-for-byte. These are Glen's
+reported runs, not new Codex Rust execution or acceptance of later source.
+
+Retain without repeating unchanged checks: J1 `junction_assessment` 27/27,
+`observed_transcript_structures` 70/70, `primer_payload` 103/103,
+`candidate_sidecar_is_missing` 2/2, `lifecycle_slice3_` 11/11, glossary 12/12,
+legacy cryptic-protein projection 1/1 and CLI `candidate_store_unresolved_` 1/1.
+Filters overlap; do not sum them. Source checks passed 8 observed-transcript,
+12 maturity and 18 documentation/LF/CRLF cases, plus the reported freshness and
+whitespace checks.
+
+**Primary failure:** healthy candidate-store Save As stages its sidecar under a
+missing parent before the project writer creates that parent. The recovery test
+fails alone. The other three aggregate failures are mutex-poison cascades and
+each passes alone. Aggregates: `candidate_store_` 8 pass/4 fail; JS and Lua
+`candidate_store_unresolved_` each 7 pass/4 fail, not successful VM gates.
+
+[Same-source CI run 40939624811](https://github.com/smoe/gentle_rs/actions/runs/40939624811)
+reportedly passed Release-Safety and Linux/headless, but failed Linux/Windows
+full suites; macOS/native jobs were skipped. Raw CI logs were unavailable:
+Linux focused reproduction confirms the defect, but Windows failure attribution
+remains unconfirmed. No release/full-suite acceptance follows.
+
+Current repair moves existing parent creation before sidecar staging, still
+after the unresolved-store guard. New synthetic regressions cover populated
+and empty healthy saves, missing nested parents, LF/CRLF source bytes,
+spaces/apostrophes/Unicode, unchanged source/state, no staging leftovers and a
+non-directory parent. Existing degraded-store no-mkdir oracles remain unchanged.
+This repair is authored, not Rust-verified; use the narrowed Slice 6 checks below.
+Local repair validation: 19 source/teaching checks and 20 documentation/checkout
+checks passed; 15 binary-dependent tests explicitly skipped. Scoped rustfmt,
+documentation/manual freshness and whitespace passed. Session-close: 4 OK,
+2 expected working-tree/plan-review warnings, 0 failures; roadmap stays 400 lines.
+No local Rust build/test/check was run.
+Finalized on main on 2026-11-01 after repeating these same non-Rust checks;
+repaired-source Rust/VM/process/native verdicts remain pending.
+
+J1 is implemented with scoped synthetic verification, not protein consequence
+prediction. J2/J3 remain proposals: no current altered-ORF, transmembrane-anchor
+or soluble-form assessment of CD274. Glen's proposed future evidence gates are
+review input only, not authorization to implement them or select biological
+thresholds. No real/private RNA analysis or scientific acceptance was performed.
+
 ## Lifecycle Slice 6, 2026-10-29
 
 This reconciles the overlapping foundation committed on main as `1fdeb1d9`.
@@ -15,25 +65,27 @@ pre-mutation refusal. Existing strict hydration errors and count defaults stay
 unchanged. Shared access/save guards, unavailable facts and agent notes, visible
 GUI failures and one-shot persistence/non-rollback feedback are authored.
 
-No Rust, VM, actual-process or native execution is claimed here. Require nonzero
-counts and source/binary/toolchain/features/platform receipts:
+The authoring-only statements below are superseded only within the source-bound
+return above. After the repair is available, rerun the failed aggregates and
+new regressions; reuse the unchanged passing controls rather than reissuing the
+RNA/primer/lifecycle audits. Require nonzero counts and source/binary/toolchain/
+features/platform receipts:
 
 ```sh
 cargo check -q --locked --tests
 cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
 cargo test --locked --no-default-features -j1 --lib candidate_store_ -- --test-threads=1
-cargo test --locked --no-default-features -j1 --lib candidate_sidecar_is_missing -- --test-threads=1
-cargo test --locked --no-default-features -j1 --lib lifecycle_slice3_ -- --test-threads=1
 cargo test --locked -j1 --lib lifecycle_slice6_gui_save -- --test-threads=1
-cargo test --locked -j1 --bin gentle_cli candidate_store_unresolved_ -- --test-threads=1
-cargo test --locked --no-default-features --features js-interface -j1 --lib candidate_store_unresolved_ -- --test-threads=1
-cargo test --locked --no-default-features --features lua-interface -j1 --lib candidate_store_unresolved_ -- --test-threads=1
+cargo test --locked --no-default-features --features js-interface -j1 --lib candidate_store_ -- --test-threads=1
+cargo test --locked --no-default-features --features lua-interface -j1 --lib candidate_store_ -- --test-threads=1
 cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
 GENTLE_LIFECYCLE_BIN_DIR=/absolute/same-source/bin python3 -m unittest scripts.test_operation_lifecycle_slice3 -v
 ```
 
-The new engine module contains eight `candidate_store_unresolved_` tests; other
-filters overlap and add feedback/VM controls, not a sum of independent totals.
+Run the formerly failing recovery test alone first if an aggregate fails;
+separate primary failures from poisoned-lock cascades. The `candidate_store_`
+filter includes both new `candidate_store_save_as_` tests and the existing
+unresolved-store controls; VM filters overlap, not a sum of independent totals.
 Two GUI helper tests cover early refusal and an ordinary I/O failure; one CLI
 and one MCP test exercise structured feedback. VM tests use public loaders on
 warning-only files and try same-path save plus Save As. Three new process tests
@@ -55,8 +107,8 @@ Keep new-source full-suite, package, scientific and performance verdicts
 separate. Check scoped formatting against the baseline; do not mass-format
 unrelated files. No push, dispatch, model call, capture or goal resumption here.
 
-Local authoring validation: 19 source/teaching passes, 15 explicit optional
-binary skips, two real LF/CRLF checkout passes, documentation/manual freshness
+Historical authoring validation before Glen's return: 19 source/teaching passes,
+15 explicit optional binary skips, two real LF/CRLF checkout passes, documentation/manual freshness
 and whitespace OK. Formatting is scoped to changed Rust lines; no build/type-
 check or current runtime acceptance follows. Session-close: 4 OK, 2 expected
 working-tree/plan-review warnings, 0 failures; unrelated `outputs/` is untouched.

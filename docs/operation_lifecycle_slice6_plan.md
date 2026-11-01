@@ -1,9 +1,12 @@
 # Lifecycle Slice 6: Degraded Candidate-Store Save Safety
 
-Status, 2026-10-29: owner authorized the Claude-revised implementation, including
-the recommended unknown-schema and legacy-warning decisions. Runtime changes
-and synthetic regressions are authored; Rust, actual-process/VM and native
-verification remain with Glen/CI. No push or resumption of the previous goal.
+Status, 2026-10-30: implemented; Glen's scoped Linux verification at `b6863907`
+found one primary healthy Save-As defect, with poisoned-lock cascades in the
+candidate-store/VM aggregates. The parent-before-staging repair and regressions
+are authored; repaired-source Rust, actual-process/VM and native acceptance
+remain with Glen/CI. Preserve the passing controls in the
+[source-bound return](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30).
+No push or resumption of the previous goal.
 
 ## Review And Reconciliation
 
@@ -43,6 +46,8 @@ are unchanged from this worktree's reviewed pre-rebase implementation.
 4. `save_to_path` checks before cloning, staging, mkdir, replacement or cleanup.
    This protects Save, autosave, Save As and existing project-copy routes through
    shared persistence. Healthy absent/inline/empty-store cleanup is unchanged.
+   After that guard, create the project parent before staging its candidate
+   sidecar so healthy Save As also supports absent nested directories.
 5. GUI save failures are visible without clearing dirty state, rebinding a path
    or continuing a pending project action. CLI/MCP one-shot failures explain
    discarded transient state and non-rollback of separately published files.
@@ -87,11 +92,12 @@ for exact filters, source/binary/platform receipts and remaining native checks.
 Preserve the separately reported Slice 3/5 results and rehearsal; do not create
 another old-source audit campaign or claim a new scientific verdict.
 
-Local authoring checks: 19 source/teaching checks pass; 15 optional actual-binary
-cases skip explicitly. Two real LF/CRLF checkout tests, documentation status,
+Historical authoring checks: 19 source/teaching checks pass; 15 optional
+actual-binary cases skip explicitly. Two real LF/CRLF checkout tests, documentation status,
 manual freshness and whitespace pass. Formatter output is applied only to new/
 changed Rust lines, retaining unrelated baseline formatting; this is not Cargo
 type checking. Session-close: 4 OK, 2 expected working-tree/manual-plan warnings,
 0 failures. The roadmap remains 400 lines. Runtime/VM/native tests and Cargo
-checks stay unrun; all working changes are scoped to this slice and unrelated
+checks were unrun by the author; Glen's later return above supersedes only its
+reported scopes. All working changes are scoped to this slice and unrelated
 `outputs/` is preserved.
