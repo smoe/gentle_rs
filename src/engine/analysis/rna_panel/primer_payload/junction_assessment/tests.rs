@@ -183,6 +183,69 @@ fn junction_assessment_exact_and_every_one_to_five_base_shift_are_not_snapped() 
 }
 
 #[test]
+fn junction_assessment_same_and_cross_contig_off_gene_junctions_are_not_gene_events() {
+    let catalog = source::Catalog {
+        source_id: "synthetic_annotation".into(),
+        gene_id: Some("synthetic_gene".into()),
+        reason: "resolved".into(),
+        models: vec![model(&[(10, 100), (200, 260)], '+')],
+    };
+    for (contig, skip) in [
+        ("synthetic_contig", (1, 10)),
+        ("synthetic_contig", (260, 270)),
+        ("synthetic_contig", (900, 950)),
+        ("other_contig", (100, 200)),
+    ] {
+        let row = source::compare_source(contig, skip, &catalog, 5);
+        assert_eq!(row.relation, "not_assessable");
+        assert_eq!(row.reason, "outside_gene_locus");
+        assert!(row.events.is_empty());
+        assert!(row.model_events.is_empty());
+        assert_eq!(row.model_strand, None);
+    }
+    let overlapping = source::compare_source("synthetic_contig", (250, 300), &catalog, 5);
+    assert_eq!(overlapping.reason, "bound_gene_models");
+    let tiny = source::Catalog {
+        models: vec![model(&[(10, 11), (12, 13)], '+')],
+        ..catalog
+    };
+    let nearby_outside = source::compare_source("synthetic_contig", (13, 14), &tiny, 5);
+    assert_eq!(nearby_outside.reason, "outside_gene_locus");
+    assert_eq!(nearby_outside.near_hits.len(), 1);
+    assert!(nearby_outside.events.is_empty());
+}
+
+#[test]
+fn junction_assessment_exact_shared_end_is_independent_of_window_and_orientation() {
+    for (strand, start_label, end_label) in [
+        (Some('+'), "donor", "acceptor"),
+        (Some('-'), "acceptor", "donor"),
+        (None, "start", "end"),
+    ] {
+        let mut transcript = model(&[(10, 100), (200, 300)], '+');
+        transcript.genomic_strand = strand;
+        let catalog = source::Catalog {
+            source_id: "synthetic_annotation".into(),
+            gene_id: Some("synthetic_gene".into()),
+            reason: "resolved".into(),
+            models: vec![transcript],
+        };
+        for (skip, label) in [((100, 240), start_label), ((140, 200), end_label)] {
+            let row = source::compare_source("synthetic_contig", skip, &catalog, 5);
+            assert_eq!(row.relation, "none_within_window");
+            assert!(row.near_hits.is_empty());
+            assert_eq!(row.shared_end.as_deref(), Some(label));
+        }
+        for skip in [(100, 200), (101, 201)] {
+            assert_eq!(
+                source::compare_source("synthetic_contig", skip, &catalog, 5).shared_end,
+                None
+            );
+        }
+    }
+}
+
+#[test]
 fn junction_assessment_motif_orientation_softmask_and_ambiguity_are_explicit() {
     for (first, last, expected) in [
         ("gt", "ag", ObservedMotifClass::GtAg),

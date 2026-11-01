@@ -266,6 +266,11 @@ fn junction_assessment_synthetic_cd274_like_3130_not_real_rna_evidence() {
         assert!(
             j.sources
                 .iter()
+                .all(|s| s.shared_end.as_deref() == Some("donor"))
+        );
+        assert!(
+            j.sources
+                .iter()
                 .any(|s| s.events.contains(&"alternative_terminal_acceptor".into()))
         );
         for (i, n) in [3, 1, 3, 0].into_iter().enumerate() {

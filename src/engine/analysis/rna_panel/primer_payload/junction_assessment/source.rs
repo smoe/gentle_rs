@@ -331,29 +331,29 @@ pub(super) fn compare_source(
         out.reason = "outside_gene_locus".into();
         return out;
     }
-    out.model_strand = c.models.first().and_then(|m| m.genomic_strand);
     out.near_hits = near_hits_for_models(skip, &c.models, window);
+    let gene_start = c
+        .models
+        .iter()
+        .flat_map(|m| &m.genomic_exons)
+        .map(|e| e.0)
+        .min();
+    let gene_end = c
+        .models
+        .iter()
+        .flat_map(|m| &m.genomic_exons)
+        .map(|e| e.1)
+        .max();
+    if !gene_start
+        .zip(gene_end)
+        .is_some_and(|(start, end)| skip.0 < end && start < skip.1)
+    {
+        out.reason = "outside_gene_locus".into();
+        return out;
+    }
+    out.model_strand = c.models.first().and_then(|m| m.genomic_strand);
     out.relation = near_relation(&out.near_hits).into();
     out.reason = "bound_gene_models".into();
-    out.shared_end = match out.relation.as_str() {
-        "shared_start_only" => Some(
-            if out.model_strand == Some('+') {
-                "donor"
-            } else {
-                "acceptor"
-            }
-            .into(),
-        ),
-        "shared_end_only" => Some(
-            if out.model_strand == Some('+') {
-                "acceptor"
-            } else {
-                "donor"
-            }
-            .into(),
-        ),
-        _ => None,
-    };
     let pairs = c
         .models
         .iter()
@@ -361,6 +361,14 @@ pub(super) fn compare_source(
         .collect::<BTreeSet<_>>();
     let start = pairs.iter().any(|p| p.0 == skip.0);
     let end = pairs.iter().any(|p| p.1 == skip.1);
+    // Exact one-end sharing is independent of the two-end near-window relation.
+    out.shared_end = match (start, end, out.model_strand) {
+        (true, false, Some('+')) | (false, true, Some('-')) => Some("donor".into()),
+        (false, true, Some('+')) | (true, false, Some('-')) => Some("acceptor".into()),
+        (true, false, _) => Some("start".into()),
+        (false, true, _) => Some("end".into()),
+        _ => None,
+    };
     let novel = start && end && !pairs.contains(&skip);
     let mut labels = BTreeSet::new();
     for model in &c.models {
