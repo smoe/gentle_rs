@@ -1,5 +1,58 @@
 # Glen: Next Verification And Return
 
+## J1 Review Follow-Up, 2026-11-01
+
+Verify the integrated revisions for Claude's A1--A4 follow-up:
+`8f0c1938` (off-gene interval/shared-end semantics), `363e23ac` (overlapping
+unassessed causes with unknown legacy fields) and `84b1845c` (JS/Lua VM tests).
+The [plan](observed_junction_consequences_plan.md#j1-review-follow-up-2026-11-01)
+and [contract](observed_splice_junction_assessment.md) explain the exact scope.
+The B-i aligner policy is documentation-only: preserve `b6863907` admission and
+all Phase 2/S1 formats/semantics. J2/J3 and real biological-sample recurrence
+selection remain gated. The untracked Claude prompt is not modified/included.
+
+Reuse your completed [b6863907 return](#glen-return-at-b6863907-2026-10-30)
+for unchanged S1/primer/glossary/lifecycle scopes. It already verifies the
+rebased completeness path, contrary to the older prompt's first-runtime claim.
+New J1 semantics/DTOs and VM tests need their own nonzero counts; the preceding
+Save-As repair remains independently pending. No local Rust/VM execution or
+whole-suite acceptance is claimed from source checks.
+
+```sh
+cargo test --locked --offline --no-default-features -j1 --lib junction_assessment -- --test-threads=1
+cargo test --locked --offline --no-default-features --features script-interfaces -j1 --lib junction_assessment_js_vm -- --test-threads=1
+cargo test --locked --offline --no-default-features --features script-interfaces -j1 --lib junction_assessment_lua_vm -- --test-threads=1
+cargo test --locked --offline -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo check -q --locked --offline --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo check -q --locked --offline --tests
+```
+
+Retain same-contig/cross-contig off-gene and boundary-touch refusals, near hits
+without gene events, exact shared donor/acceptor versus two-end near relations,
+unoriented start/end labels and complete/limited/incomplete synthetic donors.
+The three cause counts overlap; their union, not sum, is `unassessed_records`.
+Missing fields in old v1 evidence stay unknown. Real aligner sources retain
+limitations/possible-only support; definite zero is expected, not absent RNA.
+
+Both VM tests must actually execute assess plus bound artifact-verifying
+inspect and preserve exact project bytes. A feature baseline failure is a
+primary failure, not permission to skip silently or repair unrelated code.
+Run/reuse source/documentation, LF/CRLF, glossary and canonical parity freshness
+checks without regenerating unchanged metadata. Do not repeat completed gel,
+historical sequence-design or other unaffected audits.
+
+Return tested SHA/tree, lockfile and binary hashes, platform/toolchain/features,
+commands, counts, failures/skips and retained evidence via Steffen. Full-suite,
+actual CLI/MCP, native Windows/Linux, real CD274/private sequencing and scientific
+acceptance stay separate. No new live-model/provider call is required or
+authorized; no push, dispatch, publication or goal resumption is requested.
+
+Authoring checks: 50 source/documentation passes, one explicit real-CLI skip;
+documentation/manual/maturity freshness, scoped rustfmt and whitespace pass.
+The lockfile hash remains the `a393a1f3...` value in your b6863907 return below.
+Session-close: 4 OK, 2 expected working-tree/plan-review warnings, 0 failures;
+roadmap stays 400 lines. None of this executes the new Rust or VM regressions.
+
 ## Glen Return At b6863907, 2026-10-30
 
 Owner-supplied `GENtle_verification_b6863907.md` (SHA-256

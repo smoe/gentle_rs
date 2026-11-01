@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-11-01 - Reconcile J1 Geometry, Denominators And Producer Policy
+
+- Address Claude's A1/A2 follow-up: same-contig nonoverlap with the selected
+  gene's model span is outside_gene_locus without gene events; preserve near
+  hits. Exact one-end sharing no longer depends on the both-ends near window,
+  with donor/acceptor or unoriented start/end labels and synthetic controls.
+- Split overlapping library unassessed causes while retaining the existing
+  union aggregate. New v1 J1 results emit explicit cause counts; absent fields
+  in earlier evidence stay unknown, not zero. Keep Phase 2/S1 code, schemas,
+  digest rules and preservation oracles unchanged.
+- Add JS/Lua VM regressions for generic assess plus bound inspection against
+  direct engine scientific reports, exact project-byte preservation and fresh
+  output paths. Rust/VM execution remains with Glen/CI, not a source-check pass.
+- Record the forwarded B-i possible-only aligner policy without reversing
+  `b6863907` or adding producer-specific parser rules. B-ii/B-iii are superseded;
+  real biological-sample grouping and J2/J3 remain owner-gated. Retain Glen's
+  rebased runtime evidence, correcting the older prompt's first-run premise.
+  Update the contract/plan/roadmap and narrow the handoff to changed/unrun scopes.
+  No local Rust build/test/check, push, model call or goal resumption.
+- Authoring checks: 50 source/documentation passes, one explicit real-CLI skip;
+  scoped formatting, documentation/manual/maturity freshness and whitespace
+  pass. Lockfile unchanged; session-close has 4 OK, 2 expected warnings and
+  0 failures. Roadmap stays 400 lines; Rust/VM/native acceptance is pending.
+
 ## 2026-10-30 - Repair Candidate-Store Save As Parent Ordering
 
 - Reconcile Glen's reported verification at `b6863907`: retain passing J1,

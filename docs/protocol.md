@@ -18,9 +18,20 @@ requires the S1 digest, `declared_excerpt` preserves declared-only authority.
 Optional exact context manifests declare, never authenticate, hierarchy.
 Near offsets never snap; model orientation and motif authority remain separate.
 Full junction identities are authoritative despite short display collisions.
+The near relation requires both ends within the window; `shared_end` separately
+records exact one-end sharing at any distance, with oriented donor/acceptor or
+unoriented start/end labels. Same-contig nonoverlap with the selected model span
+is `not_assessable`/`outside_gene_locus`, with no events and retained near hits.
 Support counts are mutually exclusive by certainty/qualification per original
 record; grouping dimensions are nonadditive and independent recurrence uses
 only the explicit, flank-qualified policy. No whole-RNA/protein/expression claim.
+Library `unassessed_records` is the union of overlapping
+`search_not_declared_complete_records`, `query_views_unassessed_records` and
+`gene_unassessed_records`, not their sum. New J1 v1 output supplies each count;
+older v1 output with absent cause fields reads as unknown, not zero. The
+[aligner acceptance policy](decisions.md#phase-2s1-completeness-compatibility)
+retains nonempty limitations/possible-only support and uses explicit
+`definite_or_possible` recurrence, without producer-specific admission changes.
 
 Five hashed artifacts precede report-last no-clobber publication. Saved inspection
 does not reopen sources, defaults to zero rows and optionally verifies every

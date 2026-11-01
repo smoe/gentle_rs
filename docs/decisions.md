@@ -34,6 +34,18 @@ and legal-hypothesis conditions also hold. Producer-declared completeness is
 not independently verified exhaustive search, unique RNA or biological truth.
 Existing Phase 2/S1 byte/work preservation expectations remain unchanged.
 
+Acceptance policy (owner-forwarded B-i, 2026-10-29; recorded 2026-11-01):
+aligner-based evidence must retain a nonempty limitations description naming
+the aligner/version, effective search/output caps and score thresholds. It is
+possible-only support in S1, even if the producer also sets
+`declared_complete=true`; S1 requires both completeness and no limitations.
+Real recurrence acceptance therefore uses `certainty=definite_or_possible`
+with separately selected grouping/thresholds. Zero definite support on this
+path is expected, not missing evidence or biological absence. The complete
+declaration remains available for genuinely exhaustive producers and synthetic
+regressions. This is a producer/acceptance policy, not an aligner-specific
+admission check or an independently authenticated exhaustiveness claim.
+
 ## Observed Junction Structures: S0 Technical Boundary
 
 Owner-authorized 2026-10-27: implement the pure Rust S0 kernel from the

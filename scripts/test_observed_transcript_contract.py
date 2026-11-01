@@ -10,6 +10,31 @@ BASE = ROOT / "src/engine/analysis/rna_panel/primer_payload"
 
 
 class ObservedTranscriptContractTests(unittest.TestCase):
+    def test_junction_followup_contract_keeps_independent_geometry_and_unknown_legacy_causes(self):
+        wire = (ROOT / "src/engine/protocol/observed_junctions.rs").read_text()
+        guide = (ROOT / "docs/observed_splice_junction_assessment.md").read_text()
+        for field in ("search_not_declared_complete_records", "query_views_unassessed_records", "gene_unassessed_records"):
+            self.assertRegex(wire, r'#\[serde\(default, skip_serializing_if = "Option::is_none"\)\]\s+pub ' + field + r': Option<usize>')
+            self.assertIn(field, guide)
+        for concept in ("outside_gene_locus", "both ends", "any", "not summed", "remain unknown"):
+            self.assertIn(concept, guide)
+        tests = (BASE / "junction_assessment/tests.rs").read_text()
+        for case in ("same_and_cross_contig_off_gene", "exact_shared_end_is_independent", "unassessed_causes_are_overlapping", "legacy_denominator_missing_causes"):
+            self.assertIn(case, tests)
+
+    def test_aligner_policy_and_vm_checks_are_explicit_without_reopening_phase_two(self):
+        decisions = (ROOT / "docs/decisions.md").read_text()
+        for word in ("B-i", "possible-only", "definite_or_possible", "not an aligner-specific"):
+            self.assertIn(word, decisions)
+        producer = (ROOT / "docs/primer_payload_evidence.md").read_text()
+        for word in ("EXACT_VERSION", "ACTUAL_N", "ACTUAL_MIN_CHAIN_SCORE", "template, not a recorded run"):
+            self.assertIn(word, producer)
+        for language in ("js", "lua"):
+            source = (ROOT / f"src/{language}_interface.rs").read_text()
+            for route in ("AssessObservedSpliceJunctions", "InspectObservedSpliceJunctions"):
+                self.assertIn(route, source)
+            self.assertIn(f"junction_assessment_{language}_vm_assess_and_inspect_match_engine_without_project_writes", source)
+
     def test_strict_new_wire_records_do_not_extend_phase_two_schema(self):
         source = (ROOT / "src/engine/protocol/observed_transcripts.rs").read_text()
         self.assertEqual(source.count("pub struct "), source.count("#[serde(deny_unknown_fields)]"))

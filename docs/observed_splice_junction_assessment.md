@@ -71,6 +71,16 @@ never becomes exact; coordinates are never snapped. Sources retain all nearby
 pairs and nonexclusive geometry events. The `novel_combination` event is a
 literal structural label, **not a biological novelty claim**.
 
+The near `relation` compares **both ends** within `near_window_bp`. Separately,
+`shared_end` records an exact match at exactly one annotated junction end at any
+distance: `donor`/`acceptor` when model orientation is assigned, otherwise
+`start`/`end`. Thus `none_within_window` can coexist with `shared_end=donor`.
+Same-contig junctions that do not overlap the selected gene's model span
+(minimum exon start to maximum exon end) retain `not_assessable` with
+`outside_gene_locus`, as do cross-contig junctions. They have no gene-event
+labels; any near hits remain visible. Recurrence stays junction-specific and
+does not turn an off-gene junction into evidence for the selected gene.
+
 Model strands, never query orientation or motifs, determine transcription
 orientation. Disagreement/unresolved sources leave it unassigned. Raw
 reference-forward first/last dinucleotides and forward/reverse motif classes
@@ -99,6 +109,24 @@ unassessed records and context coverage. Zero gene-coherent records is valid
 non-detection, not absence. Policy results are `recurrent_candidate`,
 `not_recurrent_under_policy` or `not_assessable`; none establishes novelty,
 translation, secretion, molecules or expression.
+
+The library's `search_not_declared_complete_records`,
+`query_views_unassessed_records` and `gene_unassessed_records` are overlapping
+original-record sets, **not summed**. `unassessed_records` remains their union.
+The first uses S1's effective completeness flag, which is false also for a
+producer claiming completion but retaining limitations. The other causes use
+S1's all-query-views-assessed flag and selected reference-gene resolution.
+Current results emit
+explicit counts including zero; missing cause fields in earlier v1 artifacts
+remain unknown, never inferred zero from the aggregate.
+
+Under the [aligner acceptance policy](decisions.md#phase-2s1-completeness-compatibility),
+real aligner sources retain nonempty search limitations and possible-only
+support. Their `search_not_declared_complete_records` equals the library's
+cohort size, not because every read is missing but because exhaustiveness was
+not established. Real recurrence uses `definite_or_possible`; grouping units
+and thresholds still require explicit selection. The synthetic definite-policy
+fixture is not a real-data default.
 
 ## Saved Output
 

@@ -4,6 +4,8 @@ Status, 2026-10-30: J0 recorded; J1 implemented with scoped synthetic verificati
 including Glen's reported 27/27 Linux tests at `b6863907`. See the
 [integrated return](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30);
 full-suite, actual-process/VM, native and scientific acceptance remain separate.
+The [J1 review follow-up](#j1-review-follow-up-2026-11-01) is authored after that
+verified source and still needs Glen/CI execution; no local Rust was run for it.
 J2/J3 are proposals only. Biological acceptance choices below remain with the
 owner/Glen. Keep implemented software, synthetic regression, real RNA evidence
 and unproven biology separate.
@@ -187,6 +189,24 @@ pass/fail/ignored count without adding overlapping filters. Separate primary
 failures from cascades. Native Windows/Linux, full suite, actual annotation/J1
 CLI/MCP processes, real CD274 data and scientific acceptance remain separate.
 
+## Search Completeness Decision
+
+Owner-forwarded B-i, dated 2026-10-29 and recorded 2026-11-01, is a
+[producer/acceptance policy](decisions.md#phase-2s1-completeness-compatibility)
+on top of `b6863907`, not a reversal of that authorized admission fix.
+Aligner batches retain nonempty limitations with their exact tool/version,
+effective caps and score thresholds. S1 then supplies possible-only support;
+real CD274 recurrence acceptance uses `definite_or_possible`, not synthetic
+definite-only settings. The complete/empty-limitations path stays for genuinely
+exhaustive producers and synthetic tests, without aligner-specific enforcement.
+Earlier B-ii (a limitations-hash acknowledgement in S1) and B-iii (a new Phase 2
+field) are superseded, not pending implementation.
+
+Claude recommends `unit=biological_sample` for real recurrence because the
+historical second sample rests on one record in one preparation. This is still
+the owner's choice; neither library independence nor molecule counts are
+established. No real-data recurrence threshold or J2/J3 decision is selected.
+
 ## J2 Proposal: Conditional Coding Consequences
 
 Not authorized for code. Consume a verified J1 report, one explicitly selected
@@ -232,7 +252,7 @@ no evidence of translation, secretion, stability or soluble protein.
 | --- | --- |
 | Literal 5466827 -> 5468193 convention | Resolved by the owner on 2026-10-29: none of the original A/B/C interpretations describes this legacy token. Its producer displayed start+1 -> end+1. Store **[5466826,5468192)**, 1366 bp; label exon boundaries **5466826 -> 5468193**; inclusive intron is 5466827-5468192. Keep the old token only as a marked legacy alias, not an input convention. |
 | Meaning of 3/1/3/0 | Owner confirmed order: sample 1 original cDNA=3, sample 2 original cDNA=1, sample 1 second cDNA/sequencing preparation=3, sample 2 second preparation=0. These are two biological samples, not four. Cell-line names, historical distinct-record certainty and flank qualification remain unspecified; do not relabel real counts. |
-| Acceptance recurrence | Owner confirmed explicit library/min_units=2/definite/qualified flanks for the **synthetic fixture only**. This does not establish independence of real libraries. |
+| Acceptance recurrence | Owner confirmed explicit library/min_units=2/definite/qualified flanks for the **synthetic fixture only**. B-i uses definite_or_possible for real aligner evidence; biological_sample grouping is Claude's recommendation, not selected by Codex. Real grouping/thresholds remain the owner's call. |
 | Acceptance near window | Owner confirmed explicit 5 for the synthetic fixture; no service default is introduced. |
 | Real CD274 ingress | Phase 2 -> S1 is available. BAM needs separately authorized verified SAM ingress plus external conversion; inherited private decoder is not a service. |
 | Real reference authority | Full assembly needs explicit large byte/work budgets; excerpt has declared authority only. |
@@ -463,3 +483,49 @@ Still unverified: full suite, runtime rerun on the rebased engine, native
 Windows/Linux, actual CLI/MCP subprocess and script-VM execution, real CD274
 reference/library evidence and scientific acceptance. No new byte fixtures,
 dependencies, generated artifacts, output-format changes or scientific claims.
+
+## J1 Review Follow-Up, 2026-11-01
+
+Claude's forwarded prompt expected `b6863907`; actual starting main was
+`82fb250c`, containing the separate Save-As repair. Its statement that Part A
+would supply the first rebased runtime results is superseded by Glen's
+[27 J1 / 70 S1 / 103 primer-payload passes at b6863907](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30).
+Do not repeat those unchanged-source audits solely to correct the old prompt.
+The untracked prompt, `paper`, private inputs and `output/` remain untouched.
+
+Authored as separate commits:
+
+- A1/A2 `8f0c1938`: half-open overlap with the selected gene-model span;
+  off-gene rows retain near hits but no event labels. Both-ends near relation
+  and exact one-end sharing are independent, with oriented/unoriented labels.
+  Synthetic same/cross-contig, boundary-touch, near-outside and strand cases
+  accompany shared-donor assertions for complete, limited and incomplete batches.
+- A3 `363e23ac`: overlapping original-record cause counts for search
+  completeness, query assessment and reference-gene resolution, retaining the
+  existing union aggregate. Earlier v1 artifacts with no cause fields read as
+  unknown (`None`), not fabricated zero. New output emits `Some(0)` where known.
+  Tests cover overlap/deduplication, legacy reading and the real synthetic
+  Phase 2 -> S1 -> J1 complete/limited/incomplete path without promoting evidence.
+- A4 `84b1845c`: one actual JS-VM test and one Lua-VM test through generic
+  assess/inspect operations, using temporary synthetic S1 artifacts and quoted
+  project/output paths. Compare scientific reports with direct engine results,
+  normalizing only the intentionally different output location and its two
+  envelope hashes; compare full inspections and exact project bytes unchanged.
+  Authored VM tests are not executed VM evidence.
+
+No Phase 2/S1 code, schemas or preserved byte oracles changed. New Rust/VM,
+actual-process/native and scientific acceptance remain unrun here under the
+standing no-local-Rust restriction. Use the [bounded follow-up handoff](glen_next_verification_handoff.md#j1-review-follow-up-2026-11-01);
+the separate Save-As repair also still needs its runtime rerun. No push, model
+call, goal resumption, biological-sample policy selection or J2/J3 implementation.
+
+Local authoring validation on 2026-11-01: 50 source/documentation checks passed
+and one real-CLI test explicitly skipped without an authorized same-source
+binary. The command selected `scripts.test_observed_transcript_contract`,
+`scripts.test_primer_payload_contract`, `scripts.test_capability_maturity`,
+`scripts.test_tutorial_checkouts.DocumentationStatusTests` and the LF/CRLF parity
+matrix checkout test, with `GENTLE_PAYLOAD_CLI` unset. Documentation/manual/
+maturity freshness, scoped rustfmt and whitespace passed. `Cargo.lock` remains
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+Session-close: 4 OK, 2 expected working-tree/plan-review warnings, 0 failures;
+roadmap stays 400 lines. No Rust/VM result follows from these source checks.

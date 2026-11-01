@@ -101,6 +101,31 @@ and legal-chain rules can then yield definite support; the declaration alone
 does not guarantee it or prove that a real search was exhaustive. Execution
 status `completed` does not itself establish search completeness.
 
+### Aligner-Based Evidence Is Possible-Only
+
+Under the [B-i acceptance policy](decisions.md#phase-2s1-completeness-compatibility),
+real aligner batches always retain a nonempty limitations description. For
+example, this is a **template, not a recorded run**; replace every capitalized
+placeholder with the effective value from the actual producer receipt:
+
+```json
+{
+  "declared_complete": false,
+  "competitor_search_limitations": "minimap2 EXACT_VERSION; preset RECORDED_PRESET; -N ACTUAL_N; -p ACTUAL_RATIO; -m ACTUAL_MIN_CHAIN_SCORE; -s ACTUAL_MIN_DP_SCORE; heuristic/capped competitor search, not exhaustive"
+}
+```
+
+Record all other effective caps/filters as well, including preset overrides;
+do not silently substitute current tool defaults. The [minimap2 manual](https://lh3.github.io/minimap2/minimap2.html)
+describes `-N` as the secondary-alignment output limit and `-p`, `-m`, `-s` as
+score-ratio/chaining/alignment-score thresholds. Output from a heuristic aligner
+alone does not justify an exhaustive competitor-search declaration. The empty
+string with `declared_complete=true` is for producers that actually establish
+that search scope, or explicit synthetic regressions, not a way to obtain
+definite support from a completed aligner invocation. S1 retains possible-only
+support and real recurrence uses `definite_or_possible`; no producer-specific
+parser check is added.
+
 cg/short or long cs must consume both spans consistently; contradictions, tag
 types, edit counts and length conflicts fail closed. MAPQ 0 is low/ambiguous,
 255 unavailable. tp is an aligner role, not a supplementary flag; SA text creates
