@@ -1,5 +1,90 @@
 # Glen: Next Verification And Return
 
+## Headless Parity Test Gate, 2026-11-01
+
+Codex executed the owner's narrow local-build exception after rebasing onto
+`d9b1015cf27c7dfc2c8b73a675c11c232ded3bf4`. This repair's only Rust change is
+`tests/capability_registry_parity.rs`, Git blob
+`8ad3efa35252e068e4dbd509201fd9fc73bb78de` (SHA-256
+`48dee34e494ee3848946549511b24b2617e3e781de4983ee1b17464ec01b7cbf`).
+Platform: macOS 27.2, arm64; Rust `1.100.0-beta.7 (fd8e211ae 2026-10-17)`,
+Cargo `1.100.0-beta.7 (72b77b8d9 2026-10-17)`, ordinary dev/test profile.
+
+After these checks, rebase onto `3002836d18e3c65568b164d4c185b85998f9662b`.
+The test blob is unchanged; that newer main's SAM implementation and Slice 6
+harness changes were not rerun here. The results below stay bound to the
+identified `d9b1015c` source plus the test patch, not the post-rebase integration.
+
+The GUI-only import and two GUI-oracle assertion groups are now gated on
+`desktop-gui`. Assertions/messages are preserved; production modules, capability
+registry, GUI oracle, CI, fixtures and scientific behavior are unchanged.
+Changed files: the test above, `CHANGELOG.md`, `roadmap.md`,
+`operation_lifecycle_slice5_plan.md` and this handoff. The roadmap parks the
+missing CI headless-test-target gate without changing CI/release-policy checks.
+
+| Command | Result | Passed / Failed / Ignored |
+| --- | --- | --- |
+| `cargo test --locked -j1 --test capability_registry_parity` (before edit) | pass on retry | 21 / 0 / 0 |
+| `cargo check -q --locked --no-default-features --tests` | pass | not a test run |
+| `cargo check -q --locked --tests` | pass | not a test run |
+| `cargo test --locked --no-default-features -j1 --test capability_registry_parity` | pass | 21 / 0 / 0 |
+| `cargo test --locked -j1 --test capability_registry_parity` (after edit) | pass | 23 / 0 / 0 |
+| `rustfmt --edition 2024 --check tests/capability_registry_parity.rs` | pass | not a test run |
+| `git diff --exit-code -- Cargo.lock` | pass; unchanged | not a test run |
+
+All test runs have zero filtered/measured tests. The initial baseline attempt
+executed no tests: `apple-metal`'s Swift build was denied host-cache writes by
+the sandbox. The same command passed with the required cache access. Existing
+headless dead-code and macOS `__eh_frame` linker warnings remain unmodified.
+Temporary local logs are under `/tmp/gentle-headless-parity-20261101/`; they
+are not committed release/acceptance artifacts. Lockfile SHA-256 remains
+`a393a1f3803b374bbaf5ef4f3e23813e974b1676f61a669dacb24063c059fb6a`.
+
+Before/after lists: these same 21 names pass in the baseline and in both
+post-edit configurations. Sorted name/outcome comparisons are identical after
+excluding the two additional desktop-only tests below. All failure sets are
+empty, so no pre-existing failure was repaired or hidden.
+
+```text
+arrays_parser_subcommands_are_glossary_paths_or_explicitly_allowlisted
+cli_capabilities_reads_protocol_registry
+collection_lift_policies_attach_only_to_existing_capabilities
+engine_capabilities_project_protocol_registry
+engine_operations_are_reachable_on_shell_route_adapters
+gap_rows_are_listed_in_open_gap_section
+gene_set_resolve_gui_affordance_is_prominent
+glossary_commands_have_matching_registry_entries
+logical_gene_set_is_not_silently_treated_as_a_physical_pool
+mcp_tools_list_has_no_unregistered_prominent_tools
+not_applicable_cells_have_curated_override_entries
+parity_overrides_do_not_demote_prominent_or_shell_routes
+physical_container_pool_actions_are_declared_as_context_agnostic_combines
+prominent_projections_match_user_facing_listings
+registry_for_adapter_includes_every_reachable_projection
+registry_surfacing_covers_all_parity_adapters
+sequence_design_registry_family_is_external_without_reclassifying_controls
+serial_arrangement_gel_actions_are_declared_as_context_agnostic_arranges
+shell_alias_registry_mutation_tags_match_contract
+shell_alias_registry_resolves_to_known_capabilities_and_parity_policy
+transcript_assay_panel_reachability_is_locked_across_adapters
+```
+
+The two additional tests both pass with desktop features and are not compiled
+headlessly:
+
+- `gene_set_resolve_gui_affordance_has_menu_palette_entry`: the original
+  gene-set test's final menu/palette assertion, unchanged.
+- `gui_prominent_projections_match_menu_palette_oracle`: the original prominent
+  projection test's forward GUI membership assertion and unchanged reverse loop.
+
+Keep the existing lifecycle `--no-default-features --tests` command lists.
+This result supersedes their unrun compile status only at the identified source;
+it does not execute their other Rust/VM/process suites or close native checks.
+Windows, Linux and any CI run remain unverified here. Reuse these exact-source
+results, verify changed-source/platform scopes normally, and handle the CI gap
+separately. Unrelated `outputs/` and primary-checkout work are preserved; the
+previous goal stays paused. No push, dispatch, model call or native capture.
+
 ## J1 Review Follow-Up, 2026-11-01
 
 Verify the integrated revisions for Claude's A1--A4 follow-up:

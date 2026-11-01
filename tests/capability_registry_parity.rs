@@ -1,4 +1,6 @@
-use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
+#[cfg(feature = "desktop-gui")]
+use gentle::app::gui_prominent_glossary_entries;
+use gentle::engine::GentleEngine;
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
     CapabilitySource, CollectionContextRequirement, CollectionLiftRejectionReason,
@@ -1092,6 +1094,11 @@ fn gene_set_resolve_gui_affordance_is_prominent() {
         command.surfacing_for_adapter(CapabilityAdapter::Gui),
         AdapterSurfacing::Prominent
     );
+}
+
+#[cfg(feature = "desktop-gui")]
+#[test]
+fn gene_set_resolve_gui_affordance_has_menu_palette_entry() {
     assert!(gui_prominent_glossary_entries().iter().any(|entry| {
         entry.glossary_path == "gene-sets resolve"
             && entry.menu_path == "Genome > Gene Set Inspector..."
@@ -1104,10 +1111,6 @@ fn prominent_projections_match_user_facing_listings() {
     let mcp_tools = mcp_tool_names();
     let mcp_command_paths = mcp_tool_command_paths();
     let clawbio_intents = clawbio_intent_ids();
-    let gui_prominent_paths = gui_prominent_glossary_entries()
-        .iter()
-        .map(|entry| entry.glossary_path)
-        .collect::<BTreeSet<_>>();
 
     for descriptor in capability_registry() {
         for adapter in capability_parity_adapters() {
@@ -1152,15 +1155,30 @@ fn prominent_projections_match_user_facing_listings() {
                         "prominent GUI projection `{}` must come from a GUI glossary command",
                         descriptor.name
                     );
-                    assert!(
-                        gui_prominent_paths.contains(descriptor.name.as_str()),
-                        "prominent GUI glossary command `{}` is absent from the GUI menu/palette oracle",
-                        descriptor.name
-                    );
                 }
                 CapabilityAdapter::Js | CapabilityAdapter::Lua => {}
             }
         }
+    }
+}
+
+#[cfg(feature = "desktop-gui")]
+#[test]
+fn gui_prominent_projections_match_menu_palette_oracle() {
+    let gui_prominent_paths = gui_prominent_glossary_entries()
+        .iter()
+        .map(|entry| entry.glossary_path)
+        .collect::<BTreeSet<_>>();
+
+    for descriptor in capability_registry() {
+        if descriptor.surfacing_for_adapter(CapabilityAdapter::Gui) != AdapterSurfacing::Prominent {
+            continue;
+        }
+        assert!(
+            gui_prominent_paths.contains(descriptor.name.as_str()),
+            "prominent GUI glossary command `{}` is absent from the GUI menu/palette oracle",
+            descriptor.name
+        );
     }
 
     for entry in gui_prominent_glossary_entries() {

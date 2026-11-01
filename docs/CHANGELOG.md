@@ -18,6 +18,26 @@
   manual freshness and whitespace pass. Session-close: 4 OK, 2 expected warnings,
   0 failures; roadmap stays 400 lines. Claude's real-process result stays separate.
 
+## 2026-11-01 - Separate GUI-Oracle Parity Assertions From Headless Tests
+
+- Gate the GUI-only oracle import and split its two assertion groups into
+  desktop-only tests. Keep registry, CLI/MCP/ClawBio and GUI source-classification
+  assertions headless; retain every existing default-feature assertion/message.
+  No production module, capability registry, oracle data or CI change.
+- Record the missing headless test-target CI gate as a parking-lot follow-up;
+  preserve existing lifecycle verification commands and unrelated local work.
+  The owner-authorized local checks for this narrow compile repair do not
+  resume the previous goal or imply native/platform acceptance. No push.
+- On macOS 27.2/arm64, Rust 1.100.0-beta.7: baseline parity 21/21, repaired
+  headless parity 21/21 and desktop parity 23/23; zero failures/ignored tests.
+  Both locked test-target Cargo checks, scoped rustfmt and unchanged-lockfile
+  check pass. The first baseline attempt was sandbox-blocked in Swift's cache;
+  its retry passed. Preserve existing dead-code/linker warnings. See the
+  [source-bound command/results and test lists](glen_next_verification_handoff.md#headless-parity-test-gate-2026-11-01).
+  Windows/Linux/CI and unrelated lifecycle runtime/native acceptance remain open.
+  After those checks, rebase onto `3002836d` without changing the test source;
+  do not infer verification of that newer main's RNA/lifecycle changes.
+
 ## 2026-11-01 - Reconcile J1 Geometry, Denominators And Producer Policy
 
 - Address Claude's A1/A2 follow-up: same-contig nonoverlap with the selected

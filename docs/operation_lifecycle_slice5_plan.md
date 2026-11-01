@@ -256,6 +256,21 @@ cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_f
 cargo fmt --check
 ```
 
+Scoped compile return, 2026-11-01: Codex ran both
+`cargo check -q --locked --no-default-features --tests` and
+`cargo check -q --locked --tests` successfully on macOS 27.2/arm64 with
+Rust `1.100.0-beta.7 (fd8e211ae 2026-10-17)`. Source is
+`d9b1015cf27c7dfc2c8b73a675c11c232ded3bf4` plus the test-only GUI-oracle
+split in `tests/capability_registry_parity.rs` (Git blob
+`8ad3efa35252e068e4dbd509201fd9fc73bb78de`). The unrelated, long-standing
+headless import defect is not a Slice 5 regression. These checks compile
+test targets; they do not execute the other suites or close native acceptance.
+Keep both commands above for integrated-source verification.
+The [scoped parity return](glen_next_verification_handoff.md#headless-parity-test-gate-2026-11-01)
+records the baseline's 21 passes, the repaired headless suite's 21 passes and
+the desktop suite's 23 passes; all failure/ignored counts are zero. No other
+listed runtime or native check is marked passed by this repair.
+
 Claude reports scoped Slice 5 rustfmt passing but repository-wide formatting
 failing with about 78 unrelated diffs at `284e5b70`. Do not treat that estimate
 as current-source evidence or mass-format unrelated files. Retain the repository
