@@ -1,5 +1,9 @@
 # A commonmark viewer for [egui](https://github.com/emilk/egui)
 
+GENtle's local compatibility patch aligns this crate and its backend with the
+application's egui/eframe 0.37 family. The normalized Cargo manifests are the
+active dependencies; `Cargo.toml.orig` retains the original upstream metadata.
+
 [![Crate](https://img.shields.io/crates/v/egui_commonmark.svg)](https://crates.io/crates/egui_commonmark)
 [![Documentation](https://docs.rs/egui_commonmark/badge.svg)](https://docs.rs/egui_commonmark)
 

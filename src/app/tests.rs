@@ -14121,6 +14121,7 @@ fn screenshot_commands(output: &egui::FullOutput) -> usize {
 
 #[test]
 fn agent_screenshot_request_and_auto_run_emit_no_capture() {
+    let _guard = crate::agent_help::capture_test_guard();
     let _ = take_capture_events();
     let mut app = GENtleApp::default();
     app.agent_allow_auto_exec = true;
@@ -14138,6 +14139,7 @@ fn agent_screenshot_request_and_auto_run_emit_no_capture() {
 
 #[test]
 fn declining_agent_screenshot_request_captures_nothing() {
+    let _guard = crate::agent_help::capture_test_guard();
     let _ = take_capture_events();
     let mut app = GENtleApp::default();
     let ctx = egui::Context::default();
@@ -14155,6 +14157,7 @@ fn declining_agent_screenshot_request_captures_nothing() {
 
 #[test]
 fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
+    let _guard = crate::agent_help::capture_test_guard();
     let _ = take_capture_events();
     let mut app = GENtleApp::default();
     let ctx = egui::Context::default();
@@ -14172,31 +14175,25 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
         .agent_screenshot_capture
         .clone()
         .expect("capture should be in flight");
-    let user_data = output
+    let screenshot_callback = output
         .viewport_output
         .get(&pending.capture_viewport_id)
         .into_iter()
         .flat_map(|viewport| &viewport.commands)
         .find_map(|command| {
-            let egui::ViewportCommand::Screenshot(user_data) = command else {
+            let egui::ViewportCommand::Screenshot(callback) = command else {
                 return None;
             };
-            Some(user_data.clone())
+            Some(callback.clone())
         })
-        .expect("screenshot token");
-    let screenshot_event = || egui::Event::Screenshot {
-        viewport_id: pending.capture_viewport_id,
-        user_data: user_data.clone(),
-        image: Arc::new(egui::ColorImage::filled(
-            [4, 3],
-            egui::Color32::from_rgb(40, 90, 130),
-        )),
-    };
+        .expect("screenshot callback");
+    let image = Arc::new(egui::ColorImage::filled(
+        [4, 3],
+        egui::Color32::from_rgb(40, 90, 130),
+    ));
 
-    ctx.begin_pass(egui::RawInput {
-        events: vec![screenshot_event()],
-        ..Default::default()
-    });
+    screenshot_callback.clone().complete(image.clone());
+    ctx.begin_pass(egui::RawInput::default());
     app.poll_agent_help_capture_events(&ctx);
     crate::egui_compat::discard_test_pass_output(&ctx);
 
@@ -14220,10 +14217,8 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
     assert!(!stored.contains("/tmp/"));
 
     let digest = attachment.request.sha256.clone();
-    ctx.begin_pass(egui::RawInput {
-        events: vec![screenshot_event()],
-        ..Default::default()
-    });
+    screenshot_callback.complete(image);
+    ctx.begin_pass(egui::RawInput::default());
     app.poll_agent_help_capture_events(&ctx);
     let replay_output = crate::egui_compat::end_test_pass(&ctx);
     assert_eq!(screenshot_commands(&replay_output), 0);
@@ -14237,6 +14232,7 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
 
 #[test]
 fn unsupported_agent_screenshot_provider_refuses_before_capture() {
+    let _guard = crate::agent_help::capture_test_guard();
     let _ = take_capture_events();
     for language in crate::i18n::UiLanguage::ALL {
         let _language = crate::i18n::TestLanguageGuard::new(language);
@@ -14329,6 +14325,7 @@ fn agent_screenshot_consent_invalidates_on_active_task_and_conversation_clear() 
 
 #[test]
 fn timed_out_agent_screenshot_capture_discards_late_reply_id() {
+    let _guard = crate::agent_help::capture_test_guard();
     let _ = take_capture_events();
     let mut app = GENtleApp::default();
     let ctx = egui::Context::default();

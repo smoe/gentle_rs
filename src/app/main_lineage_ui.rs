@@ -2860,7 +2860,7 @@ impl GENtleApp {
                         graph_scroll_offset.x = graph_scroll_offset.x.clamp(0.0, max_scroll_x);
                         graph_scroll_offset.y = graph_scroll_offset.y.clamp(0.0, max_scroll_y);
                     } else {
-                        let mut measured_offset = graph_scroll_output.state.offset;
+                        let mut measured_offset = graph_scroll_output.state.clamped_offset();
                         measured_offset.x = measured_offset.x.clamp(0.0, max_scroll_x);
                         measured_offset.y = measured_offset.y.clamp(0.0, max_scroll_y);
                         graph_scroll_offset = measured_offset;

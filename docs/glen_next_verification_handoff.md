@@ -1,5 +1,54 @@
 # Glen: Next Verification And Return
 
+## egui 0.37 And Ported Glossary Repair, 2026-11-02
+
+The owner's updated root manifest/lock select egui/eframe 0.37, while the
+vendored Markdown adapters still selected 0.36. The attached compiler output
+also names removed screenshot events/UserData and private scroll offsets.
+Align the two patched manifests/lock graph; use screenshot callbacks and public
+scroll APIs. Preserve the owner's other dependency choices, capture approval,
+exact viewport identity, one-shot completion, preview-before-transport and the
+disabled CLI capture bridge. No actual screenshot, model call or local Rust
+execution occurred; four offline API/manifest guards and source-matched Rust
+regressions are authoring evidence only. Id deprecation warnings are not an
+excuse to replace stable window identities with positional or transient IDs.
+
+Glen's `7f73a42a` glossary failure is fixed by the port of `3e1b7bda`.
+`src/engine_shell/tests.rs` matches the already tested blob
+`f9830fcf57aa578efd2ded8bc6104323b9c241c1`: both platforms pass glossary 12/12
+at `43670b25` in [run 41375688160](https://github.com/smoe/gentle_rs/actions/runs/41375688160).
+That run is terminal/failure overall: macOS passes (root 4818/0/17), Windows
+fails two separate directory-replacement tests (root 4754/2/17); headless Linux
+and safety pass, full Linux/optional audits skip. Do not repeat the old glossary
+diagnosis or present it as a pass of the newer egui dependency graph.
+
+After the owner commits/pushes these edits, use an isolated target/cache and
+the actual published source/lock. Run only the changed scopes before ordinary CI:
+
+```sh
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
+cargo check -q --locked --all-features --tests
+cargo test --locked --lib engine_shell::tests::glossary_ -- --test-threads=1
+cargo test --locked --lib egui_capture_ -- --test-threads=1
+cargo test --locked --lib agent_screenshot -- --test-threads=1
+cargo test --locked --lib tutorial_menu_ -- --test-threads=1
+cargo test --locked --lib help_docs -- --test-threads=1
+python3 -m unittest scripts.test_egui_compatibility -v
+```
+
+Require nonzero counts. In native checks verify the selected window supplies
+the image, decline/unsupported/stale requests do not capture, duplicate
+completion produces no second attachment, and preview requires a later explicit
+send. Check last-row tutorial access, reversed edge hovering, wheel/drag priority,
+Markdown links/images and lineage/rack scroll positions. Native captures require
+the existing user consent; no live provider or headless capture is requested.
+Report source/toolchain/platform/features, binary hashes, results and skips;
+do not rerun completed gel/sequence-design campaigns or rewrite historical evidence.
+The six-follow-up goal was cleared; this repair does not resume it or authorize
+new pushes/dispatches. Unfinished publication-test edits stay in the separate
+audit worktree, not this main change.
+
 ## Discovery And Decision Status Follow-Up, 2026-11-02
 
 After Steffen pushes the integrated source, verify only this new repair to the

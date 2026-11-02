@@ -79,53 +79,17 @@ fn claim_egui_capture(request_id: u64) -> bool {
     true
 }
 
+#[cfg(test)]
+pub(crate) fn capture_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|error| error.into_inner())
+}
+
 pub fn take_capture_events() -> Vec<AgentHelpCaptureEvent> {
     CAPTURE_EVENTS
         .lock()
         .map(|mut events| events.drain(..).collect())
         .unwrap_or_default()
-}
-
-/// Collect screenshot replies for requests issued from this egui viewport.
-pub fn collect_egui_capture_events(ctx: &egui::Context) {
-    collect_egui_capture_events_for(ctx, ctx.viewport_id());
-}
-
-/// Collect screenshot replies for a specific registered egui viewport.
-pub fn collect_egui_capture_events_for(ctx: &egui::Context, viewport_id: egui::ViewportId) {
-    let captures = ctx.input_for(viewport_id, |input| {
-        input
-            .events
-            .iter()
-            .filter_map(|event| {
-                let egui::Event::Screenshot {
-                    user_data, image, ..
-                } = event
-                else {
-                    return None;
-                };
-                let token = user_data
-                    .data
-                    .as_ref()?
-                    .downcast_ref::<EguiCaptureToken>()?;
-                if !claim_egui_capture(token.request_id) {
-                    return None;
-                }
-                Some((token.clone(), image.as_ref().clone()))
-            })
-            .collect::<Vec<_>>()
-    });
-    if !captures.is_empty() {
-        ctx.request_repaint_of(viewport_id);
-    }
-    for (token, image) in captures {
-        push_capture_event(AgentHelpCaptureEvent::Captured(AgentHelpCapturedImage {
-            request_id: token.request_id,
-            window_title: token.window_title,
-            backend: "egui.viewport".to_string(),
-            image,
-        }));
-    }
 }
 
 pub fn request_egui_viewport_capture(ctx: &egui::Context, window_title: impl Into<String>) -> u64 {
@@ -143,9 +107,22 @@ pub fn request_egui_viewport_capture_for(
         window_title: window_title.into(),
     };
     let request_id = token.request_id;
+    let capture_ctx = ctx.clone();
     ctx.send_viewport_cmd_to(
         viewport_id,
-        egui::ViewportCommand::Screenshot(egui::UserData::new(token)),
+        egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |image| {
+            if claim_egui_capture(token.request_id) {
+                push_capture_event(AgentHelpCaptureEvent::Captured(AgentHelpCapturedImage {
+                    request_id: token.request_id,
+                    window_title: token.window_title,
+                    backend: "egui.viewport".to_string(),
+                    image: image.as_ref().clone(),
+                }));
+                // The callback may arrive while the assistant or source viewport is idle.
+                capture_ctx.request_repaint_of(viewport_id);
+                capture_ctx.request_repaint_of(egui::ViewportId::ROOT);
+            }
+        })),
     );
     ctx.request_repaint_of(viewport_id);
     request_id
@@ -158,7 +135,6 @@ pub fn render_agent_help_button(
     window_title: impl Into<String>,
     semantic_window_id: &'static str,
 ) {
-    collect_egui_capture_events(ui.ctx());
     let window_title = window_title.into();
     let response = ui
         .button(crate::i18n::tr("agent.help_button"))
@@ -393,29 +369,52 @@ pub fn open_macos_screen_recording_settings() -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn screenshot_callbacks(
+        output: &egui::FullOutput,
+        viewport: egui::ViewportId,
+    ) -> Vec<egui::ScreenshotCallback> {
+        output
+            .viewport_output
+            .get(&viewport)
+            .into_iter()
+            .flat_map(|viewport| &viewport.commands)
+            .filter_map(|command| match command {
+                egui::ViewportCommand::Screenshot(callback) => Some(callback.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn egui_capture_event_keeps_explicit_window_identity() {
+        let _guard = capture_test_guard();
+        let _ = take_capture_events();
         let ctx = egui::Context::default();
         let _ = ctx.begin_pass(egui::RawInput::default());
-        request_egui_viewport_capture(&ctx, "Splicing Expert");
+        let request_id = request_egui_viewport_capture(&ctx, "Splicing Expert");
         let output = crate::egui_compat::end_test_pass(&ctx);
-        assert!(output.viewport_output.values().any(|viewport| {
-            viewport.commands.iter().any(|command| {
-                let egui::ViewportCommand::Screenshot(user_data) = command else {
-                    return false;
-                };
-                user_data
-                    .data
-                    .as_ref()
-                    .and_then(|data| data.downcast_ref::<EguiCaptureToken>())
-                    .map(|token| token.window_title == "Splicing Expert")
-                    .unwrap_or(false)
-            })
-        }));
+        let callbacks = screenshot_callbacks(&output, egui::ViewportId::ROOT);
+        assert_eq!(callbacks.len(), 1);
+        callbacks[0]
+            .clone()
+            .complete(std::sync::Arc::new(egui::ColorImage::filled(
+                [2, 2],
+                egui::Color32::WHITE,
+            )));
+        let events = take_capture_events();
+        assert_eq!(events.len(), 1);
+        let AgentHelpCaptureEvent::Captured(capture) = &events[0] else {
+            panic!("expected capture")
+        };
+        assert_eq!(capture.request_id, request_id);
+        assert_eq!(capture.window_title, "Splicing Expert");
+        assert_eq!(capture.backend, "egui.viewport");
     }
 
     #[test]
     fn egui_capture_command_targets_selected_viewport_once() {
+        let _guard = capture_test_guard();
+        let _ = take_capture_events();
         let ctx = egui::Context::default();
         let target = egui::ViewportId::from_hash_of("selected-content-window");
         let mut input = egui::RawInput {
@@ -427,48 +426,38 @@ mod tests {
         let request_id = request_egui_viewport_capture_for(&ctx, target, "Sequence map");
         let output = crate::egui_compat::end_test_pass(&ctx);
 
-        let screenshot_tokens = output
-            .viewport_output
-            .get(&target)
-            .into_iter()
-            .flat_map(|viewport| &viewport.commands)
-            .filter_map(|command| {
-                let egui::ViewportCommand::Screenshot(user_data) = command else {
-                    return None;
-                };
-                user_data
-                    .data
-                    .as_ref()
-                    .and_then(|data| data.downcast_ref::<EguiCaptureToken>())
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(screenshot_tokens.len(), 1);
-        assert_eq!(screenshot_tokens[0].request_id, request_id);
-        assert_eq!(screenshot_tokens[0].window_title, "Sequence map");
+        let callbacks = screenshot_callbacks(&output, target);
+        assert_eq!(callbacks.len(), 1);
+        assert!(screenshot_callbacks(&output, egui::ViewportId::ROOT).is_empty());
+        callbacks[0]
+            .clone()
+            .complete(std::sync::Arc::new(egui::ColorImage::filled(
+                [2, 2],
+                egui::Color32::WHITE,
+            )));
+        let events = take_capture_events();
+        assert_eq!(events.len(), 1);
+        let AgentHelpCaptureEvent::Captured(capture) = &events[0] else {
+            panic!("expected capture")
+        };
+        assert_eq!(capture.request_id, request_id);
+        assert_eq!(capture.window_title, "Sequence map");
     }
 
     #[test]
     fn egui_capture_reply_is_collected_only_once_per_request() {
+        let _guard = capture_test_guard();
         let _ = take_capture_events();
         let ctx = egui::Context::default();
-        let request_id = next_request_id();
-        let event = egui::Event::Screenshot {
-            viewport_id: egui::ViewportId::ROOT,
-            user_data: egui::UserData::new(EguiCaptureToken {
-                request_id,
-                window_title: "Promoter design".to_string(),
-            }),
-            image: std::sync::Arc::new(egui::ColorImage::filled([2, 2], egui::Color32::WHITE)),
-        };
-        let _ = ctx.begin_pass(egui::RawInput {
-            events: vec![event],
-            ..egui::RawInput::default()
-        });
-
-        collect_egui_capture_events(&ctx);
-        collect_egui_capture_events(&ctx);
+        let _ = ctx.begin_pass(egui::RawInput::default());
+        let request_id = request_egui_viewport_capture(&ctx, "Promoter design");
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        let callbacks = screenshot_callbacks(&output, egui::ViewportId::ROOT);
+        assert_eq!(callbacks.len(), 1);
+        let image = std::sync::Arc::new(egui::ColorImage::filled([2, 2], egui::Color32::WHITE));
+        callbacks[0].clone().complete(image.clone());
+        callbacks[0].clone().complete(image);
         let events = take_capture_events();
-        crate::egui_compat::discard_test_pass_output(&ctx);
 
         assert_eq!(events.len(), 1);
         let AgentHelpCaptureEvent::Captured(capture) = &events[0] else {

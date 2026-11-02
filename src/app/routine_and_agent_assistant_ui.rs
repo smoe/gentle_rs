@@ -1331,8 +1331,7 @@ impl GENtleApp {
 
     pub(super) fn poll_agent_help_capture_events(&mut self, ctx: &egui::Context) {
         self.validate_agent_screenshot_state();
-        if let Some(capture) = &self.agent_screenshot_capture {
-            crate::agent_help::collect_egui_capture_events_for(ctx, capture.capture_viewport_id);
+        if self.agent_screenshot_capture.is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
         self.validate_agent_screenshot_state();

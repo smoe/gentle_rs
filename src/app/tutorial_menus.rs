@@ -106,13 +106,22 @@ pub(super) fn scroll<R>(
             input.stable_dt,
         )
     });
-    let mut output = egui::ScrollArea::vertical()
+    let edge_scroll_id = ui
+        .make_persistent_id("tutorial_menu_scroll")
+        .with("edge_scroll");
+    let pending_offset = ui
+        .ctx()
+        .data_mut(|data| data.remove_temp::<f32>(edge_scroll_id));
+    let mut area = egui::ScrollArea::vertical()
         .id_salt("tutorial_menu_scroll")
         .max_width(width)
         .max_height(height)
         .min_scrolled_height(1.0)
-        .auto_shrink([true, true])
-        .show(ui, contents);
+        .auto_shrink([true, true]);
+    if !busy && let Some(offset) = pending_offset {
+        area = area.vertical_scroll_offset(offset);
+    }
+    let output = area.show(ui, contents);
 
     if !busy
         && output.state.velocity().y == 0.0
@@ -121,10 +130,12 @@ pub(super) fn scroll<R>(
     {
         let rect = output.inner_rect.intersect(ui.clip_rect());
         let maximum = (output.content_size.y - output.inner_rect.height()).max(0.0);
-        let offset = edge_scroll_offset(output.state.offset.y, maximum, rect, pointer, dt);
-        if offset != output.state.offset.y {
-            output.state.offset.y = offset;
-            output.state.store(ui.ctx(), output.id);
+        let offset =
+            edge_scroll_offset(output.state.clamped_offset().y, maximum, rect, pointer, dt);
+        if offset != output.state.clamped_offset().y {
+            // Apply through ScrollArea's public API on the next painted frame.
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(edge_scroll_id, offset));
             ui.ctx().request_repaint();
         }
     }
@@ -331,7 +342,7 @@ mod tests {
         for _ in 0..900 {
             rendered = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(bottom)]);
             let maximum = rendered.area.content_size.y - rendered.area.inner_rect.height();
-            if rendered.area.state.offset.y >= maximum {
+            if rendered.area.state.clamped_offset().y >= maximum {
                 break;
             }
         }
@@ -359,10 +370,55 @@ mod tests {
             );
         }
         assert_eq!(rendered.selected, Some(39));
-        let offset = rendered.area.state.offset.y;
+        let offset = rendered.area.state.clamped_offset().y;
         let top = rendered.area.inner_rect.center_top() + egui::vec2(0.0, 2.0);
-        rendered = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(top)]);
-        assert!(rendered.area.state.offset.y < offset);
+        frame(&ctx, &mut time, vec![egui::Event::PointerMoved(top)]);
+        rendered = frame(&ctx, &mut time, vec![]);
+        assert!(rendered.area.state.clamped_offset().y < offset);
+    }
+
+    #[test]
+    fn tutorial_menu_pending_edge_scroll_yields_to_new_wheel_or_drag_input() {
+        for wheel in [false, true] {
+            let ctx = egui::Context::default();
+            let mut time = 0.0;
+            frame(&ctx, &mut time, vec![]);
+            let initial = frame(&ctx, &mut time, vec![]);
+            let bottom = initial.area.inner_rect.center_bottom() - egui::vec2(0.0, 2.0);
+            let hover = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(bottom)]);
+            let pending_id = hover.area.id.with("edge_scroll");
+            assert!(ctx.data(|data| data.get_temp::<f32>(pending_id)).is_some());
+            let center = hover.area.inner_rect.center();
+            let input = if wheel {
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -90.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: Default::default(),
+                }
+            } else {
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                }
+            };
+            let rendered = frame(
+                &ctx,
+                &mut time,
+                vec![egui::Event::PointerMoved(center), input],
+            );
+            assert!(ctx.data(|data| data.get_temp::<f32>(pending_id)).is_none());
+            if wheel {
+                assert!(rendered.area.state.clamped_offset().y > 0.0);
+            } else {
+                assert_eq!(
+                    rendered.area.state.clamped_offset(),
+                    hover.area.state.clamped_offset()
+                );
+            }
+        }
     }
 
     #[test]
@@ -385,7 +441,7 @@ mod tests {
                 },
             ],
         );
-        assert!(rendered.area.state.offset.y > 0.0);
+        assert!(rendered.area.state.clamped_offset().y > 0.0);
         // The same wheel input at the upper edge must not be counteracted by
         // hover scrolling after egui consumes its input delta.
         let edge_ctx = egui::Context::default();
@@ -405,11 +461,11 @@ mod tests {
                 },
             ],
         );
-        assert_eq!(edge.area.state.offset.y, rendered.area.state.offset.y);
+        assert_eq!(edge.area.state.clamped_offset().y, rendered.area.state.clamped_offset().y);
         for _ in 0..90 {
             rendered = frame(&ctx, &mut time, vec![]);
         }
-        let offset = rendered.area.state.offset.y;
+        let offset = rendered.area.state.clamped_offset().y;
         let bottom = rendered.area.inner_rect.center_bottom() - egui::vec2(0.0, 2.0);
         rendered = frame(
             &ctx,
@@ -424,6 +480,6 @@ mod tests {
                 },
             ],
         );
-        assert_eq!(rendered.area.state.offset.y, offset);
+        assert_eq!(rendered.area.state.clamped_offset().y, offset);
     }
 }

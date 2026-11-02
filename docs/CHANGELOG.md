@@ -1,5 +1,37 @@
 # GENtle Changelog
 
+## 2026-11-02 - Align Desktop Adapters With The Owner's egui 0.37 Update
+
+- Align both vendored CommonMark manifests with egui/egui_extras/eframe 0.37,
+  retaining upstream `.orig` metadata. Refresh only those patched packages'
+  dependency resolution, removing the obsolete 0.36 family. Preserve the owner's
+  other manifest/lock updates and existing Bio/itertools selection.
+- Replace removed screenshot events/UserData with viewport-bound, one-shot
+  callbacks. Keep request/window identity, replay suppression, consent, local
+  preview and explicit transport approval; callback completion repaints both
+  source and root. Native macOS capture and the disabled CLI bridge are unchanged.
+- Read clamped scroll offsets through the public API. Schedule tutorial edge
+  hover through the next frame's public ScrollArea builder, yielding to new
+  wheel/drag input. Update callback/consent tests and add pending-scroll guards;
+  leave unrelated Id deprecations and stable GUI identities unchanged.
+- Add four fast dependency/API guards to release-safety CI. These are source/
+  manifest checks, not Rust/native acceptance. Cargo resolver and locked,
+  offline no-deps metadata inspection ran; no local Rust build/check/test,
+  screenshot, Claude call, push or dispatch was performed.
+
+## 2026-11-02 - Port The Verified SAM Glossary Fixture Repair To Main
+
+- Port `3e1b7bda`'s test source without merging the separate audit branch.
+  Supply the full SAM result-binding fixture and retain three-route quoted-path,
+  missing-field, unknown-field and non-JSON refusals. Runtime parsing is unchanged.
+- The resulting test-file blob is exactly `f9830fcf57aa578efd2ded8bc6104323b9c241c1`,
+  already exercised at `43670b25` in run `41375688160`: glossary 12/12 on both
+  macOS and Windows. This addresses Glen's `7f73a42a` report; the old run stays red.
+  New owner dependency updates and egui changes are not accepted by that result.
+- Preserve the separate result: macOS root 4818/0/17, Windows root 4754/2/17;
+  the two Windows directory-replacement fixture failures are not glossary
+  cascades. Their in-progress audit-worktree edits are not included here.
+
 ## 2026-11-02 - Canonicalize Discovery Identities And Decision Status
 
 - Remove four older introspection glossary entries, including the contradictory

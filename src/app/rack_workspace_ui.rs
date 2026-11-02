@@ -3246,7 +3246,7 @@ impl GENtleApp {
             (rack_scroll_output.content_size.x - rack_scroll_output.inner_rect.width()).max(0.0);
         let max_scroll_y =
             (rack_scroll_output.content_size.y - rack_scroll_output.inner_rect.height()).max(0.0);
-        let mut next_rack_scroll_offset = rack_scroll_output.state.offset;
+        let mut next_rack_scroll_offset = rack_scroll_output.state.clamped_offset();
         next_rack_scroll_offset.x = next_rack_scroll_offset.x.clamp(0.0, max_scroll_x);
         next_rack_scroll_offset.y = next_rack_scroll_offset.y.clamp(0.0, max_scroll_y);
         if self.rack_view_drag_state.is_some()
