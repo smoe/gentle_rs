@@ -9,9 +9,17 @@ Align the two patched manifests/lock graph; use screenshot callbacks and public
 scroll APIs. Preserve the owner's other dependency choices, capture approval,
 exact viewport identity, one-shot completion, preview-before-transport and the
 disabled CLI capture bridge. No actual screenshot, model call or local Rust
-execution occurred; four offline API/manifest guards and source-matched Rust
+execution occurred; six offline API/manifest guards and source-matched Rust
 regressions are authoring evidence only. Id deprecation warnings are not an
 excuse to replace stable window identities with positional or transient IDs.
+
+The owner's test build after `1e46525c` exposed seven further compiler errors,
+not just warnings: four wheel events lacked `source`, and three test Areas used
+removed string-to-Id conversions. Use `MouseWheelSource::Unknown` for synthetic
+events and explicit named `Id::unique` for those Areas. The two feature-gated
+promoter events and GUI benchmark have the same wheel repair. Two source guards
+failed before these edits and pass afterward; that is not a Rust compile verdict.
+Existing deprecation/dead-field warnings remain separate from these hard errors.
 
 Glen's `7f73a42a` glossary failure is fixed by the port of `3e1b7bda`.
 `src/engine_shell/tests.rs` matches the already tested blob
@@ -29,11 +37,17 @@ the actual published source/lock. Run only the changed scopes before ordinary CI
 cargo check -q --locked --tests
 cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
 cargo check -q --locked --all-features --tests
+cargo check -q --locked -p gentle-benchmarks --bench gui_operations
 cargo test --locked --lib engine_shell::tests::glossary_ -- --test-threads=1
 cargo test --locked --lib egui_capture_ -- --test-threads=1
 cargo test --locked --lib agent_screenshot -- --test-threads=1
 cargo test --locked --lib tutorial_menu_ -- --test-threads=1
 cargo test --locked --lib help_docs -- --test-threads=1
+cargo test --locked --lib pcr_designer_specialist_polls_and_applies_completed_worker -- --test-threads=1
+cargo test --locked --lib splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region -- --test-threads=1
+cargo test --locked --lib rna_read_support_and_preview_tables_reserve_practical_minimum_heights -- --test-threads=1
+cargo test --locked --lib --features gui-test-support promoter_pair_button_is_reachable_without_horizontal_scrolling -- --test-threads=1
+cargo test --locked --lib --features gui-test-support promoter_action_rows_are_readable_without_horizontal_scrolling -- --test-threads=1
 python3 -m unittest scripts.test_egui_compatibility -v
 ```
 
@@ -51,12 +65,28 @@ audit worktree, not this main change.
 
 ## Discovery And Decision Status Follow-Up, 2026-11-02
 
-After Steffen pushes the integrated source, verify only this new repair to the
-older `b6863907` findings. Its separate zero-diff scan did not invalidate those
-findings. Preserve your historical 116/116 protocol and other scoped results
-at their actual SHA; they do not execute this registry change. Do not repeat
-completed gel/RNA/Slice 6 process campaigns. Native GUI/Windows Slice 6 checks
-remain separate and open.
+Glen's [retained report](GENtle_discovery_verification_7f73a42a.md) confirms the
+scoped discovery/decision repair at `7f73a42ab97d0aa3c11c37182da9e7b7c4b60c6a`:
+canonicalization 4/4, capability parity 23/23, matrix freshness 1/1,
+`parity-matrix-check` OK and metadata/status 3/3. The 952 capability rows and
+164 gap keys are unique; 72/72 decisions are classified (70 active, 2 deferred).
+Platform: Debian forky x86_64, Rust/Cargo 1.97.1, locked dev/test, headless root
+gates. Preserve this positive verdict at that source/lock; it does not accept the
+later egui update. Do not repeat this completed campaign unless its contracts
+change. Native GUI/Windows Slice 6 checks remain separate and open.
+
+The broader `glossary_` gate failed separately (12 passed, 1 failed; isolated
+rerun 0/1) because the SAM inspector fixture supplied an untyped binding.
+Glen's later scan locates its introduction in `afdbf8e4`; parent-byte equality
+alone was too narrow to establish that provenance. The supplied report is
+retained unchanged; this addendum records his clarification. The fixture repair
+and its newer-source verification boundary are described above. CI at `7f73a42a`
+remains failed, not retroactively green.
+
+Supplied report SHA-256:
+`8bf11a37d5ce7fe0b14d33dd6c5e3d57b254e9e2341d7b4d7e038f76bda7c307`.
+Its trailing blank line is intentionally retained with the original bytes;
+the corresponding whitespace-check warning is not a source-code defect.
 
 The four redundant/conflicting introspection entries are removed. Readiness
 retains an optional capability and `--arg`, `--seq-id`, `--readiness`,
@@ -66,8 +96,9 @@ signatures survive in labelled usage and `x-gentle-usage-by-interface`;
 same-interface usage/operation conflicts fail deterministically. No parser,
 execution route or approval policy is changed.
 
-The committed matrix was migrated by removing byte-identical duplicate rows
-and deriving totals from unique rows, without running its Rust generator.
+Codex migrated the committed matrix by removing byte-identical duplicate rows
+and deriving totals from unique rows; Glen subsequently verified its canonical
+Rust generator and freshness at the reported SHA.
 There are 164 distinct gap keys: MCP 42, JS 61, Lua 61. Lower counts do not
 close adapter gaps. All 72 decisions now have explicit status: 70 active and
 two deferred, with no new scientific approval or minimum Rust version.
@@ -82,9 +113,8 @@ manual and documentation freshness, scoped rustfmt and whitespace pass;
 warnings, no failures. These checks do not execute the registry or generator.
 Unrelated `paper`, private data, `output/` and untracked prompts are untouched.
 
-Use an explicit run-owned `CARGO_TARGET_DIR` outside any shared build/cache
-tree; inspect inherited settings before starting. Never clean a shared target.
-Run with the integrated lockfile and require nonzero test counts:
+Glen executed the following commands with an isolated, run-owned target. These
+are retained reproduction commands, not an outstanding rerun request:
 
 ```sh
 cargo test --locked --offline -p gentle-protocol --lib glossary_canonicalization_tests -- --test-threads=1
@@ -93,15 +123,12 @@ cargo test --locked --offline --no-default-features -j1 --lib glossary_ -- --tes
 cargo run --locked --offline --no-default-features --bin gentle_examples_docs -- parity-matrix-check
 ```
 
-Retain the existing canonical freshness check, rather than accepting the
-mechanical projection solely from the offline row/count checks. Confirm one
-descriptor/gap key per identity, exact unique summary totals, canonical optional
-readiness parsing and preserved JS/Lua signatures; exercise synthetic
-same-interface conflict refusals. Normal CI remains the platform gate.
-Return actual SHA/tree, lockfile and binary hashes, toolchain/platform/features,
-commands, nonzero counts, failures/skips and retained evidence locations.
-Codex ran no local Rust/generator/binary checks and made no push or dispatch;
-the previous goal remains paused.
+The report retains the actual source/tree, lockfile and binary hashes, commands,
+counts and limits. Optional readiness, per-interface JS/Lua usages and
+deterministic same-interface conflict refusals executed; neither remaining
+adapter gaps nor native/platform/release acceptance is thereby closed.
+Normal CI remains the platform gate. Codex did not rerun Glen's Rust checks,
+push or dispatch; this evidence update does not resume the cleared goal.
 
 ## Headless Parity Test Gate, 2026-11-01
 

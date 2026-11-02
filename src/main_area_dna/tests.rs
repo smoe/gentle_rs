@@ -5330,7 +5330,7 @@ fn pcr_designer_specialist_polls_and_applies_completed_worker() {
 
     let ctx = egui::Context::default();
     ctx.begin_pass(egui::RawInput::default());
-    egui::Area::new("pcr_designer_worker_poll".into()).show(&ctx, |ui| {
+    egui::Area::new(egui::Id::unique("pcr_designer_worker_poll")).show(&ctx, |ui| {
         ui.set_width(1000.0);
         area.render_pcr_designer_specialist(ui, &ctx);
     });
@@ -9559,7 +9559,7 @@ fn splicing_locus_interactive_inspector_renders_score_sequence_and_saved_region(
 
     let ctx = egui::Context::default();
     ctx.begin_pass(egui::RawInput::default());
-    egui::Area::new("locus_inspector_test".into()).show(&ctx, |ui| {
+    egui::Area::new(egui::Id::unique("locus_inspector_test")).show(&ctx, |ui| {
         ui.set_width(800.0);
         area.render_splicing_locus_interactive_inspector(ui, &report);
     });
@@ -11693,6 +11693,7 @@ fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
                 egui::Event::PointerMoved(pointer),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     delta: egui::vec2(0.0, -120.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: egui::Modifiers::default(),
@@ -11842,6 +11843,7 @@ fn promoter_action_rows_are_readable_without_horizontal_scrolling() {
                     egui::Event::PointerMoved(pointer),
                     egui::Event::MouseWheel {
                         unit: egui::MouseWheelUnit::Point,
+                        source: egui::MouseWheelSource::Unknown,
                         delta: egui::vec2(0.0, -120.0),
                         phase: egui::TouchPhase::Move,
                         modifiers: egui::Modifiers::default(),
@@ -14856,7 +14858,7 @@ fn rna_read_alignment_selection_summary_explains_all_vs_seed_passed_counts() {
 fn rna_read_support_and_preview_tables_reserve_practical_minimum_heights() {
     let ctx = egui::Context::default();
     ctx.begin_pass(egui::RawInput::default());
-    egui::Area::new("rna_read_table_height_probe".into()).show(&ctx, |ui| {
+    egui::Area::new(egui::Id::unique("rna_read_table_height_probe")).show(&ctx, |ui| {
         let support_height = MainAreaDna::default_rna_read_support_table_height(ui);
         let preview_height = MainAreaDna::default_rna_read_preview_table_height_for_rows(ui, 12);
 

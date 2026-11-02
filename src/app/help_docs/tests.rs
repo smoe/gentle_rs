@@ -414,6 +414,7 @@ fn gui_manual_pages_real_help_wheel_moves_content_without_rendering_other_sectio
         if index == 0 {
             events.push(egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Unknown,
                 delta: egui::vec2(0.0, -350.0),
                 modifiers: egui::Modifiers::NONE,
                 phase: egui::TouchPhase::Move,

@@ -303,6 +303,7 @@ fn wheel_input(window: &WindowDna, size: ScreenSize, delta_x: f32) -> egui::RawI
         ),
         egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
+            source: egui::MouseWheelSource::Unknown,
             delta: egui::vec2(delta_x, 0.0),
             phase: egui::TouchPhase::Move,
             modifiers: egui::Modifiers::NONE,

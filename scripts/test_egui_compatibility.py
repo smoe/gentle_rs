@@ -83,6 +83,27 @@ class EguiCompatibilityTests(unittest.TestCase):
                       "fn tutorial_menu_pending_edge_scroll_yields_to_new_wheel_or_drag_input()"):
             self.assertIn(token, menu)
 
+    def test_synthetic_wheel_events_declare_their_source(self):
+        for path in ("src/app/help_docs/tests.rs", "src/app/tutorial_menus.rs",
+                     "src/main_area_dna/tests.rs",
+                     "crates/gentle-benchmarks/benches/gui_operations.rs"):
+            source = (ROOT / path).read_text()
+            events = re.findall(r"egui::Event::MouseWheel\s*\{(.*?)\n\s*\}", source, re.S)
+            self.assertTrue(events, path)
+            for index, event in enumerate(events):
+                with self.subTest(path=path, event=index):
+                    self.assertIn("source: egui::MouseWheelSource::Unknown", event)
+
+    def test_test_windows_keep_named_explicit_ids(self):
+        source = (ROOT / "src/main_area_dna/tests.rs").read_text()
+        for name in ("pcr_designer_worker_poll", "locus_inspector_test",
+                     "rna_read_table_height_probe"):
+            with self.subTest(name=name):
+                self.assertTrue(f'egui::Area::new(egui::Id::unique("{name}"))' in source,
+                                f"{name} needs an explicit stable ID")
+        implicit = re.search(r'egui::Area::new\(\s*"[^"\n]+"\.into\(\)', source)
+        self.assertIsNone(implicit, "test windows must not use removed string-to-ID conversion")
+
 
 if __name__ == "__main__":
     unittest.main()

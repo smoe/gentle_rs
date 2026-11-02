@@ -392,6 +392,7 @@ mod tests {
             let input = if wheel {
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     delta: egui::vec2(0.0, -90.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: Default::default(),
@@ -435,6 +436,7 @@ mod tests {
                 egui::Event::PointerMoved(center),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     delta: egui::vec2(0.0, -90.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: Default::default(),
@@ -455,6 +457,7 @@ mod tests {
                 egui::Event::PointerMoved(edge.area.inner_rect.center_top() + egui::vec2(0.0, 2.0)),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Unknown,
                     delta: egui::vec2(0.0, -90.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: Default::default(),

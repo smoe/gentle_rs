@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-11-02 - Retain Glen's Scoped Discovery Verification
+
+- Preserve the supplied `GENtle_discovery_verification_7f73a42a.md` unchanged:
+  canonicalization 4/4, capability parity 23/23, freshness 1/1, canonical matrix
+  generator OK and metadata/status 3/3 on Debian/Rust 1.97.1 at `7f73a42a`.
+- Record 952 unique capability rows, 164 unique gap keys and 72 classified
+  decisions. Remove the completed campaign from outstanding handoff requests.
+  Retain the separate failing glossary gate and CI verdict; Glen's later
+  clarification attributes the fixture's introduction to `afdbf8e4`, not the
+  registry repair. Its fix already exists in `1e46525c`.
+- Later egui source/lock, native/platform and release acceptance remain open.
+  No Codex Rust rerun, push or dispatch; unrelated local files are excluded.
+
+## 2026-11-02 - Complete egui 0.37 Synthetic Test Inputs
+
+- Repair the owner's seven reported test-target compiler errors: add the
+  explicit unknown wheel source in Help/tutorial events and replace three
+  removed string-to-Id conversions with named `Id::unique` values.
+- Apply the same event-field repair to both feature-gated promoter GUI tests
+  and the GUI benchmark, preventing the same error in all-features/bench checks.
+  Production behavior, stable names and deprecation warnings are unchanged.
+- Add two offline compatibility guards, demonstrated failing before repair and
+  passing afterward. Update Glen's scoped checklist; no local Rust build/check/
+  test, capture, dependency update, push or dispatch occurred.
+
 ## 2026-11-02 - Align Desktop Adapters With The Owner's egui 0.37 Update
 
 - Align both vendored CommonMark manifests with egui/egui_extras/eframe 0.37,
