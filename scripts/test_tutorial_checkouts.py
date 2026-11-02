@@ -72,6 +72,16 @@ class DocumentationStatusTests(unittest.TestCase):
     def test_current_documentation_status_and_links(self):
         self.assertEqual(doc_status.check(), [])
 
+    def test_every_decision_section_has_one_explicit_status(self):
+        text = (checker.ROOT / "docs/decisions.md").read_text()
+        sections = re.split(r"^## ", text, flags=re.M)[1:]
+        self.assertTrue(sections)
+        for section in sections:
+            title = section.splitlines()[0]
+            statuses = re.findall(r"^Status: (.+)$", section, re.M)
+            self.assertEqual(len(statuses), 1, title)
+            self.assertRegex(statuses[0], r"^(active|deferred|superseded)\b", title)
+
     def test_gui_manual_has_a_menu_first_entry_and_task_index(self):
         text = (checker.ROOT / "docs/gui.md").read_text(encoding="utf-8")
         intro = text.split("## Detailed Reference", 1)[0]

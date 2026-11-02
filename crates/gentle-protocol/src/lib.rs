@@ -5690,7 +5690,7 @@ struct GlossaryRegistry {
     commands: Vec<GlossaryRegistryCommand>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GlossaryRegistryCommand {
     path: String,
     summary: String,
@@ -6816,18 +6816,211 @@ fn build_capability_registry() -> Vec<CapabilityDescriptor> {
     let glossary: GlossaryRegistry =
         serde_json::from_str(include_str!("../../../docs/glossary.json"))
             .expect("docs/glossary.json must parse for capability registry");
-    let interfaces_by_path = glossary_interfaces_by_path(&glossary.commands);
-    let mut descriptors = vec![];
-    for command in &glossary.commands {
-        descriptors.push(glossary_command_descriptor(command, &interfaces_by_path));
-    }
+    let mut descriptors = canonical_glossary_descriptors(&glossary.commands)
+        .expect("glossary signatures must agree within each interface");
     for op_name in PUBLIC_ENGINE_OPERATION_NAMES {
         descriptors.push(engine_operation_descriptor(op_name, &glossary.commands));
     }
     for (name, title, description, mutating) in MCP_TOOL_NAMES {
         descriptors.push(mcp_tool_descriptor(name, title, description, *mutating));
     }
+    let mut keys = BTreeSet::new();
+    for descriptor in &descriptors {
+        assert!(
+            keys.insert((descriptor.source, descriptor.name.clone())),
+            "duplicate capability registry key {:?}/{}",
+            descriptor.source,
+            descriptor.name
+        );
+    }
     descriptors
+}
+
+fn canonical_glossary_descriptors(
+    commands: &[GlossaryRegistryCommand],
+) -> Result<Vec<CapabilityDescriptor>, String> {
+    let interfaces_by_path = glossary_interfaces_by_path(commands);
+    let mut groups = BTreeMap::<&str, Vec<&GlossaryRegistryCommand>>::new();
+    let mut order = Vec::new();
+    for command in commands {
+        let group = groups.entry(&command.path).or_default();
+        if group.is_empty() {
+            order.push(command.path.as_str());
+        }
+        group.push(command);
+    }
+    let mut descriptors = Vec::new();
+    for path in order {
+        let rows = &groups[path];
+        if rows.len() > 1 && rows.iter().any(|row| row.interfaces.is_empty()) {
+            return Err(format!("glossary_signature_without_interface: {path}"));
+        }
+        let mut signatures = BTreeMap::<String, BTreeSet<(String, Vec<String>)>>::new();
+        for row in rows {
+            let mut operations = row.engine_operations.clone();
+            operations.sort();
+            operations.dedup();
+            for interface in &row.interfaces {
+                signatures
+                    .entry(interface.clone())
+                    .or_default()
+                    .insert((row.usage.clone(), operations.clone()));
+            }
+        }
+        for (interface, variants) in &signatures {
+            if variants.len() > 1 {
+                return Err(format!(
+                    "glossary_signature_conflict: {path} on {interface}: {variants:?}"
+                ));
+            }
+        }
+        // Retain catalog ordering/primary prose, but merge all routing metadata.
+        let mut command = (*rows[0]).clone();
+        command.interfaces = interfaces_by_path[path].iter().cloned().collect();
+        command.aliases = rows
+            .iter()
+            .flat_map(|row| &row.aliases)
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        command.engine_operations = rows
+            .iter()
+            .flat_map(|row| &row.engine_operations)
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let mut descriptor = glossary_command_descriptor(&command, &interfaces_by_path);
+        let usages = rows
+            .iter()
+            .map(|row| row.usage.clone())
+            .collect::<BTreeSet<_>>();
+        if usages.len() > 1 {
+            let by_interface = signatures
+                .into_iter()
+                .map(|(interface, variants)| (interface, variants.into_iter().next().unwrap().0))
+                .collect::<BTreeMap<_, _>>();
+            descriptor.usage = Some(
+                by_interface
+                    .iter()
+                    .map(|(interface, usage)| format!("{interface}: {usage}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+            descriptor.input_schema["properties"]["usage"] = json!({"enum": usages});
+            descriptor.input_schema["x-gentle-usage-by-interface"] = json!(by_interface);
+        }
+        descriptors.push(descriptor);
+    }
+    Ok(descriptors)
+}
+
+#[cfg(test)]
+mod glossary_canonicalization_tests {
+    use super::*;
+
+    // Inline synthetic catalog rows, not executable commands or scientific fixtures.
+    fn row(usage: &str, interfaces: &[&str]) -> GlossaryRegistryCommand {
+        serde_json::from_value(
+            json!({"path":"synthetic_call", "summary":"Synthetic contract",
+            "usage":usage, "interfaces":interfaces, "engine_operations":[], "aliases":[]}),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn glossary_registry_committed_catalog_has_unique_keys_and_canonical_readiness() {
+        let registry = capability_registry();
+        let keys = registry
+            .iter()
+            .map(|row| (row.source, &row.name))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(keys.len(), registry.len());
+        let readiness =
+            capability_descriptor(CapabilitySource::GlossaryCommand, "introspect readiness")
+                .unwrap();
+        let usage = readiness.usage.as_deref().unwrap();
+        assert!(usage.starts_with("introspect readiness [CAPABILITY_ID]"));
+        for flag in [
+            "--arg",
+            "--seq-id",
+            "--readiness",
+            "--ui-host",
+            "--evidence",
+        ] {
+            assert!(usage.contains(flag), "missing {flag}");
+        }
+        let scripting =
+            capability_descriptor(CapabilitySource::GlossaryCommand, "ask_agent_system").unwrap();
+        let variants = &scripting.input_schema["x-gentle-usage-by-interface"];
+        assert_ne!(variants["js"], variants["lua"]);
+        assert!(variants["js"].as_str().unwrap().contains("[options]"));
+        assert!(variants["lua"].as_str().unwrap().contains("[catalog_path]"));
+    }
+
+    #[test]
+    fn glossary_registry_merges_interfaces_and_preserves_distinct_adapter_signatures() {
+        let mut js = row("synthetic_call(options)", &["js"]);
+        js.aliases.push("synthetic_js_alias".into());
+        let mut lua = row("synthetic_call(first, second)", &["lua"]);
+        lua.summary = "Secondary adapter prose".into();
+        lua.aliases.push("synthetic_lua_alias".into());
+        let descriptors = canonical_glossary_descriptors(&[js.clone(), lua.clone(), js]).unwrap();
+        assert_eq!(descriptors.len(), 1);
+        let descriptor = &descriptors[0];
+        assert_eq!(descriptor.description, "Synthetic contract");
+        assert_eq!(descriptor.interfaces, ["js", "lua"]);
+        assert_eq!(
+            descriptor.aliases,
+            ["synthetic_js_alias", "synthetic_lua_alias"]
+        );
+        assert_eq!(
+            descriptor.input_schema["x-gentle-usage-by-interface"],
+            json!({"js":"synthetic_call(options)", "lua":"synthetic_call(first, second)"})
+        );
+        assert_eq!(descriptor.js, AdapterSurfacing::Prominent);
+        assert_eq!(descriptor.lua, AdapterSurfacing::Prominent);
+        let single = canonical_glossary_descriptors(&[lua.clone(), lua]).unwrap();
+        assert_eq!(
+            single[0].usage.as_deref(),
+            Some("synthetic_call(first, second)")
+        );
+        assert_eq!(
+            single[0].input_schema["properties"]["usage"]["const"],
+            "synthetic_call(first, second)"
+        );
+    }
+
+    #[test]
+    fn glossary_registry_rejects_same_interface_conflicts_deterministically() {
+        let a = row("synthetic_call(required)", &["cli-shell"]);
+        let b = row("synthetic_call([optional])", &["cli-shell"]);
+        let forward = canonical_glossary_descriptors(&[a.clone(), b.clone()]).unwrap_err();
+        let reverse = canonical_glossary_descriptors(&[b, a]).unwrap_err();
+        assert_eq!(forward, reverse);
+        assert!(forward.starts_with("glossary_signature_conflict: synthetic_call on cli-shell:"));
+    }
+
+    #[test]
+    fn glossary_registry_rejects_same_interface_operation_disagreement() {
+        let a = row("synthetic_call()", &["js"]);
+        let mut b = a.clone();
+        b.engine_operations.push("SaveFile".into());
+        assert!(
+            canonical_glossary_descriptors(&[a, b])
+                .unwrap_err()
+                .starts_with("glossary_signature_conflict:")
+        );
+        assert!(
+            canonical_glossary_descriptors(&[
+                row("synthetic_call()", &[]),
+                row("synthetic_call()", &["js"])
+            ])
+            .unwrap_err()
+            .starts_with("glossary_signature_without_interface:")
+        );
+    }
 }
 
 fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {

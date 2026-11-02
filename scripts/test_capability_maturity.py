@@ -218,5 +218,81 @@ class CapabilityMaturityTests(unittest.TestCase):
             self.assertFalse(contract.safe_relative_path(path), path)
 
 
+class DiscoveryCatalogTests(unittest.TestCase):
+    """Committed discovery metadata invariants, not Rust registry execution."""
+
+    def test_glossary_signatures_agree_within_interfaces_and_readiness_is_canonical(self):
+        commands = json.loads((ROOT / "docs/glossary.json").read_bytes())["commands"]
+
+        def validate(rows):
+            signatures = {}
+            for row in rows:
+                signature = (row["usage"], tuple(sorted(set(row["engine_operations"]))))
+                for interface in row["interfaces"]:
+                    key = (row["path"], interface)
+                    if key in signatures and signatures[key] != signature:
+                        raise ValueError("conflicting same-interface signature")
+                    signatures[key] = signature
+            return signatures
+
+        signatures = validate(commands)
+        readiness = [row for row in commands if row["path"] == "introspect readiness"]
+        self.assertEqual(len(readiness), 1)
+        usage = readiness[0]["usage"]
+        self.assertTrue(usage.startswith("introspect readiness [CAPABILITY_ID]"))
+        for flag in ("--seq-id", "--readiness", "--ui-host", "--evidence", "--arg"):
+            self.assertIn(flag, usage)
+        self.assertIn(usage, (ROOT / "docs/cli/discovery.md").read_text())
+        self.assertNotEqual(signatures[("ask_agent_system", "js")], signatures[("ask_agent_system", "lua")])
+        changed = copy.deepcopy(readiness[0])
+        changed["usage"] = "introspect readiness REQUIRED_ID"
+        with self.assertRaises(ValueError):
+            validate(commands + [changed])
+        changed["usage"] = usage
+        changed["engine_operations"] = ["SaveFile"]
+        with self.assertRaises(ValueError):
+            validate(commands + [changed])
+
+    def test_parity_projection_has_unique_rows_gaps_and_exact_unique_totals(self):
+        matrix = (ROOT / "docs/gui_cli_mcp_parity.md").read_text()
+        sources = {"glossary-command", "engine-operation", "mcp-tool"}
+        adapters = ("GUI", "gentle_cli", "MCP", "JS", "Lua", "ClawBio")
+
+        def validate(text):
+            rows, gaps = {}, set()
+            section = ""
+            for line in text.splitlines():
+                if line.startswith("## "):
+                    section = line
+                cells = [cell.strip() for cell in line.split("|")]
+                if len(cells) >= 10 and cells[2] in sources:
+                    key = (cells[2], cells[1])
+                    self.assertNotIn(key, rows, "duplicate capability row")
+                    rows[key] = dict(zip(adapters, cells[3:9]))
+                if section == "## Open Gaps" and len(cells) >= 6 and cells[3] in sources:
+                    key = (cells[1], cells[3], cells[2])
+                    self.assertNotIn(key, gaps, "duplicate gap key")
+                    gaps.add(key)
+            expected_gaps = {(adapter, source, name) for (source, name), states in rows.items()
+                             for adapter, state in states.items() if state == "gap"}
+            self.assertEqual(gaps, expected_gaps)
+            for adapter in adapters:
+                counts = [sum(states[adapter] == state for states in rows.values())
+                          for state in ("prominent", "shell-only", "gap")]
+                self.assertIn(f"| {adapter} | {' | '.join(map(str, counts))} |", text)
+            return rows
+
+        rows = validate(matrix)
+        paths = list(dict.fromkeys(row["path"] for row in json.loads(
+            (ROOT / "docs/glossary.json").read_bytes())["commands"]))
+        self.assertEqual([name for source, name in rows if source == "glossary-command"], paths)
+        first = next(line for line in matrix.splitlines() if "| glossary-command |" in line)
+        with self.assertRaises(AssertionError):
+            validate(matrix.replace(first, first + "\n" + first, 1))
+        summary = next(line for line in matrix.splitlines() if line.startswith("| GUI |"))
+        with self.assertRaises(AssertionError):
+            validate(matrix.replace(summary, "| GUI | 0 | 0 | 0 |", 1))
+
+
 if __name__ == "__main__":
     unittest.main()

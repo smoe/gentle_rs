@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-11-02 - Canonicalize Discovery Identities And Decision Status
+
+- Remove four older introspection glossary entries, including the contradictory
+  required-capability readiness signature. Preserve the current optional
+  capability, filtering and evidence flags; no parser or approval change.
+- Merge glossary rows into one registry descriptor per source/path, retaining
+  primary prose and unioned routing metadata. Preserve disjoint JS/Lua usages
+  explicitly and reject conflicting same-interface usage/operation signatures.
+  Add focused Rust and offline metadata regressions for conflicts, uniqueness,
+  readiness parsing, per-interface usages and exact parity counts.
+- Remove identical repeated matrix rows and derive totals from unique identities:
+  164 gap keys, including MCP 42, JS 61 and Lua 61. This repairs counting, not
+  adapter reachability. Canonical Rust generation/freshness remains Glen/CI work.
+  Refresh only the glossary source hash in four maturity catalogs; retained
+  evidence, descriptor digests and unassessed verdicts are unchanged.
+- Classify the 16 unlabelled decisions as active, retaining the two existing
+  deferred decisions, and add a regression requiring one explicit status per
+  decision section. Classification does not confer biological acceptance.
+- Update the bounded Glen handoff and existing roadmap follow-up. No local
+  Rust build/test/check, push, dispatch, Claude call or goal resumption.
+- Authoring verification: 37 targeted Python tests pass, zero skips, including
+  LF/CRLF parity checkout coverage. Maturity/manual/documentation freshness,
+  scoped rustfmt and whitespace pass; lockfile unchanged. Session-close:
+  4 OK, 2 expected warnings (worktree/generated files and manual scope review),
+  0 failures. Roadmap remains 400 lines; runtime/canonical-generator checks stay
+  pending in the handoff.
+
 ## 2026-11-01 - Repair Slice 6 Companion Error And Output Assertions
 
 - Retain Claude's pending harness corrections: assert the specific

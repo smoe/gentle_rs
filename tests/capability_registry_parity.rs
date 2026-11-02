@@ -287,7 +287,6 @@ fn command_descriptor<'a>(
         .find(|descriptor| {
             descriptor.source == CapabilitySource::GlossaryCommand
                 && descriptor.name == command.path
-                && descriptor.description == command.summary
                 && capability_parity_adapters().iter().all(|adapter| {
                     descriptor.surfacing_for_adapter(*adapter)
                         == expected_surfacing(
@@ -968,10 +967,22 @@ fn glossary_commands_have_matching_registry_entries() {
             &mcp_command_paths,
             &overrides,
         );
+        let primary = commands
+            .iter()
+            .find(|entry| entry.path == command.path)
+            .unwrap();
         assert_eq!(
-            descriptor.description, command.summary,
-            "registry description must be sourced from docs/glossary.json for `{}`",
+            descriptor.description, primary.summary,
+            "registry description must retain the primary glossary prose for `{}`",
             command.path
+        );
+        assert_eq!(
+            descriptor
+                .interfaces
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            interfaces_by_path[&command.path]
         );
         for adapter in capability_parity_adapters() {
             assert_eq!(
@@ -988,6 +999,92 @@ fn glossary_commands_have_matching_registry_entries() {
                 adapter
             );
         }
+    }
+}
+
+#[test]
+fn glossary_readiness_optional_arguments_match_shared_parser() {
+    for command in [
+        "introspect readiness",
+        "introspect readiness --seq-id synthetic --readiness unknown --ui-host false",
+        "introspect readiness CreateSequenceFromText --arg SEQ_ID=synthetic --seq-id synthetic --readiness ready --ui-host false",
+    ] {
+        assert!(
+            gentle::engine_shell::parse_shell_line(command).is_ok(),
+            "{command}"
+        );
+    }
+    assert!(
+        gentle::engine_shell::parse_shell_line("introspect readiness --readiness invented")
+            .is_err()
+    );
+}
+
+#[test]
+fn registry_and_parity_matrix_use_unique_keys_and_counts() {
+    let registry = capability_registry();
+    let mut keys = BTreeSet::new();
+    for descriptor in registry {
+        assert!(
+            keys.insert((descriptor.source, &descriptor.name)),
+            "duplicate capability {:?}/{}",
+            descriptor.source,
+            descriptor.name
+        );
+    }
+    let matrix = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
+    let mut rows = BTreeSet::new();
+    let mut gaps = BTreeSet::new();
+    let mut section = "";
+    for line in matrix.lines() {
+        if line.starts_with("## ") {
+            section = line;
+        }
+        let cells = line.split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() >= 10
+            && matches!(
+                cells[2],
+                "glossary-command" | "engine-operation" | "mcp-tool"
+            )
+        {
+            assert!(
+                rows.insert((cells[2], cells[1])),
+                "duplicate matrix row: {line}"
+            );
+        }
+        if section == "## Open Gaps"
+            && cells.len() >= 6
+            && matches!(
+                cells[3],
+                "glossary-command" | "engine-operation" | "mcp-tool"
+            )
+        {
+            assert!(
+                gaps.insert((cells[1], cells[2], cells[3])),
+                "duplicate gap: {line}"
+            );
+        }
+    }
+    assert_eq!(rows.len(), registry.len());
+    for adapter in capability_parity_adapters() {
+        let count = |kind| {
+            registry
+                .iter()
+                .filter(|row| row.surfacing_for_adapter(*adapter) == kind)
+                .count()
+        };
+        assert!(matrix.lines().any(|line| line
+            == format!(
+                "| {} | {} | {} | {} |",
+                adapter.label(),
+                count(AdapterSurfacing::Prominent),
+                count(AdapterSurfacing::ShellPassthrough),
+                count(AdapterSurfacing::Gap)
+            )));
+        assert_eq!(
+            gaps.iter().filter(|row| row.0 == adapter.label()).count(),
+            count(AdapterSurfacing::Gap)
+        );
     }
 }
 

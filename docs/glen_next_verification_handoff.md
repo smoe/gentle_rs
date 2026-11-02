@@ -1,5 +1,59 @@
 # Glen: Next Verification And Return
 
+## Discovery And Decision Status Follow-Up, 2026-11-02
+
+After Steffen pushes the integrated source, verify only this new repair to the
+older `b6863907` findings. Its separate zero-diff scan did not invalidate those
+findings. Preserve your historical 116/116 protocol and other scoped results
+at their actual SHA; they do not execute this registry change. Do not repeat
+completed gel/RNA/Slice 6 process campaigns. Native GUI/Windows Slice 6 checks
+remain separate and open.
+
+The four redundant/conflicting introspection entries are removed. Readiness
+retains an optional capability and `--arg`, `--seq-id`, `--readiness`,
+`--evidence`, `--ui-host`. Registry identity is `(source, name/path)`, with
+unioned routing metadata and primary catalog prose/order. Different JS/Lua
+signatures survive in labelled usage and `x-gentle-usage-by-interface`;
+same-interface usage/operation conflicts fail deterministically. No parser,
+execution route or approval policy is changed.
+
+The committed matrix was migrated by removing byte-identical duplicate rows
+and deriving totals from unique rows, without running its Rust generator.
+There are 164 distinct gap keys: MCP 42, JS 61, Lua 61. Lower counts do not
+close adapter gaps. All 72 decisions now have explicit status: 70 active and
+two deferred, with no new scientific approval or minimum Rust version.
+Four maturity catalogs change only their glossary-source hash; evidence and
+unassessed verdicts are unchanged.
+
+Codex authoring checks: 37 targeted Python tests pass with zero skips, including
+maturity/discovery metadata, all decision statuses, LF/CRLF matrix checkout,
+CLI glossary coverage and existing parity-count/override checks. Maturity,
+manual and documentation freshness, scoped rustfmt and whitespace pass;
+`Cargo.lock` is unchanged. Session-close: four OK, two expected scope/worktree
+warnings, no failures. These checks do not execute the registry or generator.
+Unrelated `paper`, private data, `output/` and untracked prompts are untouched.
+
+Use an explicit run-owned `CARGO_TARGET_DIR` outside any shared build/cache
+tree; inspect inherited settings before starting. Never clean a shared target.
+Run with the integrated lockfile and require nonzero test counts:
+
+```sh
+cargo test --locked --offline -p gentle-protocol --lib glossary_canonicalization_tests -- --test-threads=1
+cargo test --locked --offline --no-default-features -j1 --test capability_registry_parity --test parity_matrix_freshness -- --test-threads=1
+cargo test --locked --offline --no-default-features -j1 --lib glossary_ -- --test-threads=1
+cargo run --locked --offline --no-default-features --bin gentle_examples_docs -- parity-matrix-check
+```
+
+Retain the existing canonical freshness check, rather than accepting the
+mechanical projection solely from the offline row/count checks. Confirm one
+descriptor/gap key per identity, exact unique summary totals, canonical optional
+readiness parsing and preserved JS/Lua signatures; exercise synthetic
+same-interface conflict refusals. Normal CI remains the platform gate.
+Return actual SHA/tree, lockfile and binary hashes, toolchain/platform/features,
+commands, nonzero counts, failures/skips and retained evidence locations.
+Codex ran no local Rust/generator/binary checks and made no push or dispatch;
+the previous goal remains paused.
+
 ## Headless Parity Test Gate, 2026-11-01
 
 Codex executed the owner's narrow local-build exception after rebasing onto

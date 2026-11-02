@@ -2,6 +2,8 @@
 
 ## Repository Line Endings
 
+Status: active
+
 Owner decision, 2026-10-21: source and ordinary repository text use Unix LF
 line endings in both Git and working copies on every platform. The root
 `.gitattributes` default `* text=auto eol=lf` overrides ambient Windows
@@ -18,6 +20,8 @@ Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
 ## Phase 2/S1 Completeness Compatibility
+
+Status: active
 
 Owner-authorized 2026-10-29: resolve the admission conflict without changing
 the v1 requests, reports, digest recipes or S1 certainty logic. Phase 2 accepts
@@ -47,6 +51,8 @@ regressions. This is a producer/acceptance policy, not an aligner-specific
 admission check or an independently authenticated exhaustiveness claim.
 
 ## Observed Junction Structures: S0 Technical Boundary
+
+Status: active
 
 Owner-authorized 2026-10-27: implement the pure Rust S0 kernel from the
 [reviewed proposal](observed_transcript_structures_plan.md), not the later
@@ -257,6 +263,8 @@ new dependency, push or scientific acceptance belongs to S1. See the
 
 ## Primer-Anchored Read Trace
 
+Status: active
+
 Phase 2 technical implementation authorized 2026-10-26: keep a separate
 [primer-free payload evidence contract](primer_payload_evidence.md). Source/query,
 reference/annotation, producer accounting and expected-target mappings are
@@ -308,6 +316,8 @@ remains explicitly opt-in. Real protocol roles and numerical defaults require
 owner/Glen review before this decision becomes biologically accepted.
 
 ## Independent-Locus FASTQ Panel Nominations
+
+Status: active
 
 Owner-authorized 2026-10-22: a portable RNA panel binds independent loaded
 loci, source-record and mature-sequence hashes, declared assembly/release/gene
@@ -485,6 +495,8 @@ re-map the source geometry. No nomination, budget or intake-policy change follow
 
 ## Development And Release Verification Cadence
 
+Status: active
+
 Owner decision, 2026-10-15: continue development on `main` without intermediate
 candidate freezes, recurring bundle handoffs or waits for synchronized acceptance
 at every commit. Run normal focused checks and available CI independently;
@@ -500,6 +512,8 @@ restrictions remain unchanged. Do not issue a new bundle or SHA-sync request
 for routine development; an exceptional transfer requires an owner request.
 
 ## Workspace Compiler Compatibility
+
+Status: active
 
 The root `Cargo.toml` owns workspace-wide edition, resolver, any declared Rust
 minimum and shared dependency policy. First-party workspace members inherit
@@ -521,6 +535,8 @@ target verification. Selecting a number and adding those jobs are deferred;
 no new blanket publication gate for other members follows from this finding.
 
 ## Explicit Variant Allele Selection
+
+Status: active
 
 `MaterializeVariantAllele` is the shared engine boundary for single-base
 allele materialization. A multiallelic marker never authorizes an arbitrary
@@ -591,6 +607,8 @@ performs a UniProt fetch or claims transcript validity/global absence.
 
 ## Explicit Gene-Set Storage Projection
 
+Status: active
+
 A logical gene set does not imply physical samples or placement permission.
 `CreateGeneSetArrangement` requires a complete persisted resolution, one
 explicit exclusive-singleton binding per distinct member and a separate true
@@ -603,6 +621,8 @@ verified freezer inventory nor qualified fabrication. Generic reviewed `op`
 routes supply parity; no GUI-only mapping or new automatic planner is implied.
 
 ## Read-Only Genome-Edit Intent
+
+Status: active
 
 SNV intent validation is separate from editor/guide design, synthetic synonymous
 redesign and experimental approval. `EvaluateGenomeEditIntent` is one shared
@@ -638,6 +658,8 @@ below has its own pending verification; S2 remains separate.
 
 ## Degraded Candidate-Store Persistence
 
+Status: active
+
 Owner-authorized [Lifecycle Slice 6](operation_lifecycle_slice6_plan.md): a
 failed candidate sidecar load is unavailable evidence, not an empty collection.
 Permissive loading retains the original reference and a structured unresolved
@@ -662,6 +684,8 @@ authorized. Ordinary unrelated mutation preflight remains deferred.
 
 ## Sequence-Design Preview Report Approval
 
+Status: active
+
 Owner-authorized 2026-10-26: migrate only the conversation-approval facet of
 `PlanDnaSequenceDesign`. The engine-owned typed selector adds approval for every
 present report path, including empty/malformed paths; an absent path adds no
@@ -684,6 +708,8 @@ parity checks have a [source/feature-bound execution record](operation_lifecycle
 They do not establish full-policy security, native or scientific acceptance.
 
 ## Sequence-Design Preview Destination Safety
+
+Status: active
 
 Only Plan's optional report writer uses this policy; other exporters and project
 saving retain their existing contracts. Every present path still needs the exact
@@ -800,6 +826,8 @@ the `.12` release gate and is not full DNA Chisel compatibility.
 
 ## Transcript Capture Discovery Boundaries
 
+Status: active
+
 Capture binding coverage, retained isoform information, specificity and
 experimental success are separate claims. Target sets, role/window policy,
 primer budget and permission to share are independent inputs. Never silently
@@ -810,6 +838,8 @@ participate only in declared stages; recorded heuristic Tm is not reaction Ta.
 See [the portable capture contract](transcript_capture_pools.md).
 
 ## Contextual Launcher Readiness
+
+Status: active
 
 The egui menu/palette pilot reuses the app's collection-launcher readiness
 presentation, including typed collection rejection reasons. It is not a second
@@ -900,6 +930,8 @@ completion marker and rollback on caught failures; this does not claim a single
 atomic transaction across multiple output paths or protection from power loss.
 
 ## 2026-08-01: derive web and print gene-set reports from one record
+
+Status: active
 
 Publication-style multi-gene analyses use one portable manifest and one
 resolved semantic record. Responsive HTML remains the main browsable report;
@@ -1237,6 +1269,18 @@ English. Localised text is presentation only.
 ## DEC-024: Introspection Composes Facts And Capabilities
 
 Status: active
+
+The capability registry has one descriptor per `(source, name/path)`, not one
+per raw glossary occurrence. Same-path entries union interfaces, aliases and
+engine-operation links while retaining the first catalog description/order.
+Different interfaces may have different usages; conflicting usage or operation
+signatures within one interface fail deterministically. A single usage keeps
+its existing shape. Multi-usage descriptors label their human-readable usage
+by interface and expose an explicit `input_schema["x-gentle-usage-by-interface"]`
+map plus allowed usage values. These are discovery metadata, not new command
+arguments, parser grammar or execution/approval authority. Registry projections,
+parity rows and gap totals count unique source/name keys. Lower deduplicated
+counts do not establish repaired adapter reachability.
 
 Words-only and agent-facing introspection uses additive fact domains rather
 than renaming existing fact vocabulary. Existing project facts keep their

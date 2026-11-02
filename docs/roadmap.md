@@ -397,4 +397,4 @@ Useful work here improves proposal formats, evidence records, reproducible cohor
 - Synonymous restriction-site introduction with verification-digest proof, distinct from motif-avoidance sequence design.
 - Report-first curated feature-library auto-annotation with a separately confirmed apply step.
 - Full glossary/help-generation inversion so `docs/glossary.json` becomes a
-  generated or validated projection of engine/protocol-side descriptors. Resolve duplicate registry `(source, name)` identities and derive a typed parity backlog before regenerating the matrix; see [verified gap](introspection.md#12-deferred-follow-up).
+  generated or validated projection of engine/protocol-side descriptors. Verify [canonical discovery identities/signatures and unique parity totals](glen_next_verification_handoff.md#discovery-and-decision-status-follow-up-2026-11-02), then derive a typed parity backlog; see [remaining inversion work](introspection.md#12-deferred-follow-up).

@@ -22,6 +22,11 @@ No direct GUI counterpart: This chapter documents an automation interface, examp
 
 ## Facts and Capability Descriptors
 
+Discovery uses one capability per source/name, even when the glossary documents
+separate JS and Lua forms. Interface-specific usages remain explicitly labelled;
+the input schema's `x-gentle-usage-by-interface` map retains their exact syntax.
+Duplicate glossary rows do not count as additional capabilities or parity gaps.
+
 - Shared shell:
   - Commands:
     - `introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`

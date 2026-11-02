@@ -1831,6 +1831,16 @@ not-applicable justifications backed by
 as shell-pass-through on adapters that expose a generic operation/workflow
 route.
 
+Registry identity is `(source, name)`: repeated glossary occurrences share one
+descriptor and union interfaces, aliases and operation links. The first catalog
+description/order is retained. Multiple usages on disjoint interfaces remain
+distinct, with interface-labelled `usage`, allowed usage values in the input
+schema, and `input_schema["x-gentle-usage-by-interface"]` mapping interface IDs
+to exact signatures. Single-usage metadata is unchanged. Conflicting usage or
+operation signatures on the same interface refuse registry construction.
+This metadata does not change parser grammar or approval behavior. Parity
+rows, adapter totals and gap keys count unique registry identities.
+
 Adapter error payloads that cross machine boundaries use the shared
 `EngineError` shape (`code`, `message`, optional `cause_chain`) so adapters can
 preserve lower-level string failures without changing their transport.
