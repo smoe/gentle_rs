@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-02 - Earmark First Official 0.1 Release Aims
+
+- Record Steffen's proposed use of Glen's priorities in
+  `official_0_1_release_aims.md`: installable agent integration, an evidence-backed
+  golden path, global RT-PCR specificity/redesign, long-read cohorts, shared
+  lifecycle safety and targeted GUI performance/readability.
+- Separate current regression repair and disciplined `.13` preparation from the
+  later official-release aims. Note the already integrated SAM fixture repair;
+  do not re-merge the audit branch or repeat accepted discovery checks.
+- Retain shared-engine/approval, ambiguity, provenance and human scientific
+  boundaries. This is earmarking, not implementation/runtime acceptance, a new
+  freeze, version change, candidate selection or release/publication authority.
+  Link the aims from the roadmap while retaining its 400-line invariant.
+
 ## 2026-11-02 - Require Headless Test Compilation And Parity In CI
 
 - Extend the existing unconditional Linux headless job with locked, single-job
