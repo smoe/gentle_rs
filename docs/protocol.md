@@ -13494,6 +13494,12 @@ Primer-pair alternative frontier:
   diagnostics. Its additive `progress_supported` field is `true` when
   `--help` advertises `--progress`, `false` when readable help omits it, and
   `null` when the capability could not be determined.
+- MCP `primers_preflight` and JS/Lua `primers_preflight(project, backend?,
+  primer3_executable?)` return that same shell envelope. They use persisted
+  engine parameters by default and never save one-call overrides. A missing
+  executable is a diagnostic result, not an adapter transport failure. Tests
+  compare report fields except elapsed probe time; OS diagnostics, paths and
+  build provenance are not universal cross-platform hash fixtures.
 - a bare configured name such as the default `primer3_core` selects among every
   `PATH` match rather than the first: `--progress` support wins first, because
   bounded search reporting and SIGUSR1 status depend on it; then the highest

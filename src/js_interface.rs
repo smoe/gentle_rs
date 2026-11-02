@@ -211,6 +211,34 @@ fn list_agent_systems_impl(catalog_path: &str) -> Result<serde_json::Value, JsAn
     Ok(run.output)
 }
 
+fn primers_preflight_impl(
+    state: ProjectState,
+    backend: &str,
+    primer3_executable: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut tokens = vec!["primers".to_string(), "preflight".to_string()];
+    for (flag, value) in [
+        ("--backend", backend),
+        ("--primer3-exec", primer3_executable),
+    ] {
+        if let Some(value) = empty_to_none(value) {
+            tokens.extend([flag.to_string(), value.to_string()]);
+        }
+    }
+    let command = crate::engine_shell::parse_shell_tokens(&tokens).map_err(|e| {
+        JsAnyhow::from_adapter_cause(
+            ErrorCode::InvalidInput,
+            "Invalid primers preflight arguments",
+            e,
+        )
+    })?;
+    let mut engine = GentleEngine::from_state(state);
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        JsAnyhow::from_adapter_cause(ErrorCode::Internal, "primers preflight failed", e)
+    })?;
+    Ok(run.output)
+}
+
 fn list_construct_reasoning_graphs_impl(
     state: ProjectState,
     seq_id: &str,
@@ -620,6 +648,16 @@ fn list_ensembl_installable_genomes(
 
 #[op2]
 #[serde]
+fn primers_preflight(
+    #[serde] state: ProjectState,
+    #[string] backend: &str,
+    #[string] primer3_executable: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    primers_preflight_impl(state, backend, primer3_executable)
+}
+
+#[op2]
+#[serde]
 fn list_construct_reasoning_graphs(
     #[serde] state: ProjectState,
     #[string] seq_id: &str,
@@ -924,6 +962,7 @@ impl JavaScriptInterface {
         const LIST_HOST_PROFILE_CATALOG_ENTRIES: OpDecl = list_host_profile_catalog_entries();
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
+        const PRIMERS_PREFLIGHT: OpDecl = primers_preflight();
         const SHOW_CONSTRUCT_REASONING_GRAPH: OpDecl = show_construct_reasoning_graph();
         const LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS: OpDecl =
             list_construct_reasoning_inspection_actions();
@@ -966,6 +1005,7 @@ impl JavaScriptInterface {
                 LIST_HELPER_SEMANTICS_VOCABULARY,
                 LIST_HOST_PROFILE_CATALOG_ENTRIES,
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
+                PRIMERS_PREFLIGHT,
                 LIST_CONSTRUCT_REASONING_GRAPHS,
                 SHOW_CONSTRUCT_REASONING_GRAPH,
                 LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS,
@@ -1048,6 +1088,9 @@ impl JavaScriptInterface {
                       }
                       function list_ensembl_installable_genomes(collection, filter) {
                         return Deno.core.ops.list_ensembl_installable_genomes(collection ?? "", filter ?? "");
+                      }
+                      function primers_preflight(state, backend, primer3_executable) {
+                        return Deno.core.ops.primers_preflight(state, backend ?? "", primer3_executable ?? "");
                       }
                       function list_construct_reasoning_graphs(state, seq_id) {
                         return Deno.core.ops.list_construct_reasoning_graphs(state, seq_id ?? "");
@@ -1420,6 +1463,70 @@ mod tests {
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn js_primers_preflight_matches_shell_and_vm_without_mutating_settings() {
+        let missing = crate::test_support::MissingToolFixture::new(
+            "GENTLE_TEST_PRIMER3_PREFLIGHT",
+            "primer3 missing",
+        );
+        let mut state = ProjectState::default();
+        state.parameters.primer_design_backend = gentle_protocol::PrimerDesignBackend::Primer3;
+        state.parameters.primer3_executable = missing.executable().into();
+        let override_executable = format!("{}-override", missing.executable());
+        let original = serde_json::to_string(&state).unwrap();
+        for backend in ["", "baseline"] {
+            let command = crate::engine_shell::parse_shell_tokens(&if backend.is_empty() {
+                vec!["primers".into(), "preflight".into()]
+            } else {
+                vec![
+                    "primers".into(),
+                    "preflight".into(),
+                    "--backend".into(),
+                    backend.into(),
+                    "--primer3-exec".into(),
+                    override_executable.clone(),
+                ]
+            })
+            .unwrap();
+            let mut engine = GentleEngine::from_state(state.clone());
+            let expected = execute_shell_command(&mut engine, &command).unwrap();
+            assert!(!expected.state_changed);
+            assert_eq!(serde_json::to_string(engine.state()).unwrap(), original);
+            let actual = primers_preflight_impl(
+                state.clone(),
+                backend,
+                if backend.is_empty() {
+                    ""
+                } else {
+                    &override_executable
+                },
+            )
+            .unwrap();
+            crate::test_support::assert_primer3_preflight_parity(actual, expected.output);
+        }
+        assert!(
+            primers_preflight_impl(state.clone(), "bad-backend", missing.executable()).is_err()
+        );
+        let mut js = JavaScriptInterface::default();
+        let override_json = serde_json::to_string(&override_executable).unwrap();
+        js.run_checked(format!(r#"
+            const project = {original};
+            const before = JSON.stringify(project);
+            const report = primers_preflight(project);
+            if (report.schema !== 'gentle.primer3_preflight.v1' || report.preflight.reachable ||
+                report.preflight.backend !== 'primer3' || report.preflight.version_probe_ok ||
+                report.preflight.configured_executable !== project.parameters.primer3_executable)
+                throw Error('Incorrect preflight projection');
+            const override = primers_preflight(project, 'baseline', {override_json});
+            if (override.preflight.backend !== 'internal' ||
+                override.preflight.configured_executable !== {override_json} || JSON.stringify(project) !== before)
+                throw Error('Probe changed project settings');
+            let rejected = false;
+            try {{ primers_preflight(project, 'bad-backend'); }} catch (_) {{ rejected = true; }}
+            if (!rejected) throw Error('Invalid backend accepted');
+        "#)).unwrap();
+    }
 
     // Test-only equality keeps binary sequence bytes visible, not just object keys.
     const LIFECYCLE_STATE_ORACLE: &str = r#"

@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-11-03 - Primer3 Preflight Reader Parity
+
+- Reconcile the supplied Primer3 parity prompt against `9c07188d`: persistent
+  settings, GUI PCR/qPCR/preflight, CLI forwarding and cancellation tests already
+  exist. Retain them instead of adding duplicate doctor/config commands,
+  scientific defaults or a second GUI. Record the remaining synchronous probe
+  limitation separately in the scoped audit.
+- Add MCP/JS/Lua preflight readers through the existing shared shell command,
+  with discovery metadata and focused tests for defaults, overrides, missing
+  tools, invalid arguments, persisted settings, GUI controls and agent execution.
+  Keep project writes and backend-selection behavior unchanged. Document actual
+  setup commands rather than placeholder tutorial hashes or invented routes.
+- Refresh the canonical parity matrix and glossary hash in the four dependent
+  maturity catalogs; no capability maturity or scientific evidence is upgraded.
+  Protocol tests (120), LF/CRLF checkout and maturity tests (98), focused
+  preflight tests (7 + 7, one opt-in body not run), registry/MCP/freshness
+  suites (26 + 6 + 1), and the scripting-enabled Rust test-target check pass
+  on macOS arm64. Clippy exits 0 with repository-wide warnings. See the
+  [scoped audit](primer3_parity_audit_20261103.md) for validation and limitations.
+
 ## 2026-11-02 - Enable Recorded Local Nextest Reruns
 
 - Install official prebuilt cargo-nextest 0.9.150 for macOS, verified against

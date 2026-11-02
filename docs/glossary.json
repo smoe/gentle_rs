@@ -5031,7 +5031,10 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "cli-direct"
+            "cli-direct",
+            "mcp",
+            "js",
+            "lua"
          ],
          "path": "primers preflight",
          "summary": "Probe Primer3 backend reachability/version for the selected backend/executable settings.",

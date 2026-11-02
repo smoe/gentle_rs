@@ -689,6 +689,42 @@ fn registry_surfacing_covers_all_parity_adapters() {
 }
 
 #[test]
+fn primers_preflight_readers_are_discoverable_without_duplicate_operations() {
+    let command = capability_registry()
+        .iter()
+        .find(|row| {
+            row.source == CapabilitySource::GlossaryCommand && row.name == "primers preflight"
+        })
+        .unwrap();
+    assert!(command.engine_operations.is_empty());
+    assert_eq!(command.gui, AdapterSurfacing::ShellPassthrough);
+    for adapter in [
+        CapabilityAdapter::Cli,
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ] {
+        assert_eq!(
+            command.surfacing_for_adapter(adapter),
+            AdapterSurfacing::Prominent
+        );
+    }
+    let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();
+    let tool = tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "primers_preflight")
+        .unwrap();
+    assert_eq!(
+        tool["commandPaths"],
+        serde_json::json!(["primers preflight"])
+    );
+    assert_eq!(tool["mutating"], false);
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+}
+
+#[test]
 fn arrays_parser_subcommands_are_glossary_paths_or_explicitly_allowlisted() {
     let glossary_paths = glossary_commands()
         .into_iter()

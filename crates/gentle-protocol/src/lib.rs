@@ -6055,6 +6055,12 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
 
 const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
     (
+        "primers_preflight",
+        "Primer3 Preflight",
+        "Probe Primer3 reachability, version and build selection through the shared primers preflight route without changing project settings or designing primers.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
         "protein_expression_handoff",
         "Protein Expression Handoff",
         "Inspect the shared read-only protein-expression handoff; provider selection is explicit and never submits or orders.",

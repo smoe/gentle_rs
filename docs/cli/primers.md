@@ -5,6 +5,44 @@ Related GUI reference: [Primer, qPCR, and Sequence-Specific RT Design](../gui/pr
 These topic links do not imply identical feature coverage across interfaces.
 <!-- manual-counterparts:end -->
 
+## Configure And Check Primer3
+
+Use a saved project (or a disposable learning copy). Configuration is
+project-scoped, not a second global preferences store:
+
+```sh
+gentle_cli --state "my project.gentle.json" set-param primer_design_backend '"primer3"'
+gentle_cli --state "my project.gentle.json" set-param primer3_executable '"/path with spaces/primer3_core"'
+gentle_cli --state "my project.gentle.json" primers preflight
+```
+
+Substitute an actual executable path. In the GUI, use PCR Designer's existing
+`Primer backend and Primer3 preflight` controls: Apply changes the project
+parameters; Probe inspects the selected settings; Reload refreshes the form.
+Save the GUI project before inspecting it from a separate CLI/MCP process.
+
+Inspect `preflight.reachable`, `version_probe_ok`, `resolved_path`,
+`progress_supported`, and `selection_reason`. A reachable process may still
+fail version detection. Missing Primer3 yields diagnostic JSON, not proof of a
+valid assay. Even `--backend internal` on this explicit diagnostic command probes
+Primer3; it is internal **design** that does not require the external backend.
+
+`--backend` and `--primer3-exec` override only this probe. Persistent changes use
+`set-param`; `set-param primer3_executable null` restores `primer3_core`.
+Explicit `primer3` design fails when its executable is unavailable; `auto` may
+fall back and records the actual backend. An explicit executable path is never
+silently replaced with a discovered build.
+
+MCP exposes `primers_preflight` with optional `state_path`, `backend`, and
+`primer3_executable`. JS/Lua expose
+`primers_preflight(project, backend?, primer3_executable?)`; both return the same
+`gentle.primer3_preflight.v1` envelope and leave project settings unchanged.
+The inner agent can use `primers preflight` through its reviewed shared-shell
+route. These are host diagnostics: paths, versions and probe times are not
+portable fixed-hash tutorial outputs.
+
+## Design And Report Routes
+
 Primer-design report capability status:
 
 - `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `AssessPrimerPairSpecificity`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a local BLAST specificity confirmation route (`primers specificity`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports. `--progress` now also streams `progress primers ...` lines for shared-shell primer/qPCR design commands, not only raw `op` / `workflow` JSON execution.

@@ -75,6 +75,7 @@ const PLAN_FLAGS: &[(&str, &str, &str)] = &[
 
 pub(super) fn command_paths(name: &str) -> Option<&'static [&'static str]> {
     match name {
+        "primers_preflight" => Some(&["primers preflight"]),
         "primer_reports" => Some(REPORT_PATHS),
         "transcript_assay_specificity_plan" => Some(&["primers transcript-assay-specificity-plan"]),
         "transcript_assay_specificity_finalize" => {
@@ -106,6 +107,17 @@ pub(super) fn descriptors() -> Vec<Value> {
     plan_properties["report_detail"]["enum"] = json!(["compact", "full"]);
     plan_properties["full_alignment"]["enum"] = json!(["disabled", "best-effort", "required"]);
     vec![
+        json!({
+            "name":"primers_preflight",
+            "inputSchema": {
+                "type":"object", "additionalProperties":false, "required":[],
+                "properties": {
+                    "backend":{"type":"string","description":"Optional auto, internal or primer3 override; shared shell aliases are accepted."},
+                    "primer3_executable":{"type":"string","description":"Optional executable override for this probe only; does not change project settings."},
+                    "state_path":{"type":"string"}
+                }
+            }
+        }),
         json!({
             "name":"primer_reports",
             "inputSchema": {
@@ -197,6 +209,20 @@ fn validate_args<'a>(name: &str, arguments: &'a Value) -> Result<&'a Map<String,
 
 fn tokens(name: &str, args: &Map<String, Value>) -> Result<Vec<String>, String> {
     let string = |field| required_string_arg(args, field);
+    if name == "primers_preflight" {
+        let mut tokens = vec!["primers".into(), "preflight".into()];
+        append_string_flag(
+            &mut tokens,
+            "--backend",
+            optional_string_arg(args, "backend")?,
+        );
+        append_string_flag(
+            &mut tokens,
+            "--primer3-exec",
+            optional_string_arg(args, "primer3_executable")?,
+        );
+        return Ok(tokens);
+    }
     if name == "transcript_assay_specificity_matrix" {
         return Ok(vec![
             "primers".into(),
@@ -311,6 +337,7 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
     let run = || -> Result<Value, String> {
         let args = validate_args(name, arguments)?;
         let writes = match name {
+            "primers_preflight" => false,
             "primer_reports" => args["action"] == "export",
             "primer_specificity_multi_list" | "primer_specificity_multi_show" => false,
             "transcript_assay_specificity_matrix" => false,
@@ -338,6 +365,174 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn primers_preflight_preserves_successful_probe_fields() {
+        use std::os::unix::fs::PermissionsExt;
+        // Hand-crafted probe-only process; no Primer3 biology or external installation.
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("primer3 fixture");
+        std::fs::write(&executable, "#!/bin/sh\ncase \"$1\" in\n--help) echo 'primer3_core --progress';;\n--about) echo 'libprimer3 release 2.6.1';;\n*) exit 2;;\nesac\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let state = dir.path().join("absent.json");
+        let args = json!({"backend":"primer3", "primer3_executable":executable});
+        let result = call(state.to_str().unwrap(), "primers_preflight", &args);
+        assert_eq!(result["isError"], false, "{result}");
+        let report = &result["structuredContent"]["preflight"];
+        assert_eq!(report["reachable"], true);
+        assert_eq!(report["version_probe_ok"], true);
+        assert_eq!(report["version"], "libprimer3 release 2.6.1");
+        assert_eq!(report["progress_supported"], true);
+        assert!(
+            report["selection_reason"]
+                .as_str()
+                .unwrap()
+                .contains("used as configured")
+        );
+        assert_eq!(report["configured_executable"], args["primer3_executable"]);
+        let expected = run_non_mutating_shell_tool(
+            state.to_str().unwrap(),
+            args.as_object().unwrap(),
+            tokens("primers_preflight", args.as_object().unwrap()).unwrap(),
+            "primers_preflight",
+        )
+        .unwrap();
+        crate::test_support::assert_primer3_preflight_parity(
+            result["structuredContent"].clone(),
+            expected,
+        );
+        assert!(!state.exists());
+    }
+
+    #[test]
+    fn primers_preflight_matches_shell_and_agent_with_persisted_settings() {
+        // Synthetic project and absent absolute paths: no host Primer3 or PATH dependency.
+        let missing = crate::test_support::MissingToolFixture::new(
+            "GENTLE_TEST_PRIMER3_PREFLIGHT",
+            "primer3 missing",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("primer settings.json");
+        let state_path = state_path.to_str().unwrap();
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        for (name, value) in [
+            ("primer_design_backend", json!("primer3")),
+            ("primer3_executable", json!(missing.executable())),
+        ] {
+            engine
+                .apply(Operation::SetParameter {
+                    name: name.into(),
+                    value,
+                })
+                .unwrap();
+        }
+        engine.state().save_to_path(state_path).unwrap();
+        let before = std::fs::read(state_path).unwrap();
+        let override_path = dir.path().join("other missing primer3");
+        for args in [
+            json!({}),
+            json!({"backend":"baseline","primer3_executable":override_path}),
+        ] {
+            let expected = run_non_mutating_shell_tool(
+                state_path,
+                args.as_object().unwrap(),
+                tokens("primers_preflight", args.as_object().unwrap()).unwrap(),
+                "primers_preflight",
+            )
+            .unwrap();
+            let result = tool_call_result(
+                state_path,
+                ToolCallParams {
+                    name: "primers_preflight".into(),
+                    arguments: args.clone(),
+                },
+            );
+            assert_eq!(result["isError"], false, "{result}");
+            assert_eq!(
+                result["structuredContent"]["schema"],
+                "gentle.primer3_preflight.v1"
+            );
+            assert_eq!(result["structuredContent"]["preflight"]["reachable"], false);
+            assert_eq!(
+                result["structuredContent"]["preflight"]["version_probe_ok"],
+                false
+            );
+            assert!(result["structuredContent"]["preflight"]["resolved_path"].is_null());
+            assert_eq!(
+                result["structuredContent"]["preflight"]["configured_executable"],
+                args.get("primer3_executable")
+                    .cloned()
+                    .unwrap_or_else(|| json!(missing.executable()))
+            );
+            assert_eq!(
+                result["structuredContent"]["preflight"]["backend"],
+                if args.get("backend").is_some() {
+                    "internal"
+                } else {
+                    "primer3"
+                }
+            );
+            crate::test_support::assert_primer3_preflight_parity(
+                result["structuredContent"].clone(),
+                expected.clone(),
+            );
+            let line = tokens("primers_preflight", args.as_object().unwrap())
+                .unwrap()
+                .iter()
+                .map(|s| crate::engine_shell::quote_shell_arg(s))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let agent = tool_call_result(
+                state_path,
+                ToolCallParams {
+                    name: "agent_execute_plan".into(),
+                    arguments: json!({"candidate_id":"probe", "plan":{
+                        "schema":"gentle.agent_plan_result.v1", "assistant_message":"Synthetic preflight parity",
+                        "questions":[], "candidates":[{"candidate_id":"probe", "title":"Probe", "rationale":"Inspect configuration",
+                            "kind":"shell", "mutating":false, "requires_confirmation":false, "execution_mode":"auto", "shell_command":line}]
+                    }}),
+                },
+            );
+            assert_eq!(agent["isError"], false, "{agent}");
+            assert_eq!(agent["structuredContent"]["state_changed"], false);
+            crate::test_support::assert_primer3_preflight_parity(
+                agent["structuredContent"]["output"].clone(),
+                expected,
+            );
+            assert_eq!(std::fs::read(state_path).unwrap(), before);
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn primers_preflight_rejects_bad_arguments_without_creating_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("not created.json");
+        for args in [
+            json!({"backend":"unknown"}),
+            json!({"backend":42}),
+            json!({"primer3_executable":false}),
+            json!({"primer3_executable":""}),
+            json!({"command":"agents ask"}),
+            json!({"confirm":true}),
+        ] {
+            let result = call(path.to_str().unwrap(), "primers_preflight", &args);
+            assert_eq!(result["isError"], true, "{result}");
+            assert!(!path.exists());
+        }
+        let missing = crate::test_support::MissingToolFixture::new(
+            "GENTLE_TEST_PRIMER3_PREFLIGHT",
+            "primer3 missing",
+        );
+        let result = call(
+            path.to_str().unwrap(),
+            "primers_preflight",
+            &json!({"primer3_executable":missing.executable()}),
+        );
+        assert_eq!(result["isError"], false, "{result}");
+        assert!(!path.exists());
+    }
 
     #[test]
     fn specificity_multi_routes_share_parser_and_require_mutation_approval() {

@@ -30,6 +30,24 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Compare the full preflight contract except per-invocation elapsed time.
+/// Paths, OS diagnostics, version and candidate selection must agree on this host.
+#[cfg(test)]
+pub(crate) fn assert_primer3_preflight_parity(
+    mut actual: serde_json::Value,
+    mut expected: serde_json::Value,
+) {
+    for output in [&mut actual, &mut expected] {
+        assert_eq!(output["schema"], "gentle.primer3_preflight.v1");
+        assert!(output["preflight"]["probe_time_ms"].is_number());
+        output["preflight"]
+            .as_object_mut()
+            .unwrap()
+            .remove("probe_time_ms");
+    }
+    assert_eq!(actual, expected);
+}
+
 const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n";
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";

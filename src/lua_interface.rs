@@ -96,6 +96,9 @@ impl LuaInterface {
         );
         println!("  - set_parameter(project, name, value): Helper for Operation::SetParameter");
         println!(
+            "  - primers_preflight(project, [backend], [primer3_executable]): Probes Primer3 through the shared shell without changing project settings"
+        );
+        println!(
             "  - set_vcf_display_filter(project, opts): Convenience helper for VCF display criteria updates"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
@@ -334,6 +337,28 @@ impl LuaInterface {
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::discover_ensembl_installable_genomes(collection, filter)
             .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn primers_preflight(
+        state: ProjectState,
+        backend: Option<String>,
+        primer3_executable: Option<String>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut tokens = vec!["primers".to_string(), "preflight".to_string()];
+        for (flag, value) in [
+            ("--backend", backend),
+            ("--primer3-exec", primer3_executable),
+        ] {
+            if let Some(value) = value.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                tokens.extend([flag.to_string(), value.to_string()]);
+            }
+        }
+        let command = crate::engine_shell::parse_shell_tokens(&tokens)
+            .map_err(|e| Self::err(&format!("Invalid primers preflight arguments: {e}")))?;
+        let mut engine = GentleEngine::from_state(state);
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("primers preflight failed: {e}")))?;
+        Ok(run.output)
     }
 
     fn list_construct_reasoning_graphs(
@@ -975,6 +1000,19 @@ impl LuaInterface {
                 |lua, (collection, filter): (Option<String>, Option<String>)| {
                     let report = Self::list_ensembl_installable_genomes(collection, filter)?;
                     lua.to_value(&report)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "primers_preflight",
+            self.lua.create_function(
+                |lua, (state, backend, executable): (Value, Option<String>, Option<String>)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::primers_preflight(state, backend, executable)?;
+                    lua.to_value(&output)
                 },
             )?,
         )?;
@@ -2855,6 +2893,67 @@ mod tests {
             .load("assert(type(render_dotplot_svg) == 'function')")
             .exec()
             .expect("render_dotplot_svg wrapper should be registered");
+    }
+
+    #[test]
+    fn lua_primers_preflight_matches_shell_and_vm_without_mutating_settings() {
+        let missing = crate::test_support::MissingToolFixture::new(
+            "GENTLE_TEST_PRIMER3_PREFLIGHT",
+            "primer3 missing",
+        );
+        let mut state = ProjectState::default();
+        state.parameters.primer_design_backend = gentle_protocol::PrimerDesignBackend::Primer3;
+        state.parameters.primer3_executable = missing.executable().into();
+        let override_executable = format!("{}-override", missing.executable());
+        let original = serde_json::to_value(&state).unwrap();
+        let lua = LuaInterface::new();
+        lua.register_rust_functions().unwrap();
+        lua.lua()
+            .globals()
+            .set("project", lua.lua().to_value(&state).unwrap())
+            .unwrap();
+        lua.lua()
+            .globals()
+            .set("override_executable", override_executable.clone())
+            .unwrap();
+        for backend in [None, Some("baseline".to_string())] {
+            let mut tokens = vec!["primers".into(), "preflight".into()];
+            if let Some(backend) = &backend {
+                tokens.extend([
+                    "--backend".into(),
+                    backend.clone(),
+                    "--primer3-exec".into(),
+                    override_executable.clone(),
+                ]);
+            }
+            let command = crate::engine_shell::parse_shell_tokens(&tokens).unwrap();
+            let mut engine = GentleEngine::from_state(state.clone());
+            let expected = execute_shell_command(&mut engine, &command).unwrap();
+            assert!(!expected.state_changed);
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+            let executable = backend.as_ref().map(|_| override_executable.clone());
+            let actual =
+                LuaInterface::primers_preflight(state.clone(), backend.clone(), executable)
+                    .unwrap();
+            crate::test_support::assert_primer3_preflight_parity(actual, expected.output.clone());
+            let script = if backend.is_some() {
+                "return primers_preflight(project, 'baseline', override_executable)"
+            } else {
+                "return primers_preflight(project)"
+            };
+            let actual: Value = lua.lua().load(script).eval().unwrap();
+            let actual: serde_json::Value = lua.lua().from_value(actual).unwrap();
+            crate::test_support::assert_primer3_preflight_parity(actual, expected.output);
+        }
+        lua.lua()
+            .load("assert(not pcall(primers_preflight, project, 'bad-backend'))")
+            .exec()
+            .unwrap();
+        let after: ProjectState = lua
+            .lua()
+            .from_value(lua.lua().globals().get("project").unwrap())
+            .unwrap();
+        assert_eq!(serde_json::to_value(after).unwrap(), original);
     }
 
     #[test]

@@ -3799,7 +3799,8 @@ fn workflow_tool_result(default_state_path: &str, arguments: &Value) -> Value {
 
 fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
     match params.name.trim() {
-        "primer_reports"
+        "primers_preflight"
+        | "primer_reports"
         | "transcript_assay_specificity_plan"
         | "transcript_assay_specificity_finalize"
         | "primer_specificity_multi_handoff"

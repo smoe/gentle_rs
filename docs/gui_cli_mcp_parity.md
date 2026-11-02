@@ -21,9 +21,9 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 |---|---:|---:|---:|
 | GUI | 65 | 802 | 0 |
 | gentle_cli | 502 | 377 | 0 |
-| MCP | 205 | 545 | 42 |
-| JS | 39 | 642 | 61 |
-| Lua | 38 | 643 | 61 |
+| MCP | 207 | 545 | 41 |
+| JS | 40 | 642 | 60 |
+| Lua | 39 | 643 | 60 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -421,7 +421,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | primers list-restriction-cloning-handoffs | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers show-restriction-cloning-handoff | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers export-restriction-cloning-handoff | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| primers preflight | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers preflight | glossary-command | shell-only | prominent | prominent | prominent | prominent | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers seed-from-feature | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers seed-from-splicing | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>JS: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>Lua: Stored report/workspace inspection remains shell workflow unless listed as an open gap.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers list-reports | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -944,6 +944,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 
 | Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |
 |---|---|---|---|---|---|---|---|---|
+| primers_preflight | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | protein_expression_handoff | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | capabilities | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | state_summary | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
@@ -1029,7 +1030,6 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | JS | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-transcript-assay-fallbacks | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
-| JS | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers publish-gene-isoform-study | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -1090,7 +1090,6 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | Lua | primers list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-transcript-assay-fallbacks | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-transcript-assay-panels | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
-| Lua | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers publish-gene-isoform-study | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers show-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -1140,7 +1139,6 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | MCP | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers inspect-gene-isoform-study-reuse | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
-| MCP | primers preflight | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers restriction-cloning-vector-suggestions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | racks show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | resources install-encode-ccres | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

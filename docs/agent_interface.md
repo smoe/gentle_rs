@@ -617,6 +617,13 @@ before loading state or accessing report files for either handoff tool.
 These three tools cover fourteen shared command paths. This is a scoped parity
 extension, not an unrestricted shell tool or a claim that all MCP gaps are closed.
 
+Primer3 setup has a dedicated read-only `primers_preflight` tool with optional
+`backend`, `primer3_executable`, and `state_path`. It returns the existing
+`gentle.primer3_preflight.v1` shell envelope, including missing-tool diagnostics,
+without persisting settings. Overrides apply only to the probe. This executes
+the selected local binary; it is not a sandbox or proof of scientific readiness.
+Persistent configuration still uses confirmed `SetParameter` operations.
+
 #### Intentionally MCP-excluded shell commands
 
 `tools/list` exposes the curated typed MCP surface, not every shared shell

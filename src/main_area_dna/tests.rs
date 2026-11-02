@@ -15784,6 +15784,73 @@ fn primer_backend_help_summary_explains_auto_fallback_and_primer3_requirement() 
 }
 
 #[test]
+fn primer3_preflight_gui_settings_match_shell_and_survive_project_reload() {
+    let missing = crate::test_support::MissingToolFixture::new(
+        "GENTLE_TEST_PRIMER3_PREFLIGHT",
+        "primer3 missing",
+    );
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(
+        ProjectState::default(),
+    )));
+    let mut area = MainAreaDna::new(
+        DNAsequence::from_sequence("ACGT").unwrap(),
+        None,
+        Some(engine.clone()),
+    );
+    area.primer_backend = PrimerDesignBackend::Primer3;
+    area.primer3_executable = missing.executable().into();
+    area.apply_primer_backend_settings();
+    assert!(area.op_error_popup.is_none());
+    let mut shell = GentleEngine::from_state(ProjectState::default());
+    for (name, value) in [
+        ("primer_design_backend", serde_json::json!("primer3")),
+        (
+            "primer3_executable",
+            serde_json::json!(missing.executable()),
+        ),
+    ] {
+        let line = format!(
+            "set-param {name} {}",
+            crate::engine_shell::quote_shell_arg(&value.to_string())
+        );
+        crate::engine_shell::execute_shell_command(
+            &mut shell,
+            &crate::engine_shell::parse_shell_line(&line).unwrap(),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        serde_json::to_value(&engine.read().unwrap().state().parameters).unwrap(),
+        serde_json::to_value(&shell.state().parameters).unwrap()
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("primer project.json");
+    engine
+        .read()
+        .unwrap()
+        .state()
+        .save_to_path(path.to_str().unwrap())
+        .unwrap();
+    let reloaded = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+    assert_eq!(reloaded.parameters.primer3_executable, missing.executable());
+    assert_eq!(
+        reloaded.parameters.primer_design_backend,
+        PrimerDesignBackend::Primer3
+    );
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    area.run_primer3_preflight_probe();
+    assert!(
+        area.primer3_preflight_status
+            .contains("reachable=false version_probe_ok=false")
+    );
+    assert!(area.primer3_preflight_status.contains(missing.executable()));
+    assert_eq!(
+        serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn primer_design_progress_summary_mentions_pair_evaluation_counts() {
     let summary = MainAreaDna::primer_design_progress_summary(&PrimerDesignProgress {
         seq_id: "tpl".to_string(),
