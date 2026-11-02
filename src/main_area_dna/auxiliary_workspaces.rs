@@ -10121,7 +10121,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn splicing_expert_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
-        egui::Id::new(format!(
+        egui::Id::unique(format!(
             "splicing_expert_window_embedded_{}_{}",
             view.seq_id, view.target_feature_id
         ))
@@ -10201,7 +10201,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn rna_read_mapping_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
-        egui::Id::new(format!(
+        egui::Id::unique(format!(
             "rna_read_mapping_window_embedded_{}_{}",
             view.seq_id, view.target_feature_id
         ))
@@ -10647,7 +10647,7 @@ impl MainAreaDna {
         {
             return Some(egui::LayerId::new(
                 egui::Order::Middle,
-                egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
+                egui::Id::unique(format!("dotplot_window_embedded_{viewport_seq_id}")),
             ));
         }
         if self.show_splicing_expert_window
@@ -10710,7 +10710,7 @@ impl MainAreaDna {
             if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
                 return Some(egui::LayerId::new(
                     egui::Order::Middle,
-                    egui::Id::new(format!(
+                    egui::Id::unique(format!(
                         "isoform_expert_window_embedded_{}_{}",
                         view.seq_id, panel_id
                     )),
@@ -10772,7 +10772,7 @@ impl MainAreaDna {
             let mut open = self.show_dotplot_window;
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 title.clone(),
-                egui::Id::new(format!("dotplot_window_embedded_{}", viewport_seq_id)),
+                egui::Id::unique(format!("dotplot_window_embedded_{}", viewport_seq_id)),
                 default_size,
                 min_size,
             );
@@ -10806,7 +10806,7 @@ impl MainAreaDna {
                 let mut open = self.show_dotplot_window;
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     title.clone(),
-                    egui::Id::new(format!("dotplot_window_embedded_{}", viewport_seq_id)),
+                    egui::Id::unique(format!("dotplot_window_embedded_{}", viewport_seq_id)),
                     default_size,
                     min_size,
                 );

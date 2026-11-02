@@ -568,7 +568,7 @@ impl MainAreaDna {
         let mut open = self.show_genomic_region_manager;
         let spec = crate::egui_compat::HostedWindowSpec::new(
             "Saved genomic regions",
-            egui::Id::new(("genomic_region_manager", self.panel_scope_key())),
+            egui::Id::unique(("genomic_region_manager", self.panel_scope_key())),
             Vec2::new(980.0, 700.0),
             Vec2::new(720.0, 480.0),
         );
@@ -1584,7 +1584,7 @@ impl MainAreaDna {
         ]);
         let spec = crate::egui_compat::HostedWindowSpec::new(
             "Conservation",
-            egui::Id::new(("genomic_region_conservation", self.panel_scope_key())),
+            egui::Id::unique(("genomic_region_conservation", self.panel_scope_key())),
             Vec2::new(1120.0, 780.0),
             Vec2::new(760.0, 520.0),
         );

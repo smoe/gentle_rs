@@ -464,7 +464,7 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle RNA Read Panel Viewport")
     }
     pub(super) fn hosted_rna_panel_window_id() -> egui::Id {
-        egui::Id::new("hosted_rna_panel")
+        egui::Id::unique("hosted_rna_panel")
     }
     pub(super) fn rna_panel_pending(&self) -> bool {
         self.rna_panel_ui.pending.is_some() || self.rna_panel_ui.processing.pending()

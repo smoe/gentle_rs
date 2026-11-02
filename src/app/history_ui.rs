@@ -114,7 +114,7 @@ impl GENtleApp {
             };
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 "Operation History",
-                egui::Id::new("Operation History"),
+                egui::Id::unique("Operation History"),
                 Vec2::new(820.0, 520.0),
                 Vec2::new(560.0, 320.0),
             )
@@ -196,7 +196,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     "Operation History",
-                    egui::Id::new("Operation History"),
+                    egui::Id::unique("Operation History"),
                     Vec2::new(820.0, 520.0),
                     Vec2::new(560.0, 320.0),
                 )

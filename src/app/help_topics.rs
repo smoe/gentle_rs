@@ -63,7 +63,7 @@ help_topics! {
 }
 
 fn request_id() -> egui::Id {
-    egui::Id::new("gentle.manual_help_request")
+    egui::Id::unique("gentle.manual_help_request")
 }
 
 pub(crate) fn request(ctx: &egui::Context, topic: HelpTopic) {

@@ -54,7 +54,7 @@ impl GENtleApp {
         let mut apply_clicked = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Rename Leaf Node",
-            egui::Id::new(("rename_leaf_node_modal", target_node_id.clone())),
+            egui::Id::unique(("rename_leaf_node_modal", target_node_id.clone())),
         )
         .default_size(Vec2::new(420.0, 120.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
@@ -124,7 +124,7 @@ impl GENtleApp {
         let mut remove_clicked = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Remove Leaf Node",
-            egui::Id::new(("remove_leaf_node_modal", target_node_id.clone())),
+            egui::Id::unique(("remove_leaf_node_modal", target_node_id.clone())),
         )
         .default_size(Vec2::new(460.0, 130.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
@@ -1607,7 +1607,7 @@ impl GENtleApp {
                                         .contains_key(&op_ids[0]);
                                 let mut op_response = ui.interact(
                                     op_rect,
-                                    ui.id().with(("lineage_op", edge_idx)),
+                                    ui.scope_id().with(("lineage_op", edge_idx)),
                                     egui::Sense::click(),
                                 );
                                 let op_accessible_name =

@@ -426,7 +426,7 @@ impl GENtleApp {
     }
 
     fn embedded_window_layer_from_title(title: impl Into<String>) -> egui::LayerId {
-        Self::embedded_window_layer_from_window_id(egui::Id::new(title.into()))
+        Self::embedded_window_layer_from_window_id(egui::Id::unique(title.into()))
     }
 
     pub(crate) fn embedded_window_layer_id_for_viewport(
@@ -475,37 +475,37 @@ impl GENtleApp {
             return Some(Self::embedded_window_layer_from_title("Operation History"));
         }
         if viewport_id == Self::prepare_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_prepare_genome_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::retrieve_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_retrieve_genome_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::blast_genome_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_blast_genome_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::bed_track_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_bed_track_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::gibson_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_gibson_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::arrangement_gel_preview_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_arrangement_gel_preview_window",
                 viewport_id,
             ))));
@@ -516,19 +516,19 @@ impl GENtleApp {
             ));
         }
         if viewport_id == Self::pcr_design_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_pcr_design_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::sequencing_confirmation_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_sequencing_confirmation_window",
                 viewport_id,
             ))));
         }
         if viewport_id == Self::planning_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_planning_window",
                 viewport_id,
             ))));
@@ -544,7 +544,7 @@ impl GENtleApp {
             ));
         }
         if viewport_id == Self::uniprot_viewport_id() {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_uniprot_window",
                 viewport_id,
             ))));
@@ -555,7 +555,7 @@ impl GENtleApp {
             ));
         }
         if self.windows.contains_key(&viewport_id) {
-            return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
+            return Some(Self::embedded_window_layer_from_window_id(egui::Id::unique((
                 "hosted_sequence_window_v2",
                 viewport_id,
             ))));

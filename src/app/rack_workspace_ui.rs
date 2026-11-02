@@ -3482,7 +3482,7 @@ impl GENtleApp {
         let viewport_id = Self::rack_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
-            egui::Id::new(("hosted_rack_window", viewport_id)),
+            egui::Id::unique(("hosted_rack_window", viewport_id)),
             viewport_id,
             Vec2::new(1000.0, 760.0),
             Vec2::new(760.0, 520.0),
@@ -3593,7 +3593,7 @@ impl GENtleApp {
         let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Place Arrangement on Existing Rack",
-            egui::Id::new("place_arrangement_on_rack_modal"),
+            egui::Id::unique("place_arrangement_on_rack_modal"),
         )
         .default_size(Vec2::new(560.0, 220.0));
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {

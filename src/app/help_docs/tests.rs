@@ -38,7 +38,7 @@ fn every_window_manual_button_dispatches_its_topic_without_capture_or_mutation()
         frame(vec![egui::Event::PointerButton {
             pos: center, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE,
         }]);
-        assert_eq!(ctx.data(|data| data.get_temp::<HelpTopic>(egui::Id::new("gentle.manual_help_request"))), Some(topic));
+        assert_eq!(ctx.data(|data| data.get_temp::<HelpTopic>(egui::Id::unique("gentle.manual_help_request"))), Some(topic));
         app.consume_manual_help_request(&ctx);
         assert!(super::super::help_topics::take_request(&ctx).is_none());
         let (id, fragment) = topic.destination();

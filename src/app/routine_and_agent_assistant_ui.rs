@@ -1064,7 +1064,6 @@ impl GENtleApp {
             project_generation: consent.project_generation,
             target_window_key: target.native_menu_key,
             target_viewport_id: target.viewport_id,
-            capture_viewport_id,
             source_window_title: target.title.clone(),
             started: Instant::now(),
         });
@@ -7947,7 +7946,7 @@ impl GENtleApp {
             ))
             .legacy_layer_id(egui::LayerId::new(
                 egui::Order::Middle,
-                egui::Id::new(viewport_id),
+                egui::Id::unique(viewport_id),
             ));
         if ctx.embed_viewports() {
             let mut close_requested = false;

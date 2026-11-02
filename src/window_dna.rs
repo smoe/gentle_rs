@@ -448,7 +448,7 @@ impl WindowDna {
                 WindowBackdropKind::Sequence
             };
             let settings = current_window_backdrop_settings();
-            let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
+            let nav_panel_id = egui::Id::unique(("window_dna_nav", self.main_area.sequence_id()));
             crate::egui_compat::show_top_panel(
                 ctx,
                 nav_panel_id,
@@ -526,7 +526,7 @@ impl WindowDna {
             };
             let settings = current_window_backdrop_settings();
             let nav_panel_id =
-                egui::Id::new(("window_dna_nav_embedded", self.main_area.panel_scope_key()));
+                egui::Id::unique(("window_dna_nav_embedded", self.main_area.panel_scope_key()));
             crate::egui_compat::show_top_panel_inside(
                 ui,
                 egui::Panel::top(nav_panel_id).frame(egui::Frame::NONE),
@@ -573,7 +573,7 @@ impl WindowDna {
     fn render_bounded_embedded_main_area(&mut self, ui: &mut egui::Ui) {
         crate::gentle_gui_profile_scope!("WindowDna::render_bounded_embedded_main_area");
         let body_rect = ui.available_rect_before_wrap();
-        let body_id = egui::Id::new(("window_dna_embedded_body", self.main_area.panel_scope_key()));
+        let body_id = egui::Id::unique(("window_dna_embedded_body", self.main_area.panel_scope_key()));
         // Do not allocate the child's expanded min_rect in the parent: the DNA
         // panels can overflow while the hosted window remains user-sized.
         let mut body_ui = ui.new_child(

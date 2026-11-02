@@ -2675,7 +2675,7 @@ impl GENtleApp {
         let viewport_id = Self::gibson_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Gibson",
-            egui::Id::new(("hosted_gibson_window", viewport_id)),
+            egui::Id::unique(("hosted_gibson_window", viewport_id)),
             viewport_id,
             Vec2::new(1040.0, 820.0),
             Vec2::new(760.0, 560.0),

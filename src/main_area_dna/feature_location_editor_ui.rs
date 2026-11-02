@@ -1387,7 +1387,7 @@ impl MainAreaDna {
         let mut open = self.show_feature_location_editor;
         let spec = crate::egui_compat::HostedWindowSpec::new(
             "Feature Editor",
-            egui::Id::new(("feature_location_editor", self.panel_scope_key())),
+            egui::Id::unique(("feature_location_editor", self.panel_scope_key())),
             egui::vec2(680.0, 560.0),
             egui::vec2(460.0, 340.0),
         );

@@ -140,7 +140,7 @@ impl GENtleApp {
         let mut close_requested = false;
         let spec = self.hosted_window_spec_for_viewport(
             WINDOW_TITLE,
-            egui::Id::new(("hosted_new_sequence_window", viewport_id)),
+            egui::Id::unique(("hosted_new_sequence_window", viewport_id)),
             viewport_id,
             Vec2::new(760.0, 520.0),
             Vec2::new(520.0, 360.0),
@@ -2515,7 +2515,7 @@ impl GENtleApp {
         let mut close_requested = false;
         let spec = self.hosted_window_spec_for_viewport(
             WINDOW_TITLE,
-            egui::Id::new(("hosted_genbank_window", viewport_id)),
+            egui::Id::unique(("hosted_genbank_window", viewport_id)),
             viewport_id,
             Vec2::new(820.0, 420.0),
             Vec2::new(680.0, 320.0),
@@ -3758,7 +3758,7 @@ impl GENtleApp {
         let viewport_id = Self::uniprot_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Protein Evidence",
-            egui::Id::new(("hosted_uniprot_window", viewport_id)),
+            egui::Id::unique(("hosted_uniprot_window", viewport_id)),
             viewport_id,
             Vec2::new(1040.0, 680.0),
             Vec2::new(820.0, 480.0),

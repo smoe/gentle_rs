@@ -10880,28 +10880,28 @@ fn embedded_window_layer_id_for_root_tools_uses_hosted_window_ids() {
         ),
         (
             GENtleApp::prepare_genome_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_prepare_genome_window",
                 GENtleApp::prepare_genome_viewport_id(),
             )),
         ),
         (
             GENtleApp::retrieve_genome_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_retrieve_genome_window",
                 GENtleApp::retrieve_genome_viewport_id(),
             )),
         ),
         (
             GENtleApp::blast_genome_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_blast_genome_window",
                 GENtleApp::blast_genome_viewport_id(),
             )),
         ),
         (
             GENtleApp::bed_track_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_bed_track_window",
                 GENtleApp::bed_track_viewport_id(),
             )),
@@ -10912,36 +10912,36 @@ fn embedded_window_layer_id_for_root_tools_uses_hosted_window_ids() {
         ),
         (
             GENtleApp::gibson_viewport_id(),
-            egui::Id::new(("hosted_gibson_window", GENtleApp::gibson_viewport_id())),
+            egui::Id::unique(("hosted_gibson_window", GENtleApp::gibson_viewport_id())),
         ),
         (
             GENtleApp::arrangement_gel_preview_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_arrangement_gel_preview_window",
                 GENtleApp::arrangement_gel_preview_viewport_id(),
             )),
         ),
         (
             GENtleApp::pcr_design_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_pcr_design_window",
                 GENtleApp::pcr_design_viewport_id(),
             )),
         ),
         (
             GENtleApp::sequencing_confirmation_viewport_id(),
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_sequencing_confirmation_window",
                 GENtleApp::sequencing_confirmation_viewport_id(),
             )),
         ),
         (
             GENtleApp::planning_viewport_id(),
-            egui::Id::new(("hosted_planning_window", GENtleApp::planning_viewport_id())),
+            egui::Id::unique(("hosted_planning_window", GENtleApp::planning_viewport_id())),
         ),
         (
             GENtleApp::uniprot_viewport_id(),
-            egui::Id::new(("hosted_uniprot_window", GENtleApp::uniprot_viewport_id())),
+            egui::Id::unique(("hosted_uniprot_window", GENtleApp::uniprot_viewport_id())),
         ),
     ];
 
@@ -10975,7 +10975,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
     assert!(!ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(GENtleApp::configuration_viewport_id()),
+            egui::Id::unique(GENtleApp::configuration_viewport_id()),
         ))
     }));
     crate::egui_compat::discard_test_pass_output(&ctx);
@@ -10998,7 +10998,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
     assert!(!ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(GENtleApp::routine_assistant_viewport_id()),
+            egui::Id::unique(GENtleApp::routine_assistant_viewport_id()),
         ))
     }));
     crate::egui_compat::discard_test_pass_output(&ctx);
@@ -11015,13 +11015,13 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
     assert!(ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new("Command Palette"),
+            egui::Id::unique("Command Palette"),
         ))
     }));
     assert!(!ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(GENtleApp::command_palette_viewport_id()),
+            egui::Id::unique(GENtleApp::command_palette_viewport_id()),
         ))
     }));
     crate::egui_compat::discard_test_pass_output(&ctx);
@@ -11044,7 +11044,7 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
     assert!(!ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(GENtleApp::external_services_viewport_id()),
+            egui::Id::unique(GENtleApp::external_services_viewport_id()),
         ))
     }));
     crate::egui_compat::discard_test_pass_output(&ctx);
@@ -11061,13 +11061,13 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
     assert!(ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new("Operation History"),
+            egui::Id::unique("Operation History"),
         ))
     }));
     assert!(!ctx.memory(|mem| {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(GENtleApp::history_viewport_id()),
+            egui::Id::unique(GENtleApp::history_viewport_id()),
         ))
     }));
     crate::egui_compat::discard_test_pass_output(&ctx);
@@ -11084,7 +11084,7 @@ fn embedded_window_layer_id_for_sequence_viewport_uses_hosted_sequence_window_id
         app.embedded_window_layer_id_for_viewport(viewport_id),
         Some(egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
+            egui::Id::unique(("hosted_sequence_window_v2", viewport_id)),
         ))
     );
 }
@@ -11108,10 +11108,10 @@ fn embedded_sequence_viewport_renders_without_legacy_title_bar_window() {
         .expect("window name");
     let hosted_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", viewport_id)),
     );
     let stale_viewport_layer_id =
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new(viewport_id));
+        egui::LayerId::new(egui::Order::Middle, egui::Id::unique(viewport_id));
     let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(&title);
 
     ctx.begin_pass(egui::RawInput::default());
@@ -11148,7 +11148,7 @@ fn embedded_sequence_viewport_clamps_stale_full_width_shell() {
         .cloned()
         .expect("registered sequence window");
     const OUTER_CHROME_TOLERANCE_PX: f32 = 96.0;
-    let stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+    let stable_id = egui::Id::unique(("hosted_sequence_window_v2", viewport_id));
     let safe = crate::egui_compat::hosted_window_safe_rect_for_rect(screen_rect);
     let max_size = crate::egui_compat::hosted_window_max_inner_size(
         safe,
@@ -11227,7 +11227,7 @@ fn embedded_sequence_stale_clamp_keeps_project_window_area() {
         .get(&viewport_id)
         .cloned()
         .expect("registered sequence window");
-    let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+    let sequence_stable_id = egui::Id::unique(("hosted_sequence_window_v2", viewport_id));
     let project_window_id = GENtleApp::main_workspace_hosted_window_id();
     let project_spec = crate::egui_compat::HostedWindowSpec::new(
         "Project Test",
@@ -11303,7 +11303,7 @@ fn embedded_sequence_window_does_not_auto_expand_to_safe_rect_with_overflowing_c
     let mut app = GENtleApp::default();
     let viewport_id =
         app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
-    let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+    let sequence_stable_id = egui::Id::unique(("hosted_sequence_window_v2", viewport_id));
 
     for _ in 0..3 {
         let window = app
@@ -11343,7 +11343,7 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
     let mut app = GENtleApp::default();
     let viewport_id =
         app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
-    let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+    let sequence_stable_id = egui::Id::unique(("hosted_sequence_window_v2", viewport_id));
 
     // egui 0.36 uses one sizing pass, followed by the requested foreground
     // pass and one settled pass at the normal hosted-window layer order.
@@ -11462,7 +11462,7 @@ fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() 
     let project_window_id = GENtleApp::main_workspace_hosted_window_id();
     let sequence_layer_id = egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", viewport_id)),
     );
 
     ctx.begin_pass(egui::RawInput {
@@ -11603,7 +11603,7 @@ fn focusing_rna_mapping_from_windows_menu_queues_child_focus_without_owner_foreg
         app.embedded_window_layer_id_for_viewport(mapping_viewport_id),
         Some(egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new("rna_read_mapping_window_embedded_seq1_17"),
+            egui::Id::unique("rna_read_mapping_window_embedded_seq1_17"),
         ))
     );
 }
@@ -11635,18 +11635,18 @@ fn focusing_rna_mapping_from_windows_menu_renders_child_above_sequence_window() 
         .remove(&owner_viewport_id);
     let sequence_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", owner_viewport_id)),
     );
     let foreground_sequence_layer_id = egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", owner_viewport_id)),
     );
     let mapping_layer_id = egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new("rna_read_mapping_window_embedded_seq1_17"),
+        egui::Id::unique("rna_read_mapping_window_embedded_seq1_17"),
     );
     let stale_viewport_layer_id =
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new(mapping_viewport_id));
+        egui::LayerId::new(egui::Order::Middle, egui::Id::unique(mapping_viewport_id));
 
     ctx.begin_pass(egui::RawInput {
         screen_rect: Some(screen_rect),
@@ -11754,7 +11754,7 @@ fn focusing_splicing_expert_from_windows_menu_queues_child_focus_without_owner_f
         app.embedded_window_layer_id_for_viewport(splicing_viewport_id),
         Some(egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new("splicing_expert_window_embedded_seq1_17"),
+            egui::Id::unique("splicing_expert_window_embedded_seq1_17"),
         ))
     );
 }
@@ -11791,18 +11791,18 @@ fn focusing_promoter_design_from_windows_menu_renders_child_above_sequence_windo
         .remove(&owner_viewport_id);
     let sequence_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", owner_viewport_id)),
     );
     let foreground_sequence_layer_id = egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
+        egui::Id::unique(("hosted_sequence_window_v2", owner_viewport_id)),
     );
     let promoter_layer_id = egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new("variant_followup_window_embedded_seq1_17"),
+        egui::Id::unique("variant_followup_window_embedded_seq1_17"),
     );
     let stale_viewport_layer_id =
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new(promoter_viewport_id));
+        egui::LayerId::new(egui::Order::Middle, egui::Id::unique(promoter_viewport_id));
 
     ctx.begin_pass(egui::RawInput {
         screen_rect: Some(screen_rect),
@@ -11926,7 +11926,7 @@ fn embedded_help_viewport_renders_without_nested_help_window_area() {
     let stale_title_layer_id = GENtleApp::stale_help_title_layer_id("Help - GUI Manual");
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(GENtleApp::help_viewport_id()),
+        egui::Id::unique(GENtleApp::help_viewport_id()),
     );
 
     ctx.begin_pass(egui::RawInput::default());
@@ -11953,7 +11953,7 @@ fn embedded_help_tutorial_viewport_renders_without_second_title_bar_window() {
         GENtleApp::stale_help_title_layer_id("Help - Load pGEX and digest with BamHI/EcoRI");
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(GENtleApp::help_viewport_id()),
+        egui::Id::unique(GENtleApp::help_viewport_id()),
     );
 
     ctx.begin_pass(egui::RawInput::default());
@@ -12019,7 +12019,7 @@ fn focused_embedded_help_window_renders_in_foreground_without_viewport_title_she
         egui::LayerId::new(egui::Order::Foreground, GENtleApp::hosted_help_window_id());
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(GENtleApp::help_viewport_id()),
+        egui::Id::unique(GENtleApp::help_viewport_id()),
     );
 
     ctx.begin_pass(egui::RawInput::default());
@@ -12043,7 +12043,7 @@ fn embedded_agent_assistant_renders_as_single_hosted_window_without_viewport_tit
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(GENtleApp::agent_assistant_viewport_id()),
+        egui::Id::unique(GENtleApp::agent_assistant_viewport_id()),
     );
 
     ctx.begin_pass(egui::RawInput::default());
@@ -14175,9 +14175,10 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
         .agent_screenshot_capture
         .clone()
         .expect("capture should be in flight");
+    assert_eq!(pending.target_viewport_id, egui::ViewportId::ROOT);
     let screenshot_callback = output
         .viewport_output
-        .get(&pending.capture_viewport_id)
+        .get(&egui::ViewportId::ROOT)
         .into_iter()
         .flat_map(|viewport| &viewport.commands)
         .find_map(|command| {
@@ -14228,6 +14229,52 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
             .map(|attachment| attachment.request.sha256.as_str()),
         Some(digest.as_str())
     );
+}
+
+#[test]
+fn agent_screenshot_targets_native_or_embedded_viewport_without_stored_transport_id() {
+    let _guard = crate::agent_help::capture_test_guard();
+    let _ = take_capture_events();
+    for embedded in [false, true] {
+        let mut app = GENtleApp::default();
+        app.show_help_dialog = true;
+        let target = GENtleApp::help_viewport_id();
+        app.active_window_menu_key = Some(GENtleApp::native_menu_key_for_viewport(target));
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(embedded);
+        let mut input = egui::RawInput::default();
+        input
+            .viewports
+            .insert(target, egui::ViewportInfo::default());
+        ctx.begin_pass(input);
+        activate_test_agent_screenshot_request(&mut app, true, "inspect-help-viewport");
+
+        app.approve_agent_screenshot_request(&ctx);
+
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        let pending = app
+            .agent_screenshot_capture
+            .as_ref()
+            .expect("approved capture");
+        assert_eq!(pending.target_viewport_id, target);
+        let expected = if embedded { egui::ViewportId::ROOT } else { target };
+        assert_eq!(screenshot_commands(&output), 1);
+        let commands = &output
+            .viewport_output
+            .get(&expected)
+            .expect("capture viewport")
+            .commands;
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| { matches!(command, egui::ViewportCommand::Screenshot(_)) })
+                .count(),
+            1,
+            "capture must target the approved native viewport or its embedded host"
+        );
+        assert!(app.agent_pending_image_attachment.is_none());
+        assert!(take_capture_events().is_empty());
+    }
 }
 
 #[test]

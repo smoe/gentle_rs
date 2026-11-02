@@ -169,7 +169,7 @@ impl MainAreaDna {
                 Self::tr("tata.title"),
                 self.seq_id.as_deref().unwrap_or("")
             ),
-            egui::Id::new(("tata_boxes", self.panel_scope_key())),
+            egui::Id::unique(("tata_boxes", self.panel_scope_key())),
             Vec2::new(1050.0, 650.0),
             Vec2::new(620.0, 360.0),
         );

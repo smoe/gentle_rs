@@ -301,7 +301,7 @@ impl<'f> CommonMarkViewer<'f> {
     ) {
         egui_commonmark_backend::prepare_show(cache, ui.ctx());
         parsers::pulldown::CommonMarkViewerInternal::new().show_scrollable(
-            Id::new(source_id),
+            Id::unique(source_id),
             ui,
             cache,
             &self.options,

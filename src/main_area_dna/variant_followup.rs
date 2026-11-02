@@ -142,7 +142,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn variant_followup_embedded_window_id(ui: &VariantFollowupUiState) -> egui::Id {
-        egui::Id::new(format!(
+        egui::Id::unique(format!(
             "variant_followup_window_embedded_{}_{}",
             ui.source_seq_id,
             ui.source_feature_id

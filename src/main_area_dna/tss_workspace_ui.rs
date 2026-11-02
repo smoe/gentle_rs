@@ -301,7 +301,7 @@ impl MainAreaDna {
                 "Transcript starts: {}",
                 self.seq_id.as_deref().unwrap_or("")
             ),
-            egui::Id::new(("tss_inventory", self.panel_scope_key())),
+            egui::Id::unique(("tss_inventory", self.panel_scope_key())),
             Vec2::new(1000.0, 600.0),
             Vec2::new(620.0, 360.0),
         );

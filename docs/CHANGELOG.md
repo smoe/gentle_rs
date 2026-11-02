@@ -1,5 +1,37 @@
 # GENtle Changelog
 
+## 2026-11-02 - Use The Actual Pending Tutorial Scroll Key In Regression Tests
+
+- Repair the test's incorrect derivation from `ScrollAreaOutput.id`: egui 0.37
+  pre-hashes its scroll salt, unlike the independent pending-motion key.
+  Share the existing UI-scoped key through one helper without changing its
+  namespace, production scroll behavior or wheel/drag priority.
+- Keep the queued-request and cancellation assertions intact. Add an idle-frame
+  control proving a real pending offset is applied and consumed, plus an offline
+  guard against restoring the guessed key. Rust reruns remain external; no local
+  Rust build/check/test, dependency change, push or dispatch occurred.
+
+## 2026-11-02 - Migrate Deprecated egui Identity APIs Without Changing Salts
+
+- Rename 186 `Id::new` calls to the equivalent `Id::unique` and four UI `id()`
+  calls to `scope_id()` across GUI, tests, reproduction tools and the patched
+  Markdown adapters. A mechanical diff check confirms all arguments/salts are
+  unchanged; there is no replacement with transient or positional IDs.
+- Remove the obsolete stored capture-transport viewport; approval still routes
+  to the chosen native viewport or its embedded host, and keeps the logical
+  target for stale-window validation. Strengthen one-shot target assertions and
+  add a native-versus-embedded routing regression without actual captures.
+- Qualify the three new screenshot-test viewport references through the existing
+  `egui` module after the owner's compile exposed the missing type import;
+  extend the source guard for this boundary. No capture assertion is removed.
+- Add offline guards for deprecated calls, negative/current API controls and
+  the retained screenshot target boundary. No blanket warning suppression,
+  dependency update, local Rust build/check/test, push or dispatch. Runtime
+  compilation, window-state/focus and consent acceptance remain in Glen's handoff.
+- Authoring checks: 91 offline passes, one explicit binary-dependent skip;
+  syntax parsing, manual/documentation checks and whitespace pass. Packaging
+  policy tests use synthetic/mocked executables, not real package acceptance.
+
 ## 2026-11-02 - Retain Glen's Scoped Discovery Verification
 
 - Preserve the supplied `GENtle_discovery_verification_7f73a42a.md` unchanged:

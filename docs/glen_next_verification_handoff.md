@@ -9,9 +9,12 @@ Align the two patched manifests/lock graph; use screenshot callbacks and public
 scroll APIs. Preserve the owner's other dependency choices, capture approval,
 exact viewport identity, one-shot completion, preview-before-transport and the
 disabled CLI capture bridge. No actual screenshot, model call or local Rust
-execution occurred; six offline API/manifest guards and source-matched Rust
-regressions are authoring evidence only. Id deprecation warnings are not an
-excuse to replace stable window identities with positional or transient IDs.
+execution occurred; ten offline API/manifest guards and source-matched Rust
+regressions are authoring evidence only. The warning follow-up renames 186
+`Id::new` calls to their `Id::unique` alias and four UI `id()` calls to
+`scope_id()`, including the patched Markdown sources. A mechanical diff check
+preserves every original argument/salt; no transient/positional ID or blanket
+warning suppression is introduced.
 
 The owner's test build after `1e46525c` exposed seven further compiler errors,
 not just warnings: four wheel events lacked `source`, and three test Areas used
@@ -19,7 +22,34 @@ removed string-to-Id conversions. Use `MouseWheelSource::Unknown` for synthetic
 events and explicit named `Id::unique` for those Areas. The two feature-gated
 promoter events and GUI benchmark have the same wheel repair. Two source guards
 failed before these edits and pass afterward; that is not a Rust compile verdict.
-Existing deprecation/dead-field warnings remain separate from these hard errors.
+The later warning-only repair also removes the now-unused stored capture
+transport viewport, retaining request identity, logical target/stale checks and
+the actual approval-bound routing. A new `agent_screenshot_` regression checks
+both native and embedded Help-window targets without completing any capture.
+The owner's next compile exposed three unqualified `ViewportId` references in
+these regressions; they now use the test module's existing `egui::ViewportId`
+path, with an offline guard. The native/embedded and one-shot assertions remain.
+Do not infer warning-free compilation from source inspection: Rust/native
+verification of this update remains pending.
+
+Codex's warning-follow-up authoring checks: 91 offline passes, one explicit
+binary-dependent skip, plus Rust syntax parsing (not type checking), manual/
+documentation checks and clean whitespace. Packaging-policy tests use synthetic
+or mocked executables; there is no new Rust/package/native verdict.
+
+The owner's later local full-library run reports 4814 passed, 1 failed and
+16 ignored (source/build identity not supplied). Its single failure reads a
+pending edge-scroll request under a key derived from `ScrollAreaOutput.id`,
+although egui 0.37 pre-hashes that scroll area's salt. The repair shares the
+actual existing UI-scoped pending key between production and the test frame;
+it does not remove the real queued-request or wheel/drag refusal assertions.
+A new idle-frame control verifies application/consumption of a pending offset.
+First rerun the two focused cases below, then the existing `tutorial_menu_`
+filter before another broad suite. No new Rust pass is claimed here:
+
+```sh
+cargo test --locked --lib tutorial_menu_pending_edge_scroll_ -- --test-threads=1
+```
 
 Glen's `7f73a42a` glossary failure is fixed by the port of `3e1b7bda`.
 `src/engine_shell/tests.rs` matches the already tested blob
@@ -37,9 +67,11 @@ the actual published source/lock. Run only the changed scopes before ordinary CI
 cargo check -q --locked --tests
 cargo check -q --locked --no-default-features --lib --bin gentle_cli --bin gentle_mcp
 cargo check -q --locked --all-features --tests
+cargo check -q --locked --bin gentle_egui_window_repro --bin gentle_dna_viewer_repro
 cargo check -q --locked -p gentle-benchmarks --bench gui_operations
 cargo test --locked --lib engine_shell::tests::glossary_ -- --test-threads=1
 cargo test --locked --lib egui_capture_ -- --test-threads=1
+cargo test --locked --lib egui_compat::tests:: -- --test-threads=1
 cargo test --locked --lib agent_screenshot -- --test-threads=1
 cargo test --locked --lib tutorial_menu_ -- --test-threads=1
 cargo test --locked --lib help_docs -- --test-threads=1
@@ -54,7 +86,9 @@ python3 -m unittest scripts.test_egui_compatibility -v
 Require nonzero counts. In native checks verify the selected window supplies
 the image, decline/unsupported/stale requests do not capture, duplicate
 completion produces no second attachment, and preview requires a later explicit
-send. Check last-row tutorial access, reversed edge hovering, wheel/drag priority,
+send. Include the new native-versus-embedded transport regression; preserve
+window focus/drag state, Markdown scroll keys and the manual help-request ID.
+Check last-row tutorial access, reversed edge hovering, wheel/drag priority,
 Markdown links/images and lineage/rack scroll positions. Native captures require
 the existing user consent; no live provider or headless capture is requested.
 Report source/toolchain/platform/features, binary hashes, results and skips;

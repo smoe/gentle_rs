@@ -363,7 +363,7 @@ impl ReproApp {
         };
         let mut open = true;
         egui::Window::new(title)
-            .id(egui::Id::new((
+            .id(egui::Id::unique((
                 "gentle_egui_window_repro_embedded",
                 viewport_id,
             )))

@@ -1485,7 +1485,7 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Measured Gel Image")
     }
     pub(super) fn gel_image_window_id() -> egui::Id {
-        egui::Id::new("hosted_gel_image_editor")
+        egui::Id::unique("hosted_gel_image_editor")
     }
 
     pub(super) fn open_gel_image_editor(&mut self) {

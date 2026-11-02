@@ -3940,7 +3940,7 @@ impl GENtleApp {
                     let node_rect = egui::Rect::from_center_size(center, egui::vec2(176.0, 46.0));
                     let response = ui.interact(
                         node_rect,
-                        ui.id().with(("regulatory_partner_node", node_id)),
+                        ui.scope_id().with(("regulatory_partner_node", node_id)),
                         egui::Sense::hover(),
                     );
                     let member_keys = regulatory_partner_tree_member_keys(report, node_id);

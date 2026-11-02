@@ -1107,7 +1107,7 @@ impl GENtleApp {
         let viewport_id = Self::prepare_genome_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title,
-            egui::Id::new(("hosted_prepare_genome_window", viewport_id)),
+            egui::Id::unique(("hosted_prepare_genome_window", viewport_id)),
             viewport_id,
             Vec2::new(760.0, 560.0),
             Vec2::new(520.0, 360.0),
@@ -1231,7 +1231,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Reindex Prepared Genome",
-            egui::Id::new((
+            egui::Id::unique((
                 "reindex_prepared_genome_modal",
                 matches!(request.scope, GenomeDialogScope::Helper),
                 request.genome_id.clone(),
@@ -1309,7 +1309,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Update Ensembl Specs",
-            egui::Id::new((
+            egui::Id::unique((
                 "update_ensembl_specs_modal",
                 matches!(dialog.scope, GenomeDialogScope::Helper),
                 dialog.catalog_path.clone(),
@@ -1452,7 +1452,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Browse Ensembl Candidates",
-            egui::Id::new((
+            egui::Id::unique((
                 "browse_ensembl_candidates_modal",
                 matches!(dialog.scope, GenomeDialogScope::Helper),
             )),
@@ -1618,7 +1618,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Quick Install Ensembl Candidate",
-            egui::Id::new((
+            egui::Id::unique((
                 "quick_install_ensembl_candidate_modal",
                 dialog.preview.collection.clone(),
                 dialog.preview.species_dir.clone(),
@@ -1719,7 +1719,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Remove Prepared Genome",
-            egui::Id::new((
+            egui::Id::unique((
                 "remove_prepared_genome_modal",
                 matches!(request.scope, GenomeDialogScope::Helper),
                 request.genome_id.clone(),
@@ -1770,7 +1770,7 @@ impl GENtleApp {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Remove Catalog Entry",
-            egui::Id::new((
+            egui::Id::unique((
                 "remove_catalog_entry_modal",
                 matches!(request.scope, GenomeDialogScope::Helper),
                 request.genome_id.clone(),
@@ -2290,7 +2290,7 @@ impl GENtleApp {
         let viewport_id = Self::retrieve_genome_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title,
-            egui::Id::new(("hosted_retrieve_genome_window", viewport_id)),
+            egui::Id::unique(("hosted_retrieve_genome_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 760.0),
             Vec2::new(860.0, 520.0),
@@ -2981,7 +2981,7 @@ impl GENtleApp {
         let viewport_id = Self::blast_genome_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title,
-            egui::Id::new(("hosted_blast_genome_window", viewport_id)),
+            egui::Id::unique(("hosted_blast_genome_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 700.0),
             Vec2::new(640.0, 420.0),
@@ -3047,7 +3047,7 @@ impl GENtleApp {
         let mut close_requested = false;
         let spec = crate::egui_compat::HostedWindowSpec::new(
             title,
-            egui::Id::new((
+            egui::Id::unique((
                 "hosted_reference_genome_inspector_window",
                 matches!(scope, GenomeDialogScope::Helper),
             )),
@@ -3876,7 +3876,7 @@ impl GENtleApp {
         let viewport_id = Self::bed_track_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Import Genome Tracks",
-            egui::Id::new(("hosted_bed_track_window", viewport_id)),
+            egui::Id::unique(("hosted_bed_track_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 620.0),
             Vec2::new(620.0, 320.0),
@@ -3933,7 +3933,7 @@ impl GENtleApp {
         let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Clear Caches",
-            egui::Id::new("clear_caches_modal"),
+            egui::Id::unique("clear_caches_modal"),
         )
         .default_size(Vec2::new(980.0, 720.0))
         .min_size(Vec2::new(700.0, 420.0))

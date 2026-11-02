@@ -2250,7 +2250,6 @@ struct AgentScreenshotCapture {
     project_generation: AgentScreenshotProjectGeneration,
     target_window_key: u64,
     target_viewport_id: ViewportId,
-    capture_viewport_id: ViewportId,
     source_window_title: String,
     started: Instant,
 }
@@ -3205,7 +3204,7 @@ impl Default for GENtleApp {
 
 impl GENtleApp {
     fn main_workspace_hosted_window_id() -> egui::Id {
-        egui::Id::new("main_workspace_hosted_window")
+        egui::Id::unique("main_workspace_hosted_window")
     }
 
     fn help_viewport_id() -> ViewportId {
@@ -3213,31 +3212,31 @@ impl GENtleApp {
     }
 
     fn hosted_help_window_id() -> egui::Id {
-        egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
+        egui::Id::unique(("hosted_help_window", Self::help_viewport_id()))
     }
 
     fn hosted_routine_assistant_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_routine_assistant_window",
             Self::routine_assistant_viewport_id(),
         ))
     }
 
     fn hosted_agent_assistant_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_agent_assistant_window",
             Self::agent_assistant_viewport_id(),
         ))
     }
 
     fn unsaved_changes_dialog_id() -> egui::Id {
-        egui::Id::new("unsaved_changes_dialog")
+        egui::Id::unique("unsaved_changes_dialog")
     }
 
     fn legacy_root_help_layer_ids(title: &str) -> [egui::LayerId; 2] {
         [
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string())),
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new(Self::help_viewport_id())),
+            egui::LayerId::new(egui::Order::Middle, egui::Id::unique(title.to_string())),
+            egui::LayerId::new(egui::Order::Middle, egui::Id::unique(Self::help_viewport_id())),
         ]
     }
 
@@ -3280,7 +3279,7 @@ impl GENtleApp {
     }
 
     fn hosted_configuration_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_configuration_window",
             Self::configuration_viewport_id(),
         ))
@@ -3339,7 +3338,7 @@ impl GENtleApp {
     }
 
     fn hosted_external_services_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_external_services_window",
             Self::external_services_viewport_id(),
         ))
@@ -3350,7 +3349,7 @@ impl GENtleApp {
     }
 
     fn hosted_gene_set_inspector_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_gene_set_inspector_window",
             Self::gene_set_inspector_viewport_id(),
         ))
@@ -3361,7 +3360,7 @@ impl GENtleApp {
     }
 
     fn hosted_clawbio_window_id() -> egui::Id {
-        egui::Id::new(("hosted_clawbio_window", Self::clawbio_viewport_id()))
+        egui::Id::unique(("hosted_clawbio_window", Self::clawbio_viewport_id()))
     }
 
     fn mirna_target_scan_viewport_id() -> ViewportId {
@@ -3369,7 +3368,7 @@ impl GENtleApp {
     }
 
     fn hosted_mirna_target_scan_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_mirna_target_scan_window",
             Self::mirna_target_scan_viewport_id(),
         ))
@@ -3380,7 +3379,7 @@ impl GENtleApp {
     }
 
     fn hosted_evidence_preparation_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_evidence_preparation_window",
             Self::evidence_preparation_viewport_id(),
         ))
@@ -14811,7 +14810,7 @@ Error: `{err}`"
         let viewport_id = Self::arrangement_gel_preview_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
-            egui::Id::new(("hosted_arrangement_gel_preview_window", viewport_id)),
+            egui::Id::unique(("hosted_arrangement_gel_preview_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 760.0),
             Vec2::new(760.0, 560.0),
@@ -14982,7 +14981,7 @@ Error: `{err}`"
         let viewport_id = Self::rack_labels_preview_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
-            egui::Id::new(("hosted_rack_labels_preview_window", viewport_id)),
+            egui::Id::unique(("hosted_rack_labels_preview_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 760.0),
             Vec2::new(760.0, 560.0),
@@ -15143,7 +15142,7 @@ Error: `{err}`"
         let viewport_id = Self::pcr_design_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
-            egui::Id::new(("hosted_pcr_design_window", viewport_id)),
+            egui::Id::unique(("hosted_pcr_design_window", viewport_id)),
             viewport_id,
             Vec2::new(1200.0, 840.0),
             Vec2::new(920.0, 620.0),
@@ -15283,7 +15282,7 @@ Error: `{err}`"
         let viewport_id = Self::sequencing_confirmation_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             title.clone(),
-            egui::Id::new(("hosted_sequencing_confirmation_window", viewport_id)),
+            egui::Id::unique(("hosted_sequencing_confirmation_window", viewport_id)),
             viewport_id,
             Vec2::new(1180.0, 820.0),
             Vec2::new(920.0, 620.0),
@@ -15891,7 +15890,7 @@ Error: `{err}`"
         let viewport_id = Self::planning_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Planning",
-            egui::Id::new(("hosted_planning_window", viewport_id)),
+            egui::Id::unique(("hosted_planning_window", viewport_id)),
             viewport_id,
             Vec2::new(980.0, 760.0),
             Vec2::new(700.0, 520.0),
@@ -17736,7 +17735,7 @@ Error: `{err}`"
                         window_title.clone(),
                         // Versioned to drop stale persisted egui Resize state
                         // from pre-fix embedded sequence shells.
-                        egui::Id::new(("hosted_sequence_window_v2", id)),
+                        egui::Id::unique(("hosted_sequence_window_v2", id)),
                         Vec2::new(
                             SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
                             SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX,
@@ -17749,7 +17748,7 @@ Error: `{err}`"
                         EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX,
                     ))
                     .foreground(render_hosted_sequence_in_foreground)
-                    .legacy_layer_id(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+                    .legacy_layer_id(egui::LayerId::new(egui::Order::Middle, egui::Id::unique(id)));
                     crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
@@ -22881,7 +22880,7 @@ Error: `{err}`"
         let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             self.tr("about.title"),
-            egui::Id::new("about_gentle_modal"),
+            egui::Id::unique("about_gentle_modal"),
         )
         .default_size(Vec2::new(460.0, 520.0))
         .min_size(Vec2::new(420.0, 460.0));
@@ -22982,7 +22981,7 @@ Error: `{err}`"
         let mut close_requested = false;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             self.tr("about.details.title"),
-            egui::Id::new("about_gentle_details_modal"),
+            egui::Id::unique("about_gentle_details_modal"),
         )
         .default_size(Vec2::new(760.0, 560.0))
         .min_size(Vec2::new(620.0, 460.0))
@@ -23112,7 +23111,7 @@ Error: `{err}`"
             };
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 "Command Palette",
-                egui::Id::new("Command Palette"),
+                egui::Id::unique("Command Palette"),
                 Vec2::new(760.0, 520.0),
                 Vec2::new(500.0, 320.0),
             )
@@ -23140,7 +23139,7 @@ Error: `{err}`"
             if class == egui::ViewportClass::EmbeddedWindow {
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     "Command Palette",
-                    egui::Id::new("Command Palette"),
+                    egui::Id::unique("Command Palette"),
                     Vec2::new(760.0, 520.0),
                     Vec2::new(500.0, 320.0),
                 )
@@ -23181,7 +23180,7 @@ Error: `{err}`"
         let viewport_id = Self::background_jobs_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Background Jobs",
-            egui::Id::new(("background_jobs_hosted_window", viewport_id)),
+            egui::Id::unique(("background_jobs_hosted_window", viewport_id)),
             viewport_id,
             Vec2::new(760.0, 480.0),
             Vec2::new(520.0, 320.0),
@@ -24109,7 +24108,7 @@ Error: `{err}`"
         let runtime_snapshot = &self.runtime_status_snapshot_cache.snapshot;
         crate::egui_compat::show_bottom_panel(
             ctx,
-            egui::Id::new("gentle_status_bar"),
+            egui::Id::unique("gentle_status_bar"),
             egui::Panel::bottom("gentle_status_bar"),
             |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -24278,7 +24277,7 @@ Error: `{err}`"
             ))
             .legacy_layer_id(egui::LayerId::new(
                 egui::Order::Middle,
-                egui::Id::new(Self::help_viewport_id()),
+                egui::Id::unique(Self::help_viewport_id()),
             ));
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 self.render_help_contents(ui);
@@ -24315,7 +24314,7 @@ Error: `{err}`"
                 ))
                 .legacy_layer_id(egui::LayerId::new(
                     egui::Order::Middle,
-                    egui::Id::new(Self::help_viewport_id()),
+                    egui::Id::unique(Self::help_viewport_id()),
                 ));
                 crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     self.render_help_contents(ui);
@@ -25938,7 +25937,7 @@ impl GENtleApp {
             // Show menu bar
             crate::egui_compat::show_top_panel(
                 ctx,
-                egui::Id::new("top"),
+                egui::Id::unique("top"),
                 egui::Panel::top("top"),
                 |ui| {
                     self.render_menu_bar(ui);

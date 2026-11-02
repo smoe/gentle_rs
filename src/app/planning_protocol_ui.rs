@@ -42,7 +42,7 @@ pub(super) fn show(ui: &mut egui::Ui, expected_routine: &str, output: Option<&se
         ui.label("Bench-step overview unavailable: explanation belongs to another routine.");
         return;
     }
-    let key = egui::Id::new("routine_protocol_overview_view");
+    let key = egui::Id::unique("routine_protocol_overview_view");
     // Hash the actual source and presentation bytes, not a claimed wire digest
     // or pointer identity. Verify only on change, outside the drawing loop.
     let bytes =
@@ -194,7 +194,7 @@ pub(super) fn show(ui: &mut egui::Ui, expected_routine: &str, output: Option<&se
                             let response = ui
                                 .interact(
                                     rect,
-                                    ui.id().with(&node.step.step_id),
+                                    ui.scope_id().with(&node.step.step_id),
                                     egui::Sense::click(),
                                 )
                                 .on_hover_text(node_details(node));
@@ -340,7 +340,7 @@ mod tests {
             let _ = crate::egui_compat::end_test_pass(&ctx);
             let state = ctx
                 .data_mut(|data| {
-                    data.get_temp::<ViewState>(egui::Id::new("routine_protocol_overview_view"))
+                    data.get_temp::<ViewState>(egui::Id::unique("routine_protocol_overview_view"))
                 })
                 .unwrap();
             assert_eq!(state.report.is_ok(), valid);

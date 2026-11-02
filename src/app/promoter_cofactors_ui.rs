@@ -306,7 +306,7 @@ impl GENtleApp {
         let viewport_id = ViewportId::from_hash_of("promoter_cofactor_browser");
         let spec = self.hosted_window_spec_for_viewport(
             "Promoter Cofactors",
-            egui::Id::new("promoter_cofactors"),
+            egui::Id::unique("promoter_cofactors"),
             viewport_id,
             egui::vec2(1250.0, 850.0),
             egui::vec2(700.0, 450.0),

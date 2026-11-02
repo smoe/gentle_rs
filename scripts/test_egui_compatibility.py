@@ -11,6 +11,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_ID_API = re.compile(r"\bId::new\s*\(|\bui\.id\s*\(\s*\)")
 
 
 def read_toml(path):
@@ -25,6 +26,21 @@ def family(version):
 
 
 class EguiCompatibilityTests(unittest.TestCase):
+    def test_no_deprecated_id_apis_in_gui_sources(self):
+        for directory in ("src", "crates", "vendor/egui_commonmark/src",
+                          "vendor/egui_commonmark_backend/src"):
+            for path in sorted((ROOT / directory).rglob("*.rs")):
+                with self.subTest(path=str(path.relative_to(ROOT))):
+                    match = LEGACY_ID_API.search(path.read_text(encoding="utf-8"))
+                    self.assertIsNone(match, "use Id::unique or Ui::scope_id, preserving the salt")
+
+    def test_deprecated_id_api_guard_distinguishes_current_apis(self):
+        for legacy in ('egui::Id::new("stable")', 'Id::new(("stable", 1))', 'ui.id().with("row")'):
+            self.assertIsNotNone(LEGACY_ID_API.search(legacy), legacy)
+        for current in ('egui::Id::unique("stable")', 'ui.scope_id().with("row")',
+                        'texture.id()', 'protocol.id()'):
+            self.assertIsNone(LEGACY_ID_API.search(current), current)
+
     def test_gui_and_vendored_markdown_share_one_version_family(self):
         root = read_toml("Cargo.toml")
         expected = family(root["workspace"]["dependencies"]["egui"])
@@ -71,6 +87,22 @@ class EguiCompatibilityTests(unittest.TestCase):
                      "timed_out_agent_screenshot_capture_discards_late_reply_id"):
             self.assertIn(f"fn {test}()", app_tests)
 
+    def test_capture_keeps_logical_target_without_obsolete_transport_field(self):
+        app = (ROOT / "src/app.rs").read_text()
+        capture = app.split("struct AgentScreenshotCapture {", 1)[1].split("\n}", 1)[0]
+        self.assertNotIn("capture_viewport_id", capture)
+        self.assertIn("target_viewport_id: ViewportId", capture)
+        approval = (ROOT / "src/app/routine_and_agent_assistant_ui.rs").read_text().split(
+            "pub(super) fn approve_agent_screenshot_request(", 1)[1].split(
+            "fn agent_screenshot_followup_prompt(", 1)[0]
+        self.assertIn("let capture_viewport_id = if ctx.embed_viewports()", approval)
+        self.assertIn("target.viewport_id", approval)
+        tests = (ROOT / "src/app/tests.rs").read_text()
+        self.assertIn("fn agent_screenshot_targets_native_or_embedded_viewport_without_stored_transport_id()", tests)
+        self.assertNotIn("pending.capture_viewport_id", tests)
+        self.assertIsNone(re.search(r"(?<![\w:])ViewportId::", tests),
+                          "app tests use the imported egui module, not an unimported ViewportId")
+
     def test_scroll_clients_use_public_offsets_and_defer_edge_requests(self):
         menu = (ROOT / "src/app/tutorial_menus.rs").read_text()
         for path in ("src/app/tutorial_menus.rs", "src/app/main_lineage_ui.rs",
@@ -93,6 +125,17 @@ class EguiCompatibilityTests(unittest.TestCase):
             for index, event in enumerate(events):
                 with self.subTest(path=path, event=index):
                     self.assertIn("source: egui::MouseWheelSource::Unknown", event)
+
+    def test_edge_hover_request_key_is_shared_with_the_test_frame(self):
+        menu = (ROOT / "src/app/tutorial_menus.rs").read_text()
+        for token in ("fn edge_scroll_request_id(ui: &egui::Ui) -> egui::Id",
+                      "let edge_scroll_id = edge_scroll_request_id(ui);",
+                      "let pending_edge_scroll_id = edge_scroll_request_id(ui);",
+                      "let pending_id = hover.pending_edge_scroll_id;",
+                      "fn tutorial_menu_pending_edge_scroll_is_applied_on_idle_frame()"):
+            self.assertTrue(token in menu, f"missing shared-key regression contract: {token}")
+        self.assertFalse('hover.area.id.with("edge_scroll")' in menu,
+                         "the ScrollArea output ID is not the independent pending-request key")
 
     def test_test_windows_keep_named_explicit_ids(self):
         source = (ROOT / "src/main_area_dna/tests.rs").read_text()

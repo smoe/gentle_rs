@@ -487,7 +487,7 @@ impl CommonMarkCache {
         &mut self,
         source_id: impl std::hash::Hash + std::fmt::Debug,
     ) -> bool {
-        self.scroll.remove(&egui::Id::new(source_id)).is_some()
+        self.scroll.remove(&egui::Id::unique(source_id)).is_some()
     }
 
     /// If the user clicks on a link in the markdown render that has `name` as a link. The hook

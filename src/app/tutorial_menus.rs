@@ -87,6 +87,12 @@ fn edge_scroll_offset(
     (offset + direction * 300.0 * dt.clamp(0.0, 0.05)).clamp(0.0, maximum)
 }
 
+// Keep pending motion independent of ScrollArea's internal salt hashing.
+fn edge_scroll_request_id(ui: &egui::Ui) -> egui::Id {
+    ui.make_persistent_id("tutorial_menu_scroll")
+        .with("edge_scroll")
+}
+
 /// Use egui scrolling for input/scrollbars, adding edge-hover movement only to
 /// the menu under the pointer. Child submenus and scrollbar drags take priority.
 pub(super) fn scroll<R>(
@@ -106,9 +112,7 @@ pub(super) fn scroll<R>(
             input.stable_dt,
         )
     });
-    let edge_scroll_id = ui
-        .make_persistent_id("tutorial_menu_scroll")
-        .with("edge_scroll");
+    let edge_scroll_id = edge_scroll_request_id(ui);
     let pending_offset = ui
         .ctx()
         .data_mut(|data| data.remove_temp::<f32>(edge_scroll_id));
@@ -291,6 +295,7 @@ mod tests {
     struct MenuFrame {
         area: egui::scroll_area::ScrollAreaOutput<Vec<egui::Rect>>,
         selected: Option<usize>,
+        pending_edge_scroll_id: egui::Id,
     }
 
     // Hand-crafted GUI rows exercise overflow without loading or running a tutorial.
@@ -305,9 +310,10 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                egui::Area::new(egui::Id::new("tutorial_menu_test"))
+                egui::Area::new(egui::Id::unique("tutorial_menu_test"))
                     .fixed_pos(egui::pos2(8.0, 8.0))
                     .show(ui.ctx(), |ui| {
+                        let pending_edge_scroll_id = edge_scroll_request_id(ui);
                         let mut selected = None;
                         let area = scroll(ui, |ui| {
                             (0..40)
@@ -322,7 +328,11 @@ mod tests {
                                 })
                                 .collect()
                         });
-                        result = Some(MenuFrame { area, selected });
+                        result = Some(MenuFrame {
+                            area,
+                            selected,
+                            pending_edge_scroll_id,
+                        });
                     });
             },
         ).drop_without_applying_deltas();
@@ -386,7 +396,7 @@ mod tests {
             let initial = frame(&ctx, &mut time, vec![]);
             let bottom = initial.area.inner_rect.center_bottom() - egui::vec2(0.0, 2.0);
             let hover = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(bottom)]);
-            let pending_id = hover.area.id.with("edge_scroll");
+            let pending_id = hover.pending_edge_scroll_id;
             assert!(ctx.data(|data| data.get_temp::<f32>(pending_id)).is_some());
             let center = hover.area.inner_rect.center();
             let input = if wheel {
@@ -420,6 +430,28 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn tutorial_menu_pending_edge_scroll_is_applied_on_idle_frame() {
+        let ctx = egui::Context::default();
+        let mut time = 0.0;
+        frame(&ctx, &mut time, vec![]);
+        let initial = frame(&ctx, &mut time, vec![]);
+        let bottom = initial.area.inner_rect.center_bottom() - egui::vec2(0.0, 2.0);
+        let hover = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(bottom)]);
+        let pending_id = hover.pending_edge_scroll_id;
+        let queued = ctx
+            .data(|data| data.get_temp::<f32>(pending_id))
+            .expect("edge hover must queue real movement");
+        assert!(queued > hover.area.state.clamped_offset().y);
+
+        let center = hover.area.inner_rect.center();
+        let idle = frame(&ctx, &mut time, vec![egui::Event::PointerMoved(center)]);
+
+        assert_eq!(idle.pending_edge_scroll_id, pending_id);
+        assert_eq!(idle.area.state.clamped_offset().y, queued);
+        assert!(ctx.data(|data| data.get_temp::<f32>(pending_id)).is_none());
     }
 
     #[test]

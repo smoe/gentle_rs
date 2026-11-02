@@ -4455,7 +4455,7 @@ impl MainAreaDna {
             self.set_linear_vertical_offset_px(0.0);
         }
         let panel_scope = self.panel_scope_key();
-        let top_panel_id = egui::Id::new(("dna_top_buttons", panel_scope.clone()));
+        let top_panel_id = egui::Id::unique(("dna_top_buttons", panel_scope.clone()));
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
@@ -4474,7 +4474,7 @@ impl MainAreaDna {
         });
 
         if self.show_map {
-            let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
+            let bottom_panel_id = egui::Id::unique(("dna_sequence", panel_scope.clone()));
             crate::egui_compat::show_bottom_panel(
                 ctx,
                 bottom_panel_id,
@@ -4552,7 +4552,7 @@ impl MainAreaDna {
             self.set_linear_vertical_offset_px(0.0);
         }
         let panel_scope = self.panel_scope_key();
-        let top_panel_id = egui::Id::new(("dna_top_buttons_embedded", panel_scope.clone()));
+        let top_panel_id = egui::Id::unique(("dna_top_buttons_embedded", panel_scope.clone()));
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ui.available_height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
@@ -4571,7 +4571,7 @@ impl MainAreaDna {
         });
 
         if self.show_map {
-            let bottom_panel_id = egui::Id::new(("dna_sequence_embedded", panel_scope.clone()));
+            let bottom_panel_id = egui::Id::unique(("dna_sequence_embedded", panel_scope.clone()));
             crate::egui_compat::show_bottom_panel_inside(
                 ui,
                 Self::sequence_bottom_panel(bottom_panel_id, full_height, sequence_panel_visible),
@@ -6952,7 +6952,7 @@ impl MainAreaDna {
             let title = format!("{} — {sequence_id}", Self::tr("sequence.tools.title"));
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 title,
-                egui::Id::new(("sequence_tools_window", self.panel_scope_key())),
+                egui::Id::unique(("sequence_tools_window", self.panel_scope_key())),
                 Vec2::new(1080.0, 720.0),
                 Vec2::new(720.0, 420.0),
             );
@@ -21033,7 +21033,7 @@ impl MainAreaDna {
             let mut open = self.show_isoform_expert_window;
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 title.clone(),
-                egui::Id::new(format!(
+                egui::Id::unique(format!(
                     "isoform_expert_window_embedded_{}_{}",
                     view.seq_id, panel_id
                 )),
@@ -21070,7 +21070,7 @@ impl MainAreaDna {
                 let mut open = self.show_isoform_expert_window;
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     title.clone(),
-                    egui::Id::new(format!(
+                    egui::Id::unique(format!(
                         "isoform_expert_window_embedded_{}_{}",
                         view.seq_id, panel_id
                     )),
@@ -25965,7 +25965,7 @@ impl MainAreaDna {
         let mut open = true;
         let spec = crate::egui_compat::ModalWindowSpec::new(
             "Operation Failed",
-            egui::Id::new(("dna_operation_failed", self.panel_scope_key())),
+            egui::Id::unique(("dna_operation_failed", self.panel_scope_key())),
         );
         crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
             ui.label(message);
@@ -25993,7 +25993,7 @@ impl MainAreaDna {
             };
             let spec = crate::egui_compat::ModalWindowSpec::new(
                 "Select Prepared Genome",
-                egui::Id::new(("dna_anchor_prepared_choice", popup_scope)),
+                egui::Id::unique(("dna_anchor_prepared_choice", popup_scope)),
             )
             .default_size(egui::vec2(460.0, 140.0));
             crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {

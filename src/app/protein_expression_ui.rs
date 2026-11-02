@@ -153,7 +153,7 @@ impl GENtleApp {
     }
 
     pub(super) fn hosted_protein_expression_window_id() -> egui::Id {
-        egui::Id::new((
+        egui::Id::unique((
             "hosted_protein_expression_window",
             Self::protein_expression_viewport_id(),
         ))

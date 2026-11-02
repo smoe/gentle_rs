@@ -262,7 +262,7 @@ impl HostedWindowSpec {
 }
 
 pub(crate) fn hosted_window_title_layer_id(title: &str) -> egui::LayerId {
-    egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
+    egui::LayerId::new(egui::Order::Middle, egui::Id::unique(title.to_string()))
 }
 
 pub(crate) fn hosted_window_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
@@ -451,7 +451,7 @@ pub(crate) fn show_hosted_window<R>(
 }
 
 fn should_request_hosted_window_stale_repaint(spec: &HostedWindowSpec) -> bool {
-    let stale_repaint_key = egui::Id::new((
+    let stale_repaint_key = egui::Id::unique((
         "hosted_window_stale_layer_repaint_requested",
         spec.stable_id,
     ));
@@ -708,7 +708,7 @@ fn hosted_window_frame_drag_ids(spec: &HostedWindowSpec) -> Vec<egui::Id> {
     ];
     for order in [egui::Order::Middle, egui::Order::Foreground] {
         let edge_drag_id =
-            egui::Id::new(egui::LayerId::new(order, spec.stable_id)).with("edge_drag");
+            egui::Id::unique(egui::LayerId::new(order, spec.stable_id)).with("edge_drag");
         ids.push(edge_drag_id);
         for edge in [
             "left",
@@ -742,7 +742,7 @@ pub(crate) fn show_central_panel_for_test_context<R>(
 ) -> egui::InnerResponse<R> {
     let test_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new((ctx.viewport_id(), "__gentle_test_root_panel")),
+        egui::Id::unique((ctx.viewport_id(), "__gentle_test_root_panel")),
     );
     let mut root_ui = egui::Ui::new(
         ctx.clone(),
@@ -878,7 +878,7 @@ mod tests {
     fn show_hosted_window_tolerates_safe_rect_narrower_than_min_size() {
         let ctx = egui::Context::default();
         let mut open = true;
-        let stable_id = egui::Id::new("narrow_hosted_window");
+        let stable_id = egui::Id::unique("narrow_hosted_window");
         let spec = HostedWindowSpec::new(
             "Narrow Host",
             stable_id,
@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn show_hosted_window_uses_stable_id_not_visible_title_id() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("stable_hosted_window_test_id");
+        let stable_id = egui::Id::unique("stable_hosted_window_test_id");
         let spec = HostedWindowSpec::new(
             "Stable Hosted",
             stable_id,
@@ -926,8 +926,8 @@ mod tests {
     #[test]
     fn show_hosted_window_legacy_title_layer_expires_without_resetting_sibling() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("legacy_cleanup_stable_id");
-        let sibling_id = egui::Id::new("legacy_cleanup_sibling_id");
+        let stable_id = egui::Id::unique("legacy_cleanup_stable_id");
+        let sibling_id = egui::Id::unique("legacy_cleanup_sibling_id");
         let spec = HostedWindowSpec::new(
             "Legacy Cleanup",
             stable_id,
@@ -973,9 +973,9 @@ mod tests {
     #[test]
     fn show_hosted_window_legacy_extra_layer_expires_without_resetting_sibling() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("legacy_extra_cleanup_stable_id");
-        let sibling_id = egui::Id::new("legacy_extra_cleanup_sibling_id");
-        let stale_extra_id = egui::Id::new("legacy_extra_layer");
+        let stable_id = egui::Id::unique("legacy_extra_cleanup_stable_id");
+        let sibling_id = egui::Id::unique("legacy_extra_cleanup_sibling_id");
+        let stale_extra_id = egui::Id::unique("legacy_extra_layer");
         let stale_extra_layer = egui::LayerId::new(egui::Order::Middle, stale_extra_id);
         let spec = HostedWindowSpec::new(
             "Legacy Extra Cleanup",
@@ -1021,8 +1021,8 @@ mod tests {
 
     #[test]
     fn show_hosted_window_stale_layer_repaint_request_is_one_shot() {
-        let stable_id = egui::Id::new("stale_repaint_once_stable_id");
-        let stale_extra_id = egui::Id::new("stale_repaint_once_legacy_layer");
+        let stable_id = egui::Id::unique("stale_repaint_once_stable_id");
+        let stale_extra_id = egui::Id::unique("stale_repaint_once_legacy_layer");
         let stale_extra_layer = egui::LayerId::new(egui::Order::Middle, stale_extra_id);
         let spec = HostedWindowSpec::new(
             "Stale Repaint Once",
@@ -1039,7 +1039,7 @@ mod tests {
     #[test]
     fn hosted_window_frame_drag_owner_tracks_registered_resize_edge() {
         let ctx = egui::Context::default();
-        let owner_id = egui::Id::new("hosted_frame_drag_owner_window");
+        let owner_id = egui::Id::unique("hosted_frame_drag_owner_window");
         let owner_spec =
             HostedWindowSpec::new("Owner", owner_id, vec2(300.0, 220.0), vec2(160.0, 120.0));
         register_hosted_window_frame_drag_ids(&owner_spec);
@@ -1078,8 +1078,8 @@ mod tests {
     #[test]
     fn hosted_window_press_origin_frame_owner_uses_topmost_registered_title() {
         let ctx = egui::Context::default();
-        let lower_id = egui::Id::new("hosted_press_origin_lower_window");
-        let upper_id = egui::Id::new("hosted_press_origin_upper_window");
+        let lower_id = egui::Id::unique("hosted_press_origin_lower_window");
+        let upper_id = egui::Id::unique("hosted_press_origin_upper_window");
         let lower_spec =
             HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
                 .initial_pos(Some(pos2(40.0, 40.0)));
@@ -1119,8 +1119,8 @@ mod tests {
     #[test]
     fn hosted_window_press_origin_frame_owner_beats_misrouted_lower_dragged_id() {
         let ctx = egui::Context::default();
-        let lower_id = egui::Id::new("hosted_press_origin_misroute_lower");
-        let upper_id = egui::Id::new("hosted_press_origin_misroute_upper");
+        let lower_id = egui::Id::unique("hosted_press_origin_misroute_lower");
+        let upper_id = egui::Id::unique("hosted_press_origin_misroute_upper");
         let lower_spec =
             HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
                 .initial_pos(Some(pos2(40.0, 40.0)));
@@ -1146,7 +1146,7 @@ mod tests {
         let lower_edge_drag_id = hosted_window_frame_drag_ids(&lower_spec)
             .into_iter()
             .find(|id| {
-                *id == egui::Id::new(egui::LayerId::new(egui::Order::Middle, lower_id))
+                *id == egui::Id::unique(egui::LayerId::new(egui::Order::Middle, lower_id))
                     .with("edge_drag")
                     .with("right")
             })
@@ -1169,8 +1169,8 @@ mod tests {
     #[test]
     fn hosted_window_press_origin_frame_owner_prefers_resize_edge_over_higher_body() {
         let ctx = egui::Context::default();
-        let upper_id = egui::Id::new("hosted_resize_edge_owner_upper");
-        let lower_id = egui::Id::new("hosted_resize_edge_owner_lower");
+        let upper_id = egui::Id::unique("hosted_resize_edge_owner_upper");
+        let lower_id = egui::Id::unique("hosted_resize_edge_owner_lower");
         let upper_spec =
             HostedWindowSpec::new("Upper", upper_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
                 .initial_pos(Some(pos2(80.0, 80.0)));
@@ -1226,7 +1226,7 @@ mod tests {
     #[test]
     fn hosted_window_body_press_does_not_claim_frame_drag_owner() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("hosted_body_press_not_frame_drag");
+        let stable_id = egui::Id::unique("hosted_body_press_not_frame_drag");
         let spec = HostedWindowSpec::new(
             "Body Press",
             stable_id,
@@ -1269,7 +1269,7 @@ mod tests {
     #[test]
     fn show_hosted_window_reports_active_frame_drag_status() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("hosted_window_status_drag");
+        let stable_id = egui::Id::unique("hosted_window_status_drag");
         let spec = HostedWindowSpec::new(
             "Status Drag",
             stable_id,
@@ -1313,8 +1313,8 @@ mod tests {
     #[test]
     fn show_hosted_window_foreground_renders_above_middle_window() {
         let ctx = egui::Context::default();
-        let normal_id = egui::Id::new("normal_hosted_layer");
-        let foreground_id = egui::Id::new("foreground_hosted_layer");
+        let normal_id = egui::Id::unique("normal_hosted_layer");
+        let foreground_id = egui::Id::unique("foreground_hosted_layer");
         let mut normal_open = true;
         let mut foreground_open = true;
 
@@ -1358,7 +1358,7 @@ mod tests {
     #[test]
     fn show_hosted_window_drag_margin_clamps_stale_oversized_area() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("drag_margin_hosted_layer");
+        let stable_id = egui::Id::unique("drag_margin_hosted_layer");
         let spec = HostedWindowSpec::new(
             "Drag Margin",
             stable_id,
@@ -1422,8 +1422,8 @@ mod tests {
     #[test]
     fn stale_oversized_hosted_window_does_not_reset_sibling_area() {
         let ctx = egui::Context::default();
-        let sibling_id = egui::Id::new("sibling_hosted_layer");
-        let stale_id = egui::Id::new("stale_hosted_layer");
+        let sibling_id = egui::Id::unique("sibling_hosted_layer");
+        let stale_id = egui::Id::unique("stale_hosted_layer");
         let mut sibling_open = true;
         let mut stale_open = true;
         let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 720.0));
@@ -1476,7 +1476,7 @@ mod tests {
     #[test]
     fn show_hosted_window_with_drag_margin_moves_on_title_bar_drag() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("drag_room_move_layer");
+        let stable_id = egui::Id::unique("drag_room_move_layer");
         let spec = HostedWindowSpec::new(
             "Drag Room",
             stable_id,
@@ -1566,7 +1566,7 @@ mod tests {
     #[test]
     fn hosted_title_press_does_not_jump_from_prior_hover_delta() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("title_press_no_jump_window");
+        let stable_id = egui::Id::unique("title_press_no_jump_window");
         let spec =
             HostedWindowSpec::new("No Jump", stable_id, vec2(360.0, 240.0), vec2(180.0, 120.0))
                 .initial_pos(Some(pos2(120.0, 100.0)));
@@ -1617,8 +1617,8 @@ mod tests {
     #[test]
     fn overlapping_hosted_title_drag_moves_only_topmost_window() {
         let ctx = egui::Context::default();
-        let lower_id = egui::Id::new("overlap_title_drag_lower");
-        let upper_id = egui::Id::new("overlap_title_drag_upper");
+        let lower_id = egui::Id::unique("overlap_title_drag_lower");
+        let upper_id = egui::Id::unique("overlap_title_drag_upper");
         let lower_spec =
             HostedWindowSpec::new("Lower", lower_id, vec2(360.0, 240.0), vec2(180.0, 120.0))
                 .initial_pos(Some(pos2(90.0, 90.0)));
@@ -1702,7 +1702,7 @@ mod tests {
     #[test]
     fn show_modal_window_uses_stable_foreground_layer() {
         let ctx = egui::Context::default();
-        let modal_id = egui::Id::new("stable_modal_window_test_id");
+        let modal_id = egui::Id::unique("stable_modal_window_test_id");
         let spec = ModalWindowSpec::new("Stable Modal", modal_id);
         let modal_layer = egui::LayerId::new(egui::Order::Foreground, modal_id);
         let title_layer = super::hosted_window_title_layer_id("Stable Modal");
@@ -1720,7 +1720,7 @@ mod tests {
     #[test]
     fn show_modal_window_clamps_default_size_to_small_safe_rect() {
         let ctx = egui::Context::default();
-        let modal_id = egui::Id::new("small_modal_window_test_id");
+        let modal_id = egui::Id::unique("small_modal_window_test_id");
         let spec = ModalWindowSpec::new("Small Modal", modal_id)
             .default_size(vec2(600.0, 460.0))
             .min_size(vec2(180.0, 96.0))
@@ -1745,7 +1745,7 @@ mod tests {
     #[test]
     fn show_modal_window_reconciles_open_state() {
         let ctx = egui::Context::default();
-        let modal_id = egui::Id::new("closed_modal_window_test_id");
+        let modal_id = egui::Id::unique("closed_modal_window_test_id");
         let spec = ModalWindowSpec::new("Closed Modal", modal_id);
         let mut open = false;
 

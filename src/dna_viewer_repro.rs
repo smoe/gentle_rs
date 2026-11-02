@@ -410,7 +410,7 @@ impl eframe::App for DnaViewerReproApp {
 }
 
 fn hosted_stable_id(mode: DnaViewerReproMode) -> egui::Id {
-    egui::Id::new(("dna_viewer_repro_hosted", mode.name()))
+    egui::Id::unique(("dna_viewer_repro_hosted", mode.name()))
 }
 
 fn format_rect(rect: egui::Rect) -> String {

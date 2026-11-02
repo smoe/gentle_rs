@@ -447,7 +447,7 @@ fn linear_map_drag_handler_rejects_drag_owned_by_other_widget() {
         map_rect,
         |response| {
             assert!(response.rect.contains(press_inside_map));
-            ctx.set_dragged_id(egui::Id::new("hosted_window_resize_drag_owner"));
+            ctx.set_dragged_id(egui::Id::unique("hosted_window_resize_drag_owner"));
             area.linear_drag_selection_anchor_bp = Some(3);
             area.linear_pan_drag_origin_bp = Some((5, 7.0));
             area.pcr_paint_drag_interval = Some((PcrPaintRole::Roi, 3, 4));
@@ -9862,11 +9862,11 @@ fn isoform_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_lay
     area.isoform_expert_window_view = Some(Arc::new(view));
     let hosted_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new("isoform_expert_window_embedded_seq1_ENSP00000362111"),
+        egui::Id::unique("isoform_expert_window_embedded_seq1_ENSP00000362111"),
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(MainAreaDna::isoform_expert_viewport_id(
+        egui::Id::unique(MainAreaDna::isoform_expert_viewport_id(
             "seq1",
             "ENSP00000362111",
         )),
@@ -10079,7 +10079,7 @@ fn rna_read_mapping_embed_mode_uses_single_hosted_shell_without_viewport_title_l
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(MainAreaDna::rna_read_mapping_viewport_id(
+        egui::Id::unique(MainAreaDna::rna_read_mapping_viewport_id(
             &view.seq_id,
             view.target_feature_id,
         )),
@@ -10114,7 +10114,7 @@ fn splicing_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_la
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(MainAreaDna::splicing_expert_viewport_id(
+        egui::Id::unique(MainAreaDna::splicing_expert_viewport_id(
             &view.seq_id,
             view.target_feature_id,
         )),
@@ -10295,11 +10295,11 @@ fn dotplot_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
     area.show_dotplot_window = true;
     let hosted_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new("dotplot_window_embedded_seq1"),
+        egui::Id::unique("dotplot_window_embedded_seq1"),
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(MainAreaDna::dotplot_viewport_id("seq1")),
+        egui::Id::unique(MainAreaDna::dotplot_viewport_id("seq1")),
     );
 
     ctx.begin_pass(egui::RawInput::default());
@@ -10323,11 +10323,11 @@ fn variant_followup_embed_mode_uses_single_hosted_shell_without_viewport_title_l
     area.variant_followup_ui.gene_label = "TP73".to_string();
     let hosted_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new("variant_followup_window_embedded_seq1_17"),
+        egui::Id::unique("variant_followup_window_embedded_seq1_17"),
     );
     let stale_viewport_layer_id = egui::LayerId::new(
         egui::Order::Middle,
-        egui::Id::new(egui::ViewportId::from_hash_of((
+        egui::Id::unique(egui::ViewportId::from_hash_of((
             "variant_followup_viewport",
             "seq1",
             17usize,

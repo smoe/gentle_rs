@@ -407,7 +407,7 @@ pub fn pseudonymous_subject_scope(parts: &[&str]) -> String {
 }
 
 fn registry_id() -> egui::Id {
-    egui::Id::new("gentle_gui_test_registry")
+    egui::Id::unique("gentle_gui_test_registry")
 }
 
 fn assert_semantic_token(value: &str) {

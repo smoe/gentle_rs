@@ -893,7 +893,7 @@ impl GENtleApp {
         let viewport_id = Self::jaspar_expert_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "JASPAR Expert",
-            egui::Id::new(("jaspar_expert_hosted_window", viewport_id)),
+            egui::Id::unique(("jaspar_expert_hosted_window", viewport_id)),
             viewport_id,
             egui::Vec2::new(1280.0, 900.0),
             egui::Vec2::new(920.0, 640.0),
