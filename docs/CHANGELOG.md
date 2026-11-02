@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-11-02 - Require Headless Test Compilation And Parity In CI
+
+- Extend the existing unconditional Linux headless job with locked, single-job
+  compilation of all root test targets without default features and execution
+  of `capability_registry_parity` in that same feature configuration. Keep the
+  explicit binary check, desktop-dependency guard, native default-feature
+  workspace suites and required CI-summary dependency unchanged.
+- Add release-policy guards for both commands, retained desktop coverage and
+  headless summary wiring, plus synthetic removal/weakening controls. The new
+  coverage test fails before adding the CI steps. Remove the closed coverage
+  gap from the roadmap and document the configured gates in `testing.md`.
+- No production behavior, registry, test oracle, dependency or scientific
+  artifact changes; no local Rust build, push or CI dispatch. Hosted execution
+  and current-source Rust/native verification remain Glen/CI responsibilities.
+- Local validation at `74085368` plus this patch: all 49 release-policy tests
+  and 12 neighboring CI-consumer checks pass. This includes the 17 workflow
+  tests and synthetic removal/weakening controls, not additional Rust passes.
+  YAML parsing confirms both gates are in the required job. Documentation and
+  whitespace checks pass, the lockfile is unchanged and the roadmap remains
+  400 lines. Session-close has 4 OK, 2 expected scope/worktree warnings and
+  0 failures; unrelated `outputs/` is preserved.
+
 ## 2026-11-02 - Use The Actual Pending Tutorial Scroll Key In Regression Tests
 
 - Repair the test's incorrect derivation from `ScrollAreaOutput.id`: egui 0.37

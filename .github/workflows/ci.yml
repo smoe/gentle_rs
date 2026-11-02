@@ -358,6 +358,12 @@ jobs:
             fi
           done
 
+      - name: Check headless test targets without desktop features
+        run: cargo check -q --locked --no-default-features -j1 --tests
+
+      - name: Headless capability registry parity
+        run: cargo test --locked --no-default-features -j1 --test capability_registry_parity -- --test-threads=1
+
   macos:
     name: macOS
     needs: select-platform

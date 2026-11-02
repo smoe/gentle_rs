@@ -85,6 +85,27 @@ Windows, the selected Unix job and both shared checks to succeed. Manual
 the Windows desktop job plus the shared checks. `sampled` never selects Windows
 instead of Unix coverage.
 
+The unconditional `headless-linux` job retains the explicit CLI/MCP binary
+check and desktop-dependency boundary, then compiles the root package's
+headless-enabled test targets and runs the capability-registry parity
+integration test without desktop features:
+
+```bash
+cargo check -q --locked --no-default-features -j1 --tests
+cargo test --locked --no-default-features -j1 --test capability_registry_parity -- --test-threads=1
+```
+
+The compile gate catches GUI-only imports in headless-enabled test targets;
+the runtime gate executes the headless parity assertions. Neither runs the
+full headless Rust suite. Native jobs retain their default-feature workspace
+suites, including the desktop-only menu/palette oracle assertions. No test-count
+literal is a gate: coverage follows the test target as new assertions are added. Both new
+steps fail the existing required CI summary through the headless job result.
+`scripts.test_release_candidate.WorkflowWiringTests` guards their unconditional,
+locked, no-desktop commands, retained default-feature suites and required
+summary wiring, with synthetic removal/weakening controls. Configured coverage
+is not a claim that hosted CI or native acceptance has passed at a new source.
+
 A green Windows job does not exercise Unix-only test fixtures. In the
 2026-09-19 source audit, `src/` has 59 tests with adjacent `#[cfg(unix)]` and
 `#[test]` attributes, including 26 in `src/engine/tests.rs`. That file's 44

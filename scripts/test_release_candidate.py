@@ -613,6 +613,81 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertIn("needs: select-platform", job)
             self.assertIn(f"if: needs.select-platform.outputs.platform == '{platform}'", job)
 
+    def _assert_headless_test_gates(self, text: str) -> None:
+        following = text.split("\n  headless-linux:\n", 1)[1]
+        job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+        header = job.split("    steps:\n", 1)[0]
+        self.assertNotIn("if:", header)
+        self.assertNotIn("needs:", header)
+        self.assertNotIn("continue-on-error:", job)
+        for name, command in (
+            ("Check headless test targets without desktop features",
+             "cargo check -q --locked --no-default-features -j1 --tests"),
+            ("Headless capability registry parity",
+             "cargo test --locked --no-default-features -j1 "
+             "--test capability_registry_parity -- --test-threads=1"),
+        ):
+            step = f"      - name: {name}\n"
+            self.assertEqual(job.count(step), 1, name)
+            body = job.split(step, 1)[1].split("\n      - ", 1)[0]
+            self.assertEqual(body.strip(), f"run: {command}", name)
+
+    def test_headless_job_compiles_test_targets_and_executes_parity(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self._assert_headless_test_gates(
+            (root / ".github/workflows/ci.yml").read_text())
+
+    def test_headless_gate_guard_rejects_removed_or_weakened_steps(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        self._assert_headless_test_gates(text)
+        for name, command in (
+            ("Check headless test targets without desktop features",
+             "cargo check -q --locked --no-default-features -j1 --tests"),
+            ("Headless capability registry parity",
+             "cargo test --locked --no-default-features -j1 "
+             "--test capability_registry_parity -- --test-threads=1"),
+        ):
+            step = f"      - name: {name}\n        run: {command}\n"
+            # Synthetic workflow mutations must not silently weaken this gate.
+            replacements = (
+                "",
+                step.replace("--locked ", ""),
+                step.replace("--no-default-features ", ""),
+                step.replace("--no-default-features", "--features desktop-gui"),
+                step.replace("        run:", "        if: false\n        run:"),
+                step.replace("        run:", "        continue-on-error: true\n        run:"),
+                step.replace("--tests", "--lib") if "--tests" in command else
+                step.replace("cargo test ", "cargo test --no-run "),
+                step.replace("--tests", "--bin gentle_cli --bin gentle_mcp")
+                if "--tests" in command else
+                step.replace("--test capability_registry_parity", "--test parity_matrix_freshness"),
+            )
+            for replacement in replacements:
+                with self.subTest(step=name, replacement=replacement):
+                    self.assertIn(step, text)
+                    changed = text.replace(step, replacement, 1)
+                    with self.assertRaises(AssertionError):
+                        self._assert_headless_test_gates(changed)
+        changed = text.replace("  headless-linux:\n", "  headless-linux:\n    if: false\n", 1)
+        with self.assertRaises(AssertionError):
+            self._assert_headless_test_gates(changed)
+
+    def test_native_full_suites_keep_default_feature_parity_coverage(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        for platform, command in (
+            ("macos", "cargo test -q --locked --workspace"),
+            ("linux", "cargo test --locked --workspace -j1"),
+            ("windows", "cargo test -q --locked --workspace"),
+        ):
+            with self.subTest(platform=platform):
+                following = text.split(f"\n  {platform}:\n", 1)[1]
+                job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+                body = job.split("      - name: Full test suite\n", 1)[1].split(
+                    "\n      - ", 1)[0]
+                self.assertEqual(body.strip(), f"run: {command}")
+
     def test_windows_checks_adapter_processes_before_long_test_suites(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
@@ -817,9 +892,11 @@ class WorkflowWiringTests(unittest.TestCase):
         summary = text.split("\n  ci-summary:\n", 1)[1]
         dependencies = summary.split("    needs:\n", 1)[1].split("    if:", 1)[0]
         self.assertIn("      - release-policy\n", dependencies)
+        self.assertIn("      - headless-linux\n", dependencies)
         self.assertIn("      - windows\n", dependencies)
         self.assertIn("    if: always()", summary)
         self.assertIn("RELEASE_POLICY_RESULT: ${{ needs.release-policy.result }}", summary)
+        self.assertIn("HEADLESS_RESULT: ${{ needs.headless-linux.result }}", summary)
         script = textwrap.dedent(summary.split("        run: |\n", 1)[1])
 
         for platform in ("macos", "linux", "windows"):
