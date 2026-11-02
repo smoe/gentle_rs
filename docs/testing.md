@@ -10,6 +10,81 @@ rendering correctness.
 3. Rendering snapshot tests (linear + circular graphics)
 4. Optional GUI smoke tests (window opens, toggles wired)
 
+### Local Failure Collection And Recorded Reruns
+
+Plain `cargo test` starts a new test process after a source change; an interrupted
+libtest run cannot resume. Cargo reuses eligible compilation artifacts, not test
+results. First collect failures across test binaries with:
+
+```bash
+cargo test --locked -j1 --no-fail-fast
+```
+
+This continues after a failing test binary, not after a compilation failure.
+Do not start a second Cargo build or clean the active target while another
+build/test process is running. Keep source/toolchain/features in the evidence.
+
+For the fix/rerun loop, use the official
+[prebuilt cargo-nextest](https://nexte.st/docs/installation/pre-built-binaries/),
+without compiling the tool from source. Setup was verified on macOS arm64 with
+nextest 0.9.150; it is a developer tool, not a GENtle dependency/MSRV change.
+Enable its experimental [run recording](https://nexte.st/docs/features/record-replay-rerun/)
+in `~/.config/nextest/config.toml` (merge, never replace existing preferences):
+
+```toml
+[experimental]
+record = true
+
+[record]
+enabled = true
+```
+
+The checked-in [user-config template](../.config/nextest-user.toml) additionally
+sets the documented retention targets: 100 runs, 1 GB and 30 days per workspace.
+Automatic pruning is not a hard instantaneous disk quota. For a project-scoped
+opt-in instead, append `--user-config-file .config/nextest-user.toml` to each
+nextest command. Recordings include test output; keep them local and review
+them for private material before sharing. They are not automatically published.
+
+The [repository profile](../.config/nextest.toml) runs one test process at a
+time, continues after failures and disables automatic retries. Build parallelism
+is separate: nextest's `-j` controls test processes, not Cargo compilation;
+use `--build-jobs 1` below. No timeouts, ignored-test policy or CI gate is changed.
+
+```bash
+# Establish a recorded run in the intended scope.
+cargo nextest run --locked --build-jobs 1 --no-fail-fast
+# After a repair, repeat until no outstanding tests remain.
+cargo nextest run --locked --build-jobs 1 --no-fail-fast --rerun latest
+# Finish with a fresh, unfiltered run, not only the previously failing subset.
+cargo nextest run --locked --build-jobs 1 --no-fail-fast
+# Nextest does not run doctests.
+cargo test --locked -j1 --doc
+```
+
+Choose scope explicitly (`--lib`, `--workspace`, features) for the first run;
+do not equate a library-only result with workspace acceptance. Current nextest
+[inherits the recorded build scope](https://nexte.st/docs/features/record-replay-rerun/rerun/)
+unless overridden. It reruns failed/incomplete and newly discovered tests, not
+all tests affected by changed code. A green rerun subset is diagnostic, not a
+full-suite verdict; zero outstanding tests does not establish new-source coverage.
+Nextest uses one process per test, so retain the runner in result metadata and
+keep the existing Cargo-based CI/release checks authoritative.
+
+An earlier plain-Cargo run has no nextest recording. `latest` is the most recent
+recorded run in this workspace, so an unrelated narrow run can change its
+meaning. Use an explicit recorded run ID when needed; inspect with
+`cargo nextest store list` or replay retained output with `cargo nextest replay`.
+Avoid `--no-capture` when recording, since it prevents retaining test output.
+Without nextest, the manual repair loop remains:
+
+```bash
+cargo test --locked -j1 --lib app::tests::TEST_NAME -- --exact --nocapture
+```
+
+This setup does not authorize Codex to run local GENtle Rust builds/tests under
+the standing restriction, replace native/GUI/scientific acceptance or dispatch CI.
+
 ## 2. Engine tests (required)
 
 Scope:

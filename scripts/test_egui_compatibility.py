@@ -103,6 +103,20 @@ class EguiCompatibilityTests(unittest.TestCase):
         self.assertIsNone(re.search(r"(?<![\w:])ViewportId::", tests),
                           "app tests use the imported egui module, not an unimported ViewportId")
 
+    def test_native_capture_fixture_registers_the_child_before_approval(self):
+        tests = (ROOT / "src/app/tests.rs").read_text()
+        fixture = tests.split(
+            "fn agent_screenshot_targets_native_or_embedded_viewport_without_stored_transport_id()", 1
+        )[1].split("\n#[test]", 1)[0]
+        setup = fixture.split("app.approve_agent_screenshot_request(&ctx);", 1)[0]
+        native = re.search(r"if !embedded\s*\{(.*?)\n\s*\}", setup, re.S)
+        self.assertIsNotNone(native, "native test setup must keep the child viewport alive")
+        self.assertIn("ctx.show_viewport_deferred(", native.group(1))
+        self.assertIn("target,", native.group(1))
+        self.assertIn("assert!(matches!(viewport.class, egui::ViewportClass::Deferred))", fixture,
+                      "ViewportClass has no Debug implementation for assert_eq!")
+        self.assertIn("viewport.viewport_ui_cb.is_some()", fixture)
+
     def test_scroll_clients_use_public_offsets_and_defer_edge_requests(self):
         menu = (ROOT / "src/app/tutorial_menus.rs").read_text()
         for path in ("src/app/tutorial_menus.rs", "src/app/main_lineage_ui.rs",

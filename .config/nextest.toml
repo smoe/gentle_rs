@@ -1,0 +1,5 @@
+# Conservative local nextest defaults; ordinary Cargo/CI execution is unchanged.
+[profile.default]
+test-threads = 1
+fail-fast = false
+retries = 0

@@ -1,5 +1,39 @@
 # GENtle Changelog
 
+## 2026-11-02 - Enable Recorded Local Nextest Reruns
+
+- Install official prebuilt cargo-nextest 0.9.150 for macOS, verified against
+  its published archive SHA-256
+  `82a759b4d218d38359424196ab244c470e8f7c7d149c814fbbeef4d67c3c301a`.
+  Tool version/config inspection is not a GENtle build or test result.
+- Enable recording in a new user configuration without overwriting existing
+  preferences. Add a reusable user-config template with bounded retention and
+  repository defaults of one test process, no fail-fast and zero retries.
+  This optional local runner does not replace ordinary Cargo/CI acceptance.
+- Document full failure collection, selective recorded reruns, scope/record-ID
+  limits and the final unfiltered run plus separate doctests. Distinguish
+  nextest's test-thread `-j` from `--build-jobs`; keep recorded output local.
+- Add offline config/documentation guards. No GENtle Rust build/test/check,
+  Cargo dependency update, CI change, push, dispatch or package publication.
+
+## 2026-11-02 - Register The Native Screenshot Test Viewport
+
+- Repair the synthetic native/embedded routing test: `RawInput.viewports` only
+  inventories the Help child; it does not keep that child alive at `end_pass`.
+  Register the native case through `show_viewport_deferred` before approval so
+  egui retains its queued command. The embedded case still targets the root.
+- Preserve exactly-one-command and approved-target assertions; additionally
+  check the native viewport class/callback. Production screenshot routing,
+  consent and preview-before-send are unchanged; no capture is completed.
+- The owner's subsequent compile exposed that `ViewportClass` has no `Debug`
+  implementation. Use `matches!` for the class assertion rather than
+  `assert_eq!`, retaining the same expected variant and an offline guard.
+- Add a fail-before/pass-after offline fixture guard and update Glen's bounded
+  rerun request. No local Rust build/check/test, push or dispatch occurred.
+- Authoring verification: 40 offline passes, one binary-dependent skip; Rust
+  syntax parsing, documentation/manual checks and whitespace pass. This does
+  not establish a Rust or native screenshot verdict.
+
 ## 2026-11-02 - Earmark First Official 0.1 Release Aims
 
 - Record Steffen's proposed use of Glen's priorities in

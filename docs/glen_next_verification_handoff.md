@@ -1,5 +1,12 @@
 # Glen: Next Verification And Return
 
+Local repair-loop tooling now follows the
+[recorded nextest workflow](testing.md#local-failure-collection-and-recorded-reruns).
+The macOS development host has nextest 0.9.150 and recording enabled; this does
+not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
+results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
+finish with a complete intended scope plus doctests, and retain normal CI gates.
+
 ## egui 0.37 And Ported Glossary Repair, 2026-11-02
 
 The owner's updated root manifest/lock select egui/eframe 0.37, while the
@@ -9,7 +16,7 @@ Align the two patched manifests/lock graph; use screenshot callbacks and public
 scroll APIs. Preserve the owner's other dependency choices, capture approval,
 exact viewport identity, one-shot completion, preview-before-transport and the
 disabled CLI capture bridge. No actual screenshot, model call or local Rust
-execution occurred; ten offline API/manifest guards and source-matched Rust
+execution occurred; eleven offline API/manifest guards and source-matched Rust
 regressions are authoring evidence only. The warning follow-up renames 186
 `Id::new` calls to their `Id::unique` alias and four UI `id()` calls to
 `scope_id()`, including the patched Markdown sources. A mechanical diff check
@@ -26,7 +33,23 @@ The later warning-only repair also removes the now-unused stored capture
 transport viewport, retaining request identity, logical target/stale checks and
 the actual approval-bound routing. A new `agent_screenshot_` regression checks
 both native and embedded Help-window targets without completing any capture.
-The owner's next compile exposed three unqualified `ViewportId` references in
+The owner's later full-library run reports 4816 passed, 1 failed and 16 ignored
+(source/build identity not supplied). The sole failure is this new routing
+fixture: the native child was listed in `RawInput` but not registered as live,
+so egui removed it and its queued screenshot command at `end_pass`. The native
+case now uses `show_viewport_deferred` before approval and asserts its retained
+class/callback as well as the original one-command/target checks. Production
+routing and consent are unchanged. The owner's subsequent compile rejected
+`assert_eq!` on `ViewportClass` because the enum does not implement `Debug`;
+the same class assertion now uses `matches!`, with an offline regression guard.
+First rerun only this filter before another
+broad suite; the supplied full-suite result remains failed, not accepted:
+
+```sh
+cargo test --locked --lib agent_screenshot_targets_native_or_embedded_viewport -- --test-threads=1
+```
+
+An earlier owner compile exposed three unqualified `ViewportId` references in
 these regressions; they now use the test module's existing `egui::ViewportId`
 path, with an offline guard. The native/embedded and one-shot assertions remain.
 Do not infer warning-free compilation from source inspection: Rust/native

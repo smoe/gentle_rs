@@ -1,0 +1,10 @@
+# User-config template. Not loaded as repository config; use --user-config-file
+# or merge into ~/.config/nextest/config.toml (preserve existing preferences).
+[experimental]
+record = true
+
+[record]
+enabled = true
+max-records = 100
+max-total-size = "1GB"
+max-age = "30d"

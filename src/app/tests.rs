@@ -14247,6 +14247,14 @@ fn agent_screenshot_targets_native_or_embedded_viewport_without_stored_transport
             .viewports
             .insert(target, egui::ViewportInfo::default());
         ctx.begin_pass(input);
+        if !embedded {
+            // RawInput inventory alone does not keep a child alive at end_pass.
+            ctx.show_viewport_deferred(
+                target,
+                egui::ViewportBuilder::default().with_title("Synthetic Help capture target"),
+                |_ui, _class| {},
+            );
+        }
         activate_test_agent_screenshot_request(&mut app, true, "inspect-help-viewport");
 
         app.approve_agent_screenshot_request(&ctx);
@@ -14258,12 +14266,16 @@ fn agent_screenshot_targets_native_or_embedded_viewport_without_stored_transport
             .expect("approved capture");
         assert_eq!(pending.target_viewport_id, target);
         let expected = if embedded { egui::ViewportId::ROOT } else { target };
-        assert_eq!(screenshot_commands(&output), 1);
-        let commands = &output
+        assert_eq!(screenshot_commands(&output), 1, "embedded={embedded}");
+        let viewport = output
             .viewport_output
             .get(&expected)
-            .expect("capture viewport")
-            .commands;
+            .expect("capture viewport");
+        if !embedded {
+            assert!(matches!(viewport.class, egui::ViewportClass::Deferred));
+            assert!(viewport.viewport_ui_cb.is_some());
+        }
+        let commands = &viewport.commands;
         assert_eq!(
             commands
                 .iter()
