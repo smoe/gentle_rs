@@ -1,5 +1,18 @@
 # Glen: Next Verification And Return
 
+## SAM Glossary Smoke Fixture Follow-Up, 2026-11-02
+
+Current-source macOS job `125047619435` of run `41373114753` fails 1/12 glossary
+tests at `7f73a42a`: `transcript-structures-from-sam-show --binding '{}'` lacks
+the required schema. This is a test-fixture omission, not permission to loosen
+binding validation. The isolated audit branch extends the typed companion and
+its quoted-path/strict-field regression to the SAM inspector and junction route.
+Production parsing, source schemas and approval policy are unchanged.
+After integration, require nonzero `cargo test --locked --lib glossary_ --
+--test-threads=1` results on the same source. Preserve earlier completed audits;
+this does not rerun their workflows or close GUI/agent/package acceptance.
+No local Rust, push or dispatch was performed for this repair.
+
 ## Discovery And Decision Status Follow-Up, 2026-11-02
 
 After Steffen pushes the integrated source, verify only this new repair to the

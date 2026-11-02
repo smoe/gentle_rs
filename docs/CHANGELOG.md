@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-02 - Repair Typed SAM Binding In Glossary Smoke Fixture
+
+- Existing CI at `7f73a42a` fails the macOS glossary flags guard: the new SAM
+  inspector receives `{}` instead of its required typed binding. Extend the
+  test-only companion to `transcript-structures-from-sam-show`; leave runtime
+  parsing, schemas, confirmation and freshness checks unchanged.
+- Expand the quoted-identity regression across transcript, SAM and junction
+  inspections, preserving missing/unknown-field and non-JSON refusals. This
+  removes a concrete normal-CI prerequisite failure observed during the resumed
+  six-gate audit, not a biological or six-gate acceptance result. Rust execution
+  remains external; no local Cargo, push, dispatch or publication.
+- Authoring checks: 10 observed-transcript source tests pass, one real-CLI/MCP
+  companion explicitly skips; scoped rustfmt, documentation and whitespace
+  pass. Session-close: four OK, two scope/worktree warnings, no failures.
+
 ## 2026-11-02 - Canonicalize Discovery Identities And Decision Status
 
 - Remove four older introspection glossary entries, including the contradictory

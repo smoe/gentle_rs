@@ -2469,7 +2469,9 @@ fn specificity_matrix_parser_is_read_only_and_keeps_exact_panel_identity() {
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
     if matches!(
         path,
-        "rna-reads transcript-structures-show" | "rna-reads splice-junctions-show"
+        "rna-reads transcript-structures-show"
+            | "rna-reads transcript-structures-from-sam-show"
+            | "rna-reads splice-junctions-show"
     ) && flag == "--binding"
     {
         let mut tokens = split_shell_words(line).expect("split observed-transcript smoke command");
@@ -2481,6 +2483,8 @@ fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut Strin
         let binding = json!({
             "schema":if path == "rna-reads splice-junctions-show" {
                 "gentle.observed_splice_junction_assessment_result_binding.v1"
+            } else if path == "rna-reads transcript-structures-from-sam-show" {
+                "gentle.observed_sam_structures_result_binding.v1"
             } else {
                 "gentle.observed_transcript_structures_result_binding.v1"
             },
@@ -2680,59 +2684,63 @@ fn glossary_observed_transcript_requests_keep_typed_templates_and_confirmation()
 
 #[test]
 fn glossary_observed_transcript_binding_keeps_quoted_identity_and_strict_schema() {
-    for path in [
-        "synthetic report's path.json",
-        r"C:\GENtle data\report's.json",
-    ] {
-        let base = format!(
-            "rna-reads transcript-structures-show {}",
-            quote_shell_arg(path)
-        );
-        let mut line = shell_command_line_with_option(&base, "--binding", Some("{}")).unwrap();
-        add_required_glossary_flag_companion(
+    for (command, operation_name, schema) in [
+        (
             "rna-reads transcript-structures-show",
-            "--binding",
-            &mut line,
-        );
-        let parsed = parse_shell_line(&line).expect("typed observed-transcript result binding");
-        assert!(!parsed.is_state_mutating());
-        let ShellCommand::Op { payload } = parsed else {
-            panic!("shared inspection operation expected");
-        };
-        let Operation::InspectObservedTranscriptStructures {
-            path: report_path,
-            expected_result: Some(binding),
-            rows,
-            verify_artifacts,
-            ..
-        } = serde_json::from_str::<Operation>(&payload).unwrap()
-        else {
-            panic!("typed result binding must survive inspection parsing");
-        };
-        assert_eq!(report_path, path);
-        assert_eq!(binding.report_path, path);
-        assert_eq!(
-            binding.schema,
-            "gentle.observed_transcript_structures_result_binding.v1"
-        );
-        let digest = format!("sha256:{}", "0".repeat(64));
-        assert_eq!(binding.request_sha256, digest);
-        assert_eq!(binding.report_content_sha256, digest);
-        assert_eq!(binding.outcome, "unavailable");
-        assert_eq!(rows, 0);
-        assert!(!verify_artifacts);
-        let mut unknown = serde_json::to_value(&binding).unwrap();
-        unknown["unknown_smoke_field"] = json!(true);
-        for invalid in [json!({}), unknown] {
-            assert!(
-                parse_shell_line(&format!(
-                    "{base} --binding {}",
-                    quote_shell_arg(&invalid.to_string())
-                ))
-                .is_err()
-            );
+            "InspectObservedTranscriptStructures",
+            "gentle.observed_transcript_structures_result_binding.v1",
+        ),
+        (
+            "rna-reads transcript-structures-from-sam-show",
+            "InspectObservedTranscriptStructuresFromSam",
+            "gentle.observed_sam_structures_result_binding.v1",
+        ),
+        (
+            "rna-reads splice-junctions-show",
+            "InspectObservedSpliceJunctions",
+            "gentle.observed_splice_junction_assessment_result_binding.v1",
+        ),
+    ] {
+        for path in [
+            "synthetic report's path.json",
+            r"C:\GENtle data\report's.json",
+        ] {
+            let base = format!("{command} {}", quote_shell_arg(path));
+            let mut line = shell_command_line_with_option(&base, "--binding", Some("{}")).unwrap();
+            add_required_glossary_flag_companion(command, "--binding", &mut line);
+            let parsed = parse_shell_line(&line).expect("typed observed-transcript result binding");
+            assert!(!parsed.is_state_mutating());
+            let ShellCommand::Op { payload } = parsed else {
+                panic!("shared inspection operation expected");
+            };
+            let operation = serde_json::from_str::<Operation>(&payload).unwrap();
+            let value = serde_json::to_value(operation).unwrap();
+            let inspection = value
+                .get(operation_name)
+                .expect("expected typed inspection operation");
+            let binding = &inspection["expected_result"];
+            assert_eq!(inspection["path"], path);
+            assert_eq!(binding["report_path"], path);
+            assert_eq!(binding["schema"], schema);
+            let digest = format!("sha256:{}", "0".repeat(64));
+            assert_eq!(binding["request_sha256"], digest);
+            assert_eq!(binding["report_content_sha256"], digest);
+            assert_eq!(binding["outcome"], "unavailable");
+            assert_eq!(inspection["rows"], 0);
+            assert_eq!(inspection["verify_artifacts"], false);
+            let mut unknown = binding.clone();
+            unknown["unknown_smoke_field"] = json!(true);
+            for invalid in [json!({}), unknown] {
+                assert!(
+                    parse_shell_line(&format!(
+                        "{base} --binding {}",
+                        quote_shell_arg(&invalid.to_string())
+                    ))
+                    .is_err()
+                );
+            }
+            assert!(parse_shell_line(&format!("{base} --binding demo")).is_err());
         }
-        assert!(parse_shell_line(&format!("{base} --binding demo")).is_err());
     }
 }
 
