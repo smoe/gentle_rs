@@ -8,8 +8,13 @@ the required schema. This is a test-fixture omission, not permission to loosen
 binding validation. The isolated audit branch extends the typed companion and
 its quoted-path/strict-field regression to the SAM inspector and junction route.
 Production parsing, source schemas and approval policy are unchanged.
-After integration, require nonzero `cargo test --locked --lib glossary_ --
---test-threads=1` results on the same source. Preserve earlier completed audits;
+After integration, require nonzero results on the same source:
+
+```sh
+cargo test --locked --lib glossary_ -- --test-threads=1
+```
+
+Preserve earlier completed audits;
 this does not rerun their workflows or close GUI/agent/package acceptance.
 No local Rust, push or dispatch was performed for this repair.
 

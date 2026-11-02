@@ -37,6 +37,78 @@ availability question is needed now. Ordinary checks still record what they
 tested, and observed defects remain actionable. This does not authorize a push,
 local Rust, model call, package build or publication.
 
+## Resumed Six-Gate Evidence Check (2026-11-02)
+
+The owner resumed the goal. Work is isolated on
+`codex/glen-six-gate-recheck-20261102`, based on `7f73a42a`, leaving main's
+uncommitted dependency updates, `paper`, private data, `output/` and all
+historical evidence unchanged. This is not a new release candidate or an
+interim freeze. Preserve the later owner rule requiring a fresh push request;
+no push, dispatch, model call, package build or local Rust execution occurred.
+The original `.12`/`package-opt1` gate is not silently replaced with `.13`/opt2.
+
+| Follow-Up | Evidence, Tested Source And Profile/Platform | Remaining Acceptance |
+| --- | --- | --- |
+| 1. Audit preservation and Linux validation | Original `30f23aa4` report/archive bindings remain unchanged. The [024ed6c0 subset](audits/glen_followups_20261008/candidate_024ed6c0/README.md) rechecks 14 retained hashes/membership and its dev/Linux workspace record; this is not a fresh workspace run. | Keep final-source Linux validation and omitted binary/archive limits explicit. Today's current-source headless pass is not a full-suite pass. |
+| 2. Executable 08.04 GUI/agent contracts | Eight synthetic GUI steps and five reviewed agent command cases remain implemented. [6d8b4db7 evidence](audits/glen_followups_20261008/candidate_6d8b4db7/README.md) and [024ed6c0](audits/glen_followups_20261008/candidate_024ed6c0/README.md) retain dev/Linux-X11 T/oracle passes; refusal/rollback regressions and later Linux/Windows stripped-child passes remain source-bound. | Final-source native refusal-to-T retry, default/minimum-size readability and physical macOS/Linux plus native Windows remain separate. A positive synthetic replay does not prove the native refusal path. |
+| 3. Genuine live-agent acceptance | [Original executed receipt](audits/glen_followups_20261008/candidate_6d8b4db7/live_agent.json), SHA-256 `aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25`: macOS/arm64 dev, existing authorized login, real clarification, two unexecuted reviewed T suggestions, raw-state preservation and full ordered-Seq parity. | Do not repeat or call this historical pass absent. It does not accept the final package or newer binaries; no new model invocation or credential inspection occurred. |
+| 4. Honest source-bound visual evidence | Retained native captures and labelled exported base views remain distinct; [6d8b4db7](audits/glen_followups_20261008/candidate_6d8b4db7/README.md) and [024ed6c0](audits/glen_followups_20261008/candidate_024ed6c0/README.md) document exact-source hashes, light chrome/dark canvases and clipped controls. | Final-source/physical-platform readability and approved native captures remain open. No image was altered, relabelled or newly captured here. |
+| 5. Scroll-event and next-frame benchmarks | Maintained Criterion groups cover wheel-event frame and first frame after wheel. [6d8b4db7 CPU receipt](audits/glen_followups_20261008/candidate_6d8b4db7/scroll_cpu_smoke.json) and the 024ed6c0 record retain 24 directional/content observations, dev/Linux-X11. | Fresh selected-source benchmark execution and any timing-budget verdict remain open. Smoke cases do not measure compositor latency or establish a timed performance improvement. |
+| 6. Non-publishing .12 package acceptance | Independently rechecked [5e6201a6 validate-only container record](audits/glen_followups_20261008/container_validate_5e6201a6/README.md), package-opt1/linux-amd64. Today's four downloaded native JSON receipts verify the published three-platform opt1 identities at that same source. | Native receipts explicitly say `mode=publish`, not `validate_only`. They do not close the non-publishing native requirement or independent extracted-installer checks. Keep completed publication separate; do not redispatch it as unfinished work. |
+
+No final-candidate or overall completion claim follows from this check.
+The source-bound passes above remain useful evidence, not a requirement to
+replay every completed historical campaign at each development commit.
+
+### Current Normal CI And Separate Fixture Repair
+
+[Run 41373114753](https://github.com/smoe/gentle_rs/actions/runs/41373114753)
+at `7f73a42ab97d0aa3c11c37182da9e7b7c4b60c6a` is completed/failure.
+macOS job `125047619435` and Windows job `125047595090` each run 12 glossary
+tests: 11 pass, one fails on the same SAM `--binding '{}'` fixture. Missing
+`schema` is a primary test-fixture failure, not an independent biology/platform
+failure. Selected-platform failure is aggregation. Headless Linux and release
+safety pass; full Linux and all three optional audits skip.
+
+Separate commit `3e1b7bda` repairs only the typed companion and expands the
+quoted-path/strict-field regression; no runtime validation is weakened.
+Its Rust execution is pending externally. Original job logs are retained at
+`/private/tmp/gentle-six-gate-package-recheck-20261102.ECFCLF/`:
+macOS SHA-256 `34c72f08dc4a3b7e4782388b0be74bc50de1d6fe2274ea170a36ad578013c430`;
+Windows SHA-256 `70bb9a59af9f136b58cf1718a812206555c4a031ad82714fb0cd83448fd0b29b`.
+Preserve the terminal run; do not restart it without approval.
+
+### Small Published-Receipt Recheck
+
+Read-only GitHub metadata confirms [.12 installer run 38330176948](https://github.com/smoe/gentle_rs/actions/runs/38330176948)
+completed successfully on attempt 2 and the separate tag-push container run
+`38322028567` succeeded with publication skipped. Only these four release JSON
+assets were downloaded, 13,345 bytes total, into the directory above:
+
+| Receipt Suffix After `gentle-v0.1.0-internal.12-` | Raw SHA-256 |
+| --- | --- |
+| `linux-x64.build.json` | `910e5e51782868ae93acf087a7834e28917b8013762865c128458816da8346d8` |
+| `macos-arm64.build.json` | `8539d97cf18307744b7af53665b4b8f8f80dfa81ce02daa68442400d6d7bc89d` |
+| `windows-x64.build.json` | `7eb01aaeac30c0c82043341ccad112d4ebc3dcc7529f1b86b1e8e6b58c715978` |
+| `release-attributes.json` | `e35c60014b3bb627ff673b467226e6a54597c74fdfb48816a5de0854635fcc02` |
+
+Each raw digest matches its release-asset metadata. All three platform receipts
+and the aggregate agree on source/workflow `5e6201a6`, lockfile
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`,
+Rust/Cargo 1.99.0, `package-opt1`, opt-level 1, LTO off, 256 codegen units,
+assertions/overflow checks on, debug/incremental off, unwinding and no stripping.
+The five source-bound binary identities per platform and three archive digests
+agree across receipts; the recipe/lock also match the actual tagged source.
+These are verified receipt bytes and CI-reported binary/archive hashes, not
+independently downloaded, extracted or executed binaries. No large archive was
+downloaded and no release/asset was changed.
+
+Offline evidence checks: eight tests pass with zero skips, including frozen
+6d8b4db7 and validate-only container LF/CRLF preservation/negative controls.
+The fixture repair separately passes ten source checks with one explicit
+CLI/MCP skip. No such source/integrity result substitutes for Rust/native/model
+or independent package execution.
+
 ## Gel Integration Return (2026-10-20)
 
 The owner relays Glen's [bb1686bd gel return](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20):

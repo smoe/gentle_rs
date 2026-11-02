@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-02 - Reconcile The Resumed Six-Gate Audit
+
+- Refresh the six-item checklist on an isolated codex branch, preserving
+  historical source/profile/platform attribution and the release-only cadence.
+  Keep the genuine historical agent/GUI/scroll passes distinct from final-source
+  acceptance; do not replace the original `.12` package gate with `.13` opt2.
+- Independently download/hash only the four small published `.12` JSON receipts,
+  compare all 15 recorded native binary identities, three archive digests and
+  exact tagged-source lock/recipe. Their explicit publish mode cannot certify
+  non-publishing native or independent extracted-artifact acceptance.
+- Record terminal macOS/Windows CI failure at `7f73a42a`, matching raw log
+  hashes and the separate test-only repair `3e1b7bda`. Headless/safety successes
+  and optional/full-Linux skips are not a full candidate pass.
+- Eight offline evidence checks pass, including LF/CRLF; no large download,
+  local Rust, model call, capture, package build, push, dispatch or publication.
+  Main, owner dependency edits and historical evidence remain untouched.
+
 ## 2026-11-02 - Repair Typed SAM Binding In Glossary Smoke Fixture
 
 - Existing CI at `7f73a42a` fails the macOS glossary flags guard: the new SAM
