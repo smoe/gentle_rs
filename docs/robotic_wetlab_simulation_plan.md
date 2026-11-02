@@ -60,6 +60,34 @@ Photogrammetry or descriptive room models are useful visual references, but
 must not be used directly as authoritative physics geometry. Derive simplified,
 reviewed semantic and collision objects for simulation.
 
+### Canonical Abstract Equipment Representation
+
+Use a versioned, human-readable intermediate representation as the canonical
+source for equipment families instead of making any CAD application's native
+file authoritative. Deterministic generators may rewrite that representation
+into SolidCraft- and FreeCAD-targeted source or projects and then produce
+exchange and simulator artifacts. Generated files bind back to the source
+description, generator version and parameters by digest.
+
+The representation must support parametric primitives, reusable subassemblies,
+constraints, materials and named coordinate frames as well as the semantic
+interaction points above. The first conformance family is tubes and racks:
+
+- tubes describe body, base, rim, opening, cap or lid, nominal capacity,
+  material, grasp region, liquid frame and observable open/closed state;
+- racks describe outer envelope, rows, columns, pitch, offsets, slot geometry,
+  orientation and identifiers, nesting rules, grasp regions and the transform
+  from every slot to its contained tube;
+- variants change parameters or compose referenced parts rather than copying
+  opaque meshes;
+- exporters must preserve and test dimensions, scale, handedness, frame names,
+  slot count, pitch and semantic interaction points across supported targets.
+
+Round-trip editing in every CAD tool is not a prerequisite. When a generated
+model is manually refined, the change must either be expressed back in the
+abstract source or recorded as a derived, tool-specific override with explicit
+provenance; silent divergence is not acceptable.
+
 ## Protocol-To-Simulation Boundary
 
 Do not translate free-form protocol prose directly into robot commands. Add a
@@ -82,9 +110,12 @@ separate assessment with explicit reasons.
 
 ## Staged Development
 
-1. **Catalog and schema.** Define the equipment/labware asset manifest and the
-   simulator-neutral protocol execution plan. Resolve ownership, licensing and
-   private-local overrides before adding simulator-specific operations.
+1. **Catalog, abstract representation and generators.** Define the
+   equipment/labware manifest, canonical parametric representation and the
+   simulator-neutral protocol execution plan. Demonstrate deterministic
+   SolidCraft and FreeCAD generation with a small tube-and-rack family. Resolve
+   ownership, licensing and private-local overrides before adding
+   simulator-specific operations.
 2. **Synthetic reference cell.** Build a small redistributable lab world with
    one robot, bench, racks, plates/tubes, pipetting and representative
    instrument interfaces. Prove deterministic loading, placement and collision
@@ -108,6 +139,9 @@ The first useful milestone requires:
 
 - one public equipment catalog and synthetic Gazebo world reproducible from
   exact hashes;
+- one canonical tube-and-rack family reproducibly generated for SolidCraft and
+  FreeCAD, with exported geometry and semantic invariants checked against the
+  same abstract source;
 - one CUT&RUN simulation plan that can be previewed, approved, replayed and
   refused deterministically;
 - preserved sample/material lineage and protocol checkpoints across the run;
@@ -124,6 +158,8 @@ inspection surface.
 ## Open Maintainer Decisions
 
 - repository, licence and review policy for the shared equipment-asset catalog;
+- schema and implementation home for the canonical abstract equipment
+  representation and its SolidCraft/FreeCAD generators;
 - canonical exchange formats and the minimum fidelity required for collision,
   manipulation and visual models;
 - protocol-operation granularity and the boundary between GENtle, a workflow
