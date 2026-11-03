@@ -15132,6 +15132,7 @@ Error: `{err}`"
 
     fn render_pcr_design_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_pcr_design_dialog {
+            crate::main_area_dna::MainAreaDna::disconnect_hosted_specificity_review(ctx);
             return;
         }
         let mut open = self.show_pcr_design_dialog;
@@ -15163,6 +15164,9 @@ Error: `{err}`"
                 open = false;
             }
             self.show_pcr_design_dialog = open;
+            if !open {
+                crate::main_area_dna::MainAreaDna::disconnect_hosted_specificity_review(ctx);
+            }
             return;
         }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
@@ -15205,6 +15209,9 @@ Error: `{err}`"
             open = false;
         }
         self.show_pcr_design_dialog = open;
+        if !open {
+            crate::main_area_dna::MainAreaDna::disconnect_hosted_specificity_review(ctx);
+        }
     }
 
     fn render_sequencing_confirmation_contents(

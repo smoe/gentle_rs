@@ -307,6 +307,15 @@ qPCR form:
     endpoint band sizes, junction evaluations, short SYBR junction assays,
     candidate primer sequences (not order approval), and the per-cell oligo-dT
     5-prime reach status
+  - **Review specificity** reads retained receipts for the displayed saved
+    panel in the background and shows them in place. Page genomic and
+    transcriptome receipts separately, across references and down assays.
+    Missing evidence remains unassessed. Check the current-design match,
+    verified binding and independent active/superseded flags before using a
+    recorded verdict. Open a receipt for its full fingerprint, policy, child
+    report hashes and diagnostics. Same-oligo citations and the engine's
+    limitations stay separate from the evidence grid. This is a read-only
+    review, not a new search; copying the command remains the Shell alternative.
   - `Copy specificity matrix command` copies the existing read-only inspection
     command for that exact saved report, with shared-shell quoting. Open the
     sequence's `Shell...`, paste it and run explicitly to inspect retained

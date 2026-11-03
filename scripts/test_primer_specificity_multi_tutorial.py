@@ -137,6 +137,19 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
             self.assertIn(f"fn {test}()", source)
         self.assertIn("egui::OutputCommand::CopyText(command)", source)
 
+    def test_native_specificity_review_uses_only_the_read_only_snapshot(self):
+        source = (ROOT / "src/main_area_dna/transcript_assay_specificity_ui.rs").read_text()
+        viewer = source.split("#[cfg(test)]", 1)[0]
+        for required in ["try_read()", "execute_read_only_operation_on_engine_snapshot(",
+                         "Operation::InspectTranscriptAssayPanelSpecificityMatrix",
+                         "Arc::ptr_eq", "transcript_assay_report_ui::page"]:
+            self.assertIn(required, viewer)
+        for forbidden in ["execute_on_engine_snapshot(", "start_primer_design_operation",
+                          "commit_detached_execution", "primer_design_task", ".read()", ".write()", "fs::"]:
+            self.assertNotIn(forbidden, viewer)
+        form = (ROOT / "src/main_area_dna/primer_design_ui.rs").read_text()
+        self.assertIn("specificity_review(ui, &report.report_id)", form)
+
 
 if __name__ == "__main__":
     unittest.main()
