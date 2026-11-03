@@ -1,4 +1,4 @@
-//! Fresh-only sequence-design report publication and host-project exclusions.
+//! Shared fresh-only JSON report publication and host-project exclusions.
 //! Native directory identity is checked in execution, not parsing or admission.
 //! No hostile parent-swap, crash-durability or universal atomicity guarantee.
 
@@ -12,32 +12,36 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
-fn invalid(reason: &str, detail: impl std::fmt::Display) -> EngineError {
+fn invalid_for(namespace: &str, reason: &str, detail: impl std::fmt::Display) -> EngineError {
     EngineError {
         code: ErrorCode::InvalidInput,
-        message: format!("sequence_design_report.{reason}: {detail}"),
-        cause_chain: vec![format!("sequence_design_report.{reason}")],
+        message: format!("{namespace}.{reason}: {detail}"),
+        cause_chain: vec![format!("{namespace}.{reason}")],
     }
 }
 
-fn io_error(reason: &str, error: io::Error) -> EngineError {
+fn io_error_for(namespace: &str, reason: &str, error: io::Error) -> EngineError {
     EngineError {
         code: ErrorCode::Io,
-        message: format!("sequence_design_report.{reason}: {error}"),
-        cause_chain: vec![
-            format!("sequence_design_report.{reason}"),
-            error.to_string(),
-        ],
+        message: format!("{namespace}.{reason}: {error}"),
+        cause_chain: vec![format!("{namespace}.{reason}"), error.to_string()],
     }
 }
 
+#[cfg(test)]
+fn io_error(reason: &str, error: io::Error) -> EngineError {
+    io_error_for("sequence_design_report", reason, error)
+}
+
+#[cfg(test)]
 fn directory_identity(path: &Path) -> Result<Handle, EngineError> {
     Handle::from_path(path).map_err(|e| io_error("identity", e))
 }
 
 #[cfg(windows)]
-fn check_native_path(path: &Path) -> Result<(), EngineError> {
+fn check_native_path(path: &Path, namespace: &str) -> Result<(), EngineError> {
     use std::path::{Component, Prefix};
+    let invalid = |reason: &str, detail: &str| invalid_for(namespace, reason, detail);
     if !path.is_absolute() && path.has_root() {
         return Err(invalid(
             "unsupported_path",
@@ -89,21 +93,37 @@ fn check_native_path(path: &Path) -> Result<(), EngineError> {
 }
 
 #[cfg(not(windows))]
-fn check_native_path(_: &Path) -> Result<(), EngineError> {
+fn check_native_path(_: &Path, _: &str) -> Result<(), EngineError> {
     Ok(())
 }
 
 /// An admitted absolute destination; final no-clobber publication is the race guard.
 #[derive(Debug)]
-pub(crate) struct PreviewDestination {
+pub(crate) struct JsonReportDestination {
     path: PathBuf,
+    namespace: &'static str,
 }
+
+/// Compatibility name for the original sequence-design caller and seam tests.
+pub(crate) type PreviewDestination = JsonReportDestination;
 
 impl GentleEngine {
     pub(crate) fn sequence_design_preview_destination(
         &self,
         raw: &str,
     ) -> Result<PreviewDestination, EngineError> {
+        self.json_report_destination(raw, "sequence_design_report")
+    }
+
+    pub(crate) fn json_report_destination(
+        &self,
+        raw: &str,
+        namespace: &'static str,
+    ) -> Result<JsonReportDestination, EngineError> {
+        let invalid = |reason: &str, detail: &str| invalid_for(namespace, reason, detail);
+        let io_error = |reason: &str, error| io_error_for(namespace, reason, error);
+        let directory_identity =
+            |path: &Path| Handle::from_path(path).map_err(|e| io_error("identity", e));
         if raw.trim().is_empty()
             || raw.chars().any(char::is_control)
             || raw.ends_with('/')
@@ -122,7 +142,7 @@ impl GentleEngine {
         if matches!(raw_leaf, "." | "..") {
             return Err(invalid("invalid_path", "missing file name"));
         }
-        check_native_path(path)?;
+        check_native_path(path, namespace)?;
         let leaf = path
             .file_name()
             .ok_or_else(|| invalid("invalid_path", "missing file name"))?;
@@ -210,20 +230,29 @@ impl GentleEngine {
                 }
             }
         }
-        Ok(PreviewDestination { path: destination })
+        Ok(JsonReportDestination {
+            path: destination,
+            namespace,
+        })
     }
 }
 
-fn stage(file: &mut NamedTempFile, text: &str) -> Result<(), EngineError> {
+fn stage_for(namespace: &str, file: &mut NamedTempFile, text: &str) -> Result<(), EngineError> {
+    let io_error = |reason: &str, error| io_error_for(namespace, reason, error);
     file.write_all(text.as_bytes())
         .map_err(|e| io_error("write", e))?;
     file.flush().map_err(|e| io_error("flush", e))?;
     file.as_file().sync_all().map_err(|e| io_error("sync", e))
 }
 
-impl PreviewDestination {
+#[cfg(test)]
+fn stage(file: &mut NamedTempFile, text: &str) -> Result<(), EngineError> {
+    stage_for("sequence_design_report", file, text)
+}
+
+impl JsonReportDestination {
     pub(crate) fn write<T: Serialize>(&self, value: &T) -> Result<(), EngineError> {
-        self.write_with(value, stage)
+        self.write_with(value, |file, text| stage_for(self.namespace, file, text))
     }
 
     // Private staging seam permits deterministic failures/races without global
@@ -233,16 +262,18 @@ impl PreviewDestination {
         value: &T,
         stage: impl FnOnce(&mut NamedTempFile, &str) -> Result<(), EngineError>,
     ) -> Result<(), EngineError> {
+        let io_error = |reason: &str, error| io_error_for(self.namespace, reason, error);
         let text = serde_json::to_string_pretty(value).map_err(|e| {
             EngineError::new(
                 ErrorCode::Internal,
-                format!("sequence_design_report.serialize: {e}"),
+                format!("{}.serialize: {e}", self.namespace),
             )
         })?;
         let mut temp = NamedTempFile::new_in(self.path.parent().expect("admitted absolute path"))
             .map_err(|e| io_error("stage", e))?;
         stage(&mut temp, &text)?;
-        temp.persist_noclobber(&self.path)
+        temp.into_temp_path()
+            .persist_noclobber(&self.path)
             .map_err(|e| io_error("publish", e.error))?;
         Ok(())
     }

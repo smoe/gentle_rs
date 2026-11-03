@@ -5808,6 +5808,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRackCarrierLabelsSvg",
     "ExportRackSimulationJson",
     "ExportRackEquipmentJson",
+    "ValidateRackEquipmentJson",
     "ExportDnaLadders",
     "ExportRnaLadders",
     "ExportPool",

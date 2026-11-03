@@ -5434,6 +5434,62 @@ mod tests {
     }
 
     #[test]
+    fn rack_equipment_mcp_export_preserves_state_and_matches_saved_json() {
+        // Synthetic empty 8x12 rack: no source files, samples or hardware.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("rack's project.json");
+        let output = temp.path().join("equipment.json");
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert("synthetic-rack".into(), crate::engine::Rack {
+            rack_id: "synthetic-rack".into(),
+            profile: crate::engine::RackProfileSnapshot::custom(8, 12),
+            ..Default::default()
+        });
+        state.save_to_path(state_path.to_str().unwrap()).unwrap();
+        let original = std::fs::read(&state_path).unwrap();
+        let args = json!({"confirm":true, "state_path":state_path.to_string_lossy(),
+            "operation":{"ExportRackEquipmentJson":{"rack_id":"synthetic-rack", "path":output.to_string_lossy(),
+                "template":"pcr_tube_96_position_carrier"}}});
+        let result = run_tool(DEFAULT_MCP_STATE_PATH, "op", args);
+        assert_eq!(result.pointer("/result/isError").and_then(Value::as_bool), Some(false), "{result}");
+        assert_eq!(std::fs::read(&state_path).unwrap(), original);
+        let bytes = std::fs::read(&output).unwrap();
+        let saved: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(result.pointer("/result/structuredContent/result/rack_equipment").unwrap(), &saved);
+        let validation = GentleEngine::validate_rack_equipment_bytes(&bytes);
+        assert!(validation.internally_consistent && validation.matches_builtin_catalog);
+    }
+
+    #[test]
+    fn rack_equipment_mcp_validate_preserves_existing_and_missing_state_files() {
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("validation's project.json");
+        let missing_state = temp.path().join("must remain absent.json");
+        let input = temp.path().join("equipment.json");
+        let mut state = ProjectState::default();
+        state.container_state.racks.insert("synthetic-rack".into(), crate::engine::Rack {
+            rack_id: "synthetic-rack".into(), profile: crate::engine::RackProfileSnapshot::custom(2, 3),
+            ..Default::default()
+        });
+        state.save_to_path(state_path.to_str().unwrap()).unwrap();
+        let original = std::fs::read(&state_path).unwrap();
+        let description = GentleEngine::from_state(state).rack_equipment_description("synthetic-rack",
+            crate::engine::RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated).unwrap();
+        let bytes = serde_json::to_vec(&description).unwrap();
+        std::fs::write(&input, &bytes).unwrap();
+        for project in [&state_path, &missing_state] {
+            let args = json!({"confirm":true, "state_path":project.to_string_lossy(),
+                "operation":{"ValidateRackEquipmentJson":{"path":input.to_string_lossy()}}});
+            let result = run_tool(DEFAULT_MCP_STATE_PATH, "op", args);
+            assert_eq!(result.pointer("/result/isError").and_then(Value::as_bool), Some(false), "{result}");
+            assert_eq!(result.pointer("/result/structuredContent/result/rack_equipment_validation").unwrap(),
+                &serde_json::to_value(GentleEngine::validate_rack_equipment_bytes(&bytes)).unwrap());
+            assert_eq!(std::fs::read(&state_path).unwrap(), original);
+            assert!(!missing_state.exists());
+        }
+    }
+
+    #[test]
     fn sequence_design_mcp_confirmation_preview_and_exact_apply_parity() {
         assert_sequence_design_mcp_parity(false, false, false);
     }

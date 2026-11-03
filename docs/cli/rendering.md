@@ -401,6 +401,9 @@ Rendering export commands:
     rack-local: front-left base origin, +X towards increasing columns, +Y
     towards increasing rows, +Z up. `slot_A1` etc. mark carrier-top centres,
     not liquid surfaces, insertion depths or approved robot interaction poses.
+    **Front means the row-A / label-strip edge**, not the operator-facing side.
+    The existing orientation is not an ANSI/SLAS robot-deck mapping; see the
+    [orientation characterization](../protocol.md) and open decision D1.
   - Includes all physical slots, blocked-position flags, template/drawing
     source records and separate asset/source/content SHA-256 bindings. No
     sample names, sequences, occupants or private room geometry are included.
@@ -411,6 +414,24 @@ Rendering export commands:
     physical safety, equipment capabilities or biological results.
   - File-writing requires normal agent/MCP confirmation; direct CLI execution
     is an explicit write request. Existing destinations are never replaced.
+    The bound project and its save-owned candidate sidecar tree are protected
+    by the same destination admission as sequence-design reports.
+- `racks equipment-validate INPUT.json`
+  - Returns `gentle.rack_equipment_validation.v1` in
+    `OpResult.rack_equipment_validation`, with an exact input-byte hash and
+    separate `internally_consistent` / `matches_builtin_catalog` booleans.
+  - Reads regular files only, up to 16 MiB. Malformed content returns fixed
+    finding codes; missing files, non-regular files and exceeded limits are
+    execution errors. No parser text or sample names are included in diagnostics.
+  - Checks raw JSON values as well as the typed record, so unknown embedded
+    fields and lossy numbers are not silently ignored. A fully rehashed modified
+    source can be internally consistent without matching the built-in catalog.
+    Old compact-pitch records lacking the override field report a catalog mismatch.
+  - Does not change the project or input. Shell/inner-agent use needs no
+    additional confirmation; generic MCP `op` still requires `confirm=true`.
+    Neither verdict establishes authenticity, physical fit, safety or robot authority.
+    V1 mass/inertia remain null; non-null values require a future schema with
+    defined inertia component order, reference point and frame.
 - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while

@@ -22897,6 +22897,26 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             descriptor
         },
         json!({
+            "id": "racks equipment-validate", "kind": "operation",
+            "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"INPUT_PATH", "required":true,
+                      "subject_kind":"other", "detail":"external input path"}],
+            "reads": [], "effects": [], "precondition_expr":{"all":[]},
+            "description":"Validate exact equipment JSON content and producer catalog match; no project mutation, authenticity or safety claim.",
+            "annotation_status":"fact_annotated",
+            "registry":registry_metadata_for_introspection("racks equipment-validate")
+        }),
+        json!({
+            "id": "ValidateRackEquipmentJson", "kind": "operation",
+            "mutating": "false", "requires_confirmation": false,
+            "args": [{"name":"INPUT_PATH", "required":true,
+                      "subject_kind":"other", "detail":"external input path"}],
+            "reads": [], "effects": [], "precondition_expr":{"all":[]},
+            "description":"Inspect regular equipment JSON up to 16 MiB; content findings are data, not execution approval.",
+            "annotation_status":"fact_annotated",
+            "registry":registry_metadata_for_introspection("ValidateRackEquipmentJson")
+        }),
+        json!({
             "id": "history status",
             "kind": "operation",
             "mutating": "false",
@@ -47035,6 +47055,16 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         arrangement_id,
                         template,
                         preset,
+                    })
+                }
+                "equipment-validate" => {
+                    if tokens.len() != 3 || tokens[2].trim().is_empty() {
+                        return Err("racks equipment-validate requires exactly one non-empty INPUT.json".into());
+                    }
+                    Ok(ShellCommand::Op {
+                        payload: serde_json::to_string(&Operation::ValidateRackEquipmentJson {
+                            path: tokens[2].clone(),
+                        }).map_err(|error| error.to_string())?,
                     })
                 }
                 "equipment-json" => {

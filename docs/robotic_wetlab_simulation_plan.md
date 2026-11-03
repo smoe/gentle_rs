@@ -167,6 +167,13 @@ inspection surface.
 - first robot, pipetting and instrument interfaces represented by the public
   reference cell;
 - retention, access and publication policy for private world and run artifacts.
+- **D1 - Orientation:** retain and explicitly name the current row-A / label-strip
+  edge as GENtle's "front" (not the operator-facing side), or adopt ANSI/SLAS
+  plan-view orientation in a separate legacy-export migration. See the
+  [current-output characterization](protocol.md); frames and labels are unchanged here.
+- **D2 - Published file mode:** tempfile-based no-clobber exporters publish 0600
+  on Unix, unlike ordinary `fs::write` exports. Set repository-wide publication
+  policy separately; do not change one exporter in isolation.
 
 ## First Implementation Slice
 
@@ -195,6 +202,10 @@ protocol execution plan, reviewed CUT&RUN instructions or physical approval.
 No synthetic recipe is promoted into a reviewed laboratory protocol. The
 existing synthetic cloning dependency diagram cannot supply those missing
 material/protocol semantics. Mass/inertia remain unknown and actions empty.
+
+Here "front" means the row-A / label-strip edge, not the side facing an
+operator; it does not define a calibrated ANSI/SLAS deck pose. D1 is an owner
+decision, not a request to rotate or relabel existing exports in this slice.
 
 The next useful slice needs maintainer decisions on catalog ownership/licensing
 and an explicitly reviewed, quantity/sample-bound protocol input. Only then
@@ -269,3 +280,136 @@ agent/GUI verdict, standalone CLI/MCP export replay, optional JS/Lua VM executio
 or full-workspace-suite acceptance. The unrelated untracked
 `output/` directory is untouched. No push, CI dispatch, install, large download,
 world export or hardware action is performed.
+
+## Verification Follow-Up, 2026-11-03
+
+The owner supplied Claude's concrete review of `602d7fe6` and authorized the
+same locked/offline, single-job, zero-debug Rust verification recipe above.
+The expected baseline was `c6adcb83`; actual local main had advanced once to
+`89df315a` (dependency requirements pinned to already locked versions). This
+worktree was fast-forwarded to that main before editing. Since `602d7fe6`,
+the cited shell file also gained an unrelated protein-expression module include;
+the equipment implementation/geometry remained unchanged. Both
+`git branch -r --contains 602d7fe6` and `git tag --contains 602d7fe6` were empty,
+permitting the optional, absent-by-default v1 pitch-input field. No stale
+REBASE_HEAD was treated as an active rebase.
+
+Publication changed during implementation: a repeated remote-ref check showed
+`origin/main` now containing `602d7fe6`. Work stopped before any commit or main
+update, and Steffen explicitly approved: "Keep v1 and explicitly approve this
+additive optional field." This is a recorded compatibility exception: old v1
+readers reject a populated new field, while absent-override records keep the
+same bytes. Both schema/projection constants remain v1 by that owner decision.
+
+The implemented follow-up is byte/value-level validation plus separate local
+catalog comparison, not new geometry. Unknown embedded keys/lossy f32 values
+are retained long enough to reject, exact input bytes receive their own hash,
+and diagnostics never include parser text. Fully rehashed edited sources may
+be consistent but cannot claim a catalog match. Old override records without
+the recorded override fail the catalog comparison safely. Validation is shared
+by shell/agent/API and generic confirmed MCP `op`, with no project-file save.
+
+Equipment export now uses the generalized sequence-design JSON destination
+and writer; the sequence-design wrapper keeps its original error namespace.
+Existing staging-fault tests remain unchanged. A closed staging file is
+published without clobber; bound project/sidecar, raw-path and native checks
+are shared rather than copied. D1 and D2 above remain owner decisions. V1
+non-null mass/inertia remain invalid; no component order or frame is invented.
+The typed compatibility verifier also rejects non-null fields before JSON
+serialization, so `Some(NaN)` cannot silently become an accepted null mass.
+The existing tamper test now covers this typed-API serialization edge case.
+
+### Executed Verification
+
+Source: `89df315a` plus this scoped change on macOS arm64 (`Darwin arm64`),
+Rust `1.100.0-beta.7 (fd8e211ae 2026-10-17)`. Cargo.lock remains unchanged at
+`7ad5b2dc9485675a75d272fa945c75342dceb60ef582f2885015f3e14df41e76`.
+No dependency, repository profile or feature policy was changed.
+
+```sh
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1
+cargo test -q --locked --offline --lib -- rack_equipment_ export_rack_ parse_racks_ lifecycle_slice4_ --test-threads=1
+cargo run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-generate
+cargo run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-check
+cargo test -q --locked --offline -p gentle-protocol --lib
+cargo test -q --locked --offline --test capability_registry_parity --test mcp_capability_surface --test parity_matrix_freshness
+cargo test -q --locked --offline --lib -- rack_equipment_mcp_export_preserves_state_and_matches_saved_json rack_equipment_mcp_validate_preserves_existing_and_missing_state_files --test-threads=1
+cargo check -q --locked --offline
+python3 scripts/generate_capability_maturity.py --write
+python3 scripts/generate_capability_maturity.py --check
+python3 -m unittest scripts.test_capability_maturity scripts.test_tutorial_checkouts -q
+python3 scripts/manual_docs.py
+python3 scripts/check_documentation_status.py
+rustfmt --edition 2024 --config skip_children=true --check crates/gentle-protocol/src/rack_equipment.rs src/engine/state/lineage_containers/equipment.rs src/engine/state/lineage_containers/equipment/tests.rs src/engine/io/sequence_design_preview.rs
+git diff --check
+scripts/maintenance_chore.py session-close --plan docs/robotic_wetlab_simulation_plan.md
+```
+
+Final results: 58 focused tests pass, including both MCP tests, the unchanged
+applicable `lifecycle_slice4_` tests, seven-template hash pins and orientation
+characterization. The two named MCP tests also pass separately (overlapping
+coverage, not two additional unique tests). Protocol tests pass 120/120;
+capability/MCP/freshness suites pass 27/27, 6/6 and 1/1; Python maturity and
+LF/CRLF checkout tests pass 98/98. None are ignored or skipped in those runs.
+Canonical matrix generation/check, glossary-hash-only maturity projections,
+Cargo check, the four-file scoped rustfmt check, manuals/status and whitespace
+checks pass. No maturity verdict was promoted. Tutorial inspection found only
+the unchanged 06.07 sequence-design wrapper path, with no equipment tutorial
+claims to revise. All seven hash triples are established as code literals
+using `producer_version="pinned"`, not Python-generated expectations.
+
+Authoring diagnostics are retained separately: the first 58-test run passed
+56, exposed the deliberately unpopulated hash-pin constants, and was denied
+permission for the existing Unix-socket fixture under the sandbox. After
+recording the emitted hash constants, the exact focused command was rerun
+with approved unsandboxed permissions and passed all 58. No sequence-design
+test body or assertion was changed. An intermediate 33-test Python subset
+correctly rejected the not-yet-regenerated parity matrix; the final full
+98-test run above passes after canonical regeneration. Linker compact-unwind
+warnings remain non-fatal and are not performance evidence.
+
+The separate command below was also executed and **failed**, unchanged, with
+only `("primers_preflight", "registry_only")`; zero tests passed in that run.
+It is not included in any pass count and was not weakened or fixed here:
+
+```sh
+cargo test -q --locked --offline --lib execute_introspect_all_capability_section_has_full_fact_annotations -- --test-threads=1
+```
+
+### Changed Files
+
+- Contract/discovery: `crates/gentle-protocol/src/rack_equipment.rs`,
+  `crates/gentle-protocol/src/lib.rs`, `docs/glossary.json`,
+  `docs/gui_cli_mcp_parity.md`, `docs/agent_interface.md`.
+- Shared implementation and tests:
+  `src/engine/state/lineage_containers/equipment.rs`,
+  `src/engine/state/lineage_containers/equipment/tests.rs`,
+  `src/engine/io/sequence_design_preview.rs`, `src/engine/operation_lifecycle.rs`,
+  `src/engine/ops/operation_handlers.rs`, `src/engine.rs`,
+  `src/engine/protocol.rs`, `src/engine_shell.rs`, `src/mcp_server.rs`.
+- Result-literal/description plumbing only: `src/app.rs`, `src/app/tests.rs`,
+  `src/main_area_dna/tests.rs`, `src/engine/analysis/rna_reads.rs`.
+- Documentation: `docs/protocol.md`, `docs/cli/rendering.md`,
+  `docs/robotic_wetlab_simulation_plan.md`, `docs/CHANGELOG.md`, `docs/roadmap.md`.
+- Required glossary-hash-only rollups: `assets/capability_maturity.json`,
+  `integrations/clawbio/skills/gentle-cloning/CAPABILITY_MATURITY.json`,
+  `integrations/clawbio/skills/gentle-pcr-primer-design/CAPABILITY_MATURITY.json`,
+  `integrations/clawbio/skills/gentle-tss-collection/CAPABILITY_MATURITY.json`.
+
+### Remaining Boundaries
+
+Native Windows
+publication, JS/Lua VM execution (not run by CI), full-suite/native GUI and
+physical/scientific acceptance remain unverified. The inherited
+`primers_preflight` global fact-annotation failure is neither fixed nor counted
+as a pass. No push, tag, CI dispatch, installation or hardware action is allowed.
+The paper submodule, untracked prompt notes, data and output are excluded from
+staging/committing.
+
+Delivery decision: after overlapping uncommitted work appeared on local main,
+Steffen requested committing only this follow-up on `gentle_rs_2_main`, leaving
+main integration pending. No main update, merge, rebase or push is performed.
+Session-close reports four OK, two warnings and zero failures: the expected
+working-tree/generated-artifact warning and the manual plan-fidelity reminder.
+The unrelated untracked `output/` directory remains untouched.

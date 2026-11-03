@@ -1379,6 +1379,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["ValidateRackEquipmentJson"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "racks equipment-validate",
+         "summary": "Validate exact rack equipment JSON and built-in catalog match without project mutation; no authenticity, fit or safety claim.",
+         "usage": "racks equipment-validate INPUT.json"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "SetRackProfile"
          ],

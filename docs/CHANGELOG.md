@@ -29,6 +29,44 @@
   No local Rust build/test, push, dispatch, BLAST run or scientific acceptance
   is claimed. Native GUI and Windows checks remain pending.
 
+## 2026-11-03 - Validate Rack Equipment Values And Catalog Bindings
+
+- Add read-only `ValidateRackEquipmentJson` / `racks equipment-validate` and
+  `gentle.rack_equipment_validation.v1`: hash the inspected bytes, retain fixed
+  diagnostic codes, and distinguish internal consistency from this producer's
+  built-in catalog match. Canonical raw/typed-value comparison catches ignored
+  nested fields and lossy f32 values before source/binding verification.
+- Keep the typed verifier as a compatibility wrapper; matching self-consistent
+  content does not authenticate drawings, qualify fit or grant robot authority.
+  Bound file inspection to regular inputs and 16 MiB; content refusals are
+  findings, while filesystem/resource failures remain structured engine errors.
+- Record optional compact-pitch input without changing either v1 constant or
+  bytes for absent overrides. Compact-pitch records written by `602d7fe6` omit
+  this input and now report a catalog mismatch safely. The family/instance hash
+  pair is the asset key; catalog matching is a separate explicit verdict.
+  When `602d7fe6` reached `origin/main` during authoring, stop at the requested
+  publication gate and obtain Steffen's explicit approval to keep this additive
+  optional field in v1. Older strict v1 readers reject newly populated overrides;
+  absent-override records remain byte-compatible.
+- Reuse neutral, namespaced JSON-report destination admission and staging.
+  Sequence-design error messages and its seam tests remain unchanged; equipment
+  exports now protect the bound project and save-owned candidate subtree.
+  Refused destinations change from `Io` to `InvalidInput` under the
+  `rack_equipment_export` namespace. No legacy geometry/export or project-content
+  policy changes; no-clobber writers close staging handles before publication.
+- Characterize current PCR96 row-A/label-edge orientation without changing
+  frames. Keep orientation D1, repository-wide Unix file-mode D2 and native
+  Windows publication open. V1 mass/inertia stay null; populated inertia needs
+  a later schema with component order, reference point and frame.
+- Add raw-value, forged-source/catalog, override compatibility, shell/agent,
+  protected-path, serialization/hash and MCP state-preservation regressions.
+  Establish all three hash pins for each of seven synthetic 8x12 templates
+  with producer version `pinned`; later changes require a projection bump or
+  an explicitly documented deliberate re-pin.
+  Verification receipts and explicit unrun boundaries are retained in the
+  [follow-up ledger](robotic_wetlab_simulation_plan.md#verification-follow-up-2026-11-03).
+  No maturity upgrade, dependency change, push, tag, CI dispatch or robot action.
+
 ## 2026-11-03 - Restore Exact Pins For Glen's Flagged Dependencies
 
 - With owner authorization, replace only the eight flagged manifest constraints

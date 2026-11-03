@@ -5571,6 +5571,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rack_equipment: Option<Box<gentle_protocol::rack_equipment::RackEquipmentDescription>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rack_equipment_validation: Option<Box<gentle_protocol::rack_equipment::RackEquipmentValidation>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dna_sequence_design: Option<Box<gentle_protocol::sequence_design::DnaSequenceDesignReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dna_sequence_design_receipt:

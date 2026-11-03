@@ -38251,6 +38251,14 @@ impl GentleEngine {
                 ));
                 result.rack_equipment = Some(Box::new(description));
             }
+            Operation::ValidateRackEquipmentJson { path } => {
+                let validation = self.validate_rack_equipment_json(&path)?;
+                result.messages.push(format!(
+                    "Rack equipment validation: internally_consistent={}, matches_builtin_catalog={}",
+                    validation.internally_consistent, validation.matches_builtin_catalog
+                ));
+                result.rack_equipment_validation = Some(Box::new(validation));
+            }
             _ => unreachable!("non-rack-export operation passed to helper"),
         }
         Ok(())
@@ -38421,6 +38429,9 @@ impl GentleEngine {
             | op @ Operation::ExportRackCarrierLabelsSvg { .. }
             | op @ Operation::ExportRackSimulationJson { .. }
             | op @ Operation::ExportRackEquipmentJson { .. } => {
+                self.apply_rack_export_operation(op, result)?;
+            }
+            op @ Operation::ValidateRackEquipmentJson { .. } => {
                 self.apply_rack_export_operation(op, result)?;
             }
             Operation::RenderPoolGelSvg {
@@ -40573,6 +40584,7 @@ impl GentleEngine {
             genome_edit_intent: None,
             tube_profiles: None,
             rack_equipment: None,
+            rack_equipment_validation: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             op_id,
@@ -40788,6 +40800,7 @@ impl GentleEngine {
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
                 | Operation::ExportRackEquipmentJson { .. }
+                | Operation::ValidateRackEquipmentJson { .. }
         ) {
             self.apply_rack_export_operation(op, &mut result)?;
         } else if matches!(
@@ -42277,6 +42290,9 @@ impl GentleEngine {
                 | op @ Operation::ExportRackCarrierLabelsSvg { .. }
                 | op @ Operation::ExportRackSimulationJson { .. }
                 | op @ Operation::ExportRackEquipmentJson { .. } => {
+                    self.apply_rack_export_operation(op, &mut result)?;
+                }
+                op @ Operation::ValidateRackEquipmentJson { .. } => {
                     self.apply_rack_export_operation(op, &mut result)?;
                 }
                 op @ Operation::CreateArrangementSerial { .. }

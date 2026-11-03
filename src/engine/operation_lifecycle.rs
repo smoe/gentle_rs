@@ -16,6 +16,7 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
         op,
         Operation::PlanDnaSequenceDesign { .. }
             | Operation::ExportRackEquipmentJson { .. }
+            | Operation::ValidateRackEquipmentJson { .. }
             | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
@@ -64,6 +65,9 @@ impl OperationApprovalPolicy {
 /// `None` leaves an unmigrated operation's existing conservative rules intact.
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
+        Operation::ValidateRackEquipmentJson { .. } => {
+            Some(OperationApprovalPolicy::NoAdditionalConfirmation)
+        }
         Operation::AssessObservedSpliceJunctions { .. }
         | Operation::ExportRackEquipmentJson { .. }
         | Operation::CancelObservedSpliceJunctions { .. }

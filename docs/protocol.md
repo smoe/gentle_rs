@@ -10286,7 +10286,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Returns `OpResult.rack_equipment` and publishes the same complete typed
   `gentle.rack_equipment_description.v1` record without replacing an existing
   destination. The temporary file is flushed and closed before publication;
-  this does not claim crash durability or transactional directory updates. Project
+  shared JSON-report admission refuses the bound project, its save-owned
+  candidate sidecar tree, invalid raw/native paths and missing parents. Errors
+  use the `rack_equipment_export` namespace; sequence-design exports retain
+  their existing `sequence_design_report` namespace and messages. This does
+  not claim crash durability or transactional directory updates. Project
   content and undo/redo remain unchanged; the ordinary operation journal is
   retained. Legacy simulation JSON, CAD/SVG and persisted rack formats do not
   change. Absent `rack_equipment` remains omitted in other operation results.
@@ -10294,13 +10298,29 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   rack profile (blocked positions sorted/deduplicated) and referenced drawing
   profiles, including their source hashes/unknowns/nonclaims. It is not a new
   equipment catalog, universal CAD representation or inventory record.
-- `asset_id` identifies the built-in template, while `asset_revision_sha256`
+  Optional `source.carrier_pitch_override_um` records the actual compact-pitch
+  input in integer micrometres and is omitted when absent. The internal
+  consistency rebuild still uses embedded geometry, not a substituted catalog.
+  Pre-extension v1 readers reject this additional field when present; records
+  without an override keep their old bytes. The maintainer explicitly approved
+  this additive v1 extension on 2026-11-03 after publication of `602d7fe6`;
+  this exception does not establish a general schema-evolution policy.
+- `asset_id` names the built-in parametric template family, while `asset_revision_sha256`
   binds canonical JSON of `[projection, physical_template, tube_profiles]`.
-  It includes dimensions/grid but excludes rack identity and blocking policy.
+  It identifies the concrete geometry/drawings instance (grid and effective
+  pitch included), excluding rack identity and blocking policy. The pair is
+  the asset key. Only the validator's `matches_builtin_catalog` states that
+  embedded geometry and drawings equal this producer's built-in catalog;
+  `asset_id` alone makes no such claim. None authenticates drawings or fit.
   `source_sha256` binds canonical `source`; `content_sha256` binds the complete
-  report with only its own value set to the empty string. Object keys are
-  recursively sorted using GENtle's existing canonical JSON convention;
-  array order remains significant. These are consistency hashes, not signatures
+  report with only its own value set to the empty string. Canonical form is
+  serde_json compact output of a JSON value with object keys recursively sorted
+  by UTF-8 byte order. Strings use raw UTF-8 and JSON escapes only where required;
+  numbers use serde_json's shortest round-trip representation (`1e-5`, not
+  `1e-05`), with f32 fields widened to f64 first. Array order is significant;
+  digests are lowercase hexadecimal with a `sha256:` prefix. Python
+  `json.dumps` defaults (`ensure_ascii=True`, `1e-05`) do not reproduce this
+  canonical form. These are consistency hashes, not signatures
   or proofs of source authenticity. `producer_version` records the GENtle
   package version and the projection version must change with interpretation.
   The embedded template's f32 fields serialize through the same JSON-value
@@ -10313,17 +10333,60 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   liquid/grasp frame or robot-specific handedness conversion is invented.
   All physical slots, including blocked ones, are retained in row-major order.
   Processing retains the existing 1,536-slot bound and refuses invalid geometry.
+  Here **front means the row-A / label-strip edge**, not the side facing an
+  operator. Current well labels are mirrored relative to ANSI/SLAS top/deck-view
+  orientation: A1 is at GENtle's front-left rather than back-left, while the SVG
+  y-down top view mirrors the OpenSCAD model. Coincident hole positions do not
+  resolve the label reflection by rotation. This characterizes existing output,
+  not an approved robot-deck mapping; orientation policy D1 remains open.
 - The descriptive body envelope is not a collision mesh, detached-lid envelope
-  or physical-fit approval. `mass_kg` and `inertia_kg_m2` are null;
+  or physical-fit approval. V1 producers always emit `mass_kg` and
+  `inertia_kg_m2` as null, and v1 validation rejects non-null values. Populating
+  inertia requires a later schema defining component order, reference point
+  and frame, rather than guessing what the six entries mean;
   `permitted_actions` is empty. Source limitations and top-level nonclaims are
   retained. Occupancy/sample/sequence data and private room geometry are absent;
   exported rack ID/blocking remain explicit instance metadata.
-- `GentleEngine::verify_rack_equipment_description` rebuilds local frames and
+- `GentleEngine::verify_rack_equipment_description` serializes the typed record
+  through the byte/value-level validator and requires internal consistency,
+  not a catalog match. It rebuilds local frames and
   every binding from the embedded source without reopening project/files.
   It detects inconsistent fields even if the top-level digest was recomputed;
   it cannot authenticate supplied source data or establish simulator safety.
   Review/physical/native-platform acceptance and broader robotics milestones
   remain separate, as recorded in the [roadmap plan](robotic_wetlab_simulation_plan.md).
+
+`ValidateRackEquipmentJson { path }` / `racks equipment-validate INPUT.json`:
+
+- A read-only shared engine operation returning
+  `OpResult.rack_equipment_validation` with schema
+  `gentle.rack_equipment_validation.v1`. It preserves project content,
+  undo/redo and state-file bytes. Inner-agent/shell execution needs no additional
+  write approval; generic MCP `op` retains its existing `confirm=true` gate.
+  No artifact-written effect or new fact vocabulary is introduced.
+- The file reader checks regular-file metadata before opening, reads at most
+  16 MiB plus one detection byte, and refuses oversized/non-regular inputs with
+  `InvalidInput`. Filesystem failures remain `Io`. As with the shared writer,
+  hostile path replacement is not covered by an atomic-identity guarantee.
+  Content problems are findings in a successful validation record, not engine
+  execution errors. This command never writes the input or a project file.
+- `input_sha256` binds the exact bytes examined. `description_schema` and
+  `claimed_content_sha256` retain the declared string fields when available.
+  Diagnostics are fixed codes, never serde messages or echoed file text.
+  Deterministic checks stop at the first content failure: JSON parse, schema,
+  typed record, canonical raw-value/typed-value equality, source rebuild, and
+  complete content/binding equality. Thus ignored nested fields and lossy
+  f32 parsing cannot disappear behind successful typed deserialization.
+- `internally_consistent` becomes true only after those checks.
+  `matches_builtin_catalog` also requires rebuilding this producer's expected
+  template from kind, grid and optional override, plus the expected built-in
+  drawing profiles, and comparing canonical JSON. Catalog refusal/mismatch is
+  a false match with `rack_equipment_catalog_mismatch`, not an execution error.
+  A fully rehashed modified source can be consistent without matching.
+  Compact-pitch records from `602d7fe6` omit the override input and therefore
+  fail this catalog check safely, without invalidating their internal geometry.
+- Neither boolean establishes drawing authenticity, physical fit, calibration,
+  collision clearance, laboratory validity or any permission to move a robot.
 
 `RenderDotplotSvg` semantics:
 

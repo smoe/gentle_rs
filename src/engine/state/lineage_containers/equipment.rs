@@ -3,7 +3,9 @@
 use super::*;
 use crate::digest_utils::{canonical_json_string, sha256_prefixed_bytes};
 use gentle_protocol::rack_equipment::*;
-use std::io::Write;
+use std::io::Read;
+
+const VALIDATION_INPUT_LIMIT: u64 = 16 * 1024 * 1024;
 
 #[cfg(test)]
 #[path = "equipment/tests.rs"]
@@ -21,6 +23,13 @@ fn digest(value: &impl serde::Serialize) -> Result<String, EngineError> {
     canonical_json_string(value)
         .map(|json| sha256_prefixed_bytes(json.as_bytes()))
         .map_err(|err| invalid(format!("rack_equipment_serialization: {err}")))
+}
+
+fn same_json(left: &impl serde::Serialize, right: &impl serde::Serialize) -> bool {
+    match (canonical_json_string(left), canonical_json_string(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 impl GentleEngine {
@@ -55,6 +64,7 @@ impl GentleEngine {
                 .collect(),
             physical_template: spec,
             rack_profile: rack.profile.clone(),
+            carrier_pitch_override_um: rack.carrier_pitch_override_um,
         };
         Self::build_rack_equipment_description(rack_id, source, env!("CARGO_PKG_VERSION"))
     }
@@ -191,19 +201,143 @@ impl GentleEngine {
     pub fn verify_rack_equipment_description(
         description: &RackEquipmentDescription,
     ) -> Result<(), EngineError> {
-        let rebuilt = Self::build_rack_equipment_description(
-            &description.rack_id,
-            description.source.clone(),
-            &description.producer_version,
-        )?;
-        if canonical_json_string(&rebuilt).map_err(|e| invalid(e.to_string()))?
-            != canonical_json_string(description).map_err(|e| invalid(e.to_string()))?
-        {
+        // Typed callers must not turn forbidden Some(NaN) mass into JSON null.
+        if description.mass_kg.is_some() || description.inertia_kg_m2.is_some() {
             return Err(invalid(
-                "rack_equipment_binding_mismatch: description differs from source projection",
+                "rack_equipment_binding_mismatch: v1 mass and inertia must be null",
             ));
         }
+        let bytes = serde_json::to_vec(description).map_err(|e| invalid(e.to_string()))?;
+        let validation = Self::validate_rack_equipment_bytes(&bytes);
+        if !validation.internally_consistent {
+            return Err(invalid(format!(
+                "rack_equipment_binding_mismatch: {}",
+                validation
+                    .diagnostics
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or("rack_equipment_source_invalid")
+            )));
+        }
         Ok(())
+    }
+
+    /// Validate the complete JSON value and its embedded-source projection.
+    /// No parser diagnostics or source values are copied into finding codes.
+    pub fn validate_rack_equipment_bytes(bytes: &[u8]) -> RackEquipmentValidation {
+        let mut result = RackEquipmentValidation {
+            schema: RACK_EQUIPMENT_VALIDATION_SCHEMA.into(),
+            input_sha256: sha256_prefixed_bytes(bytes),
+            description_schema: None, claimed_content_sha256: None,
+            internally_consistent: false, matches_builtin_catalog: false,
+            diagnostics: vec![],
+            nonclaims: vec![
+                "Consistency and built-in catalog match only; not drawing authenticity, fit, safety or robot authority.".into(),
+                "Catalog matching refers to this producer's built-in templates and drawings, not installed equipment or calibration.".into(),
+            ],
+        };
+        let raw: serde_json::Value = match serde_json::from_slice(bytes) {
+            Ok(value) => value,
+            Err(_) => {
+                result
+                    .diagnostics
+                    .push("rack_equipment_json_invalid".into());
+                return result;
+            }
+        };
+        result.description_schema = raw
+            .get("schema")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned);
+        result.claimed_content_sha256 = raw
+            .get("content_sha256")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned);
+        if result.description_schema.as_deref() != Some(RACK_EQUIPMENT_SCHEMA) {
+            result
+                .diagnostics
+                .push("rack_equipment_schema_unsupported".into());
+            return result;
+        }
+        let typed: RackEquipmentDescription = match serde_json::from_value(raw.clone()) {
+            Ok(value) => value,
+            Err(_) => {
+                result
+                    .diagnostics
+                    .push("rack_equipment_record_invalid".into());
+                return result;
+            }
+        };
+        if !same_json(&typed, &raw) {
+            result
+                .diagnostics
+                .push("rack_equipment_unknown_or_noncanonical_fields".into());
+            return result;
+        }
+        let rebuilt = match Self::build_rack_equipment_description(
+            &typed.rack_id,
+            typed.source.clone(),
+            &typed.producer_version,
+        ) {
+            Ok(value) => value,
+            Err(_) => {
+                result
+                    .diagnostics
+                    .push("rack_equipment_source_invalid".into());
+                return result;
+            }
+        };
+        if !same_json(&rebuilt, &raw) {
+            result
+                .diagnostics
+                .push("rack_equipment_binding_mismatch".into());
+            return result;
+        }
+        result.internally_consistent = true;
+        let expected = Self::rack_physical_template_spec(
+            typed.source.physical_template.kind,
+            &typed.source.rack_profile,
+            typed.source.carrier_pitch_override_um,
+        );
+        if let Ok(spec) = expected {
+            let profiles = spec
+                .tube_profiles
+                .iter()
+                .copied()
+                .map(gentle_protocol::labware::tube_profile)
+                .collect::<Vec<_>>();
+            result.matches_builtin_catalog = same_json(&spec, &typed.source.physical_template)
+                && same_json(&profiles, &typed.source.tube_profiles);
+        }
+        if !result.matches_builtin_catalog {
+            result
+                .diagnostics
+                .push("rack_equipment_catalog_mismatch".into());
+        }
+        result
+    }
+
+    pub(in crate::engine) fn validate_rack_equipment_json(
+        &self,
+        path: &str,
+    ) -> Result<RackEquipmentValidation, EngineError> {
+        let io_error = |err: std::io::Error| EngineError {
+            code: ErrorCode::Io,
+            message: format!("rack_equipment_validate_input: {err}"),
+            cause_chain: vec![],
+        };
+        if !std::fs::metadata(path).map_err(io_error)?.is_file() {
+            return Err(invalid("rack_equipment_validate_input_not_regular_file"));
+        }
+        let file = std::fs::File::open(path).map_err(io_error)?;
+        let mut bytes = Vec::new();
+        file.take(VALIDATION_INPUT_LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(io_error)?;
+        if bytes.len() as u64 > VALIDATION_INPUT_LIMIT {
+            return Err(invalid("rack_equipment_validate_input_too_large"));
+        }
+        Ok(Self::validate_rack_equipment_bytes(&bytes))
     }
 
     pub(in crate::engine) fn export_rack_equipment_json(
@@ -215,25 +349,8 @@ impl GentleEngine {
         let description = self.rack_equipment_description(rack_id, template)?;
         // Match OpResult's JSON-value projection, including embedded f32 values.
         let value = serde_json::to_value(&description).map_err(|e| invalid(e.to_string()))?;
-        let bytes = serde_json::to_vec_pretty(&value).map_err(|e| invalid(e.to_string()))?;
-        let destination = std::path::Path::new(path);
-        let parent = destination
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| std::path::Path::new("."));
-        let io_error = |err: std::io::Error| EngineError {
-            code: ErrorCode::Io,
-            message: format!("Could not publish rack equipment JSON '{path}': {err}"),
-            cause_chain: vec![],
-        };
-        let mut file = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
-        file.write_all(&bytes).map_err(io_error)?;
-        file.as_file().sync_all().map_err(io_error)?;
-        // Publish without replacing another file; tempfile owns failed-write cleanup.
-        let staged = file.into_temp_path();
-        staged
-            .persist_noclobber(destination)
-            .map_err(|e| io_error(e.error))?;
+        self.json_report_destination(path, "rack_equipment_export")?
+            .write(&value)?;
         Ok(description)
     }
 }

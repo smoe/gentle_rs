@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub const RACK_EQUIPMENT_SCHEMA: &str = "gentle.rack_equipment_description.v1";
 /// Bump when projection, frames, units or interpretation changes.
 pub const RACK_EQUIPMENT_PROJECTION: &str = "gentle.rack_equipment_projection.v1";
+/// Separate consistency/catalog findings for exact inspected bytes.
+pub const RACK_EQUIPMENT_VALIDATION_SCHEMA: &str = "gentle.rack_equipment_validation.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,6 +19,8 @@ pub struct RackEquipmentSource {
     pub physical_template: RackPhysicalTemplateSpec,
     pub rack_profile: RackProfileSnapshot,
     pub tube_profiles: Vec<TubeProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier_pitch_override_um: Option<u32>,
 }
 
 // Keep typed API serialization identical to shell/MCP JSON-value projection.
@@ -85,4 +89,21 @@ pub struct RackEquipmentDescription {
     pub inertia_kg_m2: Option<[f64; 6]>,
     pub permitted_actions: Vec<String>,
     pub limitations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Consistency and catalog-match findings only; never authenticity, fit or safety.
+pub struct RackEquipmentValidation {
+    pub schema: String,
+    /// SHA-256 of the exact bytes examined, with the sha256: prefix.
+    pub input_sha256: String,
+    pub description_schema: Option<String>,
+    pub claimed_content_sha256: Option<String>,
+    pub internally_consistent: bool,
+    /// False unless internally consistent and equal to this producer's catalog.
+    pub matches_builtin_catalog: bool,
+    /// Fixed codes in deterministic order, never parser text or file content.
+    pub diagnostics: Vec<String>,
+    pub nonclaims: Vec<String>,
 }
