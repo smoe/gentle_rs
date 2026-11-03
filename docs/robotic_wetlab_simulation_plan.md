@@ -167,3 +167,105 @@ inspection surface.
 - first robot, pipetting and instrument interfaces represented by the public
   reference cell;
 - retention, access and publication policy for private world and run artifacts.
+
+## First Implementation Slice
+
+2026-11-03: the three forward-ported Glen commits (`8d91d696`, `5ae0b514`,
+`4a633418`) were imported intact from his checksum-verified incremental bundle
+based on `888e49ce`. The first implementation deliberately reuses existing
+GENtle tube/rack drawings and derivations rather than choosing a new catalog
+repository/licence, universal CAD language or simulator/controller prematurely.
+
+`racks equipment-json RACK_ID OUTPUT.json [--template TEMPLATE]` exports a
+separate, typed `gentle.rack_equipment_description.v1`. It projects the exact
+existing carrier geometry into explicit right-handed local metre frames,
+carrier-top slot origins and an unverified body envelope. Every physical
+slot remains present, including blocked slots. Embedded source geometry,
+drawing provenance/unknowns, template revision, source and report hashes make
+the result independently inspectable. Sample identity, occupancy and private
+world geometry are not exported; rack ID/blocking are explicit instance data.
+The same description returns through the operation result. Shared-shell,
+generic MCP and agent approval use existing engine paths. Existing simulation
+JSON and CAD/SVG exports remain unchanged; publication refuses overwrites.
+
+This is a **geometry-description foundation only**, not completion of staged
+milestone 1 or its acceptance criteria. It exports no collision/inertial model,
+grasp/liquid/insertion pose, simulator world, material transfer, robot action,
+protocol execution plan, reviewed CUT&RUN instructions or physical approval.
+No synthetic recipe is promoted into a reviewed laboratory protocol. The
+existing synthetic cloning dependency diagram cannot supply those missing
+material/protocol semantics. Mass/inertia remain unknown and actions empty.
+
+The next useful slice needs maintainer decisions on catalog ownership/licensing
+and an explicitly reviewed, quantity/sample-bound protocol input. Only then
+should a neutral plan and synthetic-world adapter be designed. A shareable CAD
+representation must reconcile with the existing source-backed labware model,
+not duplicate it. Physical execution requires its own later approval.
+
+See [CLI usage](cli/rendering.md), [wire semantics](protocol.md)
+and the [review prompt](robotic_wetlab_equipment_review_prompt_20261103.md).
+
+## Verification Ledger
+
+Authoring is on macOS arm64, based on the preserved Glen tip `4a633418`.
+All Cargo commands use the unchanged owner lockfile with `--locked --offline`,
+one build job and `CARGO_INCREMENTAL=0`. Transient development/test debug level
+is zero; repository profiles, dependencies and the lockfile are not edited.
+
+The first check exposed an incorrect extracted-module path, corrected before
+runtime testing. The first eight-test run passed six and found two issues:
+the PCR96 fixture must respect the existing 8x12 requirement, and direct f32
+text serialization must match the JSON-value projection. The fixture and new
+description serialization were corrected; old carrier admission/geometry and
+legacy serialization were not changed. The initial discovery script also
+correctly flagged the not-yet-regenerated parity matrix; it is not a runtime
+failure or an accepted stale projection.
+
+Final executed checks, with Rust `1.100.0-beta.7 (fd8e211ae 2026-10-17)`:
+
+```sh
+# All Cargo invocations also use these transient environment settings:
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1
+cargo test -q --locked --offline --lib -- rack_equipment_ export_rack_ parse_racks_ --test-threads=1
+cargo test -q --locked --offline -p gentle-protocol --lib
+cargo test -q --locked --offline --test capability_registry_parity --test mcp_capability_surface --test parity_matrix_freshness
+cargo run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-generate
+cargo run -q --locked --offline --bin gentle_examples_docs -- parity-matrix-check
+cargo check -q --locked --offline
+python3 scripts/generate_capability_maturity.py --write
+python3 scripts/generate_capability_maturity.py --check
+python3 -m unittest scripts.test_capability_maturity scripts.test_tutorial_checkouts -q
+python3 scripts/manual_docs.py
+python3 scripts/check_documentation_status.py
+git diff --check
+```
+
+Results: 29 focused rack/equipment/parser tests (all eight new tests plus 21
+existing regressions), 120 protocol tests, 26 capability-registry tests,
+six MCP discovery/error-contract tests, one parity-freshness test and 98
+Python maturity/checkout tests pass, with no ignored/skipped tests in those
+runs. Canonical matrix generate/check, the four required glossary-hash-only
+maturity updates, default-feature Cargo check, manual/status and whitespace
+checks pass. The LF/CRLF coverage is synthetic checkout/byte-preservation
+coverage, not a native Windows execution receipt. The linker reports its
+large existing `__eh_frame` compact-unwind warning; no performance claim follows.
+The unchanged lockfile SHA-256 is
+`7ad5b2dc9485675a75d272fa945c75342dceb60ef582f2885015f3e14df41e76`.
+
+A deliberately broader 30-test run (the 29 above plus
+`execute_introspect_all_capability_section_has_full_fact_annotations`) passed
+29 and failed that global guard only: `primers_preflight` is `registry_only`.
+At baseline `4a633418`, `src/mcp_server.rs` already contains that MCP tool,
+while `src/engine_shell.rs` annotates only `primers preflight` (space form).
+Those preflight records are untouched here; this is a separate inherited
+annotation gap, not a reason to weaken the guard or expand this robotics diff.
+No separate baseline rebuild or full-suite pass is claimed. Both new equipment
+descriptors are explicitly tested as `fact_annotated` and confirmation-required.
+
+None of this work establishes native Windows/Linux publication semantics, physical fit, simulator
+or CAD-tool conformance, private-world acceptance, scientific success, a live
+agent/GUI verdict, standalone CLI/MCP export replay, optional JS/Lua VM execution,
+or full-workspace-suite acceptance. The unrelated untracked
+`output/` directory is untouched. No push, CI dispatch, install, large download,
+world export or hardware action is performed.

@@ -292,16 +292,13 @@ infrastructure expansion that does not reduce release risk.
   crop only if review finds the selected hosted window insufficiently clear.
 
 ## Phase F: Interpretation Later
-
 Later interpretation work includes image/sketch-to-state patch proposals,
 richer assistant-facing findings records, deeper wet-lab process modeling,
 repeat/mobile-element curation, and cohort-scale comparative reasoning. These
 must remain explicit, inspectable proposals with confirmation before mutation.
 Useful work here improves proposal formats, evidence records, reproducible
 cohort comparisons, and rollback paths for state patches; defer autonomous wet-lab conclusions or unconfirmed mutations.
-
-- Later release: [robotic wet-lab simulation and equipment digital twins](robotic_wetlab_simulation_plan.md), with GENtle-owned protocol/material provenance, separately shared equipment/Gazebo assets, private real-lab geometry, a public synthetic reference world and CUT&RUN as the first benchmark. Simulation establishes neither physical safety nor biological validity.
-
+- Later release: [robotic wet-lab simulation and equipment digital twins](robotic_wetlab_simulation_plan.md#first-implementation-slice): review the offline rack-equipment projection, then settle asset ownership/licensing and reviewed protocol/material bindings before simulator adapters. Public synthetic worlds, private real-lab geometry and a CUT&RUN benchmark remain later; no simulation implies physical safety or biological validity.
 ## Parking Lot
 - Experimental [synonymous motif/GC design](dna_sequence_optimization_plan.md) stays outside `.12`; retain the [394dd5d regression result](sequence_design_acceptance.md#executed-regression-follow-up-at-394dd5d), earlier [repair/GC acceptance](sequence_design_acceptance.md#executed-audit-at-de9df8af) and [first-slice audit](glen_sequence_design_handoff_20261005.md) at their actual sources. Recheck affected current-source paths at release preparation, with native Windows/macOS/Pi, usefulness/live-model and biological verdicts separate. Verify the private core's standalone compiler contract before extraction/publication; do not restore an untested floor or infer a workspace minimum from core-only tests. Dedicated GUI, codon objectives and richer specifications need their own contracts; bounded Linux/X11/process evidence implies no general performance or suitability claim. The unrelated parity-document repair still needs freshness/CI; no local Rust or interim acceptance freeze.
 - Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md#rescoring-existing-reports): Glen to rescore original five-gene inputs after the inclusive-tail correction, then repeat PDF pixel/hash, shared-scale and sparse-peak acceptance; the `44b73e4a` audit does not cover this scoring method. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.

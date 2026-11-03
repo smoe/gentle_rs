@@ -22877,6 +22877,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "ExportRackSimulationJson",
             "Export rack simulation JSON through the shared engine operation.",
         ),
+        {
+            let mut descriptor = rack_export_descriptor(
+                "racks equipment-json",
+                "Export a hash-bound unqualified rack equipment description; no robot actions or collision model.",
+            );
+            descriptor["mutating"] = json!("external");
+            descriptor["requires_confirmation"] = json!(true);
+            descriptor
+        },
+        {
+            let mut descriptor = rack_export_descriptor(
+                "ExportRackEquipmentJson",
+                "Export the same unqualified rack geometry with explicit local metre frames and content bindings.",
+            );
+            descriptor["mutating"] = json!("external");
+            descriptor["requires_confirmation"] = json!(true);
+            descriptor
+        },
         json!({
             "id": "history status",
             "kind": "operation",
@@ -47017,6 +47035,25 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         template,
                         preset,
                     })
+                }
+                "equipment-json" => {
+                    if tokens.len() != 4 && tokens.len() != 6 {
+                        return Err("racks equipment-json requires RACK_ID OUTPUT.json [--template TEMPLATE]".into());
+                    }
+                    if tokens[2].trim().is_empty() || tokens[3].trim().is_empty() {
+                        return Err("racks equipment-json requires non-empty RACK_ID and OUTPUT.json".into());
+                    }
+                    let template = if tokens.len() == 6 {
+                        if tokens[4] != "--template" {
+                            return Err("racks equipment-json accepts only --template TEMPLATE".into());
+                        }
+                        parse_rack_physical_template_kind(&tokens[5])?
+                    } else {
+                        RackPhysicalTemplateKind::default()
+                    };
+                    Ok(ShellCommand::Op { payload: serde_json::to_string(&Operation::ExportRackEquipmentJson {
+                        rack_id: tokens[2].clone(), path: tokens[3].clone(), template,
+                    }).map_err(|err| err.to_string())? })
                 }
                 "simulation-json" => {
                     if tokens.len() < 4 {

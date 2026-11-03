@@ -15,6 +15,7 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
     matches!(
         op,
         Operation::PlanDnaSequenceDesign { .. }
+            | Operation::ExportRackEquipmentJson { .. }
             | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
@@ -64,6 +65,7 @@ impl OperationApprovalPolicy {
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
         Operation::AssessObservedSpliceJunctions { .. }
+        | Operation::ExportRackEquipmentJson { .. }
         | Operation::CancelObservedSpliceJunctions { .. }
         | Operation::SummarizeObservedTranscriptStructures { .. }
         | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }

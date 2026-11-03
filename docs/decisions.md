@@ -2386,6 +2386,20 @@ the cell-line data. Native/platform and scientific acceptance remain separate;
 the retained public priming comparisons still perform no subtraction. No
 automatic fitting, new quantitative yield claim or reprocessing is authorized.
 
+## Equipment Descriptions Do Not Grant Execution Authority
+
+Status: active
+
+Equipment descriptions remain separate from protocol plans and execution
+authority. `gentle.rack_equipment_description.v1` projects the existing
+source-backed rack geometry and local frames only. Its content bindings prove
+internal consistency, not authentic drawings, fit, collision safety or a
+calibrated world. Missing mass/inertia, liquid/grasp/insertion poses and robot
+capabilities remain unknown; no physical action is authorized. Simulator and
+physical-controller integrations require separate reviewed contracts. Do not
+infer material transfers or executable CUT&RUN steps from the synthetic
+cloning dependency model, or embed private real-lab geometry in public fixtures.
+
 ## Advisory Cloning Time And Cost Boundaries
 
 Status: active

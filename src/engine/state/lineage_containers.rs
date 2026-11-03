@@ -11,6 +11,9 @@
 use super::*;
 use std::fs;
 
+#[path = "lineage_containers/equipment.rs"]
+mod equipment;
+
 const STORAGE_BOX_SCAD: &str = r#"
 // part=all places the lid beside the box; box/insert/lid isolate parts for inspection.
 part = "all";

@@ -1371,6 +1371,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["ExportRackEquipmentJson"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
+         "path": "racks equipment-json",
+         "summary": "Export a hash-bound rack equipment description with local metre frames; no collision model, robot actions or fit approval.",
+         "usage": "racks equipment-json RACK_ID OUTPUT.json [--template TEMPLATE]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "SetRackProfile"
          ],

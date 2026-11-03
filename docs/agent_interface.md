@@ -881,6 +881,7 @@ an agent has selected a deterministic operation.
 - `racks set-profile`
 - `racks show`
 - `racks simulation-json`
+- `racks equipment-json` (shared shell/generic confirmed operation; no dedicated named tool)
 - `reads acquire cancel`
 - `reads acquire inspect`
 - `reads acquire prepare`

@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-11-03 - Preserve Glen's Robotics Roadmap And Add Offline Equipment Projection
+
+- Merge Glen's three forward-ported roadmap commits intact from the
+  checksum-verified bundle based on `888e49ce`. Preserve the later-release,
+  equipment/world ownership, private-lab and physical-safety boundaries; no
+  new release gate, simulator installation or robot execution is authorized.
+- Add shared `ExportRackEquipmentJson` / `racks equipment-json` and the
+  separately versioned `gentle.rack_equipment_description.v1`. Reuse existing
+  template geometry/slot helpers and drawing profiles; bind template revision,
+  canonical source and report content. Explicit rack-local metre frames,
+  carrier-top slot centres and an unverified body envelope are descriptions,
+  not collision/inertial models, liquid/grasp poses or equipment capabilities.
+- Preserve every physical slot and blocking policy; exclude occupants,
+  sequences, sample names and room geometry. Keep mass/inertia unknown and
+  permitted actions empty. Return the same typed description in `OpResult`;
+  normalize its embedded f32 serialization across typed API, shell/MCP JSON
+  values and saved files without changing existing geometry or legacy exports.
+- Publish complete files without overwriting destinations, closing staging
+  handles before publication. Preserve project content/history checkpoints and
+  derive agent write approval from the decoded operation, not model flags.
+  Refresh required discovery/provenance projections without upgrading maturity.
+- Add deterministic geometry/legacy-output, serialization, hash/tamper,
+  blocking/pitch, budget/refusal, path-quoting, no-clobber, introspection and
+  forged-agent-approval tests. The [implementation ledger](robotic_wetlab_simulation_plan.md#verification-ledger)
+  records exact verification and remaining native/physical/full-suite limits.
+  A [read-only Claude review prompt](robotic_wetlab_equipment_review_prompt_20261103.md)
+  is prepared; no Claude review or scientific acceptance is claimed.
+
 ## 2026-11-03 - Port Publication Fault Tests And Preserve Audit Evidence
 
 - Port the two pending test-only changes from
