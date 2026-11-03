@@ -358,7 +358,7 @@ cohort comparisons, and rollback paths for state patches; defer autonomous wet-l
 - Deeper Primer3 parity and bounded asynchronous preflight ([audit and reader scope](primer3_parity_audit_20261103.md)); virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - First-class global RT-PCR specificity/redesign workflow: build on the local
-  assembly-aware variant screen and panel-matrix review shortcut (native pending);
+  assembly-aware variant screen and native panel-matrix review (pending);
   combine prepared genome/transcriptome searches, intended-product/paralogue policy,
   junction evidence, Primer3 plus exact-run QC, ranked redesign candidates,
   and one provenance-bound review bundle.

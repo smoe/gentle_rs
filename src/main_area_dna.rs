@@ -85,6 +85,7 @@ mod gene_assay_study_ui;
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
 mod transcript_assay_report_ui;
+mod transcript_assay_specificity_ui;
 
 #[path = "main_area_dna/sequencing_confirmation_ui.rs"]
 mod sequencing_confirmation_ui;
@@ -1497,6 +1498,7 @@ pub struct MainAreaDna {
     cached_terminal_exon_rt_primer_pool_report: Option<Arc<TerminalExonRtPrimerPoolReport>>,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
+    transcript_assay_specificity_review: transcript_assay_specificity_ui::Review,
     gene_assay_study_ui: gene_assay_study_ui::GeneAssayStudyUi,
     cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
     sequencing_confirmation_ui: SequencingConfirmationUiState,
@@ -2394,6 +2396,7 @@ impl MainAreaDna {
             cached_terminal_exon_rt_primer_pool_report: None,
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
             cached_transcript_assay_panel_report: None,
+            transcript_assay_specificity_review: Default::default(),
             gene_assay_study_ui: Default::default(),
             cached_experimental_assay_handoff: None,
             sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
@@ -21614,6 +21617,7 @@ impl MainAreaDna {
 
     fn poll_primer_design_task(&mut self, ctx: &egui::Context) {
         self.poll_gene_assay_study_task(ctx);
+        self.poll_transcript_assay_specificity_review(ctx);
         if self.primer_design_task.is_none() {
             return;
         }
@@ -21733,6 +21737,7 @@ impl MainAreaDna {
                         self.transcript_assay_panel_ui.report_id = report.report_id.clone();
                         self.transcript_assay_panel_ui.source_feature_id =
                             report.source_feature_id.to_string();
+                        self.invalidate_transcript_assay_specificity_review();
                         self.cached_transcript_assay_panel_report = Some(Arc::new(report));
                         self.pcr_designer_mode = PcrDesignerMode::TranscriptPanels;
                         self.save_engine_ops_state();
@@ -25601,6 +25606,7 @@ impl MainAreaDna {
         self.cached_qpcr_design_report = None;
         self.cached_terminal_exon_rt_primer_pool_report = None;
         self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;
+        self.invalidate_transcript_assay_specificity_review();
         self.cached_transcript_assay_panel_report = None;
         self.cached_experimental_assay_handoff = None;
         self.sequencing_confirmation_ui = s.sequencing_confirmation_ui;

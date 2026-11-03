@@ -793,6 +793,7 @@ impl MainAreaDna {
                 }
                 StudyJobKind::Execute => {
                     self.gene_assay_study_ui.invalidate_review();
+                    self.invalidate_transcript_assay_specificity_review();
                     self.cached_transcript_assay_panel_report = None;
                     self.cached_experimental_assay_handoff = None;
                 }
@@ -990,6 +991,7 @@ impl MainAreaDna {
         {
             self.gene_assay_study_ui.panel_summary_attempt = current;
             self.gene_assay_study_ui.panel_summaries = None;
+            self.invalidate_transcript_assay_specificity_review();
             self.cached_transcript_assay_panel_report = None;
             self.start_study_work(
                 StudyJobKind::PanelSummaries,

@@ -13,6 +13,22 @@
 - Fourteen focused Python checks pass; no local Rust build/test, push or
   dispatch is performed. Same-source CI and JS/native acceptance remain separate.
 
+## 2026-11-03 - Inspect Retained Specificity In PCR Designer
+
+- Add **Review specificity** beside the saved transcript-panel handoff. It
+  reads the existing matrix on a detached read-only worker, independently of
+  primer design. Project instance/revision, displayed report identity and
+  canonical report ID guard delivery; a busy UI poll keeps the reply pending.
+- Page genomic and transcriptome evidence separately. Preserve receipt order,
+  historical-only assays, independent active/superseded flags, exact child
+  bindings, diagnostics, unassessed lists, unlinked citations and nonclaims.
+  The Shell copy action and the engine/CLI/MCP contracts are unchanged.
+- Add offline routing coverage and synthetic Rust tests for presentation,
+  navigation, stale/closed views and unchanged project state. See the
+  [verification handoff](glen_next_verification_handoff.md#native-panel-specificity-review-2026-11-03).
+  No local Rust build/test, push, dispatch, BLAST run or scientific acceptance
+  is claimed. Native GUI and Windows checks remain pending.
+
 ## 2026-11-03 - Restore Exact Pins For Glen's Flagged Dependencies
 
 - With owner authorization, replace only the eight flagged manifest constraints

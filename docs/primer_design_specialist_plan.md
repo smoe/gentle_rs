@@ -39,7 +39,8 @@ automatic tail selection and engine-native single-primer design remain separate.
 Read-only `primers transcript-assay-specificity-matrix PANEL_REPORT_ID` now
 projects retained panel receipts with separate design/reference/policy scopes,
 binding diagnostics, active/superseded history and unlinked same-oligo citations.
-Rust execution remains with Glen/CI. This is inspection only, not panel fan-out,
+PCR Designer now offers the same read-only review in place; Rust and native checks remain with Glen/CI.
+This is inspection only, not panel fan-out,
 new handoff/import machinery, reference selection or readiness attachment.
 
 ## Conditional Slice B: Bound Panel Fan-Out

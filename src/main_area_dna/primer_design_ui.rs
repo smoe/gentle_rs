@@ -4283,6 +4283,7 @@ impl MainAreaDna {
                     self.transcript_assay_panel_ui.preferred_max_amplicon_bp =
                         preferred.max_bp.to_string();
                 }
+                self.invalidate_transcript_assay_specificity_review();
                 self.cached_transcript_assay_panel_report = Some(Arc::new(report.clone()));
                 self.cached_experimental_assay_handoff = None;
                 self.op_status = format!(
@@ -5605,6 +5606,7 @@ impl MainAreaDna {
             );
             Self::render_transcript_assay_panel_report(ui, report.as_ref());
             ui.horizontal_wrapped(|ui| {
+                self.specificity_review_button(ui);
                 if ui
                     .add_enabled(
                         !primer_task_running,
@@ -5631,6 +5633,7 @@ impl MainAreaDna {
                             .to_string();
                 }
             });
+            self.show_transcript_assay_specificity_review(ui);
             if let Some(handoff) = self.cached_experimental_assay_handoff.clone() {
                 if handoff.source_panel_report_id == report.report_id {
                     Self::render_experimental_assay_handoff(ui, handoff.as_ref());

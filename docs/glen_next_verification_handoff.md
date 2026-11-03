@@ -85,6 +85,60 @@ No local Rust build/check/test, Cargo resolution/update, network operation,
 push or CI dispatch was performed for this repair. Preserve unrelated local
 files and the paused goal; no compiler-floor or scientific verdict changes.
 
+## Native Panel Specificity Review, 2026-11-03
+
+PCR Designer's **Review specificity** reads only the currently displayed saved
+panel. Compare it to the unchanged **Copy specificity matrix command** on the
+same project. The GUI has no separate matrix model, search or readiness update.
+The worker uses the read-only snapshot operation; a busy frame defers delivery.
+The GUI host disconnects a pending reply when the specialist closes even if
+the parent DNA view remains alive.
+
+Authoring began at `c6adcb83`, one workflow commit beyond the supplied
+`e7778466`. Local main then advanced to
+`89df315a80e0d3ae02e5685efd7a94e3895fbaa7` (dependency pins). Its status
+entries are retained. Offline checks on macOS arm64 at that base plus the
+viewer patch: eight specificity tutorial/source tests pass, the manual catalog
+check passes, and the three requested GUI files pass scoped rustfmt. The
+parent DNA check retains two pre-existing child-module hunks; the extra PCR
+dialog close hook introduces none of the six existing `app.rs` formatting
+hunks. Whitespace is clean; the roadmap stays at 400 lines. No Rust build or
+test ran. After the owner pushes, record the actual SHA, platform, toolchain
+and test counts; **zero matches are a failure**:
+
+```sh
+cargo check -q --locked
+cargo test --locked --lib transcript_assay_specificity_review_ -- --test-threads=1
+cargo test --locked --lib specificity_matrix_ -- --test-threads=1
+```
+
+The first filter has ten authored cases covering the renderer, both paging
+axes, historical rows/citations, click admission, exact ID and state, engine
+errors, contention, stale replies, post-acceptance edits, reload and close.
+The second includes the existing engine cases and the three copy-action tests
+from `da97696d`. Neither authoring slice ran those tests; Glen subsequently
+reported their 3/3 pass at `89df315a` as retained above. That historical result
+does not accept the new viewer; do not reissue it as an unfinished old campaign.
+
+Record native GUI acceptance separately:
+
+1. Open a saved panel with genomic, transcriptome and superseded receipts.
+   Click **Review specificity**; check responsiveness and compare both grids,
+   receipt details, separate citations and nonclaims with the copied command's
+   JSON. Check that an unverified recorded status is not a verified current verdict.
+2. While loading, separately switch panels, redesign under the same ID, undo
+   and reopen another project. No stale result should appear. Change project
+   state after acceptance and check the request to review again.
+3. Page a large panel to its last assay and receipt in each dimension. Close
+   PCR Designer mid-load, leave the DNA window alive, then reopen the specialist.
+4. Check native Windows separately. A macOS run is not Windows acceptance.
+   Use synthetic/disposable saved evidence: no BLAST, provider contact or private data.
+
+Known limit: a panel already replaced externally **before** the click can
+retain the same ID as the displayed report. The matrix header carries the
+reader's current design digest; the GUI does not independently hash the cached
+panel or claim to detect that prior replacement. No scientific verdict follows.
+
 ## Panel Specificity Review Shortcut, 2026-11-03
 
 The transcript-panel result now offers `Copy specificity matrix command`, bound

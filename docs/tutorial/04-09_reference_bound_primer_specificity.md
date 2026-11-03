@@ -241,6 +241,12 @@ This invokes the Slice A shared engine operation, not a mock tutorial renderer:
 gentle_cli --state study.gentle.json primers transcript-assay-specificity-matrix YOUR_PANEL_REPORT_ID
 ```
 
+In PCR Designer's transcript-panel mode, show the saved panel and choose
+**Review specificity** to inspect the same matrix in place. For example, page
+the genomic receipts and check whether a recorded result still matches the
+current design; then check the transcriptome receipts separately. A missing
+receipt in either dimension is not a negative search. To see the JSON instead,
+use **Copy specificity matrix command** and run it in the GUI Shell.
 In the GUI Shell, omit the executable and `--state` prefix. MCP offers
 `transcript_assay_specificity_matrix` with `panel_report_id` and optional
 `state_path`; this read-only inspection needs no mutation confirmation.
