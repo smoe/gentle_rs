@@ -293,9 +293,12 @@ infrastructure expansion that does not reduce release risk.
 
 ## Phase F: Interpretation Later
 
-Later interpretation work includes image/sketch-to-state proposals, richer findings,
-wet-lab process models, repeat/mobile-element curation and cohort reasoning. Keep them
-inspectable and confirmed; preserve evidence and rollback; defer autonomous conclusions.
+Later interpretation work includes image/sketch-to-state patch proposals,
+richer assistant-facing findings records, deeper wet-lab process modeling,
+repeat/mobile-element curation, and cohort-scale comparative reasoning. These
+must remain explicit, inspectable proposals with confirmation before mutation.
+Useful work here improves proposal formats, evidence records, reproducible
+cohort comparisons, and rollback paths for state patches; defer autonomous wet-lab conclusions or unconfirmed mutations.
 
 - Later release: [robotic wet-lab simulation and equipment digital twins](robotic_wetlab_simulation_plan.md), with GENtle-owned protocol/material provenance, separately shared equipment/Gazebo assets, private real-lab geometry, a public synthetic reference world and CUT&RUN as the first benchmark. Simulation establishes neither physical safety nor biological validity.
 
