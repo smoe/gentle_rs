@@ -117,6 +117,26 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
         self.assertIn("primers list-transcript-assay-panels", self.page)
         self.assertIn("Hands-on inspection exercise", self.page)
 
+    def test_panel_report_offers_the_existing_reader_without_an_execution_path(self):
+        source = (ROOT / "src/main_area_dna/transcript_assay_report_ui.rs").read_text()
+        helper = source.split("pub(super) fn specificity_review(", 1)[1].split("#[cfg(test)]", 1)[0]
+        self.assertIn('egui::Button::new("Copy specificity matrix command")', helper)
+        self.assertIn("ui.ctx().copy_text(specificity_matrix_command(report_id))", helper)
+        self.assertIn("!report_id.trim().is_empty()", helper)
+        for term in ["Missing evidence remains unassessed", "This does not run BLAST",
+                     "change readiness or authorize ordering"]:
+            self.assertIn(term, helper)
+        for forbidden in ["execute_shell", "parse_shell", "self.engine", "write_", "fs::"]:
+            self.assertNotIn(forbidden, helper)
+        self.assertIn("crate::engine_shell::quote_shell_arg(report_id)", source)
+        renderer = (ROOT / "src/main_area_dna/primer_design_ui.rs").read_text()
+        self.assertIn("transcript_assay_report_ui::specificity_review(ui, &report.report_id)", renderer)
+        for test in ["specificity_matrix_copy_command_keeps_exact_identity_and_read_only_route",
+                     "specificity_matrix_copy_button_is_explicit_and_does_not_change_the_report",
+                     "specificity_matrix_copy_button_without_a_report_identity_stays_disabled"]:
+            self.assertIn(f"fn {test}()", source)
+        self.assertIn("egui::OutputCommand::CopyText(command)", source)
+
 
 if __name__ == "__main__":
     unittest.main()

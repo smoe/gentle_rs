@@ -307,6 +307,13 @@ qPCR form:
     endpoint band sizes, junction evaluations, short SYBR junction assays,
     candidate primer sequences (not order approval), and the per-cell oligo-dT
     5-prime reach status
+  - `Copy specificity matrix command` copies the existing read-only inspection
+    command for that exact saved report, with shared-shell quoting. Open the
+    sequence's `Shell...`, paste it and run explicitly to inspect retained
+    assay-by-reference receipts; copying does not execute a search or alter
+    the project. Missing evidence remains unassessed, not a clean result.
+    References/policies stay separate; this is not an aggregate panel pass or
+    order approval. See [the evidence-matrix guide](../cli/primer-specificity.md#inspect-retained-panel-specificity).
   - an empty oligo-dT threshold reports annotation-derived distances without
     making a categorical risk call; a user-supplied threshold enables the
     corresponding within/elevated matrix labels

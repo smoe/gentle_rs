@@ -4531,6 +4531,7 @@ impl MainAreaDna {
         ui.separator();
         ui.heading("Transcript assay-panel result");
         super::transcript_assay_report_ui::coverage(ui, report);
+        super::transcript_assay_report_ui::specificity_review(ui, &report.report_id);
         egui::Grid::new("transcript_assay_panel_summary")
             .num_columns(4)
             .spacing([12.0, 4.0])

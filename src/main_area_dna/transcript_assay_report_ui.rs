@@ -87,6 +87,32 @@ pub(super) fn coverage(ui: &mut egui::Ui, report: &TranscriptAssayPanelReport) {
     });
 }
 
+fn specificity_matrix_command(report_id: &str) -> String {
+    format!(
+        "primers transcript-assay-specificity-matrix {}",
+        crate::engine_shell::quote_shell_arg(report_id)
+    )
+}
+
+/// Offer the existing reader without running searches or changing panel readiness.
+pub(super) fn specificity_review(ui: &mut egui::Ui, report_id: &str) {
+    ui.group(|ui| {
+        ui.strong("Review retained specificity evidence");
+        ui.label("Inspect the saved assay-by-reference receipts in the GUI Shell. Missing evidence remains unassessed.");
+        if ui
+            .add_enabled(
+                !report_id.trim().is_empty(),
+                egui::Button::new("Copy specificity matrix command"),
+            )
+            .on_hover_text("Copy the shared read-only command for this exact report; paste it into Shell and run it explicitly.")
+            .clicked()
+        {
+            ui.ctx().copy_text(specificity_matrix_command(report_id));
+        }
+        ui.small("This does not run BLAST, combine references into a panel pass, change readiness or authorize ordering.");
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +166,121 @@ mod tests {
             .map(|(text, _)| text)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn specificity_matrix_copy_command_keeps_exact_identity_and_read_only_route() {
+        use crate::engine::Operation;
+        use crate::engine_shell::{ShellCommand, parse_shell_line};
+
+        for report_id in [
+            "panel_a",
+            "panel with ' and \" quotes",
+            "Panel \u{03b1} / 2",
+        ] {
+            let command = parse_shell_line(&specificity_matrix_command(report_id)).unwrap();
+            assert!(!command.is_state_mutating());
+            let ShellCommand::Op { payload } = command else {
+                panic!("shared operation expected");
+            };
+            let Operation::InspectTranscriptAssayPanelSpecificityMatrix { panel_report_id } =
+                serde_json::from_str(&payload).unwrap()
+            else {
+                panic!("existing matrix reader expected");
+            };
+            assert_eq!(panel_report_id, report_id);
+        }
+    }
+
+    #[test]
+    fn specificity_matrix_copy_button_is_explicit_and_does_not_change_the_report() {
+        let report = TranscriptAssayPanelReport {
+            report_id: "visible panel's report".into(),
+            ..Default::default()
+        };
+        let before = serde_json::to_value(&report).unwrap();
+        let ctx = egui::Context::default();
+        let render = |ui: &mut egui::Ui| {
+            super::super::MainAreaDna::render_transcript_assay_panel_report(ui, &report)
+        };
+        frame(&ctx, vec![], render);
+        let idle = frame(&ctx, vec![], render);
+        assert!(idle.platform_output.commands.is_empty());
+        let text = labels(&idle);
+        assert!(
+            text.iter()
+                .any(|(label, _)| label.contains("Missing evidence remains unassessed"))
+        );
+        assert!(
+            text.iter()
+                .any(|(label, _)| label.contains("This does not run BLAST"))
+        );
+        let position = text
+            .iter()
+            .find(|(label, _)| label == "Copy specificity matrix command")
+            .expect("report must expose the matrix reader")
+            .1
+            .center();
+        let clicked = frame(
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            render,
+        );
+        assert_eq!(clicked.platform_output.commands.len(), 1);
+        assert!(matches!(
+            &clicked.platform_output.commands[0],
+            egui::OutputCommand::CopyText(command)
+                if command == &specificity_matrix_command(&report.report_id)
+        ));
+        assert_eq!(serde_json::to_value(&report).unwrap(), before);
+    }
+
+    #[test]
+    fn specificity_matrix_copy_button_without_a_report_identity_stays_disabled() {
+        let ctx = egui::Context::default();
+        let render = |ui: &mut egui::Ui| specificity_review(ui, "   ");
+        frame(&ctx, vec![], render);
+        let idle = frame(&ctx, vec![], render);
+        let position = labels(&idle)
+            .iter()
+            .find(|(label, _)| label == "Copy specificity matrix command")
+            .expect("disabled button must still explain the route")
+            .1
+            .center();
+        let output = frame(
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            render,
+        );
+        assert!(output.platform_output.commands.is_empty());
     }
 
     #[test]

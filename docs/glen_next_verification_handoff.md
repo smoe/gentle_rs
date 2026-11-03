@@ -7,6 +7,30 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Panel Specificity Review Shortcut, 2026-11-03
+
+The transcript-panel result now offers `Copy specificity matrix command`, bound
+to the displayed report ID through the shared shell's quoting helper. This is
+clipboard-only: no searches, project reads/writes, reference selection or
+readiness attachment. Missing evidence remains unassessed. The existing engine
+matrix/CLI/MCP contracts and conditional multi-reference fan-out remain unchanged.
+Authoring checks: 26 offline tutorial/source/documentation checks passed,
+including LF/CRLF documentation checkouts; scoped rustfmt, manual/status and
+whitespace checks passed. The three new Rust tests have not been executed.
+
+After the owner's push, run the three new tests with nonzero counts:
+
+```sh
+cargo test --locked --lib specificity_matrix_copy_ -- --test-threads=1
+```
+
+Then natively open a saved transcript-panel result, copy/paste into `Shell...`
+and run the printed command. Confirm the ID identifies the displayed report,
+copying alone does not execute, and no-receipt results remain unassessed. Include
+quoted IDs and native Windows clipboard/paste separately. Do not repeat completed
+Primer3 or whole-reference campaigns. Offline/source checks are not Rust/native
+acceptance; no local Rust build, push or dispatch is performed for this slice.
+
 ## Publication Fault-Test Port, 2026-11-03
 
 The owner requested the two pending test fixes from

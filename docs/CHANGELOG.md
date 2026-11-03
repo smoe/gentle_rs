@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-03 - Link Panel Results To Retained Specificity Review
+
+- Add a copy action to the transcript-panel report for the existing
+  `primers transcript-assay-specificity-matrix` reader. Bind the exact visible
+  report ID with the shared shell quoting helper; do not execute on paint/copy,
+  add a new matrix model, launch BLAST or change readiness.
+- Explain unassessed evidence and the separate reference/policy scopes beside
+  the action. Add parser/clipboard/no-identity regressions and an offline source
+  guard; document the native Shell continuation and bounded Glen checks.
+- This closes a presentation/discovery gap only. Multi-reference panel fan-out,
+  probe-specific matrices and automatic acceptance remain outside this slice.
+  No local Rust build, push, CI dispatch or scientific acceptance is claimed.
+
 ## 2026-11-03 - Port Publication Fault Tests And Preserve Audit Evidence
 
 - Port the two pending test-only changes from
