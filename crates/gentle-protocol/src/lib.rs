@@ -30,6 +30,8 @@ pub mod genomic_regions;
 pub mod isoform_evidence;
 /// Drawing-backed tube visualization profiles and shared rack processing limits.
 pub mod labware;
+/// Simulator-neutral, unqualified rack equipment descriptions and local frames.
+pub mod rack_equipment;
 pub mod orthologs;
 pub mod promoter_cofactors;
 pub mod region_homology;
@@ -5805,6 +5807,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportTubeOpenScad",
     "ExportRackCarrierLabelsSvg",
     "ExportRackSimulationJson",
+    "ExportRackEquipmentJson",
     "ExportDnaLadders",
     "ExportRnaLadders",
     "ExportPool",
@@ -7982,7 +7985,8 @@ fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutati
 fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
     if matches!(
         operation,
-        "ComputeTssTfbsProfiles"
+        "ExportRackEquipmentJson"
+            | "ComputeTssTfbsProfiles"
             | "PlanDnaSequenceDesign"
             | "TracePrimerReads"
             | "PreparePrimerPayloadAlignmentQueries"

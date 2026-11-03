@@ -38243,6 +38243,14 @@ impl GentleEngine {
                     spec.overall_depth_mm
                 ));
             }
+            Operation::ExportRackEquipmentJson { rack_id, path, template } => {
+                let description = self.export_rack_equipment_json(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote unqualified rack equipment description for '{}' to '{}' ({})",
+                    rack_id, path, description.content_sha256
+                ));
+                result.rack_equipment = Some(Box::new(description));
+            }
             _ => unreachable!("non-rack-export operation passed to helper"),
         }
         Ok(())
@@ -38411,7 +38419,8 @@ impl GentleEngine {
             | op @ Operation::InspectTubeProfiles { .. }
             | op @ Operation::ExportTubeOpenScad { .. }
             | op @ Operation::ExportRackCarrierLabelsSvg { .. }
-            | op @ Operation::ExportRackSimulationJson { .. } => {
+            | op @ Operation::ExportRackSimulationJson { .. }
+            | op @ Operation::ExportRackEquipmentJson { .. } => {
                 self.apply_rack_export_operation(op, result)?;
             }
             Operation::RenderPoolGelSvg {
@@ -40563,6 +40572,7 @@ impl GentleEngine {
             rna_read_panel_verification: None,
             genome_edit_intent: None,
             tube_profiles: None,
+            rack_equipment: None,
             dna_sequence_design: None,
             dna_sequence_design_receipt: None,
             op_id,
@@ -40777,6 +40787,7 @@ impl GentleEngine {
                 | Operation::ExportTubeOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
+                | Operation::ExportRackEquipmentJson { .. }
         ) {
             self.apply_rack_export_operation(op, &mut result)?;
         } else if matches!(
@@ -42264,7 +42275,8 @@ impl GentleEngine {
                 | op @ Operation::InspectTubeProfiles { .. }
                 | op @ Operation::ExportTubeOpenScad { .. }
                 | op @ Operation::ExportRackCarrierLabelsSvg { .. }
-                | op @ Operation::ExportRackSimulationJson { .. } => {
+                | op @ Operation::ExportRackSimulationJson { .. }
+                | op @ Operation::ExportRackEquipmentJson { .. } => {
                     self.apply_rack_export_operation(op, &mut result)?;
                 }
                 op @ Operation::CreateArrangementSerial { .. }

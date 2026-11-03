@@ -3776,6 +3776,12 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackEquipmentJson {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportDnaLadders {
         path: String,
         #[serde(default)]
@@ -10469,6 +10475,7 @@ impl GentleEngine {
                 | Operation::ExportTubeOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
+                | Operation::ExportRackEquipmentJson { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }

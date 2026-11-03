@@ -391,6 +391,26 @@ Rendering export commands:
   - Calls engine operation `ExportRackSimulationJson`.
   - Writes one machine-readable rack geometry/placement JSON export for
     downstream simulation adapters.
+- `racks equipment-json RACK_ID OUTPUT.json [--template TEMPLATE]`
+  - Calls `ExportRackEquipmentJson`; uses the same template names/default as
+    `racks simulation-json`, which remains byte-compatible and unchanged.
+  - Publishes a new, no-clobber `gentle.rack_equipment_description.v1` file and
+    returns that same typed description in `OpResult.rack_equipment`.
+  - Derived frames/envelope use **metres**; embedded source dimensions retain
+    their explicit **millimetre** field names. Frames are right-handed and
+    rack-local: front-left base origin, +X towards increasing columns, +Y
+    towards increasing rows, +Z up. `slot_A1` etc. mark carrier-top centres,
+    not liquid surfaces, insertion depths or approved robot interaction poses.
+  - Includes all physical slots, blocked-position flags, template/drawing
+    source records and separate asset/source/content SHA-256 bindings. No
+    sample names, sequences, occupants or private room geometry are included.
+    Rack ID and blocked-position policy remain explicit exported metadata.
+  - Geometry is **unverified**. The box envelope excludes detached lids,
+    contained tubes, caps and hinges. Mass/inertia remain null and permitted
+    actions empty. This does not launch a simulator or qualify fit, collisions,
+    physical safety, equipment capabilities or biological results.
+  - File-writing requires normal agent/MCP confirmation; direct CLI execution
+    is an explicit write request. Existing destinations are never replaced.
 - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
   - Calls engine operation `SetRackProfile`.
   - Reflows occupied positions onto another built-in rack/plate profile while

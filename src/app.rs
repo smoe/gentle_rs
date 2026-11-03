@@ -12571,6 +12571,7 @@ Error: `{err}`"
                 rna_primer_trace_inspection: None,
                 genome_edit_intent: None,
                 tube_profiles: None,
+                rack_equipment: None,
                 rna_read_panel: None,
                 rna_read_panel_screen: None,
                 rna_read_panel_inspection: None,
@@ -25540,6 +25541,10 @@ Error: `{err}`"
                 rack_id.trim(),
                 template.as_str(),
                 path
+            ),
+            Operation::ExportRackEquipmentJson { rack_id, path, template } => format!(
+                "Export unqualified rack equipment description: rack_id={}, template={}, path={}",
+                rack_id, template.as_str(), path
             ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
                 "Export DNA ladders: path={}, filter={}",
