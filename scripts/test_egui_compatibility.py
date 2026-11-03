@@ -19,13 +19,23 @@ def read_toml(path):
 
 
 def family(version):
-    match = re.match(r"(\d+)\.(\d+)", version)
+    match = re.match(r"=?(\d+)\.(\d+)", version)
     if not match:
         raise ValueError(f"expected explicit GUI version family, got {version!r}")
     return tuple(map(int, match.groups()))
 
 
 class EguiCompatibilityTests(unittest.TestCase):
+    def test_version_family_accepts_exact_pins_without_ignoring_version_changes(self):
+        for requirement in ("0.37.0", "=0.37.0", "=0.37.1"):
+            with self.subTest(requirement=requirement):
+                self.assertEqual(family(requirement), (0, 37))
+        self.assertNotEqual(family("=0.38.0"), family("=0.37.0"))
+        for requirement in ("", "=", "==0.37.0", "latest"):
+            with self.subTest(requirement=requirement):
+                with self.assertRaises(ValueError):
+                    family(requirement)
+
     def test_no_deprecated_id_apis_in_gui_sources(self):
         for directory in ("src", "crates", "vendor/egui_commonmark/src",
                           "vendor/egui_commonmark_backend/src"):

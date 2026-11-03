@@ -7,6 +7,45 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Glen's Scoped Return At 89df315a, 2026-11-03
+
+Owner-forwarded report for exact source
+`89df315a80e0d3ae02e5685efd7a94e3895fbaa7`: dependency-pin guards 2/2,
+panel-copy GUI regressions 3/3, annotation/SAM publication 40/40, Lua bindings
+2/2, MCP 4/4, shell 3/3 and registry/matrix parity 2/2 passed. Default,
+no-default and script-interface locked checks passed; the lockfile remained
+byte-identical. These are Glen-reported results, not local reruns or independent
+raw-log verification. Retain their scope; do not reissue the completed campaign
+merely because older sections request it. Native GUI/Windows behavior is not
+established by the counts alone. CI was still in progress when Glen reported;
+no terminal full-platform verdict is inferred here.
+
+The independent release-safety failure is the offline egui family parser, which
+did not accept `=0.37.0`. It now accepts an optional leading `=` and preserves
+all family comparisons. Fourteen compatibility/pin checks pass locally,
+including a fail-before/pass-after parser regression. Do not loosen the pins.
+
+Both JS binding tests failed at `load_project` with `u128 is not supported`,
+before reaching their handoff assertions. Source inspection confirms that the
+current `serde_v8` serializer/deserializer do not implement the 128-bit integer
+methods used by populated typed projects. This is not a provider, permission,
+compiler or Lua failure. The JS production transport has not been repaired in
+this guard-only change; the original failing tests and populated fixture remain.
+
+The next JS slice must define a lossless adapter-only transport repair before
+editing it: preserve native byte buffers, engine JSON/schema/hash contracts and
+read-only file/state boundaries; never round timestamps through a JS Number,
+cast away high bits or remove lineage to make the fixture pass. Reuse the two
+failing `js_protein_expression_handoff_` VM tests and add populated-project
+load/inspect/save controls, buffer checks and integer-boundary/refusal cases.
+Keep the options contract's existing unsafe-timestamp refusals. A generic codec
+or dependency patch is not silently authorized by fixing the Python guard.
+Offer an optional read-only Claude critique before finalizing that larger plan.
+
+After the owner's push, rerun the repaired offline compatibility gate and inspect
+normal CI. Repeat only the affected JS/transport scopes after a real JS repair;
+retain the already passing Lua/MCP/shell and core scientific evidence separately.
+
 ## Flagged Dependency Pins, 2026-11-03
 
 The owner authorized a separate manifest-only follow-up for Glen's eight

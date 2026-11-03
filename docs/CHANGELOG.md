@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-03 - Accept Exact Pins In The egui Compatibility Guard
+
+- Teach the GUI version-family guard to accept Cargo's leading `=` while
+  retaining the egui/eframe/vendor/lock family comparisons. Add positive exact-
+  pin and malformed/different-family controls; the new test fails before repair.
+  No dependency, lockfile, runtime or CI coverage is weakened.
+- Retain Glen's reported scoped passes at `89df315a` and the independent JS
+  loader failure in the verification handoff. The populated-project `u128`
+  transport defect remains open; do not hide it by removing fixture timestamps
+  or claiming that successful compilation establishes JS runtime acceptance.
+- Fourteen focused Python checks pass; no local Rust build/test, push or
+  dispatch is performed. Same-source CI and JS/native acceptance remain separate.
+
 ## 2026-11-03 - Restore Exact Pins For Glen's Flagged Dependencies
 
 - With owner authorization, replace only the eight flagged manifest constraints
