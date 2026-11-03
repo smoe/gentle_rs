@@ -99,6 +99,9 @@ impl LuaInterface {
             "  - primers_preflight(project, [backend], [primer3_executable]): Probes Primer3 through the shared shell without changing project settings"
         );
         println!(
+            "  - protein_expression_handoff(project, [options]): Returns the shared read-only expression draft; never submits or contacts providers"
+        );
+        println!(
             "  - set_vcf_display_filter(project, opts): Convenience helper for VCF display criteria updates"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
@@ -635,6 +638,71 @@ impl LuaInterface {
         })
     }
 
+    fn protein_expression_handoff(
+        lua: &Lua,
+        project: Value,
+        options: Value,
+    ) -> LuaResult<serde_json::Value> {
+        let invalid =
+            |cause| Self::adapter_err(ErrorCode::InvalidInput, "Lua adapter command failed", cause);
+        if matches!(project, Value::Nil) || project == Value::NULL {
+            return Err(invalid(
+                "protein_expression_handoff requires a project".to_string(),
+            ));
+        }
+        let state: ProjectState = lua
+            .from_value(project)
+            .map_err(|error| invalid(format!("Invalid project value: {error}")))?;
+        let is_explicit_array = |table: &mlua::Table| {
+            table
+                .metatable()
+                .is_some_and(|meta| meta.to_pointer() == lua.array_metatable().to_pointer())
+        };
+        let mut fields = serde_json::Map::new();
+        match options {
+            Value::Nil => {}
+            Value::Table(table) if !is_explicit_array(&table) => {
+                for pair in table.pairs::<String, Value>() {
+                    let (key, value) =
+                        pair.map_err(|error| invalid(format!("Invalid options table: {error}")))?;
+                    // Decode known records directly, so an empty Lua list stays
+                    // a list without changing global table/JSON codec settings.
+                    let normalized = match (key.as_str(), &value) {
+                        ("objective", Value::Table(table)) if !is_explicit_array(table) => {
+                            let record: crate::engine::PlanningObjective = lua
+                                .from_value(value)
+                                .map_err(|error| invalid(format!("Invalid objective: {error}")))?;
+                            serde_json::to_value(record)
+                                .map_err(|error| invalid(error.to_string()))?
+                        }
+                        ("requirements", Value::Table(table)) if !is_explicit_array(table) => {
+                            let record: crate::engine::ProteinExpressionRequirements =
+                                lua.from_value(value).map_err(|error| {
+                                    invalid(format!("Invalid requirements: {error}"))
+                                })?;
+                            serde_json::to_value(record)
+                                .map_err(|error| invalid(error.to_string()))?
+                        }
+                        _ => lua
+                            .from_value::<serde_json::Value>(value)
+                            .map_err(|error| invalid(format!("Invalid option '{key}': {error}")))?,
+                    };
+                    fields.insert(key, normalized);
+                }
+            }
+            _ => {
+                return Err(invalid(
+                    "Options must be a table with named fields".to_string(),
+                ));
+            }
+        }
+        crate::engine_shell::protein_expression_handoff::inspect(
+            state,
+            &serde_json::Value::Object(fields),
+        )
+        .map_err(Self::engine_err)
+    }
+
     fn inspect_dna_ladders(
         name_filter: Option<String>,
     ) -> LuaResult<crate::engine::DnaLadderCatalog> {
@@ -1015,6 +1083,15 @@ impl LuaInterface {
                     lua.to_value(&output)
                 },
             )?,
+        )?;
+
+        self.lua.globals().set(
+            "protein_expression_handoff",
+            self.lua
+                .create_function(|lua, (project, options): (Value, Value)| {
+                    let report = Self::protein_expression_handoff(lua, project, options)?;
+                    lua.to_value(&report)
+                })?,
         )?;
 
         self.lua.globals().set(
@@ -2135,6 +2212,188 @@ mod tests {
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn lua_protein_expression_handoff_matches_shell_oracle_without_state_or_file_changes() {
+        use crate::test_support::protein_expression as fixture;
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("expression review's \u{3bc}.json");
+        fixture::fixture_state()
+            .save_to_path(path.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        lua.globals()
+            .set("project_path", path.to_str().unwrap())
+            .unwrap();
+        lua.load("project = load_project(project_path)")
+            .exec()
+            .unwrap();
+        lua.load(r#"
+            for _, row in ipairs(capabilities().capability_registry) do
+              if row.name == 'planning protein-expression-handoff' then
+                signature = row.input_schema['x-gentle-usage-by-interface'].lua
+              end
+            end
+            assert(type(_G[signature:match('^([^%(]+)')]) == 'function', 'Missing discovered Lua export')
+        "#).exec().unwrap();
+        for mut options in fixture::cases() {
+            for format in ["json", "text"] {
+                options["format"] = json!(format);
+                let expected = fixture::oracle(&state, &options);
+                let project: Value = lua.globals().get("project").unwrap();
+                let actual = LuaInterface::protein_expression_handoff(
+                    lua,
+                    project,
+                    lua.to_value(&options).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    fixture::canonical(actual),
+                    fixture::canonical(expected.clone())
+                );
+                lua.globals()
+                    .set("options", lua.to_value(&options).unwrap())
+                    .unwrap();
+                lua.load("report = protein_expression_handoff(project, options)")
+                    .exec()
+                    .unwrap();
+                let actual: serde_json::Value = lua
+                    .from_value(lua.globals().get::<Value>("report").unwrap())
+                    .unwrap();
+                assert_eq!(fixture::canonical(actual), fixture::canonical(expected));
+            }
+        }
+        // Literal REPL tables, not serde-created array metatables: false and
+        // empty reviewed lists must survive direct typed nested decoding.
+        lua.load(r#"
+            literal = {seq_id='expression_review_product', provider='geneart', objective={required_capabilities={}}, requirements={schema='gentle.protein_expression_requirements.v1', folding={}, outsourcing={allowed=false, approved_providers={}}, notes={}, reviewed_at_unix_ms=42}}
+            report = protein_expression_handoff(project, literal)
+        "#).exec().unwrap();
+        let expected = fixture::oracle(
+            &state,
+            &json!({
+                "seq_id":fixture::PRODUCT,"provider":"geneart","objective":{"required_capabilities":[]},
+                "requirements":{"schema":"gentle.protein_expression_requirements.v1","folding":{},"outsourcing":{"allowed":false,"approved_providers":[]},"notes":[],"reviewed_at_unix_ms":42}
+            }),
+        );
+        let actual: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("report").unwrap())
+            .unwrap();
+        assert_eq!(actual["requirements"]["outsourcing"]["allowed"], false);
+        assert_eq!(
+            actual["requirements"]["folding"]["required_ptms"],
+            json!([])
+        );
+        assert_eq!(actual["provider_binding"]["status"], "withheld");
+        assert_eq!(fixture::canonical(actual), fixture::canonical(expected));
+        // The tutorial uses separate one-line REPL chunks and global variables.
+        lua.load("inhouse = {schema = 'gentle.protein_expression_requirements.v1', outsourcing = {allowed = false, approved_providers = {}}}").exec().unwrap();
+        lua.load("report = protein_expression_handoff(project, {seq_id = 'expression_review_product', requirements = inhouse, provider = 'geneart'})").exec().unwrap();
+        let actual: serde_json::Value = lua
+            .from_value(lua.globals().get::<Value>("report").unwrap())
+            .unwrap();
+        let expected = fixture::oracle(
+            &state,
+            &json!({
+                "seq_id":fixture::PRODUCT,"provider":"geneart",
+                "requirements":{"schema":"gentle.protein_expression_requirements.v1","outsourcing":{"allowed":false,"approved_providers":[]}}
+            }),
+        );
+        assert_eq!(fixture::canonical(actual), fixture::canonical(expected));
+        for line in [
+            "report = protein_expression_handoff(project)",
+            "report = protein_expression_handoff(project, {})",
+        ] {
+            lua.load(line).exec().unwrap();
+            let actual: serde_json::Value = lua
+                .from_value(lua.globals().get::<Value>("report").unwrap())
+                .unwrap();
+            assert_eq!(
+                fixture::canonical(actual),
+                fixture::canonical(fixture::oracle(&state, &json!({})))
+            );
+        }
+        let after: ProjectState = lua
+            .from_value(lua.globals().get::<Value>("project").unwrap())
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(after).unwrap(),
+            serde_json::to_value(&state).unwrap()
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn lua_protein_expression_handoff_rejects_unknown_null_path_and_invalid_options() {
+        use crate::test_support::protein_expression as fixture;
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("review.json");
+        fixture::fixture_state()
+            .save_to_path(path.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        lua.globals()
+            .set("project_path", path.to_str().unwrap())
+            .unwrap();
+        lua.load("project = load_project(project_path)")
+            .exec()
+            .unwrap();
+        for options in json!([
+            [], true, "@private.json", {"confirm":true}, {"format":"yaml"},
+            {"profile_scope":"global"}, {"provider":true}, {"provider":""},
+            {"requirements":null}, {"objective":null}, {"format":null},
+            {"requirements":"@private.json"}, {"objective":"existing.json"},
+            {"requirements":[]}, {"objective":[]},
+            {"requirements":{"schema":"gentle.protein_expression_requirements.v1","invented":true}}
+        ])
+        .as_array()
+        .unwrap()
+        {
+            lua.globals()
+                .set("invalid", lua.to_value(options).unwrap())
+                .unwrap();
+            let error = lua
+                .load("return protein_expression_handoff(project, invalid)")
+                .eval::<Value>()
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("\"code\":\"InvalidInput\""),
+                "{error}"
+            );
+        }
+        lua.globals().set("null_sentinel", Value::NULL).unwrap();
+        for call in [
+            "return protein_expression_handoff()",
+            "return protein_expression_handoff(nil, {})",
+            "return protein_expression_handoff(project, null_sentinel)",
+            "return protein_expression_handoff(project, {requirements=null_sentinel})",
+            "return protein_expression_handoff(project, {objective=null_sentinel})",
+        ] {
+            let error = lua.load(call).eval::<Value>().unwrap_err();
+            assert!(
+                error.to_string().contains("\"code\":\"InvalidInput\""),
+                "{error}"
+            );
+        }
+        let after: ProjectState = lua
+            .from_value(lua.globals().get::<Value>("project").unwrap())
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(after).unwrap(),
+            serde_json::to_value(&state).unwrap()
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
 
     fn lifecycle_output_state_json(lua: &Lua, global: &str) -> serde_json::Value {
         let output: mlua::Table = lua.globals().get(global).unwrap();

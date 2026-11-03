@@ -4,18 +4,7 @@
 //! Product readiness, provider eligibility and all interpretation stay shared.
 
 use super::*;
-
-#[derive(Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-struct Arguments {
-    state_path: Option<String>,
-    seq_id: Option<String>,
-    objective: Option<Value>,
-    requirements: Option<Value>,
-    provider: Option<String>,
-    profile_scope: Option<String>,
-    format: Option<String>,
-}
+use crate::engine_shell::protein_expression_handoff;
 
 pub(super) fn descriptor() -> Value {
     json!({
@@ -38,58 +27,28 @@ pub(super) fn descriptor() -> Value {
     })
 }
 
-fn command(args: &Arguments) -> Result<Vec<String>, String> {
-    let mut tokens = vec!["planning".into(), "protein-expression-handoff".into()];
-    for (flag, value) in [
-        ("--seq-id", &args.seq_id),
-        ("--provider", &args.provider),
-        ("--profile-scope", &args.profile_scope),
-        ("--format", &args.format),
-    ] {
-        if let Some(value) = value {
-            tokens.extend([flag.into(), value.clone()]);
-        }
-    }
-    for (flag, value) in [
-        ("--objective", &args.objective),
-        ("--requirements", &args.requirements),
-    ] {
-        if let Some(value) = value {
-            if !value.is_object() {
-                return Err(format!(
-                    "{flag} must be an inline JSON object, not a path or string"
-                ));
-            }
-            tokens.extend([flag.into(), value.to_string()]);
-        }
-    }
-    Ok(tokens)
-}
-
 pub(super) fn call(default_state_path: &str, arguments: &Value) -> Value {
     let result = (|| {
-        if let Some((field, _)) = arguments
-            .as_object()
-            .and_then(|args| args.iter().find(|(_, value)| value.is_null()))
-        {
-            return Err(format!(
-                "MCP argument '{field}' must not be null; omit unanswered inputs instead"
-            ));
-        }
-        let args: Arguments = serde_json::from_value(if arguments.is_null() {
+        protein_expression_handoff::reject_null_fields(arguments, "MCP argument")?;
+        let mut options = if arguments.is_null() {
             json!({})
         } else {
             arguments.clone()
-        })
-        .map_err(|err| format!("Invalid protein_expression_handoff arguments: {err}"))?;
+        };
+        let options_map = options.as_object_mut().ok_or_else(|| {
+            "Invalid protein_expression_handoff arguments: expected an options object".to_string()
+        })?;
         let mut state_args = Map::new();
-        if let Some(path) = &args.state_path {
+        if let Some(path) = options_map.remove("state_path") {
+            let path: String = serde_json::from_value(path)
+                .map_err(|err| format!("Invalid protein_expression_handoff arguments: {err}"))?;
             state_args.insert("state_path".into(), json!(path));
         }
+        let tokens = protein_expression_handoff::inline_tokens(&options)?;
         run_non_mutating_shell_tool(
             default_state_path,
             &state_args,
-            command(&args)?,
+            tokens,
             "protein_expression_handoff",
         )
     })();
@@ -196,8 +155,9 @@ mod tests {
                 if let Some(provider) = provider {
                     arguments["provider"] = json!(provider);
                 }
-                let args: Arguments = serde_json::from_value(arguments.clone()).unwrap();
-                let tokens = command(&args).unwrap();
+                let mut options = arguments.clone();
+                options.as_object_mut().unwrap().remove("state_path");
+                let tokens = protein_expression_handoff::inline_tokens(&options).unwrap();
                 let mut engine = GentleEngine::from_state(state.clone());
                 let expected =
                     execute_shell_command(&mut engine, &parse_shell_tokens(&tokens).unwrap())
@@ -256,9 +216,13 @@ mod tests {
         for arguments in [
             json!({"requirements": "@private.json"}),
             json!({"requirements": null}),
+            json!({"state_path": null}),
+            json!({"state_path": false}),
+            json!({"state_path": []}),
             json!({"format": null}),
             json!({"objective": "@private.json"}),
             json!({"provider": true}),
+            json!({"provider": ""}),
             json!({"confirm": true}),
             json!({"format": "yaml"}),
             json!({"profile_scope": "global"}),
@@ -279,5 +243,41 @@ mod tests {
             assert_eq!(std::fs::read(&state_path).unwrap(), before);
             assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
         }
+    }
+
+    #[test]
+    fn protein_expression_handoff_mcp_preserves_state_path_and_error_context() {
+        // Synthetic empty project; no real product or provider interaction.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("default review.json");
+        ProjectState::default()
+            .save_to_path(path.to_str().unwrap())
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let omitted = call(path.to_str().unwrap(), &json!({}));
+        let null_arguments = call(path.to_str().unwrap(), &Value::Null);
+        assert_eq!(omitted["isError"], false);
+        assert_eq!(
+            canonical(omitted["structuredContent"].clone()),
+            canonical(null_arguments["structuredContent"].clone())
+        );
+        let null_path = call(path.to_str().unwrap(), &json!({"state_path":null}));
+        assert!(
+            null_path
+                .to_string()
+                .contains("MCP argument 'state_path' must not be null")
+        );
+        let wrong_path = call(path.to_str().unwrap(), &json!({"state_path":false}));
+        assert!(
+            wrong_path
+                .to_string()
+                .contains("Invalid protein_expression_handoff arguments")
+        );
+        let invalid_format = call(path.to_str().unwrap(), &json!({"format":"yaml"}));
+        assert!(invalid_format.to_string().contains(
+            "Could not parse shared shell command for MCP tool 'protein_expression_handoff'"
+        ));
+        assert_eq!(std::fs::read(path).unwrap(), before);
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
     }
 }

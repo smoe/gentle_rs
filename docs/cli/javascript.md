@@ -21,6 +21,18 @@ Exit methods:
 
 ### JavaScript shell functions
 
+`protein_expression_handoff(project, [options])` returns the shared read-only
+`gentle.protein_expression_handoff.v2` report, never an updated project or a
+provider submission. Options are `seq_id`, inline-object `objective` and
+`requirements`, `provider`, `profile_scope` (`effective`) and `format`
+(`json|text`). Missing/`undefined` fields are omitted; explicit field `null`,
+unknown fields and JSON path/string operands are refused. Omitted objective
+uses the saved objective, while `{}` supplies the default. The reviewed
+timestamp must be a nonnegative safe JS integer; no `BigInt` transport is added.
+Load the project with `load_project`, not a hand-written JSON project literal.
+See [tutorial 09.03](../tutorial/09-03_protein_expression_handoff_cli.md#javascript-and-lua-rehearsal)
+for one-line REPL examples, provider withholding and pending VM verification.
+
 1. `load_dna(path)`
    - Loads a DNA sequence from file.
 2. `write_gb(seq, path)`

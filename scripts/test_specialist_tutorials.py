@@ -358,11 +358,14 @@ class SpecialistSourceTests(unittest.TestCase):
         dispatcher = (ROOT / "src/mcp_server.rs").read_text(encoding="utf-8")
         registry = (ROOT / "crates/gentle-protocol/src/lib.rs").read_text(encoding="utf-8")
         agent = (ROOT / "src/agent_bridge.rs").read_text(encoding="utf-8")
-        for token in ("run_non_mutating_shell_tool", "deny_unknown_fields",
-                      '"additionalProperties": false', "value.is_object()",
+        admission = (ROOT / "src/engine_shell/protein_expression_handoff.rs").read_text(encoding="utf-8")
+        for token in ("run_non_mutating_shell_tool", "protein_expression_handoff::inline_tokens",
+                      '"additionalProperties": false',
                       "protein_expression_handoff_mcp_and_inner_agent_match_shared_report_without_writes",
                       "mcp_tool_call_for_capability_surface_tests", "fs::read(&state_path)"):
             self.assertIn(token, transport)
+        for token in ("deny_unknown_fields", "value.is_object()", "reject_null_fields"):
+            self.assertIn(token, admission)
         self.assertIn("items.push(protein_expression::descriptor())", dispatcher)
         self.assertIn("protein_expression::call(default_state_path, &params.arguments)", dispatcher)
         self.assertIn('"protein_expression_handoff" => &["planning protein-expression-handoff"]', dispatcher)
@@ -388,6 +391,47 @@ class SpecialistSourceTests(unittest.TestCase):
             self.assertNotIn("provider", request["arguments"])
             refusal = next(row for row in examples if row.get("provider") == "geneart")
             self.assertIs(refusal["requirements"]["outsourcing"]["allowed"], False)
+
+    def test_expression_scripting_routes_and_repl_teaching_preserve_review_boundary(self):
+        guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text(encoding="utf-8")
+        source = read_json(TUTORIALS / "sources/09-03_protein_expression_handoff_cli.json")
+        self.assertEqual(source["catalog"]["status"], "manual/hybrid")
+        self.assertEqual(len(source["graphics"]), 4)
+        glossary = read_json(ROOT / "docs/glossary.json")
+        rows = glossary["commands"]
+        for interface in ("js", "lua"):
+            row = next(row for row in rows
+                       if row["path"] == "planning protein-expression-handoff"
+                       and row["interfaces"] == [interface])
+            self.assertEqual(row["usage"], "protein_expression_handoff(project, [options])")
+            self.assertEqual(row["engine_operations"], [])
+            self.assertFalse(row.get("aliases"))
+        for text in (guide, guide.replace("\n", "\r\n")):
+            for term in ("one line at a time", "script-interfaces", "load_project",
+                         "first-class", "withheld", "missing questions still visible",
+                         "effective catalog override", "9007199254740991",
+                         "not executed here", "at least two tests"):
+                # Markdown emphasis and wrapping must not obscure the teaching contract.
+                self.assertIn(term, " ".join(text.replace("**", "").split()))
+            lua = re.findall(r"```lua\r?\n(.*?)```", text, re.S)[0].splitlines()
+            js = re.findall(r"```javascript\r?\n(.*?)```", text, re.S)[0].splitlines()
+            self.assertEqual(len(lua), 3)
+            self.assertTrue(lua[1].startswith("inhouse = "))
+            self.assertIn("allowed = false, approved_providers = {}", lua[1])
+            self.assertTrue(js[1].startswith("var r = protein_expression_handoff("))
+            self.assertIn("console.log(r.provider_binding, r.missing_questions.length)", js[2])
+        js = (ROOT / "src/js_interface.rs").read_text(encoding="utf-8")
+        lua = (ROOT / "src/lua_interface.rs").read_text(encoding="utf-8")
+        self.assertIn("const PROTEIN_EXPRESSION_HANDOFF: OpDecl", js)
+        self.assertIn("JSON.stringify(options ?? {})", js)
+        self.assertIn("Number.isSafeInteger(stamp)", js)
+        self.assertIn('"protein_expression_handoff",', lua)
+        self.assertIn("crate::engine::ProteinExpressionRequirements", lua)
+        self.assertIn("crate::engine::PlanningObjective", lua)
+        for code in (js, lua):
+            self.assertIn("protein_expression_handoff::inspect", code)
+            self.assertIn("matches_shell_oracle_without_state_or_file_changes", code)
+            self.assertIn("rejects_unknown_null_path_and_invalid_options", code)
 
     def test_expression_screenshot_checkpoints_require_real_scoped_capture(self):
         guide = (TUTORIALS / "09-03_protein_expression_handoff_cli.md").read_text()

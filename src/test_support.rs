@@ -3,6 +3,9 @@
 //! These helpers keep adapter-parity tests anchored to one synthetic fixture so
 //! future contract changes only need to be updated in one place.
 
+#[cfg(all(test, any(feature = "js-interface", feature = "lua-interface")))]
+pub(crate) mod protein_expression;
+
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     ConstructObjective, GentleEngine, HostLifecycleRole, HostRouteStep, ProjectState,

@@ -229,6 +229,7 @@ pub use gentle_shell::{
 mod command_parsers;
 mod planning_wetlab;
 pub(crate) use planning_wetlab::estimate_display_lines as planning_estimate_display_lines;
+pub(crate) mod protein_expression_handoff;
 mod protein_expression_service_draft;
 pub(crate) mod routine_bindings;
 mod tss_profiles;

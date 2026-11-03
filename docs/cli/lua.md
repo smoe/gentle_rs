@@ -21,6 +21,18 @@ Exit methods:
 
 ### Lua shell functions
 
+`protein_expression_handoff(project, [options])` returns the shared read-only
+`gentle.protein_expression_handoff.v2` report, never an updated project or a
+provider submission. Options are `seq_id`, inline-table `objective` and
+`requirements`, `provider`, `profile_scope` (`effective`) and `format`
+(`json|text`). Missing/`nil` fields are omitted; explicit null sentinels,
+unknown fields and JSON path/string operands are refused. Nested records are
+decoded by their shared types: `allowed = false`, empty reviewed lists and
+`folding = {}` retain their meanings. Omitted objective uses the saved objective,
+while `{}` supplies the default. Load the project with `load_project`.
+See [tutorial 09.03](../tutorial/09-03_protein_expression_handoff_cli.md#javascript-and-lua-rehearsal)
+for one-line global-variable REPL examples and pending VM verification.
+
 1. `load_dna(filename)`
    - Loads a DNA sequence from file.
 2. `write_gb(seq, filename)`

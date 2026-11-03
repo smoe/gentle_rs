@@ -7379,6 +7379,18 @@ Adapter-equivalence guarantee for UI-intent tools:
     Read-only execution never persists state or runs suggested actions. MCP
     sees saved state, not unsaved GUI edits. Inner-agent guidance points to
     the same report/inspector with no inferred product or default provider.
+  - JS/Lua `protein_expression_handoff(project, [options])` is a first-class
+    report-only binding to the same parser/executor, not a new operation/schema.
+    The project is required; options default to an empty object/table. Fields
+    are `seq_id`, inline `objective`, inline `requirements`, `provider`,
+    `profile_scope` (`effective`) and `format` (`json|text`). Unknown fields,
+    explicit top-level null fields and object-as-path/string operands are
+    InvalidInput. Omitted objective retains the saved objective; an explicit
+    empty objective selects its defaults. Lua directly decodes typed nested
+    records to preserve false and reviewed empty lists. JS stringifies options,
+    never the project; reviewed timestamps must be nonnegative safe integers.
+    The report-only boundary refuses unexpected state changes as Internal.
+    No new agent-plan route, consent, provider default or execution is granted.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

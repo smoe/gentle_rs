@@ -578,6 +578,15 @@ readiness, predicted yield, provider acceptance, submission or order permission.
 Tutorial [09.03](tutorial/09-03_protein_expression_handoff_cli.md#interface-parity)
 contains request examples and the separately pending screenshot checkpoints.
 
+First-class JS/Lua `protein_expression_handoff(project, [options])` bindings
+reuse the same inline admission/parser/executor, return the bare report and
+never save or run suggested actions. Their explicit project values normally
+come from `load_project`; no unsaved-GUI synchronization is implied. Unknown
+options, explicit top-level null fields and objective/requirements paths are
+refused. Per-interface discovery signatures do not replace CLI syntax or
+shorten the inner-agent guidance; authored VM parity tests await explicit
+feature-enabled execution.
+
 #### Primer reports and panel specificity
 
 `primer_reports` projects the shared primer report routes with a bounded

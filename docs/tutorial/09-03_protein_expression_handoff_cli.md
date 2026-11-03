@@ -391,7 +391,7 @@ remain for Glen/CI; this chapter stays `manual/hybrid`, not an automated GUI pas
 
 ## Interface Parity
 
-The four entry points inspect the same report, not four expression-design
+All entry points inspect the same report, not separate expression-design
 implementations:
 
 | Interface | Entry point | State boundary |
@@ -400,6 +400,8 @@ implementations:
 | GUI | `Services > Protein Expression Handoff...`, then **Inspect** | Current project snapshot; inputs remain local to the inspector |
 | MCP / outer agent | Named `protein_expression_handoff` tool | Saved `state_path`; unsaved GUI edits are not visible |
 | Inner agent | A reviewed suggestion of the same `planning` command, or `ui open protein-expression-handoff` | The GUI's shared command executor, without another biology layer |
+| JavaScript | `protein_expression_handoff(project, options)` | Explicit in-memory project value, normally from `load_project`; no save |
+| Lua | `protein_expression_handoff(project, options)` | Explicit in-memory project value, normally from `load_project`; no save |
 
 For example, an external MCP caller can send this `tools/call` parameter object
 after Step 3 has saved the synthetic starter:
@@ -438,6 +440,78 @@ presentation; choose `text` to compare the inspector's text-bearing report.
 Use identical saved product, objective/profile, requirements, provider and
 format when comparing all fields, excluding only `generated_at_unix_ms`.
 Fresh source tests are not a substitute for executing those adapters.
+
+### JavaScript And Lua Rehearsal
+
+These are first-class, report-only bindings, not new expression algorithms.
+They return the report directly, not an updated project. Use the disposable
+saved starter from Step 3; neither binding sees unsaved edits in another GUI
+instance. A missing or unresolved product is a successful report asking for
+clarification, not an adapter error.
+
+The optional source-built REPLs require `js-interface` or `lua-interface`
+(both are enabled by `script-interfaces`); they may not be in a packaged
+installation. Start one from the repository root:
+
+```bash
+cargo run --locked --features lua-interface --bin gentle_lua -- --project expression-review.gentle.json
+cargo run --locked --features js-interface --bin gentle_js -- --project expression-review.gentle.json
+```
+
+Each REPL consumes **one line at a time**, not a script-file flag. Paste each
+example line separately. Lua expressions print their result; use globals,
+not `local`, so the next line can reuse the value:
+
+```lua
+protein_expression_handoff(project, {}).status
+inhouse = {schema = "gentle.protein_expression_requirements.v1", outsourcing = {allowed = false, approved_providers = {}}}
+protein_expression_handoff(project, {seq_id = "expression_review_product", requirements = inhouse, provider = "geneart"}).provider_binding
+```
+
+Expect `needs_product_definition`, then `withheld` / `outsourcing_disallowed`.
+Lua's empty `approved_providers = {}` is a reviewed empty list; `allowed = false`
+must remain false. An empty `folding = {}` means reviewed without special
+requirements, not an unanswered topic.
+
+JavaScript uses `var` so a line can be repeated, and `console.log` to print:
+
+```javascript
+console.log(protein_expression_handoff(project, {}).status)
+var r = protein_expression_handoff(project, {seq_id: "expression_review_product", provider: "geneart", requirements: {schema: "gentle.protein_expression_requirements.v1", outsourcing: {allowed: true, approved_providers: ["geneart"]}}})
+console.log(r.provider_binding, r.missing_questions.length)
+```
+
+With the bundled GeneArt capability, the partial synthetic permission can yield
+`projected`, with missing questions still visible and no quote suggestion.
+An effective catalog override can instead withhold projection: compare its
+reasons with the shared command, not a hard-coded provider assumption. For the
+same operands, the second JavaScript line corresponds to:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state expression-review.gentle.json planning protein-expression-handoff --seq-id expression_review_product --provider geneart --requirements '{"schema":"gentle.protein_expression_requirements.v1","outsourcing":{"allowed":true,"approved_providers":["geneart"]}}'
+```
+
+For the Lua refusal, use that same CLI line with `allowed` set to `false` and
+`approved_providers` set to `[]`. Compare the full reports with identical format
+and effective profile/catalog, excluding only `generated_at_unix_ms`.
+
+Options use the shared names `seq_id`, `objective`, `requirements`, `provider`,
+`profile_scope` (`effective`) and `format` (`json` or `text`). `objective` and
+`requirements` must be inline objects/tables, never paths or `@FILE` strings.
+Unknown fields, including `confirm`, are errors. Omit unanswered fields:
+JavaScript `undefined` and Lua `nil` omit them; explicit top-level field `null`
+or Lua's null sentinel is refused. An omitted objective uses the saved objective;
+`objective: {}` explicitly supplies the default objective. JavaScript
+`reviewed_at_unix_ms` must be a nonnegative safe integer (at most
+9007199254740991); `BigInt` and already-rounded larger numbers are not accepted.
+The binding does not change the existing project codec.
+
+The new Rust/VM tests are authored, **not executed here**. The current CI
+scripting jobs compile features but do not run these feature-gated tests.
+Glen must explicitly run both adapter filters in the
+[verification handoff](../glen_next_verification_handoff.md#protein-expression-named-scripting-bindings-2026-11-03),
+each matching at least two tests. This chapter remains `manual/hybrid`; the
+four historical GUI captures below do not prove these scripting paths.
 
 An inner-agent practice prompt is:
 

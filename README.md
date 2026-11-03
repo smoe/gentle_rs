@@ -109,8 +109,8 @@ More figures, captions and regeneration instructions live in the
 | **ClawBio/OpenClaw** | Curated scientific handoffs | [Integration guide](integrations/clawbio/README.md) |
 
 Coverage varies by capability; the [parity matrix](docs/gui_cli_mcp_parity.md)
-records remaining gaps. The expression preview is listed for GUI and MCP;
-its JavaScript/Lua entries still record `gap`.
+records remaining gaps. The expression preview has GUI, MCP and named
+JavaScript/Lua routes; the new scripting runtime checks remain pending.
 
 ### One Project, Two Agent Positions
 
