@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-11-03 - Port Publication Fault Tests And Preserve Audit Evidence
+
+- Port the two pending test-only changes from
+  `codex/glen-six-gate-recheck-20261102`, with formatting only. Handle Windows
+  `PermissionDenied` at the injected directory rename while asserting complete
+  owned-output cleanup; retain the successful-replacement orphan checks.
+- Add independent annotation/SAM regressions requiring rollback to preserve
+  an unowned artifact, remove owned artifacts and omit the completion report.
+  Production publication, validation and biology are unchanged; the source
+  worktree is untouched and the already integrated glossary fix is not repeated.
+- Preserve the historical six-gate evidence, six rechecked receipt/log hashes,
+  cross-receipt binary/archive agreement and terminal-versus-in-progress CI
+  distinction in the audit ledger. Do not resume the cleared goal, relabel old
+  results as current-source acceptance or reopen completed `.12` publication.
+- Both affected Rust modules pass on macOS arm64 (28 + 12 tests, no skips), as
+  do the scripting-enabled test-target Cargo check and eight offline retained-
+  evidence/LF/CRLF checks. Preserve the source/toolchain/profile and unrun
+  native-Windows/full-suite boundary in the
+  [handoff](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03).
+  No push, CI dispatch, release or package upload.
+
 ## 2026-11-03 - Primer3 Preflight Reader Parity
 
 - Reconcile the supplied Primer3 parity prompt against `9c07188d`: persistent

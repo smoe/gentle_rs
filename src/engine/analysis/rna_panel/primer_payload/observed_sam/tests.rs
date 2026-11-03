@@ -582,16 +582,38 @@ fn observed_sam_publisher_preserves_replaced_artifacts_and_reports_orphans() {
         .unwrap();
     }
     let moved = root.path().join("moved originals");
+    let mut rename_blocked = false;
     let result = publication::publish(stage, &copy, &mut |phase| {
         if phase == publication::Phase::ArtifactsVisible {
             let path = Path::new(&copy.resolved_output_dir).join("artifacts");
-            fs::rename(&path, &moved).unwrap();
+            if let Err(error) = fs::rename(&path, &moved) {
+                // The locked-directory refusal is itself the observable Windows guard.
+                assert!(
+                    cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied,
+                    "unexpected artifact rename failure: {error}"
+                );
+                rename_blocked = true;
+                return Err(bad("synthetic blocked replacement fault"));
+            }
             fs::create_dir(&path).unwrap();
             fs::write(path.join("foreign"), "preserve").unwrap();
         }
         Ok(())
     })
     .unwrap_err();
+    if rename_blocked {
+        assert!(
+            result
+                .message
+                .contains("synthetic blocked replacement fault")
+        );
+        assert!(!moved.exists());
+        assert!(
+            !Path::new(&copy.resolved_output_dir).exists(),
+            "owned output must be cleaned after refused replacement"
+        );
+        return;
+    }
     assert!(result.message.contains("observed_sam_orphaned_output"));
     assert_eq!(
         fs::read_to_string(Path::new(&copy.resolved_output_dir).join("artifacts/foreign")).unwrap(),
@@ -603,4 +625,42 @@ fn observed_sam_publisher_preserves_replaced_artifacts_and_reports_orphans() {
             .exists()
     );
     assert_eq!(fs::read_dir(moved).unwrap().count(), 7);
+}
+
+#[test]
+fn observed_sam_publisher_preserves_unowned_artifact_after_fault() {
+    let (root, request) = fixture();
+    let report = run(&request);
+    let mut copy = report.clone();
+    copy.resolved_output_dir = root
+        .path()
+        .join("unowned artifact fault")
+        .display()
+        .to_string();
+    let stage = tempfile::tempdir_in(root.path()).unwrap();
+    for artifact in &copy.artifacts {
+        fs::copy(
+            Path::new(&report.resolved_output_dir)
+                .join("artifacts")
+                .join(&artifact.path),
+            stage.path().join(&artifact.path),
+        )
+        .unwrap();
+    }
+    let out = Path::new(&copy.resolved_output_dir);
+    let error = publication::publish(stage, &copy, &mut |phase| {
+        if phase == publication::Phase::ArtifactsVisible {
+            fs::write(out.join("artifacts/foreign"), b"unowned evidence").unwrap();
+            return Err(bad("synthetic unowned artifact fault"));
+        }
+        Ok(())
+    })
+    .unwrap_err();
+    assert!(error.message.contains("observed_sam_orphaned_output"));
+    assert_eq!(
+        fs::read(out.join("artifacts/foreign")).unwrap(),
+        b"unowned evidence"
+    );
+    assert!(!out.join("report.json").exists());
+    assert_eq!(fs::read_dir(out.join("artifacts")).unwrap().count(), 1);
 }

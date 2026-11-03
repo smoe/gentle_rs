@@ -7,6 +7,58 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Publication Fault-Test Port, 2026-11-03
+
+The owner requested the two pending test fixes from
+`codex/glen-six-gate-recheck-20261102` in worktree `1ee2`. Port only the changes
+in `annotation_prepare/tests.rs` and `observed_sam/tests.rs`; the source
+worktree's uncommitted drafts remain untouched. The already integrated
+`3e1b7bda` glossary repair is not reapplied. Preserve the branch's useful
+[historical audit evidence](glen_audit_followups_20261008.md#preserved-six-gate-evidence-2026-11-03)
+without reviving its cleared goal or changing `.12` publication status.
+
+The injected artifact-directory replacement may be refused on Windows while
+identity handles remain open. Accept only Windows `PermissionDenied` at that
+injection, then require the synthetic fault, no moved directory and complete
+owned-output cleanup. Successful replacement retains the original orphan and
+preserved-file assertions. Two additional tests inject an unowned file without
+renaming, then require that file alone to survive cleanup, with no completion
+report and the correct orphan diagnostic. Production publication and validation
+rules are unchanged; no blanket platform skip or weakened fixture hashes.
+
+Local validation passed on macOS arm64, Rust/Cargo `1.100.0-beta.7`, default
+features plus `script-interfaces`, against base
+`fa5de5530d8e34774d53d3aa89b112a8b78fec5f` plus this two-test-file port. The raw
+`git diff --` for those two files has SHA-256
+`9b121cf111a2707cc68c33620f1c87c73da8419567eefc2e1324a58d01e658cd`;
+the unchanged `Cargo.lock` SHA-256 is
+`7ad5b2dc9485675a75d272fa945c75342dceb60ef582f2885015f3e14df41e76`.
+Formatting-normalized comparison matches both original drafts exactly.
+
+Use `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`
+for the test commands below; the check used the first two settings. All Cargo
+commands used `--locked --offline --features script-interfaces` and `-j 2`:
+
+| Scoped command / check | Result |
+| --- | --- |
+| `cargo test --lib annotation_prepare::tests:: -- --test-threads=1` | 28 passed, zero failures/ignored, including six adapter tests |
+| `cargo test --lib observed_sam::tests:: -- --test-threads=1` | 12 passed, zero failures/ignored |
+| Initial `cargo test --lib publication_preserves -- --test-threads=1` | 3 passed; overlaps the module runs, not three additional port regressions |
+| `cargo check -q --tests` | Exit 0 |
+| `scripts.test_frozen_024ed6_audit` and the 024ed6c0, 6d8b4db7 and non-publishing container cases in `scripts.test_tutorial_checkouts` | 8 passed, zero skips, including LF/CRLF and missing-policy controls |
+| Scoped rustfmt, `scripts/manual_docs.py`, `git diff --check` | Passed |
+
+The test build retains the existing macOS linker warning about `__eh_frame`
+exceeding the compact-unwind table limit; compilation and execution succeed.
+No unfiltered workspace/full-library suite, native Windows/Linux, package or
+real-provider test was run for this test/documentation-only port.
+
+Run the affected annotation-preparation and observed-SAM test modules before
+ordinary CI. Native Windows must exercise both replacement/refusal and unowned
+file preservation on the committed source; macOS cannot establish Windows
+file-handle behavior. Full-suite, package and provider/scientific acceptance
+remain separate. Uploads and CI dispatch remain with the owner.
+
 ## egui 0.37 And Ported Glossary Repair, 2026-11-02
 
 The owner's updated root manifest/lock select egui/eframe 0.37, while the
@@ -117,8 +169,9 @@ the existing user consent; no live provider or headless capture is requested.
 Report source/toolchain/platform/features, binary hashes, results and skips;
 do not rerun completed gel/sequence-design campaigns or rewrite historical evidence.
 The six-follow-up goal was cleared; this repair does not resume it or authorize
-new pushes/dispatches. Unfinished publication-test edits stay in the separate
-audit worktree, not this main change.
+new pushes/dispatches. The separate publication-test drafts are now ported under
+the [later owner request](#publication-fault-test-port-2026-11-03), not as part
+of the egui update; their original worktree remains untouched.
 
 ## Discovery And Decision Status Follow-Up, 2026-11-02
 

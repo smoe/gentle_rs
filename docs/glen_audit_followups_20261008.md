@@ -37,6 +37,78 @@ availability question is needed now. Ordinary checks still record what they
 tested, and observed defects remain actionable. This does not authorize a push,
 local Rust, model call, package build or publication.
 
+## Preserved Six-Gate Evidence (2026-11-03)
+
+Historical evidence recovered from `43670b25bfe7855ac6bc32ba52a94e85031e991b`
+on `codex/glen-six-gate-recheck-20261102`, based on `7f73a42a`. The six-follow-up
+goal was subsequently cleared. This addendum preserves useful observations,
+not the branch's obsolete pending-repair status or authority to resume that
+goal. The owner separately authorized the [publication test port and local
+validation](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03).
+The source worktree and original evidence remain unchanged; no upload, dispatch,
+model call, package build or native capture is part of this port.
+
+| Historical evidence | Retained boundary |
+| --- | --- |
+| [024ed6c0 subset](audits/glen_followups_20261008/candidate_024ed6c0/README.md): 14 retained hashes/membership and dev/Linux workspace record | Rechecking the record is not rerunning that workspace or accepting newer source. |
+| [6d8b4db7](audits/glen_followups_20261008/candidate_6d8b4db7/README.md) and 024ed6c0 synthetic GUI/oracle passes | Native refusal-to-T retry, minimum-size readability and physical-platform acceptance remain distinct from positive synthetic replay. |
+| [Executed live-agent receipt](audits/glen_followups_20261008/candidate_6d8b4db7/live_agent.json), SHA-256 `aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25` | macOS/arm64 dev, real clarification, two unexecuted reviewed T suggestions, raw-state preservation and ordered-Seq parity; not a final-package or newer-binary verdict. |
+| Labelled native captures versus exported base views in the same two retained subsets | Source hashes, light chrome/dark canvases and clipped controls remain disclosed; no new capture or relabelling. |
+| [6d8b4db7 scroll receipt](audits/glen_followups_20261008/candidate_6d8b4db7/scroll_cpu_smoke.json) and 024ed6c0 directional/content observations | Dev/Linux-X11 smoke is not compositor latency, a timing-budget verdict or a demonstrated speedup. |
+| [5e6201a6 validate-only container](audits/glen_followups_20261008/container_validate_5e6201a6/README.md) versus the published native receipts below | Keep non-publishing container evidence, completed native publication and independent extracted-installer acceptance separate. |
+
+### CI Failure And Repair Identities
+
+[Run 41373114753](https://github.com/smoe/gentle_rs/actions/runs/41373114753)
+at `7f73a42ab97d0aa3c11c37182da9e7b7c4b60c6a` failed. Retained macOS job
+`125047619435` and Windows job `125047595090` logs each show glossary 11/12:
+the SAM `--binding '{}'` fixture lacks `schema`. This is one primary fixture
+failure, not independent platform/biology failures. Commit `3e1b7bda` repaired
+that fixture and is already ported to main by `1e46525c`; do not apply it twice.
+
+The [later handoff](glen_next_verification_handoff.md#egui-037-and-ported-glossary-repair-2026-11-02)
+records terminal/failure run `41375688160` at `43670b25`: glossary 12/12 on both
+platforms, macOS root 4818/0/17 and Windows root 4754/2/17. Its two Windows
+directory-replacement failures motivate the test port, not a runtime-validation
+relaxation. The retained `ci-43670b25-run-original.json` was captured while
+`in_progress` with null conclusion; it is not itself evidence of that terminal
+result. Neither run accepts the current dependency graph or unrun full Linux.
+
+### Published Receipt And Log Hashes
+
+The branch's read-only recheck recorded successful `.12` installer run
+`38330176948`, attempt 2, and tag-push container run `38322028567` with publication
+skipped. Preserve the separate [actual release publication ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence);
+completed publication is not unfinished work to redispatch.
+
+Four downloaded release JSON assets total 13,345 bytes. On 2026-11-03 their raw
+hashes and the two earlier CI log hashes were rechecked locally against the
+branch record. Originals remain in
+`/private/tmp/gentle-six-gate-package-recheck-20261102.ECFCLF/`; this ledger
+retains their identities, not copies of the logs or large package archives.
+Release JSON filenames below have prefix `gentle-v0.1.0-internal.12-` and are
+retrievable from the [published release](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.12).
+
+| File / release suffix | Raw SHA-256 |
+| --- | --- |
+| `linux-x64.build.json` | `910e5e51782868ae93acf087a7834e28917b8013762865c128458816da8346d8` |
+| `macos-arm64.build.json` | `8539d97cf18307744b7af53665b4b8f8f80dfa81ce02daa68442400d6d7bc89d` |
+| `windows-x64.build.json` | `7eb01aaeac30c0c82043341ccad112d4ebc3dcc7529f1b86b1e8e6b58c715978` |
+| `release-attributes.json` | `e35c60014b3bb627ff673b467226e6a54597c74fdfb48816a5de0854635fcc02` |
+| `macos-ci-7f73a42a.log` | `34c72f08dc4a3b7e4782388b0be74bc50de1d6fe2274ea170a36ad578013c430` |
+| `windows-ci-7f73a42a.log` | `70bb9a59af9f136b58cf1718a812206555c4a031ad82714fb0cd83448fd0b29b` |
+
+All native receipts and the aggregate agree on source/workflow
+`5e6201a69a599cba87491c86cfd7311cb6fee173`, lock SHA-256
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`,
+`mode=publish`, `package-opt1`, opt-level 1, LTO off, 256 codegen units,
+assertions/overflow checks on, debug/incremental off, unwinding and no stripping.
+Native receipts report Rust/Cargo 1.99.0. Structured comparison confirms all
+15 binary identities and three archive digests agree across the receipts.
+These are receipt-byte and cross-record checks, not independent downloads,
+extractions or executions of the binaries. No historical pass is transferred
+to `.13` or the current worktree.
+
 ## Gel Integration Return (2026-10-20)
 
 The owner relays Glen's [bb1686bd gel return](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20):

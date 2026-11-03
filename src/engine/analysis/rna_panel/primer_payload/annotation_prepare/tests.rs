@@ -699,9 +699,18 @@ fn observed_annotation_publication_preserves_replaced_artifacts() {
         let moved = root
             .path()
             .join(format!("original artifacts {with_annotation}"));
+        let mut rename_blocked = false;
         let e = publication::publish(stage, &paths, &report, &mut |phase| {
             if matches!(phase, publication::Phase::ArtifactsVisible) {
-                fs::rename(out.join("artifacts"), &moved).unwrap();
+                if let Err(error) = fs::rename(out.join("artifacts"), &moved) {
+                    // Windows can prevent this replacement while identity handles are open.
+                    assert!(
+                        cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied,
+                        "unexpected artifact rename failure: {error}"
+                    );
+                    rename_blocked = true;
+                    return Err(bad("synthetic blocked replacement fault"));
+                }
                 fs::create_dir(out.join("artifacts")).unwrap();
                 fs::write(
                     out.join("artifacts/annotation.json"),
@@ -713,6 +722,15 @@ fn observed_annotation_publication_preserves_replaced_artifacts() {
             Ok(())
         })
         .unwrap_err();
+        if rename_blocked {
+            assert!(e.message.contains("synthetic blocked replacement fault"));
+            assert!(!moved.exists());
+            assert!(
+                !out.exists(),
+                "owned output must be cleaned after refused replacement"
+            );
+            continue;
+        }
         assert!(e.message.contains("observed_annotation_orphaned_output"));
         assert_eq!(
             fs::read(out.join("artifacts/annotation.json")).unwrap(),
@@ -725,6 +743,45 @@ fn observed_annotation_publication_preserves_replaced_artifacts() {
             assert_eq!(fs::read_dir(moved).unwrap().count(), 0);
         }
     }
+}
+
+#[test]
+fn observed_annotation_publication_preserves_unowned_artifact_after_fault() {
+    let root = tempfile::tempdir().unwrap();
+    let mut request = fixture(root.path());
+    let prepared = run(request.clone());
+    let raw = fs::read(Path::new(&request.output_dir).join("artifacts/annotation.json")).unwrap();
+    request.output_dir = root
+        .path()
+        .join("unowned artifact fault")
+        .display()
+        .to_string();
+    let mut report = prepared.report.clone();
+    report.request = request.clone();
+    let paths = publication::Paths::new(&request).unwrap();
+    let stage = staging(&request.output_dir).unwrap();
+    fs::write(stage.path().join("annotation.json"), &raw).unwrap();
+    let out = Path::new(&request.output_dir);
+    let error = publication::publish(stage, &paths, &report, &mut |phase| {
+        if matches!(phase, publication::Phase::ArtifactsVisible) {
+            fs::write(out.join("artifacts/foreign"), b"unowned evidence").unwrap();
+            return Err(bad("synthetic unowned artifact fault"));
+        }
+        Ok(())
+    })
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("observed_annotation_orphaned_output")
+    );
+    assert_eq!(
+        fs::read(out.join("artifacts/foreign")).unwrap(),
+        b"unowned evidence"
+    );
+    assert!(!out.join("artifacts/annotation.json").exists());
+    assert!(!out.join("report.json").exists());
+    assert_eq!(fs::read_dir(out.join("artifacts")).unwrap().count(), 1);
 }
 
 #[test]
