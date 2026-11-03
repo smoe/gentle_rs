@@ -201,7 +201,7 @@ Isoform architecture panel workflow:
     - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]...`
     - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
     - this route opens the same transcript-first Protein Expert payload used by
-      the GUI `Open Derived Protein Expert` action
+      the GUI `Open Genome / Transcript / Protein View` action
     - `--ensembl-entry` layers one stored Ensembl protein entry onto that same
       transcript-first compare surface as optional external evidence without
       redefining which transcript-derived products exist

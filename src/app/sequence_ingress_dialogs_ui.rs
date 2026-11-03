@@ -2815,7 +2815,7 @@ impl GENtleApp {
                 }
             }
             if ui
-                .button("Open Derived Protein Expert")
+                .button("Open Genome / Transcript / Protein View")
                 .on_hover_text(
                     "Open the same Protein Expert without requiring any external UniProt projection; optional transcript filter uses the current transcript field",
                 )
@@ -2873,7 +2873,7 @@ impl GENtleApp {
                 );
         });
         ui.small(
-            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Derived Protein Expert omits the external opinion entirely. Render Derived Protein SVG... exports the transcript-native view directly, while Render Protein Mapping SVG... exports the shared Protein Expert view for the stored UniProt projection. The Ensembl section below reuses that same compare window with fetched Ensembl protein entries as optional external evidence.",
+            "Open Protein Expert uses transcript-native translation as the primary product model and treats UniProt as optional external evidence; Open Genome / Transcript / Protein View opens the same coordinate-linked view without requiring an external opinion. Render Derived Protein SVG... exports the transcript-native view directly, while Render Protein Mapping SVG... exports the shared Protein Expert view for the stored UniProt projection. The Ensembl section below reuses that same compare window with fetched Ensembl protein entries as optional external evidence.",
         );
         ui.small(
             "The feature include/exclude fields above apply to external protein annotation overlays used by Open Protein Expert, Render Protein Mapping SVG..., Open Ensembl Protein Expert, and Render Ensembl Protein SVG.... Derived-only transcript Protein Expert views ignore them. CONFLICT stays hidden by default unless explicitly re-included.",

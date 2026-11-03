@@ -454,6 +454,11 @@ Protein-evidence behavior:
 
 ### Protein Evidence Window
 
+The same window is available from `Genome -> Genome / Transcript / Protein
+Comparison...` and from the command palette under that explicit name. This is
+the shortest route when the goal is the coordinate-linked comparison rather
+than importing external evidence.
+
 - `Protein Evidence...` opens a specialist window for:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
@@ -473,7 +478,7 @@ Protein-evidence behavior:
     - open the shared Protein Expert with transcript-native translation as the
       primary product model and the stored UniProt projection as optional
       external evidence
-  - `Open Derived Protein Expert`
+  - `Open Genome / Transcript / Protein View`
     - open the same Protein Expert without requiring a stored UniProt
       projection; the current transcript field acts as an optional transcript
       filter for transcript-only inspection
@@ -493,7 +498,7 @@ Protein-evidence behavior:
   fields, reusing the shared `ProteinFeatureFilter` contract so GUI-driven
   Protein Expert open/export paths can filter keys such as `DOMAIN`,
   `DNA_BIND`, or `CONFLICT` without dropping to the shell
-- `Open Protein Expert` and `Open Derived Protein Expert` both reuse the
+- `Open Protein Expert` and `Open Genome / Transcript / Protein View` both reuse the
   shared isoform-architecture canvas rather than opening a separate
   protein-sequence inspector:
   - transcript-native CDS/protein derivation now defines the lower product

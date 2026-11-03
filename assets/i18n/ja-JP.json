@@ -162,6 +162,7 @@
   "menu.file.configuration": "設定...",
   "menu.file.quit": "終了",
   "menu.genome": "ゲノム",
+  "menu.genome.transcript_protein_comparison": "ゲノム / 転写産物 / タンパク質を比較...",
   "menu.help": "ヘルプ",
   "menu.help.about": "GENtle について",
   "menu.help.about.hover": "GENtle のバージョン、貢献者、ライセンス、プロジェクト情報を表示します",

@@ -3239,7 +3239,7 @@ impl GENtleApp {
                                                 "Open the PCR Designer on this persisted restriction-site cloning handoff",
                                             ),
                                             Some(LineageAnalysisKind::ProteinDerivation) => (
-                                                "Open Derived Protein Expert",
+                                                "Open Genome / Transcript / Protein View",
                                                 "Open the transcript-native Protein Expert on this persisted protein-derivation artifact",
                                             ),
                                             Some(LineageAnalysisKind::ReverseTranslation) => (
@@ -3741,7 +3741,7 @@ impl GENtleApp {
                                 "Open Cloning Handoff"
                             }
                             Some(LineageAnalysisKind::ProteinDerivation) => {
-                                "Open Derived Protein Expert"
+                                "Open Genome / Transcript / Protein View"
                             }
                             Some(LineageAnalysisKind::ReverseTranslation) => {
                                 "Open Coding Sequence"

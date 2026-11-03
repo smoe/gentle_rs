@@ -622,6 +622,15 @@
       "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": null,
       "human_reviewer": null
+    },
+    {
+      "tutorial_id": "cd44_genome_transcript_protein_gui",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-11-03",
+      "human_reviewed_at": null,
+      "human_reviewer": null
     }
   ]
 }

@@ -7620,7 +7620,7 @@ impl MainAreaDna {
         {
             ui.label(
                 egui::RichText::new(
-                    "Protein Expert: transcript-native translation is primary; optional external protein opinions are treated as comparison overlays. CONFLICT stays hidden by default; the top panel keeps coordinate-true exon/intron context; the lower panel reuses shared genomic exon-family columns before handing off to isoform-local protein lanes; exon colors follow genomic exon family/position; membrane topology features render in a dedicated lower band.",
+                    "Genome / Transcript / Protein comparison: transcript-native translation is primary; optional external protein opinions are treated as comparison overlays. CONFLICT stays hidden by default; the top panel keeps coordinate-true genomic exon/intron and CDS context; the lower panel reuses shared genomic exon-family columns before handing off to isoform-local protein lanes; exon colors follow genomic exon family/position; membrane topology features render in a dedicated lower band.",
                 )
                 .size(font_size)
                 .color(egui::Color32::from_rgb(71, 85, 105)),

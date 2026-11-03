@@ -162,6 +162,7 @@
   "menu.file.configuration": "Configuratio...",
   "menu.file.quit": "Exire",
   "menu.genome": "Genoma",
+  "menu.genome.transcript_protein_comparison": "Genoma / transcriptum / proteina comparare...",
   "menu.help": "Auxilium",
   "menu.help.about": "De GENtle",
   "menu.help.about.hover": "Versionem, auctores, licentiam et notitias operis ostendere",

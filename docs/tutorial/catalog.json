@@ -2398,6 +2398,43 @@
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
+      "id": "cd44_genome_transcript_protein_gui",
+      "title": "Compare CD44 Genome, Transcripts, and Protein Products",
+      "path": "docs/tutorial/06-08_cd44_genome_transcript_protein_gui.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 8,
+      "decimal_id": "06.08",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "protein_workflows",
+        "contributors"
+      ],
+      "notes": "Online, GUI-first comparison of the canonical 742-aa CD44 product and the 139-aa CD44RC product. The native view keeps genomic exon/CDS geometry, transcript-derived protein axes, and optional UniProt evidence separate. Public annotations can drift; the retained 2026-11-03 acceptance values are checkpoints, not timeless constants.",
+      "estimated_minutes": 20,
+      "difficulty": "intermediate",
+      "network": "required",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "starting_state": "A disposable empty project with online access to Ensembl and UniProt.",
+      "produces": [
+        "An imported CD44 Ensembl locus",
+        "Two transcript-filtered genome/transcript/protein views",
+        "Optional persisted UniProt P16070 projections"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-11-03"
+    },
+    {
       "id": "microarray_evidence_gui_cli",
       "title": "Find Clariom D Evidence Along the TP73 Locus",
       "path": "docs/tutorial/07-04_microarray_evidence_gui_cli.md",

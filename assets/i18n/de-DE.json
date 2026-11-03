@@ -207,6 +207,7 @@
   "menu.file.save_project": "Projekt speichern...",
   "menu.file.save_project.hover": "Aktuellen Projektzustand auf Festplatte speichern",
   "menu.genome": "Genom",
+  "menu.genome.transcript_protein_comparison": "Genom / Transkript / Protein vergleichen...",
   "menu.help": "Hilfe",
   "menu.help.about": "Über GENtle",
   "menu.help.about.hover": "Version, Mitwirkende, Lizenz und Projektinformationen zu GENtle anzeigen",

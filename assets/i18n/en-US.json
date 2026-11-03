@@ -207,6 +207,7 @@
   "menu.file.save_project": "Save Project...",
   "menu.file.save_project.hover": "Save current project state to disk",
   "menu.genome": "Genome",
+  "menu.genome.transcript_protein_comparison": "Genome / Transcript / Protein Comparison...",
   "menu.help": "Help",
   "menu.help.about": "About GENtle",
   "menu.help.about.hover": "Show GENtle version, credits, license, and project information",

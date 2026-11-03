@@ -5701,9 +5701,9 @@ Error: `{err}`"
             },
             CommandPaletteEntry {
                 readiness: ActionReadiness::Ready,
-                title: "Protein Evidence".to_string(),
-                detail: "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native products".to_string(),
-                keywords: "uniprot swiss-prot ensembl protein map compare evidence".to_string(),
+                title: "Genome / Transcript / Protein Comparison".to_string(),
+                detail: "Compare genomic exon/CDS structure, transcript products, and optional UniProt or Ensembl evidence".to_string(),
+                keywords: "genome transcript exon cds uniprot swiss-prot ensembl protein map compare evidence".to_string(),
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
@@ -17236,6 +17236,17 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.genome"), |ui| {
+                if ui
+                    .button(self.tr("menu.genome.transcript_protein_comparison"))
+                    .on_hover_text(
+                        "Compare genomic exon/CDS structure with transcript-native proteins and optional external evidence",
+                    )
+                    .clicked()
+                {
+                    self.open_uniprot_dialog();
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(self.tr("menu.genome.rna_read_panel")).clicked() {
                     self.open_rna_panel_dialog();
                     ui.close();

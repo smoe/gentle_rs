@@ -157,7 +157,7 @@ Shipped baseline:
   `report_id` plus stored `op_id` / `run_id`
 - GUI lineage projects those reports as analysis artifacts linked from the
   source nucleotide sequence
-- lineage can reopen the transcript-first `Open Derived Protein Expert` path
+- lineage can reopen the transcript-first `Open Genome / Transcript / Protein View` path
   directly from the persisted derivation report
 - lineage details expose the derivation-mode summary and derived-protein count
 - persisted reverse-translation reports now carry stable `report_id` plus

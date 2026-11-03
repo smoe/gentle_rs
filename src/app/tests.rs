@@ -7210,6 +7210,18 @@ fn command_palette_includes_new_sequence_entries() {
 }
 
 #[test]
+fn command_palette_names_genome_transcript_protein_comparison_explicitly() {
+    let mut app = GENtleApp::default();
+    let entries = app.collect_command_palette_entries();
+
+    assert!(entries.iter().any(|entry| {
+        entry.title == "Genome / Transcript / Protein Comparison"
+            && entry.keywords.contains("genome transcript")
+            && matches!(entry.action, CommandPaletteAction::OpenUniprot)
+    }));
+}
+
+#[test]
 fn command_palette_includes_pcr_designer_entry() {
     let mut app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();

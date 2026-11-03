@@ -63,7 +63,7 @@ Fixture note:
 2. open `File -> Protein Evidence...`
 3. in `Project entry to sequence`, choose `seq_id = tp73.ncbi`
 4. leave `transcript` empty for the first pass
-5. click `Open Derived Protein Expert`
+5. click `Open Genome / Transcript / Protein View`
 6. confirm the expert opens with 15 transcript-native product rows and 15 ORF
    inference warnings
 7. return to `Protein Evidence...`
@@ -111,7 +111,7 @@ Why this matters:
 
 GUI:
 
-1. click `Open Derived Protein Expert`
+1. click `Open Genome / Transcript / Protein View`
 
 Expected result:
 
@@ -137,7 +137,7 @@ was inferred. Treat these as computed candidates, not curated protein truth.
 Back in `Protein Evidence...`:
 
 1. fill the `transcript` field with `NM_005427.4`
-2. click `Open Derived Protein Expert` again
+2. click `Open Genome / Transcript / Protein View` again
 
 Expected result:
 
@@ -239,7 +239,7 @@ labels and host save-dialog behavior.
 ## Checkpoints
 
 - `Protein Evidence...` opens and accepts `tp73.ncbi` as the target sequence.
-- `Open Derived Protein Expert` opens a non-empty transcript-native protein view.
+- `Open Genome / Transcript / Protein View` opens a non-empty transcript-native protein view.
 - The unfiltered fixture yields 15 rows; `NM_005427.4` yields one 636-aa row.
 - The expert details expose translation/provenance fields instead of hiding
   them inside adapter-only status text.

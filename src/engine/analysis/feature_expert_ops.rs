@@ -1418,6 +1418,16 @@ impl GentleEngine {
         out
     }
 
+    pub(super) fn clip_cds_aa_segments_to_product_length(
+        segments: &mut Vec<IsoformArchitectureCdsAaSegment>,
+        protein_length_aa: usize,
+    ) {
+        segments.retain(|segment| protein_length_aa > 0 && segment.aa_start <= protein_length_aa);
+        for segment in segments {
+            segment.aa_end = segment.aa_end.min(protein_length_aa);
+        }
+    }
+
     pub(super) fn sequence_slice_upper(dna: &DNAsequence, start: usize, end: usize) -> String {
         if end <= start {
             return String::new();
@@ -5609,6 +5619,7 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         let entry = self.get_uniprot_entry(entry_id)?;
+        let source_sequence_upper = seq.get_forward_string().to_ascii_uppercase().into_bytes();
         let mut warnings: Vec<String> = vec![];
         let mut transcripts_requested: Vec<String> = vec![];
         if let Some(filter) = transcript_id_filter
@@ -5691,21 +5702,38 @@ impl GentleEngine {
                     ));
                 }
             }
-            let aa_reference_segments =
-                Self::cds_ranges_to_reference_aa_segments(cds_ranges.clone(), is_reverse, Some(1))
-                    .into_iter()
-                    .map(|segment| UniprotAaGenomicSegment {
-                        aa_start: segment.aa_start,
-                        aa_end: segment.aa_end,
-                        genomic_start_1based: segment.genomic_start_1based,
-                        genomic_end_1based: segment.genomic_end_1based,
-                        strand: if is_reverse {
-                            "-".to_string()
-                        } else {
-                            "+".to_string()
-                        },
-                    })
-                    .collect::<Vec<_>>();
+            let derived_product_length_aa = Self::build_derived_protein_expert_transcript(
+                &source_sequence_upper,
+                feature,
+                features,
+                feature_index,
+                seq_id,
+            )
+            .ok()
+            .and_then(|derived| derived.derivation.map(|value| value.protein_length_aa))
+            .filter(|length| *length > 0);
+            let mut cds_aa_segments =
+                Self::cds_ranges_to_reference_aa_segments(cds_ranges.clone(), is_reverse, Some(1));
+            if let Some(protein_length_aa) = derived_product_length_aa {
+                Self::clip_cds_aa_segments_to_product_length(
+                    &mut cds_aa_segments,
+                    protein_length_aa,
+                );
+            }
+            let aa_reference_segments = cds_aa_segments
+                .into_iter()
+                .map(|segment| UniprotAaGenomicSegment {
+                    aa_start: segment.aa_start,
+                    aa_end: segment.aa_end,
+                    genomic_start_1based: segment.genomic_start_1based,
+                    genomic_end_1based: segment.genomic_end_1based,
+                    strand: if is_reverse {
+                        "-".to_string()
+                    } else {
+                        "+".to_string()
+                    },
+                })
+                .collect::<Vec<_>>();
             if aa_reference_segments.is_empty() {
                 transcript_warnings.push(format!(
                     "Transcript '{}' has no mappable CDS amino-acid segments",
@@ -6280,7 +6308,7 @@ impl GentleEngine {
                 (start_0based.saturating_add(1), *end_0based_exclusive)
             })
             .collect::<Vec<_>>();
-        let cds_to_protein_segments = if genomic_cds_ranges_0based.is_empty() {
+        let mut cds_to_protein_segments = if genomic_cds_ranges_0based.is_empty() {
             vec![]
         } else {
             Self::cds_ranges_to_reference_aa_segments(
@@ -6289,6 +6317,16 @@ impl GentleEngine {
                 Some(1),
             )
         };
+        if let Some(protein_length_aa) = derivation
+            .as_ref()
+            .map(|value| value.protein_length_aa)
+            .filter(|length| *length > 0)
+        {
+            Self::clip_cds_aa_segments_to_product_length(
+                &mut cds_to_protein_segments,
+                protein_length_aa,
+            );
+        }
         let intron_ranges_1based =
             Self::build_transcript_introns_from_ranges_1based(&genomic_cds_ranges_1based);
         Ok(DerivedProteinExpertTranscript {

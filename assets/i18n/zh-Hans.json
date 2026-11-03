@@ -162,6 +162,7 @@
   "menu.file.configuration": "配置...",
   "menu.file.quit": "退出",
   "menu.genome": "基因组",
+  "menu.genome.transcript_protein_comparison": "比较基因组 / 转录本 / 蛋白质...",
   "menu.help": "帮助",
   "menu.help.about": "关于 GENtle",
   "menu.help.about.hover": "显示 GENtle 版本、贡献者、许可证和项目信息",

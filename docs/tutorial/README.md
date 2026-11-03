@@ -217,6 +217,7 @@ Context** when reporting confusion or an execution failure.
 - `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./06-05_tp73_uniprot_projection_audit_cli.md) - guided CLI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.
 
 - `06.07` [Redesign a synthetic coding insert: remove a motif and control GC](./06-07_synthetic_sequence_design.md) - guided GUI Shell/CLI; executable command regressions, human/native review pending. Joint constraints, separate exact-output approval and same-session undo/redo on a literal 12-bp example; no natural-gene recoding.
+- `06.08` [Compare CD44 Genome, Transcripts, and Protein Products](./06-08_cd44_genome_transcript_protein_gui.md) - guided GUI; status `manual/hybrid` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: You want to compare canonical membrane CD44 with the short CD44RC transcript product in the coordinate-linked native view without confusing splice-defined secretion with proteolytic shedding.
 
 ### RNA Reads, Splicing & Expression
 

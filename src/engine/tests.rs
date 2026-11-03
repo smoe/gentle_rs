@@ -25232,7 +25232,9 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 #[test]
 fn test_transcript_protein_expert_supports_transcript_only_rows() {
     let mut state = ProjectState::default();
-    let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
+    let mut coding_sequence = "ATGAAAACC".repeat(20);
+    coding_sequence.replace_range(177..180, "TAA");
+    let mut dna = DNAsequence::from_sequence(&coding_sequence).expect("valid DNA");
     let dna_len_i64 = i64::try_from(dna.len()).unwrap();
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "source".into(),
@@ -25294,7 +25296,7 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
         .as_ref()
         .expect("derived transcript product");
     assert_eq!(derived.transcript_id, "TX_TPROT");
-    assert_eq!(derived.protein_length_aa, 60);
+    assert_eq!(derived.protein_length_aa, 59);
     assert_eq!(derived.translation_table, 1);
     assert_eq!(
         derived.translation_table_source.as_str(),
@@ -25303,6 +25305,10 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
     assert_eq!(view.transcript_lanes[0].transcript_exons.len(), 1);
     assert_eq!(view.transcript_lanes[0].exons.len(), 1);
     assert!(!view.transcript_lanes[0].cds_to_protein_segments.is_empty());
+    assert_eq!(
+        view.transcript_lanes[0].cds_to_protein_segments[0].aa_end,
+        59
+    );
 }
 
 #[test]
@@ -32764,6 +32770,19 @@ fn test_cds_ranges_to_reference_aa_segments_respects_reverse_transcript_order() 
     assert_eq!(segments[1].genomic_end_1based, 112);
     assert_eq!(segments[1].aa_start, 166);
     assert_eq!(segments[1].aa_end, 169);
+}
+
+#[test]
+fn test_cds_aa_segments_exclude_terminal_stop_from_product_axis() {
+    let mut segments =
+        GentleEngine::cds_ranges_to_reference_aa_segments(vec![(100, 112)], false, Some(1));
+    GentleEngine::clip_cds_aa_segments_to_product_length(&mut segments, 3);
+
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].aa_start, 1);
+    assert_eq!(segments[0].aa_end, 3);
+    assert_eq!(segments[0].genomic_start_1based, 101);
+    assert_eq!(segments[0].genomic_end_1based, 112);
 }
 
 #[test]

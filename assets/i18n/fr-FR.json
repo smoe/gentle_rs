@@ -162,6 +162,7 @@
   "menu.file.configuration": "Configuration...",
   "menu.file.quit": "Quitter",
   "menu.genome": "Génome",
+  "menu.genome.transcript_protein_comparison": "Comparer génome / transcrit / protéine...",
   "menu.help": "Aide",
   "menu.help.about": "À propos de GENtle",
   "menu.help.about.hover": "Afficher la version, les contributeurs, la licence et les informations du projet",
