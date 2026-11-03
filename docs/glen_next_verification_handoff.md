@@ -7,6 +7,45 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Flagged Dependency Pins, 2026-11-03
+
+The owner authorized a separate manifest-only follow-up for Glen's eight
+flagged constraints. Pin the versions already present in the lock:
+bio `=4.0.1`; egui, eframe and egui_extras `=0.37.0`; mlua `=0.12.2`;
+rustyline `=19.0.0`; lopdf `=0.46.0`; scraper `=0.29.0`. No feature, optional
+flag, default-feature setting, workspace inheritance or other requirement is
+changed. This does not pin the entire transitive graph or other wildcard
+dependencies outside the finding.
+
+`Cargo.lock` remains byte-identical, with SHA-256
+`7ad5b2dc9485675a75d272fa945c75342dceb60ef582f2885015f3e14df41e76` before and
+after the change. The two offline `DependencyPinTests` in
+`scripts/test_release_candidate.py` check exact locked requirements and reject
+wildcard/caret/unlocked controls; the actual-manifest guard failed for all eight
+old constraints under both LF and CRLF before repair. CI already executes this
+Python module. Semantic TOML checks are not Cargo resolution or Rust acceptance.
+
+Local authoring verification: `python3 -m unittest scripts.test_release_candidate`
+passes all 51 tests with no skips. A structured before/after TOML comparison
+confirms only the eight version requirements changed; raw lockfile comparison
+and the SHA-256 above confirm unchanged bytes. Documentation/maturity and
+whitespace checks pass. Session-close reports four OK, two reminders (intentional
+worktree changes and manual scope fidelity), zero failures.
+
+Glen/CI should run, without changing the lockfile:
+
+```sh
+python3 -m unittest scripts.test_release_candidate.DependencyPinTests
+cargo check -q --locked --tests
+cargo check -q --locked --no-default-features --tests
+cargo check -q --locked --features script-interfaces --tests
+git diff --exit-code -- Cargo.lock
+```
+
+No local Rust build/check/test, Cargo resolution/update, network operation,
+push or CI dispatch was performed for this repair. Preserve unrelated local
+files and the paused goal; no compiler-floor or scientific verdict changes.
+
 ## Panel Specificity Review Shortcut, 2026-11-03
 
 The transcript-panel result now offers `Copy specificity matrix command`, bound

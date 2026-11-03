@@ -35,15 +35,15 @@ edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
-bio = "4.0.*"
-egui = "0.37.*"
+bio = "=4.0.1"
+egui = "=0.37.0"
 image = "0.25.10"
 itertools = "0.15.0"
-mlua = "0.*"
+mlua = "=0.12.2"
 rayon = "1.12.0"
 reqwest = "0.13.4"
 rfd = "0.17.2"
-rustyline = "*"
+rustyline = "=19.0.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 serde_with = "3.21.0"
@@ -152,7 +152,7 @@ svg = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 arboard = { version = "3.6.1", optional = true }
-eframe = { version = "0.37.*", features = [
+eframe = { version = "=0.37.0", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -161,12 +161,12 @@ eframe = { version = "0.37.*", features = [
 	"x11",
 	"persistence",
 ], optional = true }
-egui_extras = { version = "0.37.*", features = ["all_loaders"], optional = true }
+egui_extras = { version = "=0.37.0", features = ["all_loaders"], optional = true }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"], optional = true }
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "*"
 pdf-writer = "0.12.1"
-lopdf = { version = "0.*", default-features = false }
+lopdf = { version = "=0.46.0", default-features = false }
 zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
 svg2pdf = "0.13.0"
 rfd = { workspace = true, optional = true }
@@ -177,7 +177,7 @@ flate2 = "1.0"
 md-5 = "0.11.0"
 memchr = "2"
 regex = "^1"
-scraper = "0.*"
+scraper = "=0.29.0"
 pulldown-cmark = "0.13.4"
 ring = "0.17.14"
 base64 = "*"

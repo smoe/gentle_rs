@@ -95,6 +95,47 @@ class WorkspaceCompilerPolicyTests(unittest.TestCase):
         self.assertEqual(manifest.get("dependencies", {}), {})
 
 
+class DependencyPinTests(unittest.TestCase):
+    @staticmethod
+    def exact_locked_requirement(requirement, versions):
+        return (
+            isinstance(requirement, str)
+            and re.fullmatch(r"=\d+\.\d+\.\d+", requirement) is not None
+            and requirement[1:] in versions
+        )
+
+    def test_flagged_dependencies_have_exact_locked_requirements(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        manifest_text = (root / "Cargo.toml").read_bytes().decode("utf-8")
+        lock_text = (root / "Cargo.lock").read_bytes().decode("utf-8")
+        # Semantic TOML consistency only, not Cargo resolution or compilation.
+        for newline in ("\n", "\r\n"):
+            manifest = tomllib.loads(manifest_text.replace("\r\n", "\n").replace("\n", newline))
+            lock = tomllib.loads(lock_text.replace("\r\n", "\n").replace("\n", newline))
+            for section, names in (
+                (manifest["workspace"]["dependencies"], ("bio", "egui", "mlua", "rustyline")),
+                (manifest["dependencies"], ("eframe", "egui_extras", "lopdf", "scraper")),
+            ):
+                for name in names:
+                    with self.subTest(dependency=name, newline=repr(newline)):
+                        spec = section[name]
+                        requirement = spec["version"] if isinstance(spec, dict) else spec
+                        versions = {package["version"] for package in lock["package"]
+                                    if package["name"] == name}
+                        self.assertTrue(
+                            self.exact_locked_requirement(requirement, versions),
+                            f"{name}: {requirement!r} is not an exact pin to a locked version {versions}",
+                        )
+
+    def test_loose_or_unlocked_requirements_cannot_pass_the_guard(self) -> None:
+        # Hand-crafted version requirements, never registry/network fixtures.
+        for requirement in ("*", "0.*", "4.0.*", "0.37.*", "^0.37.0", "0.37.0",
+                            "=999.0.0", None):
+            with self.subTest(requirement=requirement):
+                self.assertFalse(self.exact_locked_requirement(requirement, {"0.37.0"}))
+        self.assertTrue(self.exact_locked_requirement("=0.37.0", {"0.37.0"}))
+
+
 class NativeBuildSettingsTests(unittest.TestCase):
     def test_repository_recipe_matches_selected_profile(self) -> None:
         root = Path(__file__).resolve().parents[1]

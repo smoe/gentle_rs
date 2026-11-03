@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-03 - Restore Exact Pins For Glen's Flagged Dependencies
+
+- With owner authorization, replace only the eight flagged manifest constraints
+  with their existing locked versions: bio `=4.0.1`, egui/eframe/egui_extras
+  `=0.37.0`, mlua `=0.12.2`, rustyline `=19.0.0`, lopdf `=0.46.0` and scraper
+  `=0.29.0`. Preserve features, optional/default-feature flags, workspace
+  inheritance, all other requirements and the exact `Cargo.lock` bytes.
+- Add a guard to the existing offline release-policy suite for exact locked
+  requirements in LF/CRLF TOML, with loose/unlocked negative controls. It fails
+  on all eight old constraints before the repair. This checks manifest/lock
+  consistency, not Cargo resolution or compiler/platform compatibility.
+- Keep Rust verification with Glen/CI through the scoped handoff. No local
+  Cargo invocation, lockfile regeneration, dependency upgrade, push, dispatch
+  or goal resumption is part of this separate repair.
+- Verification: all 51 offline release-policy tests pass, including both new
+  guards. Structured TOML comparison confirms only the eight version fields
+  changed; the lockfile SHA-256 is unchanged. Documentation/maturity and
+  whitespace checks pass; session-close has four OK, two reminders, zero failures.
+
 ## 2026-11-03 - Link Panel Results To Retained Specificity Review
 
 - Add a copy action to the transcript-panel report for the existing
