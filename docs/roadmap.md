@@ -175,7 +175,7 @@ Keep the next synthetic-biology bridge slices in this order:
    typed withholding, stale-result rejection and unchanged project/history.
    Glen/CI must execute Rust/CLI checks including quote-disabled refusals and native review;
    offline source checks do not establish runtime or native acceptance.
-   Include the inspector, named MCP and inner-agent command parity regressions;
+   Include the inspector, named MCP/JS/Lua and inner-agent command parity regressions; explicitly execute the feature-gated scripting tests, not just compilation;
    keep unanswered inputs, copy-only actions and stale/closed-worker rejection.
    Review the four retained macOS 09.03 captures at `9f01098b`; retain integrated typed/snapshot evidence separately.
    Check shared UI intents, semantic locators and canonical tutorial/parity freshness.

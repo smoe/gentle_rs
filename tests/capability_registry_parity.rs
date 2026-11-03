@@ -1057,6 +1057,47 @@ fn glossary_readiness_optional_arguments_match_shared_parser() {
 }
 
 #[test]
+fn protein_expression_handoff_named_scripting_bindings_preserve_canonical_usage() {
+    let command = capability_registry()
+        .iter()
+        .find(|row| {
+            row.source == CapabilitySource::GlossaryCommand
+                && row.name == "planning protein-expression-handoff"
+        })
+        .unwrap();
+    assert_eq!(command.mutating, CapabilityMutation::ReadOnly);
+    assert!(command.engine_operations.is_empty());
+    for adapter in [CapabilityAdapter::Js, CapabilityAdapter::Lua] {
+        assert_eq!(
+            command.surfacing_for_adapter(adapter),
+            AdapterSurfacing::Prominent
+        );
+        assert_eq!(
+            command.input_schema["x-gentle-usage-by-interface"][adapter.as_str()],
+            "protein_expression_handoff(project, [options])"
+        );
+    }
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Cli),
+        AdapterSurfacing::ShellPassthrough
+    );
+    assert_eq!(
+        command.surfacing_for_adapter(CapabilityAdapter::Mcp),
+        AdapterSurfacing::Prominent
+    );
+    assert_eq!(
+        command.input_schema["x-gentle-usage-by-interface"]["cli-shell"],
+        "planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--requirements JSON_OR_@FILE] [--provider PROVIDER] [--profile-scope effective] [--format json|text]"
+    );
+    assert!(
+        command
+            .aliases
+            .iter()
+            .any(|alias| alias == "planning protein_expression_handoff")
+    );
+}
+
+#[test]
 fn registry_and_parity_matrix_use_unique_keys_and_counts() {
     let registry = capability_registry();
     let mut keys = BTreeSet::new();

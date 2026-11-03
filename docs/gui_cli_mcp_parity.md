@@ -22,8 +22,8 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | GUI | 65 | 802 | 0 |
 | gentle_cli | 502 | 377 | 0 |
 | MCP | 207 | 545 | 41 |
-| JS | 40 | 642 | 60 |
-| Lua | 39 | 643 | 60 |
+| JS | 41 | 642 | 59 |
+| Lua | 40 | 643 | 59 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -538,7 +538,7 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | routines explain | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | routines compare | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning consult cloning | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| planning protein-expression-handoff | glossary-command | prominent | shell-only | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| planning protein-expression-handoff | glossary-command | prominent | shell-only | prominent | prominent | prominent | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile set | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile clear | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -1019,7 +1019,6 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | JS | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
-| JS | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-transcript-assay-fallback | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -1079,7 +1078,6 @@ Planning estimate v2 adds hands-on, unattended and elapsed ranges, explicit lega
 | Lua | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | orthologs conservation-comparison | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
-| Lua | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-transcript-assay-fallback | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

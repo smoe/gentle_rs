@@ -83,6 +83,80 @@ file preservation on the committed source; macOS cannot establish Windows
 file-handle behavior. Full-suite, package and provider/scientific acceptance
 remain separate. Uploads and CI dispatch remain with the owner.
 
+## Protein Expression Named Scripting Bindings, 2026-11-03
+
+Authored from `fa5de553`, preserving its preflight readers: named JS/Lua
+`protein_expression_handoff(project, options)` returns the existing v2 report.
+Shared inline admission also serves MCP; its saved-state/error boundary stays
+intact. No new operation, provider action, write, agent-plan permission or
+project codec is introduced. Lua nested typed decode preserves reviewed empty
+lists/false. JS options, not the project, travel as JSON; unsafe timestamps are
+refused. Per-interface glossary signatures and tutorial 09.03 describe these
+first-class bindings, not a previously impossible execution route.
+
+Rust checks/tests and JS/Lua VM execution have **not** run here. The owner's
+exception covers only canonical generator builds/runs; their successful output
+is not runtime or native acceptance. Current CI scripting jobs compile optional
+features and smoke-test binaries but do not execute these new tests. Run each
+adapter filter explicitly and require at least two tests, not a zero-test pass:
+
+```sh
+cargo test --locked --features js-interface --lib js_interface::tests::js_protein_expression_handoff_ -- --test-threads=1
+cargo test --locked --features lua-interface --lib lua_interface::tests::lua_protein_expression_handoff_ -- --test-threads=1
+cargo check -q --locked --features script-interfaces --tests
+cargo test --locked --no-default-features --lib mcp_server::protein_expression:: -- --test-threads=1
+cargo test --locked --no-default-features --lib engine_shell::protein_expression_handoff:: -- --test-threads=1
+cargo test --locked --test capability_registry_parity protein_expression_handoff_named_scripting_bindings_preserve_canonical_usage
+cargo test --locked --test parity_matrix_freshness
+```
+
+Use the same effective profile/provider catalog for the in-process oracle and
+adapters. Compare every report field except `generated_at_unix_ms`; projected
+provider status depends on that catalog, not a universal GeneArt guarantee.
+The existing MCP positive control assumes the bundled catalog; run it with an
+isolated configuration. Check saved and in-memory project preservation, saved
+versus explicit-empty objectives, JSON/text, missing product, partial/withheld
+requirements, unknown/null/path options and timestamp refusals. Read the named
+signature back from capabilities and call the actual registered VM function.
+
+Rehearse the one-line Lua/JS examples in tutorial 09.03 using source-built
+REPLs; no `--script` flag exists. Retain manual/hybrid status and the four
+historical macOS GUI captures at `9f01098b`; they prove no new scripting path.
+Native/platform/live-agent/provider/biological acceptance remains separate.
+No push or CI dispatch is authorized by this handoff.
+
+Authoring verification at `fa5de553` plus this uncommitted diff on macOS:
+127 offline tests passed, with seven expected binary-dependent skips, across
+`scripts.test_specialist_tutorials`, `scripts.test_release_workflow_tutorials`,
+`scripts.test_capability_maturity` and `scripts.test_tutorial_checkouts`.
+The canonical generator-only build/run below succeeded; its parity and
+tutorial-catalog check modes, maturity/manual/documentation checks and
+whitespace checks pass. This build has the existing headless dead-code and
+macOS linker warnings; it does not compile or execute optional scripting tests.
+Whole-file JS/Lua rustfmt still reports pre-existing SAM-block formatting;
+new hunks are formatted and those unrelated blocks were preserved.
+Session-close reports four OK, two reminders (intentional dirty/generated
+files and manual plan fidelity), zero failures. The old goal and unrelated
+`outputs/` remain untouched; manifest/lock, agent prompt and screenshots are
+unchanged.
+
+```sh
+cargo run --locked --no-default-features -j1 --bin gentle_examples_docs -- parity-matrix-generate
+target/debug/gentle_examples_docs tutorial-catalog-generate
+python3 scripts/generate_capability_maturity.py --write
+python3 scripts/manual_docs.py --write
+```
+
+Changed code is in `src/engine_shell/protein_expression_handoff.rs`, its module
+declaration, `src/{js_interface,lua_interface}.rs`,
+`src/mcp_server/protein_expression.rs`, `src/test_support{.rs,/protein_expression.rs}`
+and `tests/capability_registry_parity.rs`. Teaching checks are in
+`scripts/test_specialist_tutorials.py`. Documentation covers README,
+`docs/cli/{javascript,lua,planning}.md`, protocol/agent docs, changelog, roadmap,
+this handoff and the status-prefixed original review prompt. Tutorial 09.03's
+Markdown/source notes and generated catalog changed, along with the glossary,
+parity matrix and glossary hashes in the four existing maturity catalogs.
+
 ## egui 0.37 And Ported Glossary Repair, 2026-11-02
 
 The owner's updated root manifest/lock select egui/eframe 0.37, while the

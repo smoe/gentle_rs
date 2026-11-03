@@ -468,6 +468,35 @@ fn execute_agent_plan_impl(
     })
 }
 
+fn protein_expression_handoff_impl(
+    state: ProjectState,
+    options_json: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let invalid = |cause| {
+        JsAnyhow::from_adapter_cause(ErrorCode::InvalidInput, "JS adapter command failed", cause)
+    };
+    let options: serde_json::Value = serde_json::from_str(options_json).map_err(|error| {
+        invalid(format!(
+            "Invalid protein_expression_handoff options JSON: {error}"
+        ))
+    })?;
+    // A JSON string cannot restore precision already lost in a JS Number.
+    if let Some(timestamp) = options
+        .get("requirements")
+        .and_then(|value| value.get("reviewed_at_unix_ms"))
+        && timestamp.is_number()
+        && !timestamp
+            .as_u64()
+            .is_some_and(|value| value <= 9_007_199_254_740_991)
+    {
+        return Err(invalid(
+            "reviewed_at_unix_ms must be a nonnegative safe JavaScript integer".into(),
+        ));
+    }
+    crate::engine_shell::protein_expression_handoff::inspect(state, &options)
+        .map_err(JsAnyhow::from)
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, JsAnyhow> {
@@ -654,6 +683,15 @@ fn primers_preflight(
     #[string] primer3_executable: &str,
 ) -> Result<serde_json::Value, JsAnyhow> {
     primers_preflight_impl(state, backend, primer3_executable)
+}
+
+#[op2]
+#[serde]
+fn protein_expression_handoff(
+    #[serde] state: ProjectState,
+    #[string] options_json: &str,
+) -> Result<serde_json::Value, JsAnyhow> {
+    protein_expression_handoff_impl(state, options_json)
 }
 
 #[op2]
@@ -963,6 +1001,7 @@ impl JavaScriptInterface {
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
         const PRIMERS_PREFLIGHT: OpDecl = primers_preflight();
+        const PROTEIN_EXPRESSION_HANDOFF: OpDecl = protein_expression_handoff();
         const SHOW_CONSTRUCT_REASONING_GRAPH: OpDecl = show_construct_reasoning_graph();
         const LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS: OpDecl =
             list_construct_reasoning_inspection_actions();
@@ -1006,6 +1045,7 @@ impl JavaScriptInterface {
                 LIST_HOST_PROFILE_CATALOG_ENTRIES,
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
                 PRIMERS_PREFLIGHT,
+                PROTEIN_EXPRESSION_HANDOFF,
                 LIST_CONSTRUCT_REASONING_GRAPHS,
                 SHOW_CONSTRUCT_REASONING_GRAPH,
                 LIST_CONSTRUCT_REASONING_INSPECTION_ACTIONS,
@@ -1091,6 +1131,20 @@ impl JavaScriptInterface {
                       }
                       function primers_preflight(state, backend, primer3_executable) {
                         return Deno.core.ops.primers_preflight(state, backend ?? "", primer3_executable ?? "");
+                      }
+                      function protein_expression_handoff(state, options) {
+                        const invalid = cause => {
+                          throw new Error(JSON.stringify({code: "InvalidInput", message: "JS adapter command failed", cause_chain: [cause]}));
+                        };
+                        if (state == null) invalid("protein_expression_handoff requires a project");
+                        const stamp = options?.requirements?.reviewed_at_unix_ms;
+                        if (typeof stamp === "number" && (!Number.isSafeInteger(stamp) || stamp < 0))
+                          invalid("reviewed_at_unix_ms must be a nonnegative safe JavaScript integer");
+                        let payload;
+                        try { payload = JSON.stringify(options ?? {}); }
+                        catch (error) { invalid("Options must be JSON data: " + String(error)); }
+                        if (payload === undefined) invalid("Options must be a JSON object");
+                        return Deno.core.ops.protein_expression_handoff(state, payload);
                       }
                       function list_construct_reasoning_graphs(state, seq_id) {
                         return Deno.core.ops.list_construct_reasoning_graphs(state, seq_id ?? "");
@@ -1463,6 +1517,125 @@ mod tests {
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn js_protein_expression_handoff_matches_shell_oracle_without_state_or_file_changes() {
+        use crate::test_support::protein_expression as fixture;
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("expression review's \u{3bc}.json");
+        fixture::fixture_state()
+            .save_to_path(path.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        assert_ne!(
+            fixture::canonical(fixture::oracle(&state, &serde_json::json!({}))),
+            fixture::canonical(fixture::oracle(
+                &state,
+                &serde_json::json!({"objective":{}})
+            ))
+        );
+        let mut cases = Vec::new();
+        for mut options in fixture::cases() {
+            for format in ["json", "text"] {
+                options["format"] = serde_json::json!(format);
+                let expected = fixture::oracle(&state, &options);
+                let actual =
+                    protein_expression_handoff_impl(state.clone(), &options.to_string()).unwrap();
+                assert_eq!(
+                    fixture::canonical(actual),
+                    fixture::canonical(expected.clone())
+                );
+                if options.get("provider").is_none() {
+                    assert_eq!(expected["provider_binding"]["status"], "not_selected");
+                }
+                if options["requirements"]["outsourcing"]["allowed"] == false
+                    && options.get("provider").is_some()
+                {
+                    assert_eq!(expected["provider_binding"]["status"], "withheld");
+                }
+                // Provider availability is host-catalog evidence: projected/withheld
+                // must match the shared oracle, not an ambient-catalog assumption.
+                cases.push(serde_json::json!({"options":options,"expected":expected}));
+            }
+        }
+        let mut js = JavaScriptInterface::default();
+        js.run_checked(format!(r#"
+            {oracle}
+            var project = load_project({path});
+            var original = load_project({path});
+            var descriptor = capabilities().capability_registry.find(row => row.name === 'planning protein-expression-handoff');
+            var signature = descriptor.input_schema['x-gentle-usage-by-interface'].js;
+            if (typeof globalThis[signature.split('(')[0]] !== 'function') throw Error('Missing discovered JS export');
+            for (var scenario of {cases}) {{
+              var report = protein_expression_handoff(project, scenario.options);
+              delete report.generated_at_unix_ms;
+              delete scenario.expected.generated_at_unix_ms;
+              if (!eq(report, scenario.expected)) throw Error('VM report differs from shared shell');
+            }}
+            var omitted = protein_expression_handoff(project);
+            var undefinedField = protein_expression_handoff(project, {{requirements: undefined}});
+            delete omitted.generated_at_unix_ms;
+            delete undefinedField.generated_at_unix_ms;
+            if (!eq(omitted, undefinedField)) throw Error('Undefined did not preserve omission');
+            if (!eq(project, original)) throw Error('Read-only binding changed project');
+        "#, oracle=LIFECYCLE_STATE_ORACLE,
+            path=serde_json::to_string(path.to_str().unwrap()).unwrap(),
+            cases=serde_json::to_string(&cases).unwrap())).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn js_protein_expression_handoff_rejects_unknown_null_path_and_invalid_options() {
+        use crate::test_support::protein_expression as fixture;
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("review.json");
+        fixture::fixture_state()
+            .save_to_path(path.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&path).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        let invalid = serde_json::json!([
+            [], true, "@private.json", {"confirm":true}, {"format":"yaml"},
+            {"profile_scope":"global"}, {"provider":true}, {"provider":""},
+            {"requirements":null}, {"objective":null}, {"format":null},
+            {"requirements":[]}, {"objective":[]},
+            {"requirements":"@private.json"}, {"objective":"existing.json"},
+            {"objective":"C:\\private\\review.json"},
+            {"requirements":{"schema":"gentle.protein_expression_requirements.v1","invented":true}},
+            {"requirements":{"schema":"gentle.protein_expression_requirements.v1","reviewed_at_unix_ms":9007199254740992_u64}}
+        ]);
+        for options in invalid.as_array().unwrap() {
+            let error =
+                protein_expression_handoff_impl(state.clone(), &options.to_string()).unwrap_err();
+            let error: EngineError = serde_json::from_str(&error.to_string()).unwrap();
+            assert_eq!(error.code, ErrorCode::InvalidInput, "{options}");
+        }
+        let mut js = JavaScriptInterface::default();
+        js.run_checked(format!(r#"
+            {oracle}
+            var project = load_project({path});
+            var original = load_project({path});
+            function rejects(call) {{
+              var error;
+              try {{ call(); }} catch (caught) {{ error = String(caught); }}
+              if (!error) throw Error('Invalid input accepted');
+              var payload = JSON.parse(error.slice(error.indexOf('{{')));
+              if (payload.code !== 'InvalidInput') throw Error('Unstructured admission error');
+            }}
+            for (var options of {invalid}) rejects(() => protein_expression_handoff(project, options));
+            rejects(() => protein_expression_handoff());
+            rejects(() => protein_expression_handoff(null, {{}}));
+            for (var stamp of [NaN, Infinity, -1, 1.5, 9007199254740993])
+              rejects(() => protein_expression_handoff(project, {{requirements: {{schema:'gentle.protein_expression_requirements.v1', reviewed_at_unix_ms:stamp}}}}));
+            rejects(() => protein_expression_handoff(project, {{requirements: {{reviewed_at_unix_ms:1n}}}}));
+            if (!eq(project, original)) throw Error('Refusal changed project');
+        "#, oracle=LIFECYCLE_STATE_ORACLE,
+            path=serde_json::to_string(path.to_str().unwrap()).unwrap(), invalid=invalid)).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn js_primers_preflight_matches_shell_and_vm_without_mutating_settings() {

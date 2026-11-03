@@ -6686,6 +6686,26 @@
          "aliases": [],
          "engine_operations": [],
          "interfaces": [
+            "js"
+         ],
+         "path": "planning protein-expression-handoff",
+         "summary": "Return the shared read-only expression report from an in-memory project and inline options, without provider contact or action execution.",
+         "usage": "protein_expression_handoff(project, [options])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "planning protein-expression-handoff",
+         "summary": "Return the shared read-only expression report from an in-memory project and inline options, preserving reviewed empty lists and false answers.",
+         "usage": "protein_expression_handoff(project, [options])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
             "cli-shell",
             "gui-shell",
             "cli-direct"

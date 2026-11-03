@@ -134,6 +134,9 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     objects instead of `@FILE` operands. Save the project first when comparing
     with MCP's `state_path`. The inner assistant proposes this shared command;
     neither agent path selects a provider or runs follow-up actions implicitly.
+  - JS/Lua `protein_expression_handoff(project, [options])` returns this same
+    report from an explicit in-memory project. It accepts inline objects/tables
+    rather than file operands; see [09.03](../tutorial/09-03_protein_expression_handoff_cli.md#javascript-and-lua-rehearsal).
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

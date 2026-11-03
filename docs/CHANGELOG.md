@@ -34,6 +34,27 @@
   [handoff](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03).
   No push, CI dispatch, release or package upload.
 
+## 2026-11-03 - Protein Expression Named Scripting Bindings
+
+- Add first-class JS/Lua `protein_expression_handoff(project, options)` readers
+  of the existing shared report. Extract inline admission from MCP while
+  preserving its state-path/error boundary. Keep defaults, missing questions,
+  explicit provider selection and no-action/no-write behavior in the shared
+  parser/executor; no new operation, schema or agent authorization is added.
+- Preserve Lua reviewed empty lists/false through typed nested decoding; reject
+  null fields, unknown options and implicit file ingress. JS transports options
+  as JSON without changing the project codec and refuses unsafe timestamps.
+- Add per-interface discovery signatures, report/state-preservation and invalid
+  input tests, and one-line tutorial 09.03 rehearsals. Existing GUI screenshots
+  remain bound to their historical source, not scripting acceptance. Generator
+  builds are owner-authorized; Rust checks/tests and VM/native execution remain
+  unrun here and delegated to Glen/CI. Capability maturity is not upgraded.
+- Authoring verification: 127 offline Python tests pass with seven expected
+  binary-dependent skips, including LF/CRLF checks. Canonical parity/tutorial,
+  maturity/manual/documentation and whitespace checks pass. The generation-only
+  headless build succeeds with existing warnings; this is not scripting or
+  native acceptance. Session-close reports four OK, two reminders, zero failures.
+
 ## 2026-11-03 - Primer3 Preflight Reader Parity
 
 - Reconcile the supplied Primer3 parity prompt against `9c07188d`: persistent
