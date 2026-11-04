@@ -8895,7 +8895,11 @@ Shared-shell routes:
     `rna_read` report fact and model their optional JSON path as an external
     artifact handoff.
   - Primer helper readbacks are fact-annotated where existing facts can express
-    readiness: `primers preflight` is ready without project state,
+    readiness: `primers preflight` and MCP `primers_preflight` are ready
+    without project facts. The MCP descriptor names its optional `state_path`,
+    `backend`, and `primer3_executable` arguments and declares no writes.
+    This is readiness to request a probe, not proof of Primer3 reachability;
+    introspection never runs the probe.
     `primers seed-from-feature`, `primers seed-from-splicing`, and
     `primers restriction-cloning-vector-suggestions` require
     `sequence.exists(SEQ_ID)`, and

@@ -27521,6 +27521,15 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--primer3-exec", "required": false, "subject_kind": "other", "detail": "optional primer3_core executable path"}),
             ],
         ),
+        no_project_inspection_operation_descriptor(
+            "primers_preflight",
+            "Probe the selected primer-design backend through MCP's shared read-only shell route without changing project settings or designing primers; catalog readiness does not establish tool reachability.",
+            vec![
+                json!({"name": "state_path", "required": false, "subject_kind": "other", "detail": "saved project path; defaults to the MCP server startup state path"}),
+                json!({"name": "backend", "required": false, "subject_kind": "other", "detail": "optional auto, internal, or primer3 override; shared shell aliases are accepted"}),
+                json!({"name": "primer3_executable", "required": false, "subject_kind": "other", "detail": "optional executable name or path for this probe only; does not change project settings"}),
+            ],
+        ),
         json!({
             "id": "primers seed-from-feature",
             "kind": "operation",

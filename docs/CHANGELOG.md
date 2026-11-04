@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-04 - Annotate The Primer Preflight MCP Capability
+
+- Add the missing fact-aware descriptor for the existing `primers_preflight`
+  MCP route, including its optional state path, backend and executable inputs.
+  Match the shared shell's read-only, no-project-precondition contract without
+  adding facts, effects, approval changes or a new execution path. Catalog
+  readiness permits requesting a probe; it does not establish tool reachability.
+- Keep the full-registry guard unchanged. Add regression coverage for both
+  capability catalogs, bound/unbound readiness and unchanged project state;
+  both the guard and the new test reproduce the original failure before repair.
+- Locked/offline headless verification on macOS arm64 passes 101 introspection
+  tests, six preflight tests (overlapping filters) and Cargo check. Existing
+  dead-code/linker warnings remain; default-feature/GUI, full-suite and native
+  Windows verification were not run for this metadata-only repair.
+
 ## 2026-11-03 - Accept Exact Pins In The egui Compatibility Guard
 
 - Teach the GUI version-family guard to accept Cargo's leading `=` while
