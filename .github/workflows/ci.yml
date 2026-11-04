@@ -279,6 +279,7 @@ jobs:
       - run: python3 -m unittest scripts.test_container -v
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
       - run: python3 -m unittest scripts.test_capability_maturity -v
+      - run: python3 -m unittest scripts.test_primer_reference_reader -v
       - name: RNA read-end metric comparison (synthetic only)
         run: python3 -m unittest discover -s tests -p test_compare_rna_read_end_metrics.py -v
       - run: python3 -m unittest scripts.test_gel_tapestation.TapeStationFixtureTests -v

@@ -11979,6 +11979,14 @@ GENtle project.
     HSPs retain the subject-window semiglobal path. The stored `algorithm`
     distinguishes these methods; only GENtle's normal completeness, intended
     product, allowlist, and finalization gates can produce a native pass
+  - subject-window reads share an interpretation-local parsed FASTA index,
+    not a global cache or cached sequence windows. Fresh resource resolution,
+    manifest/file checks and existing reference admission/rechecks remain.
+    Before returning a child report, bound index/manifest bytes are rehashed;
+    drift returns `primer_specificity_reference_changed_during_interpretation`.
+    Initial missing/corrupt-resource warnings and alignment fallbacks retain
+    their prior semantics. Report formats, hashes, hit ordering and policies
+    do not acquire cache/timing fields or relaxed completeness claims
   - prepared transcriptome resources add optional `subject_annotation` to
     primer hits and candidate amplicons. It includes the full and normalized
     transcript stable id, full and normalized gene stable id, `gene_symbol`,

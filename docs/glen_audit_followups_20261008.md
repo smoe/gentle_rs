@@ -703,9 +703,13 @@ rehash of large originals. Historical audit trees and gate verdicts stay intact.
 
 The next proposed bounded repair targets repeated prepared-window/index work
 inside hit interpretation, with result-equivalence and stale-reference tests.
-It is not implemented here; global caching, skipped validation, biological
-policy changes and annotation/alias optimization are not bundled into it.
-No local Rust execution, new real replay, push or dispatch occurred here.
+That diagnostic-only change implemented no optimization. The subsequent
+owner-authorized [interpretation-local reader implementation](glen_next_verification_handoff.md#interpretation-local-reference-reader-repair-2026-11-05)
+is now authored with synthetic equivalence/load-count/staleness regressions;
+Rust, Windows and bounded real-import performance verification remain open.
+Global caching, skipped validation, biological policy changes and annotation/
+alias optimization are excluded. No new six-gate completion, local Rust
+execution, real replay, push or dispatch follows from this implementation.
 
 ### Next Package Recipe After The Internal.12 Publication
 

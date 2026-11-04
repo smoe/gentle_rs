@@ -1506,6 +1506,17 @@ label. Replacing database content at the same prefix invalidates a pending
 handoff. Whole-prepare activity state does not override successful
 component-level `blastdbcmd` validation.
 
+Owner-authorized reader repair, 2026-11-05: parsed FASTA indexes may be reused
+only within one specificity interpretation, shared by its forward/reverse and
+fallback reads. Keep catalog resolution and manifest/file validation on every
+window, open FASTA data afresh and do not cache failed index loads or bypass
+reference-backed terminal checks. Bind reused index/manifest bytes and rehash
+before returning a report; observed index/manifest drift fails closed. Retain
+the outer handoff reference checks before and after interpretation. No global
+cache, hit truncation, new assembly alias or report/schema/biology change is
+licensed by this optimization. Metadata is a reuse hint, never content proof;
+these checkpoints are not an atomic filesystem snapshot or hostile-race guarantee.
+
 Intended-target geometry carries its original reference/assembly/release. A
 matching chromosome label cannot transfer coordinates to another assembly or
 release. Explicit mappings bind the searched database, are labelled

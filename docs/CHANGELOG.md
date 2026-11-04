@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-11-05 - Reuse Parsed Reference Indexes Within Specificity Interpretation
+
+- Add an interpretation-local prepared reader shared by both primer directions
+  and subject-window fallbacks. Reuse only parsed FASTA indexes; retain fresh
+  resource resolution, manifest/file checks, FASTA reads, terminal evidence and
+  outer reference validation. No global/window/negative cache, annotation reuse,
+  hit truncation, schema or biological-policy change.
+- Bind manifest/index content, check changed metadata and rehash before returning
+  the child report. Refuse stale reused data, including equal-size/restored-mtime
+  index edits, without upgrading incomplete evidence or changing ordinary
+  unavailable-resource warnings/fallbacks. Keep public uncached readers intact.
+- Add eleven synthetic Rust regressions for uncached/cached equivalence,
+  deterministic parse counts, aliases, missing/corrupt/stale resources,
+  LF/CRLF, quoted/Unicode paths and handle closure. Add five offline wiring
+  guards with negative controls to existing non-Rust CI, and update the focused
+  Glen handoff and reference contract. Rust/native/performance verification
+  remains pending; no local Rust build/test, real replay, push or dispatch.
+- Authoring checks: 41 offline source/metadata/documentation tests passed, zero
+  skips; scoped rustfmt, parent-module parsing, manual/status and whitespace
+  checks pass. All eleven new Rust tests remain unexecuted locally.
+
 ## 2026-11-05 - Record Post-BLAST Phase Attribution At dfca3261
 
 - Verify Glen's 17,854-byte evidence archive, all 82 manifest entries and the

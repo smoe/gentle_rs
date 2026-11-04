@@ -61,6 +61,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 
+#[path = "genomes/prepared_sequence_reader.rs"]
+mod prepared_sequence_reader;
+pub(crate) use prepared_sequence_reader::PreparedSequenceRegionReader;
+#[cfg(test)]
+#[path = "genomes/prepared_sequence_reader_tests.rs"]
+pub(crate) mod prepared_sequence_reader_tests;
+
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_HELPER_SEMANTICS_VOCABULARY_PATH: &str =
@@ -6837,6 +6844,7 @@ impl GenomeCatalog {
             end_1based,
             cache_dir_override,
             true,
+            None,
         )
     }
 
@@ -6856,9 +6864,11 @@ impl GenomeCatalog {
             end_1based,
             cache_dir_override,
             false,
+            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn read_prepared_sequence_region(
         &self,
         genome_id: &str,
@@ -6867,6 +6877,7 @@ impl GenomeCatalog {
         end_1based: usize,
         cache_dir_override: Option<&str>,
         allow_compatible: bool,
+        index_cache: Option<&mut prepared_sequence_reader::SequenceIndexCache>,
     ) -> Result<String, String> {
         if start_1based == 0 {
             return Err("Coordinates must be 1-based (start >= 1)".to_string());
@@ -6890,7 +6901,14 @@ impl GenomeCatalog {
         let manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
 
-        let index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
+        let uncached_index;
+        let index = if let Some(cache) = index_cache {
+            cache.bind_manifest(&manifest_path, &manifest)?;
+            cache.index(Path::new(&manifest.fasta_index_path))?
+        } else {
+            uncached_index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
+            &uncached_index
+        };
         let chr_candidates = chromosome_lookup_candidates(chromosome);
 
         let index_entry = chr_candidates

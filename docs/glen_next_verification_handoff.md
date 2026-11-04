@@ -7,6 +7,75 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Interpretation-Local Reference Reader Repair, 2026-11-05
+
+Owner-authorized implementation follows the `dfca3261` diagnostic below.
+`src/genomes/prepared_sequence_reader.rs` reuses only successfully parsed
+FASTA indexes within one single-reference interpretation. Both primer
+directions and all subject-window fallbacks share it. Per-read catalog
+resolution, manifest/file checks and fresh FASTA reads are preserved through
+the existing region reader; the public uncached and exact-only APIs remain.
+No failed-load/sequence-window/global cache or annotation/alias reuse is added.
+
+Raw index hashes bracket initial parsing; per-read metadata changes trigger
+content rechecks. All reused indexes and bound manifests are rehashed before
+returning the child report, including same-size/restored-mtime changes. Observed
+drift is sticky and returns `primer_specificity_reference_changed_during_interpretation`
+before a stale child can be persisted. Outer multi-reference admission and
+post-interpretation validation are unchanged. These checks do not promise an
+atomic filesystem snapshot, independently hash the whole FASTA on each hit or
+authorize alternate references. Initial read failures keep their legacy
+warnings/fallbacks; complete BLAST strings do not bypass the terminal fetch.
+
+New synthetic Rust tests: nine `prepared_sequence_reader_` cases for one-parse
+reuse, separate interpretations/resources, LF/CRLF and quoted/Unicode paths,
+aliases/compatible-resolution refusal, ordinary missing/corrupt inputs, final
+manifest/index drift and Windows handle closure; two `primer_specificity_local_reader_`
+cases compare uncached/cached hit fields, raw/aggregated warnings, products and
+summaries across both roles, full/partial/gapped/reversed HSPs and all three
+alignment modes. A test-only uncached reader drives the existing path as the
+comparison control, with literal alias/strand/terminal and no-truncation checks.
+All fixtures are inline synthetic data; no external tools or private inputs.
+
+Glen/CI: use one source-matched isolated target, require nonzero counts and stop
+on primary failures. These gates are affected by the reader repair, not repeats
+of unrelated completed comparator, gel, labware or biological campaigns:
+
+```sh
+cargo check -q --locked --tests -j1
+cargo check -q --locked --no-default-features --lib --bin gentle_cli -j1
+cargo test --locked --lib -j1 prepared_sequence_reader_ -- --test-threads=1
+cargo test --locked --lib -j1 primer_specificity_local_reader_ -- --test-threads=1
+cargo test --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1
+cargo test --locked --lib -j1 primer_import_trace -- --test-threads=1
+cargo test --locked --lib -j1 specificity_matrix_ -- --test-threads=1
+```
+
+If the queued MCP/parity check is still open, reuse that build for its existing
+two integration targets below. No interim source freeze or new bundle request.
+Native Windows must execute LF/CRLF/path, timestamp restoration, rename/delete
+and missing/corrupt cases; Unix passes alone are not Windows acceptance.
+
+Only after focused checks pass, repeat the authorized ACTB/TP53 retained-output
+imports with the existing procedure: same host/dev/default profile and reference
+identities, fresh absent state per attempt, one untraced and one traced run per
+case, 60 s deadline/5 s grace, four launches/300 s total. Do not rerun BLAST,
+reprepare references, relax hit/alignment/completeness policy or edit evidence.
+Compare phases, wall/user/system/RSS and outcomes against `dfca3261`; timeout
+is still incomplete, not a pass. If imports complete, retain/reopen reports and
+compare scientific content/bindings between tracing modes, excluding only named
+volatile fields. Completion or a faster phase is not a specificity/biology pass.
+Return exact source/tree/lock/binary hashes, toolchain/platform/profile, commands,
+counts/skips, failures and small manifest-bound evidence. Keep historical raw
+trees unchanged. No new real replay, local Rust, push or dispatch occurred here;
+Rust/native/performance acceptance remains pending. No Claude review was invoked.
+
+Authoring checks: 41 offline wiring/metadata/documentation checks passed, zero
+skips, including source-negative controls and LF/CRLF policy checks. New Rust
+files pass rustfmt; both changed parent modules parse under rustfmt without
+rewriting unrelated formatting. Manual catalog/status and whitespace checks
+pass; roadmap remains 400 lines. This is not Rust compilation or execution.
+
 ## Post-BLAST Phase-Trace Return, 2026-11-05
 
 Glen completed the diagnostic at `dfca32611ad2b217382186038a4c3879d907fdde`,
@@ -42,13 +111,13 @@ the absent large inputs or CLI binary. The diagnostic request is fulfilled;
 real-import performance and full scientific acceptance remain open. Do not
 repeat the unchanged four-run diagnostic or rerun BLAST/reference preparation.
 
-**Proposed next repair, not implemented or authorized by the diagnostic:**
+**Proposal at the diagnostic return, now implemented separately above:**
 `primer_specificity_hit_from_blast` unconditionally requests reference-backed
 3-prime mismatch evidence before using complete aligned BLAST strings. The
 prepared-window reader resolves/validates the resource and reloads the entire
 FASTA index on each successful read. This is a source-level amplification
 candidate inside `forward_hits`, not measured attribution to that subcall.
-Consider an interpretation-local prepared reference/index reader, preserving
+The proposal was an interpretation-local prepared reference/index reader, preserving
 existing resolution, alias, coordinate/strand, warning/fallback and pre/post
 reference checks. No global cache, hit truncation, mismatch-policy change or
 skipped validation. Keep annotation-decode/alias reuse a separate later change.

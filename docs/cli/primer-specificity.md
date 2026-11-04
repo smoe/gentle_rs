@@ -37,6 +37,16 @@ It is off by default and does not add timings to stdout, reports or state;
 completion events are not biological pass claims. Capture stderr to a local
 file and follow the [privilege-free diagnostic procedure](../glen_post_blast_import_phase_trace.md).
 
+Subject-window interpretation now reuses parsed FASTA indexes only within one
+assessment. It retains fresh catalog/manifest/file checks, terminal evidence,
+full-alignment fallback and outer reference validation; no hits are omitted.
+Changed bound index/manifest bytes refuse the child report with
+`primer_specificity_reference_changed_during_interpretation`, rather than
+publishing results from a stale parsed index. Initial unavailable/corrupt
+resources retain their prior warning/fallback behavior. No speedup or new
+biological acceptance is established until the [focused checks and real replay](../glen_next_verification_handoff.md#interpretation-local-reference-reader-repair-2026-11-05)
+complete; no new command or request flag is needed.
+
 ### Inspect Retained Panel Specificity
 
 ```sh

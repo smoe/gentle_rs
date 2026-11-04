@@ -31,6 +31,9 @@ mod rt_primer_comparison;
 mod rt_primer_redesign;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
 use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
+#[cfg(test)]
+#[path = "../analysis/primer_specificity_reader_tests.rs"]
+mod primer_specificity_reader_tests;
 use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
@@ -11681,7 +11684,7 @@ impl GentleEngine {
     }
 
     fn primer_specificity_three_prime_mismatches(
-        catalog: &GenomeCatalog,
+        reader: &mut crate::genomes::PreparedSequenceRegionReader<'_>,
         target_genome_id: &str,
         cache_dir: Option<&str>,
         hit: &BlastHit,
@@ -11695,7 +11698,7 @@ impl GentleEngine {
         let window_bp = three_prime_window_bp.min(query.len());
         let subject_min = hit.subject_start.min(hit.subject_end);
         let subject_max = hit.subject_start.max(hit.subject_end);
-        let mut subject_sequence = catalog.get_sequence_region_with_cache(
+        let mut subject_sequence = reader.get_sequence_region_with_cache(
             target_genome_id,
             &hit.subject_id,
             subject_min,
@@ -11735,7 +11738,7 @@ impl GentleEngine {
     }
 
     fn primer_specificity_full_alignment(
-        catalog: &GenomeCatalog,
+        reader: &mut crate::genomes::PreparedSequenceRegionReader<'_>,
         target_genome_id: &str,
         cache_dir: Option<&str>,
         hit: &BlastHit,
@@ -11780,7 +11783,7 @@ impl GentleEngine {
             )
         };
         let cache_dir = cache_dir.map(str::trim).filter(|value| !value.is_empty());
-        let (window_start, window_end, mut subject_sequence, warning) = match catalog
+        let (window_start, window_end, mut subject_sequence, warning) = match reader
             .get_sequence_region_with_cache(
                 target_genome_id,
                 &hit.subject_id,
@@ -11790,7 +11793,7 @@ impl GentleEngine {
             ) {
             Ok(sequence) => (expanded_start, expanded_end, sequence, None),
             Err(expanded_error) => {
-                let sequence = catalog.get_sequence_region_with_cache(
+                let sequence = reader.get_sequence_region_with_cache(
                     target_genome_id,
                     &hit.subject_id,
                     subject_min,
@@ -12238,7 +12241,7 @@ impl GentleEngine {
 
     #[allow(clippy::too_many_arguments)]
     fn primer_specificity_hit_from_blast(
-        catalog: &GenomeCatalog,
+        reader: &mut crate::genomes::PreparedSequenceRegionReader<'_>,
         target_genome_id: &str,
         cache_dir: Option<&str>,
         role: PrimerSpecificityPrimerRole,
@@ -12257,7 +12260,7 @@ impl GentleEngine {
         let (mut query_coverage_fraction, mut unaligned_query_bases, mut effective_mismatches) =
             Self::primer_specificity_hsp_query_alignment_evidence(query_length, hit);
         let legacy_three_prime_mismatches = match Self::primer_specificity_three_prime_mismatches(
-            catalog,
+            reader,
             target_genome_id,
             cache_dir,
             &canonical_hit,
@@ -12299,7 +12302,7 @@ impl GentleEngine {
                         role.as_str(), canonical_hit.subject_id, error
                     ));
                     match Self::primer_specificity_full_alignment(
-                        catalog,
+                        reader,
                         target_genome_id,
                         cache_dir,
                         &canonical_hit,
@@ -12327,7 +12330,7 @@ impl GentleEngine {
                     }
                 }
                 Ok(None) => match Self::primer_specificity_full_alignment(
-                    catalog,
+                    reader,
                     target_genome_id,
                     cache_dir,
                     &canonical_hit,
@@ -21227,6 +21230,7 @@ impl GentleEngine {
                     BTreeMap::new()
                 }
             };
+        let mut subject_reader = crate::genomes::PreparedSequenceRegionReader::new(&catalog);
         let forward_trace = import_trace::span(ImportPhase::ForwardHits);
         let mut forward_hits = forward_blast
             .hits
@@ -21234,7 +21238,7 @@ impl GentleEngine {
             .enumerate()
             .map(|(idx, hit)| {
                 Self::primer_specificity_hit_from_blast(
-                    &catalog,
+                    &mut subject_reader,
                     &forward_blast.genome_id,
                     cache_dir,
                     PrimerSpecificityPrimerRole::Forward,
@@ -21255,7 +21259,7 @@ impl GentleEngine {
             .enumerate()
             .map(|(idx, hit)| {
                 Self::primer_specificity_hit_from_blast(
-                    &catalog,
+                    &mut subject_reader,
                     &reverse_blast.genome_id,
                     cache_dir,
                     PrimerSpecificityPrimerRole::Reverse,
@@ -21503,6 +21507,11 @@ impl GentleEngine {
                     .as_ref()
                     .map(|seq_id| format!("sequence?seq_id={seq_id}"))
             });
+        subject_reader.validate_unchanged().map_err(|error| {
+            EngineError::invalid_input(format!(
+                "primer_specificity_reference_changed_during_interpretation: {error}"
+            ))
+        })?;
         Ok(PrimerSpecificityReport {
             schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
             report_id,
