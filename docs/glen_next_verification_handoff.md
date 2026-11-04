@@ -36,14 +36,34 @@ stash conflicts without reverting the equipment-pilot implementation. Manual
 catalog/status and whitespace checks also passed. These counts do not certify
 Rust, native Windows, upstream UTR extraction or biological interpretation.
 
-Glen's remaining scoped check is this command on native Windows, especially
-spaced/quoted/Unicode paths, LF/CRLF hashes, staging-handle closure and publication
-refusals. Hard-link unavailability must fail closed, not select an overwrite
-fallback. Report any symlink-permission skips separately; a skip is not a pass.
+Glen's focused native Windows check is closed at exact tested source
+`108cc5e51d02b31f7af90d941821a2733ad50059`: Windows x64 / NTFS,
+`Microsoft Windows NT 10.0.26100.0`, Python 3.15.2. The command above ran with
+`python` rather than `python3`: 16 passed, zero failed/skipped, exit 0,
+3.272 seconds. Both symlink cases executed. Spaced/apostrophe/Unicode paths,
+LF/CRLF hashes, closed staging handles and rename/delete, existing/racing
+destinations and fail-closed unsupported hard links are covered.
+
+The successful [Windows run](https://github.com/smoe-bot/gentle_rs/actions/runs/41917134734)
+uses wrapper commit `068ec42cdad5d6b9b65136bf58bea72e053c62d1`; its workflow
+explicitly checks out and asserts the tested upstream SHA in `candidate/`.
+The [retained receipts](https://github.com/smoe-bot/gentle_rs/tree/e22ca14b84dbef616678e8985781ff87ada8c97e/windows-evidence/108cc5e5)
+confirm that identity, environment, command and all 16 test outcomes. These
+were independently inspected here; no Rust or comparator rerun was performed.
+
+Byte-accounting caveat: the retained Git logs use LF, while `SHA256.txt`
+records their original CRLF Windows bytes. Both listed hashes match after
+explicit LF-to-CRLF reconstruction, not the Git blobs as stored. Treat the Git
+copies as declared line-ending derivatives, not byte-identical raw artifacts;
+the original Actions artifact was not downloaded or independently revalidated.
+
 Do not repeat completed TSS, CEL, primer/RT or sequence-design campaigns for
-this standalone utility. Frozen transcript models, CDS anchors, strand, clipping
-and cohort selection still belong to the unimplemented upstream extraction;
-the input-table hash cannot authenticate absent upstream provenance.
+this standalone utility, or repeat this Windows check without an affected
+change. This closes only the focused comparator gate: GUI, Rust, packages,
+private-data accuracy and biological acceptance are not implied. Frozen
+transcript models, CDS anchors, strand, clipping and cohort selection still
+belong to the unimplemented upstream extraction; the input-table hash cannot
+authenticate absent upstream provenance.
 
 ## RT Capture Integration Follow-Up, 2026-11-04
 

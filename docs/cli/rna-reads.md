@@ -55,7 +55,9 @@ foreign files occurs: inspect the failed run and choose a fresh path. Require
 successful process completion and a valid report, not merely an existing
 `report.json` filename. This is not an all-or-nothing directory transaction,
 crash-durability guarantee or protection against hostile parent-directory swaps.
-Native Windows handles/filesystem behavior needs its own verification.
+Focused Windows x64/NTFS checks passed at source `108cc5e5` (16 tests, no skips),
+including handle closure and publication refusals. This does not certify all
+Windows filesystems; see the [source-bound result](../glen_next_verification_handoff.md#read-end-metric-comparator-repair-2026-11-04).
 
 ### Biological Boundary
 

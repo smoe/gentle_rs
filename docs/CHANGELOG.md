@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-04 - Record Focused Native Windows Comparator Verification
+
+- Record Glen's 16/16 native Windows x64 / NTFS / Python 3.15.2 comparator
+  tests at `108cc5e5`, zero failures or skips, including both symlink cases.
+  Independently inspect the successful run's explicit candidate checkout and
+  immutable environment/test receipts; no comparator or Rust rerun here.
+- Close the scoped Windows request in the handoff and update its roadmap/manual
+  status. Distinguish Git's LF receipt copies from the manifest's CRLF hashes;
+  both original hashes match explicit CRLF reconstruction. No claim of raw
+  Actions-artifact revalidation, GUI/package or biological acceptance follows.
+  Transcript-aware UTR extraction remains separately unimplemented.
+
 ## 2026-11-04 - Implement The Test-Only OpenSCAD Emitter Pilot
 
 - Add one fixed, unoccupied, unblocked 4x6 Safe-Lock floor-seated rack
@@ -37,8 +49,9 @@
   fixture provenance and remaining native Windows/filesystem limits. No private
   reads, new biological result, Rust build/test, push or CI dispatch is involved.
 - Local macOS arm64 / Python 3.15.0 verification: 16 focused tests and 86 offline
-  release/metadata/documentation checks passed, zero skips. Native Windows and
-  upstream extraction remain unverified.
+  release/metadata/documentation checks passed, zero skips. At that authoring
+  boundary native Windows and upstream extraction remained unverified; the
+  later Windows-only result is recorded separately above.
 
 ## 2026-11-04 - Reconcile RT Capture Integration Metadata And Smoke Inputs
 
