@@ -1321,6 +1321,48 @@ class TutorialCheckoutTests(unittest.TestCase):
                                      f"Restore {relative.as_posix()} text eol=lf")
                     self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
 
+    def test_microarray_native_evidence_inputs_and_pixels_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        folder = Path("docs/screenshots/microarray_evidence_gui_cli/native_20261104")
+        evidence_path = folder / "evidence.json"
+        evidence_bytes = (checker.ROOT / evidence_path).read_bytes()
+        evidence = json.loads(evidence_bytes)
+        expected = {evidence_path: (evidence_bytes, hashlib.sha256(evidence_bytes).hexdigest())}
+        for row in evidence["inputs"].values():
+            if "path" in row:
+                path = Path(row["path"])
+                expected[path] = ((checker.ROOT / path).read_bytes(), row["sha256"])
+        for capture in evidence["captures"]:
+            path = folder / capture["raw_png"]
+            expected[path] = ((checker.ROOT / path).read_bytes(), capture["raw_png_sha256"])
+        for relative, (payload, digest) in expected.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest, str(relative))
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "Retained microarray evidence checkout fixture")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"microarray-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    retained = (target / relative).read_bytes()
+                    self.assertEqual(retained, payload)
+                    self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
+        vendor_prefix = b"test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset."
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                    if not line.startswith(vendor_prefix)
+                                    and not line.startswith(evidence_path.as_posix().encode() + b" "))
+        broken = Path(self.tmp.name) / "microarray-unprotected"
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        for relative, (_, digest) in expected.items():
+            if relative == evidence_path or relative.as_posix().encode().startswith(vendor_prefix):
+                self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest,
+                                    str(relative))
+
     def test_gene_assay_gui_evidence_hashes_survive_both_checkout_modes(self):
         (self.root / ".gitattributes").write_bytes(
             (checker.ROOT / ".gitattributes").read_bytes())
@@ -1989,7 +2031,8 @@ class TutorialVisualContractTests(unittest.TestCase):
         # unrelated synthetic families; no screenshot is manufactured here.
         for identifier, source_name in (("gibson_arrangements_gui", "03-07_gibson_arrangements_gui"),
                                         ("load_and_digest_pgex", "03-01_load_and_digest_pgex"),
-                                        ("protein_expression_handoff_cli", "09-03_protein_expression_handoff_cli")):
+                                        ("protein_expression_handoff_cli", "09-03_protein_expression_handoff_cli"),
+                                        ("microarray_evidence_gui_cli", "07-04_microarray_evidence_gui_cli")):
             source = json.loads((checker.ROOT / f"docs/tutorial/sources/{source_name}.json").read_bytes())
             self.sources.append(source)
             guide = source["catalog"]["path"]

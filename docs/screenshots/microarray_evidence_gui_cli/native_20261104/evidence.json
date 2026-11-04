@@ -1,0 +1,79 @@
+{
+  "schema": "gentle.manual_gui_tutorial_evidence.v1",
+  "status": "captured_and_visually_checked",
+  "capture_date": "2026-11-04",
+  "tutorial_id": "microarray_evidence_gui_cli",
+  "automated_gui_acceptance": false,
+  "producer": {
+    "revision": "503cb391dadf2fe8ed7e00080abb8cae7204b6af",
+    "package_version": "0.1.0-internal.13",
+    "build_id": "1793760120293",
+    "gentle_gui_sha256": "c0c97a29d7f7d5fbba9d1eaecac213b69e46020f2fc934f06ad354f0835af6d0",
+    "host": "Linux x86_64, isolated Xvfb"
+  },
+  "report_producer": {
+    "revision": "3839426f284f2309a6eb0bc3c77f19f1cc3b335e",
+    "build_id": "1793761257635",
+    "gentle_cli_sha256": "01d5b767d3f59ac461772261cf094a744f7c17aa5c6e25119ec7895b242cf6c3"
+  },
+  "capture": {
+    "method": "isolated Xvfb plus Openbox; native window-only ImageMagick import after reopening the saved projected project",
+    "reencoded_or_annotated": false,
+    "image_transforms": []
+  },
+  "inputs": {
+    "tp73_genbank": {
+      "path": "test_files/tp73.ncbi.gb",
+      "sha256": "9acebbd259f535a9f780006632e2fde3d796d4674783b313d5b28930ff898ab4"
+    },
+    "manifest": {
+      "path": "test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json",
+      "sha256": "933dca384ac3e9335d0799678b30718ce95d568881828dc5c34ad790ec2f8780"
+    },
+    "alpha_contrast": {
+      "path": "test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv",
+      "sha256": "1b16ec5d04992711251ef11d49af3ebaaae4475d6ed2f2a21664721602400e40"
+    },
+    "beta_contrast": {
+      "path": "test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv",
+      "sha256": "20f9e50e2ead790ed133c6dbe2f5e1a9a9366f2a9d392cb34c79d2a1306fd1fa"
+    },
+    "project": {
+      "sha256_at_reopen": "a94c4790576629db41caa6a80a647ebfd18e7fc35a0b3c94e53ce98d17a63a4b",
+      "sequence_id": "tp73_array_lesson",
+      "projected_features": 5,
+      "contrasts": ["AdTAp73alpha-AdGFP", "AdTAp73beta-AdGFP"]
+    },
+    "projection_receipt": {
+      "sha256": "aebba4a1e4f04dc13e55cf735799291184d7242f1c06e50b7a4a7ecf36c4ed02",
+      "parsed_rows": 5,
+      "skipped_rows": 0
+    }
+  },
+  "captures": [
+    {
+      "id": "projected_feature_detail",
+      "illustrates_step": 4,
+      "raw_png": "01-projected-feature-detail.raw.png",
+      "raw_png_sha256": "dad9276a756e5f7f69f9b47aec3d73f09ffc6ba4f3dcab0580c64cc90aa9dedd",
+      "png_dimensions_px": [1900, 1161],
+      "observed_state": "The reopened project shows Array (5), both contrast groups, selected local interval 30545..30665 and the selected feature's dataset, platform, assembly check, projection status, contrast and vendor identifiers.",
+      "observation_method": "manual visual inspection"
+    },
+    {
+      "id": "array_navigation_menu",
+      "illustrates_step": 4,
+      "raw_png": "02-array-navigation-menu.raw.png",
+      "raw_png_sha256": "3de25287fe613dc17019d9f6c829182bb42b32b93bae62f2f961250f6b8b5a62",
+      "png_dimensions_px": [1900, 1161],
+      "observed_state": "The Array context menu exposes nearest-feature focus and the Clariom D setup while the selected feature and its bounded provenance remain visible.",
+      "observation_method": "manual visual inspection"
+    }
+  ],
+  "limits": [
+    "The screenshots are Linux/Xvfb observations, not automated cross-platform GUI acceptance.",
+    "The vendor IDs and coordinates are real fixture provenance, but the contrast statistics are synthetic and are not derived from CEL files.",
+    "The reopened project initially retained a Cloning-focus filter; switching to Tracks and enabling Array was required before the five projected features became visible.",
+    "Genuine CEL replay and independent human interpretation remain pending."
+  ]
+}

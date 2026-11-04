@@ -102,12 +102,43 @@ returns an unapplied UI receipt; it has not displayed your result.
 
 ## 4. Read the Array Track and Navigate
 
-Enable the **Array** layer and inspect a projected feature's hover/detail:
+If the saved project reopens in **Cloning** focus, switch the left-hand focus to
+**Tracks** first. A retained feature filter can otherwise hide correctly saved
+Array features. Enable **Array (5)** and use **Fit Features** to bring the
+projected intervals into view. The two contrast groups should contain three and
+two rows respectively; expand a group and select an interval to inspect its
+detail.
+
+![Reopened TP73 project with both contrast groups and one projected feature selected](../screenshots/microarray_evidence_gui_cli/native_20261104/01-projected-feature-detail.raw.png)
+
+The retained Linux capture comes from the saved five-feature project. Its
+selected detail shows the E-MTAB-14704 fixture context, Clariom D platform,
+assembly check, projection status, named contrast, vendor probeset/transcript
+cluster IDs and local interval. Those fields establish traceability, not a real
+expression result.
+
+These are raw evidence images, not the final high-contrast teaching views.
+Open them at full size to inspect small labels; do not infer a missing feature
+from the compressed map overview. The selected beta row is
+`PSR0100145783.hg.1`, displayed at local bases 30545..30665 inclusive (121 bp).
+It is a different row from the 45-bp `PSR0100145779.hg.1` coordinate example
+above. Neither selection is a measured expression result.
+
+The [capture record](../screenshots/microarray_evidence_gui_cli/native_20261104/evidence.json)
+binds the PNGs and four committed input files. It records GUI producer
+`503cb391` separately from CLI report producer `3839426f`; it is not evidence
+that a newer binary has been natively accepted.
+Captured by Glen (`smoe-bot`), retained in
+[`37bc0cea`](https://github.com/smoe-bot/gentle_rs/commit/37bc0ceab467b09050fe4e998477af8c460b9347).
+
+Inspect a projected feature's hover/detail:
 probeset, transcript cluster, exon identifier, contrast, logFC and provenance.
 Right-click Array and choose **Focus nearest array feature**. The viewer uses
 the current selection midpoint, or visible-range midpoint without a selection.
 It finds the nearest projected interval, not the nearest unimported vendor probe
 anywhere in the genome.
+
+![Array context menu beside the selected TP73 feature and its retained provenance](../screenshots/microarray_evidence_gui_cli/native_20261104/02-array-navigation-menu.raw.png)
 
 Compare the same probeset across alpha/beta before comparing different regions.
 Color summarizes a named effect, not signal detection, RNA-seq abundance or
@@ -173,6 +204,8 @@ Command/source/coordinate checks live in `scripts.test_tutorial_gap_lessons`.
 The existing Rust regression
 `project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor` covers the
 five-row projection and exact `[4,49)` interval; reverse-anchor and explicit-map
-regressions are separate. Glen/CI must rerun them on the selected SHA. Native
-screenshots, genuine CEL replay and human interpretation remain pending. This
-manual guide does not claim an automated GUI contract or real expression result.
+regressions are separate. Glen/CI must rerun them on the selected SHA. The two
+native screenshots are revision/checksum-bound Linux/Xvfb observations of the
+saved synthetic-statistics fixture, not automated cross-platform GUI
+acceptance. Genuine CEL replay and human interpretation remain pending. This
+manual guide does not claim a real expression result.

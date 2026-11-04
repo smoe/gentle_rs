@@ -7,6 +7,7 @@ skip explicitly. No network, external model, references or pytest dependency.
 """
 
 import copy
+import csv
 import hashlib
 import importlib.util
 import json
@@ -27,6 +28,46 @@ BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
 
 
 class WalkthroughSourceTests(unittest.TestCase):
+    def test_microarray_native_evidence_keeps_hashes_producers_and_synthetic_scope(self):
+        folder = ROOT / "docs/screenshots/microarray_evidence_gui_cli/native_20261104"
+        evidence = json.loads((folder / "evidence.json").read_bytes())
+        self.assertEqual(evidence["schema"], "gentle.manual_gui_tutorial_evidence.v1")
+        self.assertEqual(evidence["tutorial_id"], "microarray_evidence_gui_cli")
+        self.assertFalse(evidence["automated_gui_acceptance"])
+        self.assertFalse(evidence["capture"]["reencoded_or_annotated"])
+        self.assertEqual(evidence["capture"]["image_transforms"], [])
+        self.assertEqual(evidence["producer"]["revision"], "503cb391dadf2fe8ed7e00080abb8cae7204b6af")
+        self.assertEqual(evidence["report_producer"]["revision"], "3839426f284f2309a6eb0bc3c77f19f1cc3b335e")
+        inputs = [row for row in evidence["inputs"].values() if "path" in row]
+        self.assertEqual(len(inputs), 4)
+        for row in inputs:
+            self.assertEqual(hashlib.sha256((ROOT / row["path"]).read_bytes()).hexdigest(), row["sha256"])
+        source = json.loads((ROOT / "docs/tutorial/sources/07-04_microarray_evidence_gui_cli.json").read_bytes())
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
+        projected, = [row for row in catalog["entries"] if row["id"] == source["id"]]
+        self.assertEqual(projected["graphics"], source["graphics"])
+        self.assertEqual(projected["notes"], source["catalog"]["notes"])
+        self.assertEqual(projected["review_status"], "unreviewed")
+        self.assertEqual(len(evidence["captures"]), 2)
+        self.assertEqual(len(source["graphics"]), 2)
+        for capture, graphic in zip(evidence["captures"], source["graphics"]):
+            path = folder / capture["raw_png"]
+            payload = path.read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), capture["raw_png_sha256"])
+            self.assertEqual(payload[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual([int.from_bytes(payload[n:n + 4], "big") for n in (16, 20)],
+                             capture["png_dimensions_px"])
+            self.assertEqual(ROOT / graphic["path"], path)
+            self.assertEqual(graphic["illustrates_step"], 4)
+        with (ROOT / evidence["inputs"]["beta_contrast"]["path"]).open(newline="") as stream:
+            selected, = [row for row in csv.DictReader(stream, delimiter="\t")
+                         if row["feature_id"] == "PSR0100145783.hg.1"]
+        self.assertEqual([int(selected[field]) - 3652516 + 1
+                          for field in ("start_1based", "end_1based")], [30545, 30665])
+        prose = (ROOT / source["catalog"]["path"]).read_text(encoding="utf-8")
+        for term in ("synthetic", "not the final high-contrast", "different row", "503cb391", "3839426f"):
+            self.assertTrue(term in prose, term)
+
     def test_cd44_guide_separates_native_tables_from_exported_geometry(self):
         guide = ROOT / "docs/tutorial/06-08_cd44_genome_transcript_protein_gui.md"
         prose = guide.read_text(encoding="utf-8")

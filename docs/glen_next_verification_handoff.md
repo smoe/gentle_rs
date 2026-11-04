@@ -7,15 +7,54 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Microarray Native Evidence Port, 2026-11-04
+
+Glen / `smoe-bot` published the seven-file documentation commit
+`37bc0ceab467b09050fe4e998477af8c460b9347` on
+`glen/genome-transcript-protein-gui-20261103`. Port only that commit's
+microarray changes, not the parent native overview or CD44/TSS tranche.
+Both raw PNGs and `evidence.json` remain byte-identical to Glen's commit.
+Retain main's reading card and protein-length provenance fix. Resolve the
+backlog against current main, not by importing the parent's completed flags.
+
+The receipt binds GUI source `503cb391` and CLI report source `3839426f`
+separately. Both PNG hashes/dimensions and all four committed input hashes
+match. The screenshots were visually inspected here; contrast and small-label
+readability remain weak. They establish retained Linux/Xvfb observations at
+their actual producer sources, not current-source, Windows/macOS or scientific
+acceptance. Project/receipt hashes without retained local files are not claimed
+independently verified. No genuine CEL processing was repeated.
+
+Keep the high-contrast teaching-image task open. Do not edit/re-encode the raw
+captures or rewrite their manifest. Any later crop/annotation needs a separate
+file and derivation record; opacity/readability may need a new authorized
+capture rather than a crop. Existing CD44/TSS source-review findings remain
+separate from this microarray-only import.
+
+Offline regressions bind canonical source/catalog graphics, both producer
+identities, raw image/input hashes and the selected 121-bp beta-row coordinates.
+Real LF/CRLF Git checkouts retain the pixels and text bytes; negative controls
+remove the scoped LF rules and global fallback to expose conversion. No Rust
+code, generated chapter, capture, provider call, push or CI dispatch is added.
+Normal CI still owns the canonical Rust catalog/manifest freshness checks;
+archive verification does not replace those checks or new native acceptance.
+
+Authoring checks: 121 offline tests selected, 118 passed and three real-binary
+cases skipped; the visual-only gate passed with 70 tutorial entries and 92
+declared visuals. Manual/status and whitespace checks passed; roadmap remains
+400 lines. Session-close: four OK, two intentional worktree/scope reminders,
+zero failures. Unrelated `paper`, private data, prompts and `output/` remain
+untouched.
+
 ## Tutorial Review Follow-Up, 2026-11-04
 
 The owner's forwarded overnight report has SHA-256
 `2efc2501a1b2143f849a187bf0de3c25f5d95eeecdcb0d17af0a81d32e584cea`.
 It distinguishes upstream `069bd37b` from Glen's local `1e75d926`. A bounded
-fetch of the named bot branch still returns `89eec1b9`, whose foundation is
-already integrated; `503cb391`, `3839426f` and `1e75d926` are unavailable here.
-Do not claim to have fixed or independently verified those newer drawings or
-seven captures. Preserve Glen's dirty microarray tranche separately.
+fetch at the time returned `89eec1b9`, whose foundation was already integrated;
+the newer source/captures were then unavailable. The publication and bounded
+microarray port above supersede that availability limitation. They do not fix
+or independently verify the parent overview/CD44/TSS tranche.
 
 The existing main table has the same expected-to-derived length fallback.
 Repair only its presentation: derived length requires `comparison.derived`;
@@ -30,10 +69,10 @@ Tutorial 06.08 now distinguishes the native tables from the exported SVG and
 teaches unavailable-versus-expected data, reverse-strand reading and separate
 project/file persistence. The 07.04 reading card keeps authentic coordinates
 apart from synthetic effects; 08.02's backbone link is checkout-relative.
-All are hand-written canonical guides, not generated chapters. Catalog,
-manifest, historical review dates, raw images and evidence manifests stay
-unchanged. The [image backlog](tutorial/coverage_backlog.md#overnight-review-follow-up-2026-11-04)
-records the still-missing overview/color mapping and readable-image work.
+All are hand-written canonical guides, not generated chapters. That earlier
+table/prose repair kept catalog, manifest, historical review dates, raw images
+and evidence manifests unchanged. The [image backlog](tutorial/coverage_backlog.md#overnight-review-follow-up-2026-11-04)
+records the remaining overview/color mapping and readable-image work.
 
 Run only the changed scopes before ordinary CI; require four regression matches:
 

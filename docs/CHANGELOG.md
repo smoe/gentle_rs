@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-04 - Retain Glen's Native Microarray Tutorial Evidence
+
+- Port the microarray documentation from Glen / `smoe-bot` commit `37bc0cea`,
+  preserving both raw PNGs and `evidence.json` byte-for-byte. Retain separate
+  GUI and CLI producer identities; no current-main or cross-platform acceptance
+  is inferred. Leave the parent native overview and CD44/TSS changes separate.
+- Keep main's evidence-reading card, clarify the captured beta row versus the
+  earlier 45-bp example, and explain Tracks/Array navigation after reopening.
+  Reconcile the backlog contextually, retaining opaque/high-contrast teaching
+  derivatives and genuine CEL/human interpretation as open work.
+- Add archive/source projection checks and real LF/CRLF pixel/input regressions
+  with missing-policy controls. Keep tutorial review status unreviewed and
+  generated chapters unchanged. No Rust build/test, new capture, push or CI
+  dispatch is performed.
+- Offline validation selected 121 tests: 118 passed, three binary-dependent
+  cases skipped. The visual-only gate, manual/status and whitespace checks pass;
+  this is archive/documentation verification, not new native GUI acceptance.
+
 ## 2026-11-04 - Clarify Tutorial Views And Protein-Length Provenance
 
 - Respond to the available portion of Glen's overnight tutorial review:

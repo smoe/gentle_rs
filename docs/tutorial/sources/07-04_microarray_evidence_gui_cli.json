@@ -9,7 +9,7 @@
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": ["gui_first", "cli_first", "agent_users", "expression_analysis", "wet_lab_biologists"],
-    "notes": "Offline Clariom D input roles, dedicated Microarrays configuration, TP73 manifest inspection/projection and nearest-feature navigation. Real vendor IDs/coordinates with explicitly synthetic effect statistics; no CEL analysis, hidden download or biological expression claim. Native and real-data acceptance remain pending.",
+    "notes": "Offline Clariom D input roles, dedicated Microarrays configuration, TP73 manifest inspection/projection and nearest-feature navigation. Real vendor IDs/coordinates with explicitly synthetic effect statistics; no CEL analysis, hidden download or biological expression claim. Revision-bound Linux native captures are retained; cross-platform and real-data acceptance remain pending.",
     "estimated_minutes": 20,
     "difficulty": "intermediate",
     "network": "offline core; optional explicitly retrieved public CEL/vendor inputs",
@@ -19,5 +19,21 @@
     "group": "07",
     "group_position": 4,
     "next_steps": ["gene_assay_study_gui"]
-  }
+  },
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/microarray_evidence_gui_cli/native_20261104/01-projected-feature-detail.raw.png",
+      "caption": "The reopened TP73 project shows both projected contrast groups and one selected array feature with its assembly, projection, contrast and vendor provenance.",
+      "illustrates_step": 4,
+      "capture_date": "2026-11-04"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/microarray_evidence_gui_cli/native_20261104/02-array-navigation-menu.raw.png",
+      "caption": "The Array context menu exposes nearest-feature navigation and setup while the selected feature remains visible in the saved project.",
+      "illustrates_step": 4,
+      "capture_date": "2026-11-04"
+    }
+  ]
 }

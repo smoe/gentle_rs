@@ -1,6 +1,6 @@
 # Tutorial Coverage and Screenshot Backlog
 
-Updated 2026-10-14 at source `024ed6c0520d38c4221517219d44c792084de4e5`.
+Updated 2026-11-04 after reviewing Glen's microarray evidence at `37bc0cea`.
 This is the current working list; `coverage_audit.md` remains a historical
 snapshot. Catalog presence, executable replay, native interaction, screenshot
 quality and human scientific review are separate states.
@@ -13,8 +13,9 @@ sidecars; label crops and annotations as derived teaching images.
 1. **08.16 imported TSS evidence:** complete and partial lanes, strand
    inversion, clipped footprints, signed/zero scores, coverage warnings and
    readable normal-size presentation.
-2. **07.04 microarray evidence:** native locus navigation, readable evidence
-   configuration/results and GUI save/reopen.
+2. **07.04 microarray evidence:** the two retained Linux captures now cover a
+   reopened project and its navigation menu. Opaque/high-contrast teaching
+   images and cross-platform GUI/save-reopen acceptance remain pending.
 3. **10.03 measured gel sizing:** native lane navigation, calibrated and null
    out-of-calibration results, and GUI save/reopen.
 4. **FLNA draft:** normal-size native overview/detail and orientation. The
@@ -28,19 +29,28 @@ sidecars; label crops and annotations as derived teaching images.
 7. **03.05 and 10.02 handoff points:** review-before-apply and sequence-
    confirmation save/reopen, for the new Synthetic Biology learning route.
 
+Retained 07.04 evidence (Glen / `smoe-bot`, `37bc0cea`): two checksum-bound
+Linux/Xvfb observations show both synthetic-statistics contrast groups, one
+selected vendor-derived feature and the nearest-feature menu. The recorded GUI
+producer is `503cb391`; the CLI report producer is `3839426f`. These are not
+current-main or cross-platform acceptance. Genuine CEL replay and independent
+domain interpretation remain pending. CD44/TSS parent-branch captures are not
+imported by this microarray-only port, so their queue entries are not closed.
+
 Do not reopen the completed 08.18 repeat-cohort run, tutorial-CI registration
 or release-link repair merely to obtain more images.
 
 ### Overnight Review Follow-Up, 2026-11-04
 
 The forwarded review covers Glen's local `1e75d926` on top of the public
-`069bd37b` boundary. His newer native overview, CD44/TSS captures and dirty
-microarray tranche are not present on the fetched public branch. Preserve
-that separate work; do not treat this list as an instruction to merge it blindly.
+`069bd37b` boundary. The newer overview and captures are now published on
+Glen's branch ending at `37bc0cea`. Only that tip's microarray tranche is
+ported here; the parent overview/CD44/TSS changes need separate review and
+semantic repair. Do not treat availability as an instruction to merge blindly.
 
 - For 06.08, current main's tables and derived SVG are now explained separately.
   Verify unavailable derived lengths versus external expectations natively.
-  Once Glen supplies the overview patch, reuse the shared renderer's exon-family
+  Before integrating the published overview, reuse the shared renderer's exon-family
   identity for both exon and CDS/protein segments; test a CDS starting within
   an exon, reverse-strand ordering and the historical 742/139-aa checkpoints.
 - Keep raw captures and manifests byte-identical. For new teaching captures,
