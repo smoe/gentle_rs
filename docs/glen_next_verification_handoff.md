@@ -7,6 +7,44 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Read-End Metric Comparator Repair, 2026-11-04
+
+The standalone Python utility is adapted from Glen / `smoe-bot`
+`a1cf936d0cbccbbc6f1e2cbed8474006d740bc25`. It is not an engine operation,
+`gentle_cli` command or MCP tool. Do not request a live-agent route that does
+not exist, replay private FASTQ or claim transcript-aware UTR extraction.
+
+Three review repairs: preserve CSV/TSV newline and exact-row semantics; separate
+observed zero from blank censored/missing data (optional explicit
+`--positive-metric` policy, no name-based inference); and reserve a fresh output
+directory with closed/synced staging and atomic no-clobber publication, JSON
+last. Numeric range validation prevents lossy integer inputs. Existing output
+directories/symlinks and missing parents fail before output writes. Failed runs
+can retain completed artifacts without a report; no automatic deletion/retry
+or all-or-nothing/crash/hostile-parent-swap guarantee is claimed.
+
+The offline CI step runs the synthetic process and publication tests:
+
+```sh
+python3 -m unittest discover -s tests -p test_compare_rna_read_end_metrics.py -v
+```
+
+Local verification on macOS arm64 / Python 3.15.0: all 16 focused tests and
+86 offline release/metadata/documentation checks passed, zero skips. Rechecked
+with the comparator working tree on main at `88cf72b6`, after resolving the
+stash conflicts without reverting the equipment-pilot implementation. Manual
+catalog/status and whitespace checks also passed. These counts do not certify
+Rust, native Windows, upstream UTR extraction or biological interpretation.
+
+Glen's remaining scoped check is this command on native Windows, especially
+spaced/quoted/Unicode paths, LF/CRLF hashes, staging-handle closure and publication
+refusals. Hard-link unavailability must fail closed, not select an overwrite
+fallback. Report any symlink-permission skips separately; a skip is not a pass.
+Do not repeat completed TSS, CEL, primer/RT or sequence-design campaigns for
+this standalone utility. Frozen transcript models, CDS anchors, strand, clipping
+and cohort selection still belong to the unimplemented upstream extraction;
+the input-table hash cannot authenticate absent upstream provenance.
+
 ## RT Capture Integration Follow-Up, 2026-11-04
 
 Integrate `fee72185` and `be6de439` from `gentle_rs_3` without inheriting their
@@ -36,9 +74,10 @@ cargo run --locked --bin gentle_examples_docs -- parity-matrix-check
 ```
 
 Keep native/process, whole-reference performance and scientific acceptance
-separate; no private data replay is authorized by this merge. The Q-Q utility
-repair was interrupted before any implementation and remains a separate task.
-No local Rust, push or dispatch was performed here.
+separate; no private data replay is authorized by this merge. At that merge
+boundary the Q-Q utility repair had not started; its subsequent standalone
+repair is recorded separately above. No local Rust, push or dispatch was
+performed here.
 
 Merge authoring checks: 37 offline metadata/documentation and targeted LF/CRLF
 checks passed with zero skips. Manual/status, scoped regression formatting and

@@ -18,6 +18,28 @@
   Native CAD, Windows, default-feature/GUI, full-workspace and physical/scientific
   acceptance were not run or inferred.
 
+## 2026-11-04 - Harden Glen's Read-End Metric Comparator
+
+- Adapt the standalone utility and its two original tests from Glen /
+  `smoe-bot` commit `a1cf936d`, without merging its parent branch or introducing
+  a new engine/MCP capability. Transcript-aware UTR extraction stays separate.
+- Preserve TSV newlines and reject ragged/malformed rows instead of joining
+  multiline numbers or ignoring fields. Allow explicit observed zero while
+  retaining blank censored/missing values. Add a generic, recorded per-metric
+  positive-value option, without inferred barcode/gene/metric-name rules, and
+  bound scalar values to the exact integer range used by the plotting output.
+- Require a fresh directory under an existing parent. Close/sync private staging
+  files before atomic no-clobber hard-link publication, JSON last. Preserve
+  racing files/symlinks; failed runs may remain partial and require a fresh
+  path, not automatic cleanup or retry. Unsupported hard links fail closed.
+- Add synthetic real-process, quoting/LF-CRLF, censoring, publication-race,
+  symlink, file-closure and failure regressions to the offline CI gate; document
+  fixture provenance and remaining native Windows/filesystem limits. No private
+  reads, new biological result, Rust build/test, push or CI dispatch is involved.
+- Local macOS arm64 / Python 3.15.0 verification: 16 focused tests and 86 offline
+  release/metadata/documentation checks passed, zero skips. Native Windows and
+  upstream extraction remain unverified.
+
 ## 2026-11-04 - Reconcile RT Capture Integration Metadata And Smoke Inputs
 
 - Integrate `gentle_rs_3` through `be6de439`, retaining both branches' histories

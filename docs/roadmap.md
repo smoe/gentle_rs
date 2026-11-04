@@ -296,7 +296,7 @@ infrastructure expansion that does not reduce release risk.
 Later interpretation work includes image/sketch-to-state patch proposals, richer assistant-facing findings records,
 deeper wet-lab process modeling, repeat/mobile-element curation, and cohort-scale comparative reasoning.
 These must remain explicit, inspectable proposals with confirmation before mutation.
-Useful work here improves proposal formats, evidence records, reproducible cohort comparisons, and rollback paths for state patches; defer autonomous wet-lab conclusions or unconfirmed mutations.
+Useful work here improves proposal formats, evidence records, reproducible cohort comparisons, and rollback paths for state patches; verify the [standalone read-end metric comparator](glen_next_verification_handoff.md#read-end-metric-comparator-repair-2026-11-04) on native Windows while keeping transcript-aware UTR extraction unimplemented and separately scoped; defer autonomous wet-lab conclusions or unconfirmed mutations.
 - Later release: [robotic wet-lab simulation and equipment digital twins](robotic_wetlab_simulation_plan.md#test-only-emitter-pilot-2026-11-04): preserve the bounded emitter regressions and owner-retained row-A/label-strip orientation; propose any native CAD acceptance or further backend work separately. Keep runtime reports/schemas and new fixture publication deferred; D2 remains repository-wide. Catalog publication, protocol/material inputs, worlds and CUT&RUN simulation have separate later gates; source checks or simulation do not establish physical fit, safety or biological validity.
 
 ## Parking Lot

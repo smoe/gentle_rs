@@ -1,5 +1,73 @@
 # RNA Read Interpretation
 
+## Cohort Read-End Metric Comparison
+
+The standalone checkout utility below is adapted from Glen / `smoe-bot`
+commit `a1cf936d`. It is not a `gentle_cli` command, engine operation or MCP
+tool. It consumes an explicitly prepared metric table, not FASTQ or alignments,
+and does not change project state/history:
+
+```sh
+python3 scripts/compare_rna_read_end_metrics.py INPUT.tsv NEW_OUTPUT_DIR --positive-metric read_length_bp
+```
+
+The UTF-8 TSV has exactly these four columns in this order (`\t` below denotes
+an actual tab, not literal backslash characters):
+
+```text
+sample_id\tmetric\tvalue_bp\tobservation_status
+```
+
+- Sample/metric IDs use 1-64 ASCII letters, digits, `_`, `-` or `.`, beginning
+  with a letter or digit. No sample names, metric names or barcode set is built in.
+- `observed` requires an explicit nonnegative integer in `value_bp`, up to
+  `9007199254740991`. An observed zero is distinct from missing/censored data.
+  Repeat `--positive-metric METRIC` for metrics whose declared input contract
+  requires nonzero values; the script does not infer that rule from a name.
+  Selected positive metrics must actually occur in the input.
+- `left_censored`, `right_censored` and `missing` require a blank `value_bp`.
+  Those rows are counted separately and never imputed as zero. Ragged rows,
+  invalid quoting and embedded newlines in tokens/numbers are refused, not
+  silently concatenated. At least two observed values are required for every
+  sample/metric combination; an entirely unassessed group cannot produce a Q-Q plot.
+
+The outputs are `summary.tsv`, `qq_pairs.tsv`, `qq_METRIC.svg` per metric and
+`report.json`. Six samples produce 15 unique pairs per metric, or 45 panels
+for three metrics. `--quantile-points N` selects 11-1001 type-7 quantiles
+(default 101). The JSON binds the exact input bytes by SHA-256 and records the
+value policy. LF/CRLF inputs can have identical results but different raw hashes.
+These are observed-subset summaries, not censoring-adjusted estimates of the
+whole-read population or replicate-level significance tests.
+
+### Safe Output And Recovery
+
+Use a **fresh output directory under an existing parent**. Existing directories,
+files and output-directory symlinks are refused, even if an existing directory
+is empty. `..` output components are refused; the existing parent is resolved
+once before reserving the new directory. Each file is privately staged, synced
+and closed, then published by an atomic no-clobber hard link. A late-created
+destination, including a dangling symlink, must not be overwritten or followed.
+Filesystems without hard-link support fail closed; there is no overwrite fallback.
+
+The JSON report is published last. A caught failure can leave a reserved partial
+run and earlier completed artifacts. No automatic retry, repair or deletion of
+foreign files occurs: inspect the failed run and choose a fresh path. Require
+successful process completion and a valid report, not merely an existing
+`report.json` filename. This is not an all-or-nothing directory transaction,
+crash-durability guarantee or protection against hostile parent-directory swaps.
+Native Windows handles/filesystem behavior needs its own verification.
+
+### Biological Boundary
+
+UTR reach must be prepared upstream against an explicit frozen transcript
+model, strand and CDS anchor. Ambiguous, clipped or unresolved ends stay
+censored/missing rather than being assigned an apparent zero. The plotting
+helper neither derives nor authenticates that geometry; its source hash binds
+the supplied table, not an absent transcript or alignment manifest. Transcript-
+aware extraction remains unimplemented. A 5'-UTR comparison is an end-specific
+control, not automatically a biological negative control. Library preparation,
+truncation, mapping and transcript selection remain possible explanations.
+
 <!-- manual-counterparts:start -->
 Related GUI reference: [RNA-Read Mapping Workspace](../gui/rna-read-mapping-workspace.md).
 These topic links do not imply identical feature coverage across interfaces.
