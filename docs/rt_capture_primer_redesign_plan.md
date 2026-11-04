@@ -550,3 +550,138 @@ Native GUI/process/VM execution, Windows/Linux, large real cohorts,
 candidate-specific reference-flank rescoring, abundance, redesign and RT
 mechanism/experimental acceptance remain separate. No private-data replay,
 provider call, order, push or publication belongs to this slice.
+
+
+## Fourth-Slice Implementation Ledger
+
+The owner requested committing the previous three slices, then constrained
+redesign for explicit shared-transcript or 3′-UTR groups without waiting for
+Claude. Commit `fee72185` contains those three completed slices. The redesign
+is a separate subsequent worktree change, not a claim that the earlier commit
+contains it. The original plan and uninvoked read-only Claude prompt remain
+historical planning evidence.
+
+This is biological-extension class B: one small shared orchestration operation
+composes canonical transcript window enumeration, existing tail/full-oligo
+metrics, source/CDS/member preparation, per-isoform comparison and prospective
+background assessment. `RedesignRtPrimers` / `primers redesign-rt` returns
+`gentle.rt_primer_redesign.v1` in `OpResult.rt_primer_redesign` from the strict
+`gentle.rt_primer_redesign_request.v1`. See the [complete request and semantics](cli/rt-primer-assessment.md#redesign-rt-primers-for-an-explicit-transcript-group).
+Existing assessment/comparison schemas and their evidence remain unchanged.
+
+Each source has an explicit transcript selection. The nonempty required-member
+subset is independent of the complete comparison universe; comparison-only
+members retain their denominators without expanding the generation obligation.
+A caller-selected required anchor and half-open mature cDNA interval define
+where antisense tails may originate. Shared mode requires a canonical exact
+full-tail site per required member. Strict 3′-UTR mode requires every exact or
+ambiguity-compatible site in each required member to be wholly in its known
+annotated 3′-UTR. Unknown CDS, annotation gaps, boundary crossings and ambiguous
+possible sites outside that UTR cannot satisfy the contract. Both source strands
+and splice-spanning sites use the existing shared geometry.
+
+Generated full oligos keep the fixed common handle and terminal target core as
+separate components. Required inclusive tail length/GC/Tm constraints and
+homopolymer/self/general-3′ complementary-run ceilings reuse shared heuristics;
+run ceilings constrain tail and full oligo. No independent structure or
+thermodynamic engine, native form, reference acquisition, aligner or RT-mechanism
+claim is added.
+
+Generation exhaustively enumerates admitted anchor windows in start-coordinate,
+then length order, skips ambiguous words and deduplicates tails. The first
+qualifying distinct tails fill the capped shortlist; all qualifying tails are
+counted, and additional tails are explicitly background-unassessed. Candidate
+background failures do not refill or rerank that shortlist. Declared seed limits
+use existing all-site physical-window marginal mismatch histograms including
+intended sites. Transcript geometry never infers an intended-site exclusion.
+Proven over-limit counts fail; otherwise absent/ambiguous evidence remains
+unresolved. Both failed and unresolved candidates stay visible with the embedded
+unchanged comparison and assessment. No seed limits means a vacuous pass, not
+specificity or order readiness.
+
+Request admission validates metadata before generation. Defaults are 50,000
+windows, 100 million conservative generation work units and 16 candidates;
+hard ceilings are 100,000 windows, one billion work units and 16 candidates.
+The normalized serialized request/response ceilings are one/eight MB, respectively. At most 64 seed
+limits and 256 required members are accepted; the complete handle-plus-tail is
+at most 64 bases, with a tail of at least 10. Shared source/annotation/materialized
+transcript preflight, comparison and background budgets retain their independent
+existing limits. Work includes canonical intake, conservative metric cost
+`2 × L³ + 8 × L²` per distinct tail for complete oligo length `L`, and
+full group-member matching. The default work budget can exhaust near 500
+44-base oligos before member search; callers should narrow the declared anchor
+or increase the explicit work budget within the ceiling. The enumeration
+ceiling is not a throughput promise. Excess refuses rather than silently truncating
+counts or becoming an empty biological result. An exhaustive empty result keeps
+resolved source/member evidence but has no comparison and does not open
+background files. Callback cancellation returns no partial redesign report.
+
+The operation writes no files or project content. Shared-shell execution keeps
+history unchanged; generic apply retains its normal journal without a content
+revision or undo checkpoint. Managed execution uses the ordinary explicit
+project snapshot/execution lane, not a project-free observation or publication
+exception. Required routing, discovery, glossary and generated parity/maturity
+updates belong to this slice. Maturity digest refresh does not upgrade evidence.
+The unrelated pre-existing `outputs/` remains outside scope.
+
+### Fourth-Slice Local Verification
+
+On macOS arm64, 2026-11-04, with `rustc 1.100.0-beta.7
+(fd8e211ae 2026-10-17)`, in the worktree based on
+`fee7218507bf9a54be38275761e6c90e3994d5f3`:
+
+```sh
+cargo test -q --offline --no-default-features --lib rt_primer_redesign_ -- --test-threads=1
+python3 -m unittest scripts.test_primer_trace_contract scripts.test_capability_maturity scripts.test_tutorial_checkouts -q
+```
+
+All 17 focused checks pass: 16 new synthetic redesign tests and the project-
+snapshot execution-policy test. They exercise both strands, different shared
+site coordinates, splice-junction source projections, required versus comparison-
+only members, strict UTR and ambiguity rules, fixed-handle metric constraints,
+sequence deduplication and shortlist ordering/no refill, positional seed limits,
+missing/all-ambiguous/short-seed evidence, empty unopened backgrounds, annotation-
+only stale hashes, resource/cancellation refusal, determinism and typed/shell/
+quoted `@file` parity without content/history changes.
+
+The initial focused run passed 16 of 17: an all-ambiguous verified reference
+correctly remained unresolved but its saved ambiguity count was omitted from
+the redesign projection. The fix retains that count independently of the
+assessment's completed-cell status, while missing references and unsupported
+seed lengths retain `None`. The final rerun passes all 17; no earlier assessment
+schema or cell-completion rule changed. Read-only source audits covered the
+composition, strict UTR rules, bounds and this correction; no Claude was invoked.
+
+The freshly compiled headless libtest executable has SHA-256
+`47bb9c07955961b9cda234ba92d4a68ecee69934dce271b1e40746662639e5f5`.
+With `RUST_MIN_STACK=16777216` from the existing Cargo configuration, its
+`rt_primer_comparison_`, `rt_primer_assessment_`, `transcript_capture_` and
+`terminal_exon_rt_primer_` filters pass 14, 14, 9 and 5 tests, respectively.
+These exercise the unchanged contracts and prior callers of the extracted
+shared geometry/window helpers. No functional source changes follow this build.
+The existing large-`__eh_frame` linker warning remains; it is not a new
+performance acceptance result.
+
+All 105 Python checks pass, including actual temporary LF/CRLF checkout
+boundaries. The current local protocol crate's canonical Rust renderer produced
+the updated parity projection, rather than an older documentation executable.
+Scoped source rustfmt, documentation/manual/maturity freshness and whitespace
+checks pass. Root manifest/lockfile and the unrelated `outputs/` are unchanged.
+The generated maturity changes refresh only glossary input digests.
+
+The required default-feature `cargo check -q --offline` passes with the same
+temporary Swift/Clang caches and elevated-access workaround recorded in the
+first ledger. No dependency, lockfile, build-script or toolchain change was
+needed. Session-close reports four OK, two expected reminders (intentional dirty/
+generated files and manual plan fidelity), zero failures. The scope review
+confirms the new contract/kernel/tests, necessary shared helper extractions,
+adapter/discovery wiring and required projections/documentation are intentional;
+there is no unrelated feature or catalog expansion. The broader unchanged
+`primers_preflight` discovery issue recorded in the second ledger was not rerun
+or represented as green; this is not a full-registry/full-suite verdict.
+
+Native GUI/process/VM execution, Windows/Linux, real-cohort/reference performance,
+abundance, candidate-specific retrospective rescoring, calibrated secondary
+structure, experimental validation and ordering acceptance remain separate.
+No private-data replay, provider/Claude call, order, push or publication is
+part of this implementation slice.

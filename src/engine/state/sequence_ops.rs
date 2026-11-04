@@ -2698,6 +2698,16 @@ impl GentleEngine {
             Operation::InspectPrimerPayloadJunctions { request } => {
                 Self::push_unique_token(&mut summary.file_paths, &request.source_report.path);
             }
+            Operation::RedesignRtPrimers { request } => {
+                for source in &request.sources {
+                    Self::push_unique_token(&mut summary.sequence_ids, &source.source.seq_id);
+                }
+                for reference in &request.references {
+                    if let Some(file) = &reference.fasta {
+                        Self::push_unique_token(&mut summary.file_paths, &file.path);
+                    }
+                }
+            }
             Operation::CompareRtPrimerCandidates { request } => {
                 for source in &request.sources {
                     Self::push_unique_token(&mut summary.sequence_ids, &source.source.seq_id);

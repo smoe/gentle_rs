@@ -856,6 +856,23 @@ crossings. Ambiguity-compatible transcript windows prevent a clean absence
 call. Descriptive Tm/complementarity heuristics and a low terminal burden do
 not confer experimental specificity, secondary-structure or order approval.
 
+Constrained RT redesign composes that same comparison/assessment contract.
+The required transcript subset and complete comparison universe are explicit,
+independent inputs; a group result never becomes a pan-gene coverage claim.
+Generate antisense tails only from a declared mature-transcript anchor interval,
+with the fixed handle separately typed. Every required member needs an exact
+full-tail site. Strict 3′-UTR mode requires every exact or ambiguity-compatible
+required-member site to be wholly in its known annotated 3′-UTR; unknown CDS,
+internal annotation gaps and boundary crossings cannot silently satisfy it.
+Metric constraints reuse shared tail/full-oligo diagnostics, not a second
+thermodynamic engine. Admitted enumeration is exhaustive and deduplicated;
+its capped first shortlist is deterministic, not optimal. Additional qualifying
+tails remain explicitly unassessed, and failed background checks do not refill
+or silently remove candidates. Declared seed limits use all-site physical-window
+marginal mismatch counts, with no inferred intended-site exclusion; ambiguous
+or missing evidence cannot pass a limit. Budget failure is not biological
+absence, and an exhaustive empty generation result does not open backgrounds.
+
 ## Contextual Launcher Readiness
 
 Status: active

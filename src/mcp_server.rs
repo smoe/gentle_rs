@@ -3628,6 +3628,7 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             &operation,
             Operation::EvaluateGenomeEditIntent { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::RedesignRtPrimers { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

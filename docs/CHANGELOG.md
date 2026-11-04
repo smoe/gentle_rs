@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-11-04 - Constrained RT Redesign For Explicit Transcript Groups
+
+- Add read-only `RedesignRtPrimers` / `primers redesign-rt` with a strict
+  versioned request and portable report. Compose canonical mature-transcript
+  enumeration, shared metrics and the existing comparison/assessment contracts;
+  preserve source/CDS geometry, digests and the complete comparison denominator.
+- Require an explicit transcript subset and mature anchor interval. Shared mode
+  requires an exact full-tail site per required member; strict 3′-UTR mode also
+  rejects exact or ambiguity-compatible sites outside its known annotated UTR.
+  Keep comparison-only isoforms visible and the fixed handle separately typed.
+- Deduplicate exhaustive admitted enumeration, disclose the capped first
+  shortlist and leave additional qualifying tails background-unassessed.
+  Preserve failed/unresolved declared seed limits without refill or ranking;
+  use all-site mismatch counts including intended sites, without inferred
+  exclusions. Unknown or ambiguous background evidence cannot pass a limit.
+- Bound generation, geometry, background/comparison work and response output.
+  Empty generation does not open background files; resource failures cannot
+  masquerade as an empty design. Managed execution retains the project snapshot
+  lane; no content mutation, artifact publication, scientific acceptance,
+  abundance, calibrated structure or order-readiness change follows.
+- The owner requested and obtained commit `fee72185` for the previous three
+  slices before this separate implementation. See the [fourth-slice ledger](rt_capture_primer_redesign_plan.md#fourth-slice-implementation-ledger).
+  Seventeen focused checks, 42 related Rust regressions and 105 Python checks
+  pass locally on macOS arm64, including the all-ambiguous reference projection
+  regression and temporary LF/CRLF boundaries. Canonical parity and scoped
+  formatting/documentation/manual/maturity checks and default-feature Cargo
+  check pass. Session-close has four OK, two expected reminders, zero failures;
+  see the ledger for provenance and unrun native/scientific acceptance.
+
 ## 2026-11-04 - Inspect Saved Primer–Payload Junction Evidence
 
 - Add read-only `InspectPrimerPayloadJunctions` / `rna-reads primer-junctions`

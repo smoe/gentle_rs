@@ -12559,6 +12559,7 @@ Error: `{err}`"
                 rna_primer_panel: None,
                 rt_primer_assessment: None,
                 rt_primer_comparison: None,
+                rt_primer_redesign: None,
                 rna_primer_trace: None,
                 primer_payload_queries: None,
                 primer_payload_alignments: None,

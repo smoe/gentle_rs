@@ -5901,6 +5901,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignTranscriptCapturePool",
     "AssessRtPrimerCandidates",
     "CompareRtPrimerCandidates",
+    "RedesignRtPrimers",
     "ExportTerminalExonRtPrimerPoolReport",
     "DesignPrimerGroupTarget",
     "ExportPrimerSpecificityAlignmentHtml",
@@ -8036,6 +8037,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation.starts_with("Resolve")
         || operation.starts_with("Recommend")
         || operation == "CompareRtPrimerCandidates"
+        || operation == "RedesignRtPrimers"
         || operation == "AssessRtPrimerCandidates"
         || operation == "SaveFile"
         || operation == "EvaluateGenomeEditIntent"

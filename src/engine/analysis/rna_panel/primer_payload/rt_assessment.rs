@@ -307,6 +307,13 @@ fn record(
 }
 
 impl GentleEngine {
+    /// Validate the existing request contract without opening backgrounds, for empty redesigns.
+    pub(in crate::engine) fn validate_rt_primer_assessment_request(
+        request: &AssessRtPrimerCandidatesRequest,
+    ) -> Result<(), EngineError> {
+        admission(request).map(|_| ())
+    }
+
     /// Read-only prospective assessment. Errors/cancellation return no partial report or project effects.
     pub fn assess_rt_primer_candidates(
         &self,

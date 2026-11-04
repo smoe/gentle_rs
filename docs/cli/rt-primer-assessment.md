@@ -493,9 +493,214 @@ apply keeps its ordinary journal without a content revision or undo checkpoint.
 Managed execution uses the existing expensive observation lane without a project
 snapshot. Generic MCP confirmation policy is unchanged.
 
-Native inspector forms, candidate-specific flank rescoring, abundance,
-constrained redesign and conclusions about which molecule initiated RT remain
-separate work.
+Native inspector forms, candidate-specific flank rescoring, abundance and
+conclusions about which molecule initiated RT remain separate work. Constrained
+candidate generation uses the separate redesign contract below.
+
+## Redesign RT Primers For An Explicit Transcript Group
+
+`primers redesign-rt REQUEST_JSON_OR_@FILE` generates antisense RT tails from
+one declared mature-transcript interval, attaches a fixed 5′ handle, and runs
+a bounded shortlist through the existing candidate comparison and prospective
+background assessment. The equivalent operation is
+`{"RedesignRtPrimers":{"request":...}}`. It returns
+`gentle.rt_primer_redesign.v1` in `OpResult.rt_primer_redesign`; it does not
+persist a pool, rank an optimum or authorize an order.
+
+The two `mode` values state the biological requirement:
+
+| Mode | Requirement for every `required_members` transcript |
+| --- | --- |
+| `shared_transcripts` | At least one canonical exact full-tail binding site. The site may be coding or untranslated. |
+| `three_prime_utr` | At least one canonical exact full-tail site, with every exact **or ambiguity-compatible** site wholly in the annotated 3′-UTR. A CDS, boundary-crossing or unknown-region alternative rejects the tail. |
+
+An ambiguous possible site cannot satisfy the exact-site requirement. In UTR
+mode, it can prevent a clean UTR contract even when another exact UTR site
+exists. Empty CDS annotation and internal CDS gaps retain the comparison's
+unknown meaning. Neither mode borrows a gene-wide coding model or assumes that
+an unselected short-ending transcript shares a long-ending isoform's UTR.
+
+### Request And Group Selection
+
+All sources use `explicit_transcripts` coverage with explicit
+`required_transcript_ids`. Those source selections define the complete comparison
+universe. The separate nonempty `required_members` list identifies the subset
+that must satisfy the generation rule, using exact `seq_id`/`transcript_id`
+pairs. Other selected members remain comparison-only: they still appear in
+comparison presence, region and coverage denominators, but do not silently
+expand the required design group. Duplicate required members and unresolved or
+ambiguous source selections refuse the request.
+
+`anchor.member` must name a required member. Its `start_0based` and
+`end_0based_exclusive` are a nonempty half-open interval in mature biological
+5′-to-3′ cDNA coordinates, not genomic coordinates. Every generated binding
+word fits wholly within that interval; its reverse complement becomes the
+5′-to-3′ target tail. The same shared geometry handles either genomic strand
+and exon-junction-spanning words. The comparison retains all sites and their
+source-coordinate projections, not only the anchor occurrence.
+
+The following synthetic request illustrates the fields. It requires a loaded
+annotated DNA record `synthetic_locus` with explicit `long_a`, `long_b` and
+`short` transcript models, and a valid 80-base anchor interval. These are
+example identities, not TP73 coordinates or validated primer parameters.
+The background is deliberately unavailable, so its declared seed limit will
+remain unresolved if a shortlist is generated.
+
+```json
+{
+  "schema": "gentle.rt_primer_redesign_request.v1",
+  "group_id": "synthetic_long_utr",
+  "mode": "three_prime_utr",
+  "sources": [{
+    "source": {
+      "seq_id": "synthetic_locus",
+      "source_feature_id": 0,
+      "coverage_universe": {
+        "kind": "explicit_transcripts",
+        "required_transcript_ids": ["long_a", "long_b", "short"]
+      },
+      "annotation_release": "synthetic-v1"
+    },
+    "expected_source_record_sha256": null
+  }],
+  "required_members": [
+    {"seq_id": "synthetic_locus", "transcript_id": "long_a"},
+    {"seq_id": "synthetic_locus", "transcript_id": "long_b"}
+  ],
+  "anchor": {
+    "member": {"seq_id": "synthetic_locus", "transcript_id": "long_a"},
+    "start_0based": 0,
+    "end_0based_exclusive": 80
+  },
+  "common_handle": "ACTTGCCTGTCGCTCTATCTTC",
+  "constraints": {
+    "min_tail_length_bp": 18,
+    "max_tail_length_bp": 24,
+    "min_tail_gc_fraction": 0.3,
+    "max_tail_gc_fraction": 0.7,
+    "min_tail_tm_c": 45.0,
+    "max_tail_tm_c": 75.0,
+    "max_homopolymer_run_bp": 5,
+    "max_self_complementary_run_bp": 12,
+    "max_self_3prime_complementary_run_bp": 8
+  },
+  "references": [{
+    "reference_id": "synthetic_mt_rna",
+    "scope": "mitochondrial_rna",
+    "source": "synthetic example; no reference bytes supplied",
+    "fasta": null,
+    "unavailable_reason": "Deliberately unavailable in this example",
+    "circular_record_ids": []
+  }],
+  "seed_limits": [{
+    "reference_id": "synthetic_mt_rna",
+    "seed_length": 8,
+    "max_mismatches": 2,
+    "max_compatible_windows": 0
+  }],
+  "budgets": {
+    "max_enumerated_windows": 50000,
+    "max_generation_work": 100000000,
+    "max_candidates": 16
+  },
+  "assessment_budgets": {},
+  "comparison_budgets": {}
+}
+```
+
+Save this as a request JSON after preparing the actual loaded models, then run
+`primers redesign-rt @redesign-request.json`. Replace the missing background
+with ordinary content-bound `PrimerPayloadFile` FASTA bindings to assess it.
+The reference and source fields retain the preceding assessment/comparison
+contracts, including optional expected full source-record hashes. Hashes bind
+sequence and annotation revisions; labels alone do not verify a reference.
+
+`common_handle` is an exact nonempty uppercase A/C/G/T sequence. It remains a
+separate `common_handle` component from the terminal `target_core` in every
+generated `RnaLibraryPrimer`. `constraints` is required: tail length, GC and Tm
+ranges are inclusive, while the homopolymer and two self-complementary-run
+ceilings apply to both tail and complete handle-bearing oligo. These reuse the
+comparison's existing heuristics and stated Tm model. A handle can therefore
+make a candidate fail even when its tail passes. No calibrated hairpin energy,
+concentration or experimental RT temperature is inferred.
+
+### Enumeration, Shortlist And Seed Constraints
+
+Generation exhaustively enumerates admitted anchor windows for every requested
+tail length. It skips ambiguous anchor words, deduplicates identical tails,
+and applies the metric and group rules. Order is anchor start coordinate,
+then length; the first occurrence supplies the reported anchor coordinates.
+The first `budgets.max_candidates` qualifying distinct tails form the
+shortlist. This is a reproducible enumeration policy, not a score or a claim
+that these candidates have the lowest background burden.
+
+The report exposes `enumerated_windows`, `skipped_ambiguous_windows`,
+`duplicate_tail_windows`, `metric_rejected_tails`, `group_rejected_tails`,
+`qualifying_distinct_tails` and charged `generation_work`. If more tails qualify
+than fit the shortlist, `shortlist_truncated` is true. Those additional tails
+remain background-unassessed. Failed background constraints never refill or
+rerank the shortlist. Candidates that fail or remain unresolved are retained
+with their evidence so the result cannot look like a clean successful design.
+
+Each optional `seed_limits` entry names a supplied reference, a terminal
+`seed_length` of 6, 8, 10 or 12, a positional `max_mismatches`, and a maximum
+number of compatible physical windows. For example, length 8 with at most two
+mismatches expresses at least six matching positions; it does not require six
+contiguous terminal matches. Counts use the existing assessment's **all-sites**
+marginal mismatch histogram, including intended sites. The generated request
+has no intended-site exclusions, and transcript geometry never infers one.
+Background scopes remain separate.
+
+A candidate's `seed_checks` retain each limit, `compatible_windows`,
+`ambiguous_windows` and `status`. A proven count above the ceiling is `failed`.
+Otherwise unavailable evidence, an unassessed short seed or any ambiguous
+reference windows makes that check `unresolved`; only completed unambiguous
+counts within the limit pass. `seed_constraint_status` is failed if any check
+fails, otherwise unresolved if any is unresolved, otherwise passed. An empty
+limit list passes vacuously and says nothing about specificity. This status
+never establishes full-tail uniqueness, experimental success or order readiness.
+
+`comparison` embeds the unchanged comparison report and its unchanged
+assessment, using the same references for all shortlisted candidates. `sources`,
+`members` and `required_member_ids` also remain available at the redesign
+level. Candidate rows retain primer identity, tail and anchor interval. Request
+and content hashes bind the normalized request and result. An exhaustive empty
+generation result has `candidates: []` and `comparison: null`: reference
+metadata is validated, but background files are not opened or assessed.
+
+### Redesign Limits And Effects
+
+Generation defaults to 50,000 enumerated windows, 100 million conservative work
+units and 16 shortlisted candidates. Hard ceilings are 100,000 windows, one
+billion work units and 16 candidates. Work covers canonical intake, shared
+complementary-run diagnostics and full group-member matching. Each distinct
+tail is conservatively charged `2 × L³ + 8 × L²` metric units, where `L` is the
+complete handle-bearing oligo length, in addition to intake and member search.
+The default work budget can therefore exhaust after roughly 500 distinct
+44-base oligos even before member search. Use a narrow anchor interval or an
+explicitly larger work budget within the hard ceiling. The window ceiling is
+not a throughput promise, and charged work is not elapsed time. The normalized
+serialized request is limited to one MB and the serialized response to eight MB. At most 64 distinct seed limits and 256
+required members are accepted. The handle is at most 54 bases, the tail at
+least 10 bases, and their complete oligo at most 64 bases. Group IDs use 1–128
+ASCII letters, digits, underscores, periods or hyphens; required source and
+transcript identifiers are each at most 512 bytes.
+
+The shared comparison preflight still bounds 1–16 sources, loaded DNA,
+annotation complexity, all materialized transcripts and cDNA before selection.
+`assessment_budgets` and `comparison_budgets` retain their existing defaults and
+hard ceilings independently of generation budgets. Generation admission checks
+the entire window population before collecting it; an exceeded work, input,
+geometry, output or binding limit fails explicitly, never as an empty design
+or a truncated count. Callback cancellation returns no partial redesign report.
+
+Managed execution requires the explicit project-source snapshot in the normal
+execution lane. It adds no project-free observation or artifact-publication
+exception. Shared-shell execution writes no files and leaves project history
+unchanged; generic engine apply keeps its ordinary journal without changing
+content revision or creating an undo checkpoint. Native forms, abundance,
+candidate-specific retrospective rescoring, calibrated thermodynamics,
+large-reference performance and scientific/ordering acceptance remain separate.
 
 <!-- manual-page-nav:start -->
 

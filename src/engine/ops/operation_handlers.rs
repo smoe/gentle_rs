@@ -27,6 +27,8 @@ mod rna_panel;
 mod transcript_capture;
 #[path = "../analysis/rt_primer_comparison.rs"]
 mod rt_primer_comparison;
+#[path = "../analysis/rt_primer_redesign.rs"]
+mod rt_primer_redesign;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
 use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
 use crate::{
@@ -8447,24 +8449,37 @@ impl GentleEngine {
         search_window_bp: usize,
         window_length_bp: usize,
     ) -> Result<(Vec<CanonicalTranscriptWindow>, usize), EngineError> {
-        if segment.local_start_0based > segment.local_end_0based_exclusive
-            || segment.local_end_0based_exclusive > template.sequence.len()
-        {
+        Self::enumerate_canonical_transcript_interval_windows(
+            template,
+            segment.local_start_0based,
+            segment.local_end_0based_exclusive,
+            search_window_bp,
+            window_length_bp,
+        )
+    }
+
+    /// Canonical windows across an arbitrary mature-cDNA interval, including exon junctions.
+    fn enumerate_canonical_transcript_interval_windows(
+        template: &TranscriptQpcrDesignTemplate,
+        interval_start: usize,
+        interval_end: usize,
+        search_window_bp: usize,
+        window_length_bp: usize,
+    ) -> Result<(Vec<CanonicalTranscriptWindow>, usize), EngineError> {
+        if interval_start > interval_end || interval_end > template.sequence.len() {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: format!(
                     "Transcript '{}' contains invalid local exon geometry {}..{} for a {} bp mature sequence",
                     template.transcript_id,
-                    segment.local_start_0based,
-                    segment.local_end_0based_exclusive,
+                    interval_start,
+                    interval_end,
                     template.sequence.len()
                 ),
                 cause_chain: vec![],
             });
         }
-        let available_bp = segment
-            .local_end_0based_exclusive
-            .saturating_sub(segment.local_start_0based);
+        let available_bp = interval_end.saturating_sub(interval_start);
         if window_length_bp == 0
             || search_window_bp < window_length_bp
             || available_bp < window_length_bp
@@ -8479,19 +8494,18 @@ impl GentleEngine {
             });
         }
 
-        let search_end = segment
-            .local_start_0based
+        let search_end = interval_start
             .saturating_add(search_window_bp)
-            .min(segment.local_end_0based_exclusive);
+            .min(interval_end);
         let final_start = search_end.saturating_sub(window_length_bp);
         let sequence = template.sequence.as_bytes();
         let mut windows = Vec::with_capacity(
             final_start
-                .saturating_sub(segment.local_start_0based)
+                .saturating_sub(interval_start)
                 .saturating_add(1),
         );
         let mut ambiguous_window_count = 0usize;
-        for local_start_0based in segment.local_start_0based..=final_start {
+        for local_start_0based in interval_start..=final_start {
             let local_end_0based_exclusive = local_start_0based.saturating_add(window_length_bp);
             let window = &sequence[local_start_0based..local_end_0based_exclusive];
             if !window
@@ -40597,6 +40611,7 @@ impl GentleEngine {
             rna_primer_panel: None,
             rt_primer_assessment: None,
             rt_primer_comparison: None,
+            rt_primer_redesign: None,
             rna_primer_trace: None,
             primer_payload_queries: None,
             primer_payload_alignments: None,
@@ -52260,6 +52275,11 @@ impl GentleEngine {
                     }
                     result.messages.push(format!("Synthetic motif-removal preview: {:?}; {} candidate(s) evaluated; source unchanged", report.status, report.evaluated_candidates));
                     result.dna_sequence_design = Some(Box::new(report));
+                }
+                Operation::RedesignRtPrimers { request } => {
+                    result.rt_primer_redesign = Some(Box::new(
+                        self.redesign_rt_primers(*request, on_progress)?,
+                    ));
                 }
                 Operation::CompareRtPrimerCandidates { request } => {
                     result.rt_primer_comparison = Some(Box::new(

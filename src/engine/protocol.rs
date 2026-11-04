@@ -38,6 +38,10 @@ pub use rt_primer_assessment::*;
 mod rt_primer_comparison;
 pub use rt_primer_comparison::*;
 
+#[path = "protocol/rt_primer_redesign.rs"]
+mod rt_primer_redesign;
+pub use rt_primer_redesign::*;
+
 #[path = "protocol/primer_payload.rs"]
 mod primer_payload;
 pub use primer_payload::*;
@@ -5544,6 +5548,8 @@ pub struct OpResult {
     pub rt_primer_assessment: Option<Box<RtPrimerAssessmentReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_comparison: Option<Box<RtPrimerComparisonReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rt_primer_redesign: Option<Box<RtPrimerRedesignReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_trace: Option<Box<RnaPrimerTraceReport>>,
     #[serde(skip_serializing_if = "Option::is_none")]

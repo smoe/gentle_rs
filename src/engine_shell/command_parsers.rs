@@ -6386,6 +6386,19 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
             })
         }
+        "redesign-rt" => {
+            if tokens.len() != 3 {
+                return Err("primers redesign-rt requires REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::RedesignRtPrimersRequest>(
+                &tokens[2], "RT primer redesign request",
+            )?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::RedesignRtPrimers {
+                    request: Box::new(request),
+                }).map_err(|e| e.to_string())?,
+            })
+        }
         "compare-rt-candidates" => {
             if tokens.len() != 3 {
                 return Err("primers compare-rt-candidates requires REQUEST_JSON_OR_@FILE".into());

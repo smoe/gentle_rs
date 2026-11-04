@@ -4393,6 +4393,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["RedesignRtPrimers"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "primers redesign-rt",
+         "summary": "Generate constrained RT tails for explicit shared-transcript or annotated 3-prime-UTR groups, preserving comparison denominators and failed or unresolved background limits without ranking or order approval.",
+         "usage": "primers redesign-rt REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["CompareRtPrimerCandidates"],
          "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
          "path": "primers compare-rt-candidates",

@@ -1490,7 +1490,7 @@
     },
     {
       "path": "docs/glossary.json",
-      "sha256": "sha256:b59ad2abc62f497a2248d784795a0a8b86273640e254832dbcdc496c61e83615"
+      "sha256": "sha256:942db208fe8ecddd2a3accb8beba05bd73833feb4be60c31a8f3187050bd345a"
     },
     {
       "path": "docs/tutorial/inputs/gibson_insert_demo.fa",

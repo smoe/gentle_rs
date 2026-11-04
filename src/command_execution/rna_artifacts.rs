@@ -257,6 +257,32 @@ mod primer_trace_tests {
     }
 
     #[test]
+    fn rt_primer_redesign_lifecycle_keeps_project_snapshot_execution() {
+        let mut engine = GentleEngine::new();
+        let parsed =
+            crate::engine_shell::parse_shell_line("introspect capabilities --kind operation")
+                .unwrap();
+        let discovery = crate::engine_shell::execute_shell_command(&mut engine, &parsed).unwrap();
+        let descriptor = discovery.output["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == "RedesignRtPrimers")
+            .unwrap();
+        let op: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        let mut command = ShellCommand::Op {
+            payload: serde_json::to_string(&op).unwrap(),
+        };
+        assert!(!command.is_state_mutating());
+        for policy in [classify(op), admission(&command), freeze(&mut command).unwrap()] {
+            assert!(matches!(policy, Policy::Project));
+            assert!(policy.needs_project());
+            assert!(matches!(policy.lane(), Lane::Execution));
+        }
+    }
+
+    #[test]
     fn primer_trace_lifecycle_is_explicit_not_inferred_from_read_only() {
         let request:crate::engine::TracePrimerReadsRequest=serde_json::from_value(serde_json::json!({
             "schema":"gentle.rna_primer_trace_request.v1","primer_panel":{"kind":"file","path":"missing.json","expected_sha256":"sha256:synthetic"},

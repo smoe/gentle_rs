@@ -14295,6 +14295,7 @@ impl ShellCommand {
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::RedesignRtPrimers { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
@@ -19850,6 +19851,27 @@ fn primer_junction_descriptor(id: &str) -> Value {
         "description":"Verify and join saved trace hits, oriented query geometry and payload partners/seeds. Preserves ambiguity, source outcomes and full distinct-read/profile denominators independently of row filters. No original read/reference/PAF replay, re-alignment, file output or mechanism claim.",
         "request_template":template,"operation_template":{"InspectPrimerPayloadJunctions":{"request":template}},
         "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
+fn rt_primer_redesign_descriptor(id: &str) -> Value {
+    let template = json!({"schema":crate::engine::RT_PRIMER_REDESIGN_REQUEST_SCHEMA,
+        "group_id":"REPLACE_EXPLICIT_GROUP","mode":"shared_transcripts","sources":[],
+        "required_members":[{"seq_id":"REPLACE_SEQ_ID","transcript_id":"REPLACE_TRANSCRIPT_ID"}],
+        "anchor":{"member":{"seq_id":"REPLACE_SEQ_ID","transcript_id":"REPLACE_TRANSCRIPT_ID"},"start_0based":0,"end_0based_exclusive":100},
+        "common_handle":"ACTTGCCTGTCGCTCTATCTTC",
+        "constraints":{"min_tail_length_bp":18,"max_tail_length_bp":24,"min_tail_gc_fraction":0.3,"max_tail_gc_fraction":0.7,
+            "min_tail_tm_c":45.0,"max_tail_tm_c":75.0,"max_homopolymer_run_bp":5,"max_self_complementary_run_bp":12,"max_self_3prime_complementary_run_bp":8},
+        "references":[],"seed_limits":[],"budgets":crate::engine::RtPrimerRedesignBudgets::default(),
+        "assessment_budgets":crate::engine::RtPrimerAssessmentBudgets::default(),"comparison_budgets":crate::engine::RtPrimerComparisonBudgets::default()});
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"gentle.rt_primer_redesign_request.v1 with explicit transcript group, mature anchor interval, handle, constraints and background references"},
+            {"name":"SOURCE_SEQ_ID","required":true,"subject_kind":"sequence","detail":"repeat for each sources[].source.seq_id"}],
+        "reads":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}],"effects":[],
+        "precondition_expr":{"all":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}]},
+        "description":"Read-only bounded RT-tail generation for explicit shared-transcript or annotated 3-prime-UTR groups, composed through the common candidate comparison and prospective background assessment. Preserves explicit member denominators, ambiguity and unresolved seed constraints; reports deterministic shortlist truncation. No best-score, experimental specificity, abundance or order approval.",
+        "request_template":template,"operation_template":{"RedesignRtPrimers":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
+        "registry":registry_metadata_for_introspection(id)})
 }
 
 fn rt_primer_comparison_descriptor(id: &str) -> Value {
@@ -26598,6 +26620,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primer_design",
             "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
         ),
+        rt_primer_redesign_descriptor("RedesignRtPrimers"),
+        rt_primer_redesign_descriptor("primers redesign-rt"),
         rt_primer_comparison_descriptor("CompareRtPrimerCandidates"),
         rt_primer_comparison_descriptor("primers compare-rt-candidates"),
         rt_primer_assessment_descriptor("AssessRtPrimerCandidates"),
@@ -32663,6 +32687,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers design-transcript-capture-pool" | "DesignTranscriptCapturePool" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "RedesignRtPrimers" | "primers redesign-rt" => Some(vec![
+            json!({"fact":"sequence.exists", "subject":{"arg":"SOURCE_SEQ_ID"}}),
         ]),
         "CompareRtPrimerCandidates" | "primers compare-rt-candidates" => Some(vec![
             json!({"fact":"sequence.exists", "subject":{"arg":"SOURCE_SEQ_ID"}}),
@@ -66877,6 +66904,17 @@ fn execute_op_command(
                 forward_shell_progress(options, progress).unwrap_or(false)
             }).map_err(|e|e.to_string())?;
             return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"primer_payload_junctions":report}}) });
+        }
+        Operation::RedesignRtPrimers { request } => {
+            let report = engine
+                .redesign_rt_primers(*request.clone(), &mut |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"rt_primer_redesign":report}}),
+            });
         }
         Operation::CompareRtPrimerCandidates { request } => {
             let report = engine

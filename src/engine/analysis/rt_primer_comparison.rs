@@ -101,7 +101,7 @@ fn admit_annotation(
     Ok(())
 }
 
-fn metrics(s: &[u8]) -> RtPrimerComparisonMetrics {
+pub(super) fn metrics(s: &[u8]) -> RtPrimerComparisonMetrics {
     let m = GentleEngine::compute_primer_heuristic_metrics(s);
     RtPrimerComparisonMetrics {
         length_bp: s.len(),
@@ -114,7 +114,11 @@ fn metrics(s: &[u8]) -> RtPrimerComparisonMetrics {
     }
 }
 
-fn classify(start: usize, end: usize, cds: &[(usize, usize)]) -> RtPrimerClassifiedBinding {
+pub(super) fn classify(
+    start: usize,
+    end: usize,
+    cds: &[(usize, usize)],
+) -> RtPrimerClassifiedBinding {
     let overlap = |a: usize, z: usize| end.min(z).saturating_sub(start.max(a));
     let first = cds.partition_point(|r| r.1 <= start);
     let coding = cds[first..]
@@ -303,12 +307,19 @@ impl GentleEngine {
         Ok((templates, members, sources))
     }
 
-    /// Compare supplied candidates in one explicit isoform universe; no mutation, ranking or order approval.
-    pub fn compare_rt_primer_candidates(
+    /// Shared bounded input preparation for comparison and constrained redesign.
+    pub(super) fn prepare_rt_comparison(
         &self,
-        request: CompareRtPrimerCandidatesRequest,
+        request: &CompareRtPrimerCandidatesRequest,
         progress: &mut dyn FnMut(OperationProgress) -> bool,
-    ) -> Result<RtPrimerComparisonReport, EngineError> {
+    ) -> Result<
+        (
+            Vec<TranscriptQpcrDesignTemplate>,
+            Vec<RtPrimerComparisonMember>,
+            Vec<TranscriptCaptureSourceBinding>,
+        ),
+        EngineError,
+    > {
         if request.schema != RT_PRIMER_COMPARISON_REQUEST_SCHEMA
             || !(1..=16).contains(&request.sources.len())
             || !(1..=1_000_000_000).contains(&request.budgets.max_transcript_base_comparisons)
@@ -347,7 +358,16 @@ impl GentleEngine {
                 .filter(|v| *v <= 100_000)
                 .ok_or_else(|| invalid("rt_comparison_source_feature_budget"))?;
         }
-        let (templates, members, sources) = self.rt_comparison_templates(&request, progress)?;
+        self.rt_comparison_templates(request, progress)
+    }
+
+    /// Compare supplied candidates in one explicit isoform universe; no mutation, ranking or order approval.
+    pub fn compare_rt_primer_candidates(
+        &self,
+        request: CompareRtPrimerCandidatesRequest,
+        progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<RtPrimerComparisonReport, EngineError> {
+        let (templates, members, sources) = self.prepare_rt_comparison(&request, progress)?;
         // This establishes strict oligo/partition validation and exactly one common reference universe.
         let assessment = self.assess_rt_primer_candidates(request.assessment.clone(), progress)?;
         let mut report = RtPrimerComparisonReport { schema:RT_PRIMER_COMPARISON_SCHEMA.into(), content_sha256:String::new(),

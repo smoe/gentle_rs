@@ -4842,6 +4842,10 @@ pub enum Operation {
     CompareRtPrimerCandidates {
         request: Box<CompareRtPrimerCandidatesRequest>,
     },
+    /// Enumerate constrained RT tails for an explicit shared-transcript or 3-prime-UTR group.
+    RedesignRtPrimers {
+        request: Box<RedesignRtPrimersRequest>,
+    },
     /// Discover exact transcript-binding capture oligos and propose a bounded
     /// mixed-role pool without approving specificity or placing an order.
     DesignTranscriptCapturePool {
@@ -10416,6 +10420,7 @@ impl GentleEngine {
             op,
             Operation::SaveFile { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::RedesignRtPrimers { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

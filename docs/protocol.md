@@ -11437,6 +11437,28 @@ refuse stale inputs. No implicit ranking or readiness mutation is performed.
 The comparison needs loaded project sources, unlike the file-only assessment.
 See [comparison requests, unknowns and limits](cli/rt-primer-assessment.md#compare-candidates-across-annotated-isoforms).
 
+`RedesignRtPrimers { request }` consumes the strict
+`gentle.rt_primer_redesign_request.v1` and returns
+`gentle.rt_primer_redesign.v1` in `OpResult.rt_primer_redesign`.
+It composes bounded canonical mature-transcript interval enumeration, shared
+oligo metrics, explicit group rules, and the unchanged candidate comparison
+and prospective assessment contracts. Every source selects explicit transcript
+IDs; `required_members` is the required subset and other selected members remain
+comparison-only. Shared mode requires an exact full-tail site per required
+member. Strict 3′-UTR mode additionally requires every exact or ambiguity-compatible
+site in each required member to lie wholly after its resolved annotated CDS.
+Unknown CDS never becomes UTR. The fixed handle remains separate from the tail.
+Exhaustive admitted generation deduplicates tails in start/length order and
+assesses only the capped first shortlist. Truncation and failed/unresolved seed
+limits remain visible; failures do not refill or rank candidates. Seed limits
+use all-site positional mismatch histograms including intended sites, with no
+inferred exclusion. Empty generation does not open backgrounds. Budget failure
+is not an empty result. Source/request/content digests, comparison denominators
+and annotation uncertainty survive the read-only shared-shell/engine route.
+Managed execution retains the normal project snapshot lane; no order approval,
+file output, project-content mutation or artifact-publication exception follows.
+See [redesign requests, constraints and limits](cli/rt-primer-assessment.md#redesign-rt-primers-for-an-explicit-transcript-group).
+
 `DesignTranscriptCapturePool { request }` persists
 `gentle.transcript_capture_pool.v1` from the strict
 `gentle.transcript_capture_pool_request.v1` request. It discovers exact sites
