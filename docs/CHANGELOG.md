@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-04 - Reconcile Primer Preflight Readiness Coverage
+
+- Clean up the parallel repairs after merge `82996294`: retain `069bd37b`'s
+  descriptor, fallback preconditions and catalog regression, replacing the
+  duplicate catalog test with focused shell/MCP readiness coverage.
+- Check bound MCP arguments with a missing executable name, unbound readiness,
+  empty unmet/unknown atoms and unchanged engine state. Preserve the useful
+  canonical introspection/protocol clarification: readiness permits requesting
+  a probe, not proof of tool reachability. Execution and schemas do not change.
+- Final-tree locked/offline headless verification on macOS arm64 passes all
+  102 introspection tests and Cargo check; 15 offline metadata tests and
+  documentation/whitespace checks also pass. Existing dead-code/linker warnings
+  remain; default-feature/GUI, full-suite and native Windows checks were not run.
+
 ## 2026-11-04 - Annotate The MCP Primer Preflight Contract
 
 - Add the missing fact-annotated `primers_preflight` descriptor alongside
