@@ -73,6 +73,7 @@ fn classify(op: Operation) -> Policy {
         Operation::SummarizePrimerPayloadAlignments { request } => {
             Policy::PayloadAlignments(request)
         }
+        Operation::InspectPrimerPayloadJunctions { .. } => Policy::Observe { expensive: true },
         Operation::InspectPrimerPayload {
             verify_artifacts, ..
         } => Policy::Observe {
@@ -80,7 +81,9 @@ fn classify(op: Operation) -> Policy {
         },
         Operation::CancelPrimerPayload { .. } => Policy::Control,
         Operation::TracePrimerReads { request } => Policy::PrimerTrace(request),
-        Operation::ValidateRnaPrimerPanel { .. } | Operation::InspectPrimerTrace { .. } => {
+        Operation::AssessRtPrimerCandidates { .. }
+        | Operation::ValidateRnaPrimerPanel { .. }
+        | Operation::InspectPrimerTrace { .. } => {
             Policy::Observe { expensive: true }
         }
         Operation::CancelPrimerTrace { .. } => Policy::Control,
@@ -251,6 +254,32 @@ mod primer_trace_tests {
             .lane(),
             Lane::Execution
         ));
+    }
+
+    #[test]
+    fn rt_primer_redesign_lifecycle_keeps_project_snapshot_execution() {
+        let mut engine = GentleEngine::new();
+        let parsed =
+            crate::engine_shell::parse_shell_line("introspect capabilities --kind operation")
+                .unwrap();
+        let discovery = crate::engine_shell::execute_shell_command(&mut engine, &parsed).unwrap();
+        let descriptor = discovery.output["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == "RedesignRtPrimers")
+            .unwrap();
+        let op: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        let mut command = ShellCommand::Op {
+            payload: serde_json::to_string(&op).unwrap(),
+        };
+        assert!(!command.is_state_mutating());
+        for policy in [classify(op), admission(&command), freeze(&mut command).unwrap()] {
+            assert!(matches!(policy, Policy::Project));
+            assert!(policy.needs_project());
+            assert!(matches!(policy.lane(), Lane::Execution));
+        }
     }
 
     #[test]
@@ -456,4 +485,36 @@ pub(super) fn publication(
         }
     };
     Ok(Publication::Artifact(binding))
+}
+
+#[cfg(test)]
+mod rt_assessment_policy_tests {
+    use super::*;
+
+    #[test]
+    fn rt_primer_assessment_uses_execution_capacity_without_project_attachment() {
+        let request = serde_json::from_value(serde_json::json!({
+            "schema":crate::engine::RT_PRIMER_ASSESSMENT_REQUEST_SCHEMA,
+            "primers":[], "references":[], "intended_sites":[]
+        }))
+        .unwrap();
+        let op = Operation::AssessRtPrimerCandidates {
+            request: Box::new(request),
+        };
+        let mut command = ShellCommand::Op {
+            payload: serde_json::to_string(&op).unwrap(),
+        };
+        for policy in [
+            classify(op),
+            admission(&command),
+            freeze(&mut command).unwrap(),
+        ] {
+            assert!(!policy.needs_project());
+            assert!(matches!(policy.lane(), Lane::Execution));
+            assert!(matches!(
+                publication(policy, &serde_json::json!({})).unwrap(),
+                Publication::Observation
+            ));
+        }
+    }
 }

@@ -221,6 +221,19 @@ class CapabilityMaturityTests(unittest.TestCase):
 class DiscoveryCatalogTests(unittest.TestCase):
     """Committed discovery metadata invariants, not Rust registry execution."""
 
+    def test_rt_glossary_smokes_use_typed_discovery_templates(self):
+        source = (ROOT / "src/engine_shell/tests.rs").read_text()
+        helper = source.split("fn smoke_command_line_for_glossary_command(", 1)[1].split(
+            "fn skip_glossary_parse_smoke(", 1)[0]
+        for path, descriptor in (
+            ("primers assess-rt-candidates", "rt_primer_assessment_descriptor"),
+            ("primers compare-rt-candidates", "rt_primer_comparison_descriptor"),
+            ("primers redesign-rt", "rt_primer_redesign_descriptor"),
+            ("rna-reads primer-junctions", "primer_junction_descriptor"),
+        ):
+            self.assertTrue(f'"{path}" => Some({descriptor}(&command.path))' in helper, path)
+        self.assertTrue("fn glossary_rt_contract_requests_keep_typed_templates_and_read_only_admission()" in source)
+
     def test_primer_preflight_mcp_has_explicit_fact_annotations(self):
         source = (ROOT / "src/engine_shell.rs").read_text()
         marker = 'no_project_inspection_operation_descriptor(\n            "primers_preflight",'

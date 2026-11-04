@@ -1317,6 +1317,13 @@ pub(super) const CLI_SOURCES: &[ManualSource] = &[
         markdown: include_str!("../../docs/cli/primer-payload.md"),
     },
     ManualSource {
+        id: "rt-primer-assessment",
+        path: "docs/cli/rt-primer-assessment.md",
+        title: "Prospective RT-Primer Assessment",
+        group: "RNA and sequencing reads",
+        markdown: include_str!("../../docs/cli/rt-primer-assessment.md"),
+    },
+    ManualSource {
         id: "observed-transcripts",
         path: "docs/cli/observed-transcripts.md",
         title: "Observed Transcript Structures And Junctions",

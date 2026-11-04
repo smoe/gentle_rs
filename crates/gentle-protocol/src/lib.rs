@@ -5736,6 +5736,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PrepareObservedTranscriptAnnotation",
     "CancelObservedTranscriptAnnotation",
     "InspectPrimerPayload",
+    "InspectPrimerPayloadJunctions",
     "CancelPrimerPayload",
     "InspectPrimerTrace",
     "CancelPrimerTrace",
@@ -5899,6 +5900,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignPrimerPairs",
     "DesignTerminalExonRtPrimerPool",
     "DesignTranscriptCapturePool",
+    "AssessRtPrimerCandidates",
+    "CompareRtPrimerCandidates",
+    "RedesignRtPrimers",
     "ExportTerminalExonRtPrimerPoolReport",
     "DesignPrimerGroupTarget",
     "ExportPrimerSpecificityAlignmentHtml",
@@ -8033,6 +8037,9 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation.starts_with("Audit")
         || operation.starts_with("Resolve")
         || operation.starts_with("Recommend")
+        || operation == "CompareRtPrimerCandidates"
+        || operation == "RedesignRtPrimers"
+        || operation == "AssessRtPrimerCandidates"
         || operation == "SaveFile"
         || operation == "EvaluateGenomeEditIntent"
         || operation == "FindRestrictionSites"

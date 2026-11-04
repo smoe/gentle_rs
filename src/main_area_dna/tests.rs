@@ -1209,10 +1209,14 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
 
     area.handle_imported_sequencing_trace_result(&OpResult {
         rna_primer_panel: None,
+        rt_primer_assessment: None,
+        rt_primer_comparison: None,
+        rt_primer_redesign: None,
         rna_primer_trace: None,
         primer_payload_queries: None,
         primer_payload_alignments: None,
         primer_payload_inspection: None,
+        primer_payload_junctions: None,
         observed_transcript_structures: None,
         observed_sam_structures: None,
         observed_sam_inspection: None,
@@ -5393,10 +5397,14 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     area.handle_operation_success(
         super::OpResult {
             rna_primer_panel: None,
+            rt_primer_assessment: None,
+            rt_primer_comparison: None,
+            rt_primer_redesign: None,
             rna_primer_trace: None,
             primer_payload_queries: None,
             primer_payload_alignments: None,
             primer_payload_inspection: None,
+            primer_payload_junctions: None,
             observed_transcript_structures: None,
             observed_sam_structures: None,
             observed_sam_inspection: None,

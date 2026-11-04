@@ -3378,6 +3378,10 @@ pub enum Operation {
     CancelObservedTranscriptStructures {
         request: Box<SummarizeObservedTranscriptStructuresRequest>,
     },
+    /// Read-only join of saved primer-trace and payload evidence with verified cohort counts.
+    InspectPrimerPayloadJunctions {
+        request: Box<InspectPrimerPayloadJunctionsRequest>,
+    },
     InspectPrimerPayload {
         path: String,
         #[serde(default)]
@@ -4832,6 +4836,18 @@ pub enum Operation {
     },
     DesignTerminalExonRtPrimerPool {
         request: TerminalExonRtPrimerPoolRequest,
+    },
+    /// Assess supplied RT oligos against explicit, content-bound background FASTA inputs.
+    AssessRtPrimerCandidates {
+        request: Box<AssessRtPrimerCandidatesRequest>,
+    },
+    /// Compare RT candidates across explicit isoforms using shared CDS geometry and background assessment.
+    CompareRtPrimerCandidates {
+        request: Box<CompareRtPrimerCandidatesRequest>,
+    },
+    /// Enumerate constrained RT tails for an explicit shared-transcript or 3-prime-UTR group.
+    RedesignRtPrimers {
+        request: Box<RedesignRtPrimersRequest>,
     },
     /// Discover exact transcript-binding capture oligos and propose a bounded
     /// mixed-role pool without approving specificity or placing an order.
@@ -10406,10 +10422,14 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::RedesignRtPrimers { .. }
+                | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
+                | Operation::InspectPrimerPayloadJunctions { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::CancelPrimerPayload { .. }
                 | Operation::AssessObservedSpliceJunctions { .. }

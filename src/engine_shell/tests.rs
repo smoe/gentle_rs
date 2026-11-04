@@ -1988,6 +1988,10 @@ fn smoke_command_line_for_glossary_command(
     scratch: &Path,
 ) -> String {
     let observed_descriptor = match command.path.as_str() {
+        "primers assess-rt-candidates" => Some(rt_primer_assessment_descriptor(&command.path)),
+        "primers compare-rt-candidates" => Some(rt_primer_comparison_descriptor(&command.path)),
+        "primers redesign-rt" => Some(rt_primer_redesign_descriptor(&command.path)),
+        "rna-reads primer-junctions" => Some(primer_junction_descriptor(&command.path)),
         "rna-reads transcript-structures-from-sam" | "rna-reads transcript-structures-from-sam-cancel" => {
             Some(observed_sam_descriptor(&command.path))
         }
@@ -2842,6 +2846,50 @@ fn glossary_rna_flag_smokes_retain_typed_binding_and_draft_save_mode() {
                 shell_command_line_with_option(&base, flag, Some(&output)).unwrap();
             assert!(parse_shell_line(&without_request).is_err());
         }
+    }
+}
+
+#[test]
+fn glossary_rt_contract_requests_keep_typed_templates_and_read_only_admission() {
+    let glossary = glossary_fixture();
+    let scratch = tempdir().unwrap();
+    for (path, operation_name, schema) in [
+        (
+            "primers assess-rt-candidates",
+            "AssessRtPrimerCandidates",
+            crate::engine::RT_PRIMER_ASSESSMENT_REQUEST_SCHEMA,
+        ),
+        (
+            "primers compare-rt-candidates",
+            "CompareRtPrimerCandidates",
+            crate::engine::RT_PRIMER_COMPARISON_REQUEST_SCHEMA,
+        ),
+        (
+            "primers redesign-rt",
+            "RedesignRtPrimers",
+            crate::engine::RT_PRIMER_REDESIGN_REQUEST_SCHEMA,
+        ),
+        (
+            "rna-reads primer-junctions",
+            "InspectPrimerPayloadJunctions",
+            crate::engine::PRIMER_JUNCTION_INSPECTION_REQUEST_SCHEMA,
+        ),
+    ] {
+        let entry = glossary
+            .commands
+            .iter()
+            .find(|entry| entry.path == path)
+            .unwrap();
+        let line = smoke_command_line_for_glossary_command(entry, scratch.path());
+        let command = parse_shell_line(&line).expect("typed discovery example parses");
+        assert!(!command.is_state_mutating(), "{path}");
+        let ShellCommand::Op { payload } = command else {
+            panic!("{path} must use the shared operation route");
+        };
+        let operation: Operation = serde_json::from_str(&payload).unwrap();
+        let value = serde_json::to_value(operation).unwrap();
+        assert_eq!(value[operation_name]["request"]["schema"], schema, "{path}");
+        assert!(parse_shell_line(&format!("{path} {{}}")).is_err(), "{path}");
     }
 }
 
@@ -50241,4 +50289,38 @@ fn tss_local_score_ui_intent_keeps_exact_accessions_and_own_settings() {
             .find(|a| a.name == "matrix_ids")
             .is_some_and(|a| a.detail.contains("refused") && !a.required)
     );
+}
+
+#[test]
+fn rt_primer_assessment_discovery_and_read_only_admission_are_consistent() {
+    let mut engine = GentleEngine::new();
+    let discovery = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities --kind operation").unwrap(),
+    )
+    .unwrap();
+    let descriptors = discovery.output["capabilities"].as_array().unwrap();
+    for id in ["AssessRtPrimerCandidates", "primers assess-rt-candidates"] {
+        let descriptor = descriptors.iter().find(|d| d["id"] == id).unwrap();
+        let op: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        assert!(matches!(op, Operation::AssessRtPrimerCandidates { .. }));
+        assert_eq!(descriptor["mutating"], "false");
+        assert_eq!(descriptor["requires_confirmation"], false);
+        let request = descriptor["request_template"].clone();
+        let typed: crate::engine::AssessRtPrimerCandidatesRequest =
+            serde_json::from_value(request.clone()).unwrap();
+        assert!(
+            GentleEngine::new()
+                .assess_rt_primer_candidates(typed, &mut |_| true)
+                .is_err()
+        );
+        let command = parse_shell_line(&format!(
+            "primers assess-rt-candidates {}",
+            quote_shell_arg(&request.to_string())
+        ))
+        .unwrap();
+        assert!(!command.is_state_mutating());
+        assert!(capability_precondition_atoms(id).is_some());
+    }
 }

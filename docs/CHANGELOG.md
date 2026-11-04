@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-11-04 - Reconcile RT Capture Integration Metadata And Smoke Inputs
+
+- Integrate `gentle_rs_3` through `be6de439`, retaining both branches' histories
+  and main's tutorial/protein-length repairs. Regenerate the four maturity
+  catalogs from the merged glossary without upgrading their evidence.
+- Reconcile parity totals from 965 unique rows and verify their identities and
+  ordering against merged glossary, operation and MCP declarations. Canonical
+  Rust generator/freshness acceptance remains pending, not inferred from this
+  source-level reconciliation.
+- Supply the four new typed JSON command smokes through their existing
+  discovery templates instead of `{}`. Keep strict parsers and full glossary
+  checks unchanged; add focused typed-operation/read-only regression coverage
+  and an offline source guard. This required merge adaptation changes no
+  biological algorithm, request schema or execution permission.
+- The interrupted Q-Q utility repair remains separate and unimplemented. No
+  local Rust build/test, push or CI dispatch is performed for the merge.
+- Merge checks: 37 offline metadata/documentation/LF-CRLF checks passed, zero
+  skips; manual/status, scoped formatting and whitespace checks passed. Runtime
+  verification remains external.
+
 ## 2026-11-04 - Retain Glen's Native Microarray Tutorial Evidence
 
 - Port the microarray documentation from Glen / `smoe-bot` commit `37bc0cea`,
@@ -139,6 +159,152 @@
   Verification receipts and explicit unrun boundaries are retained in the
   [follow-up ledger](robotic_wetlab_simulation_plan.md#verification-follow-up-2026-11-03).
   No maturity upgrade, dependency change, push, tag, CI dispatch or robot action.
+## 2026-11-04 - Constrained RT Redesign For Explicit Transcript Groups
+
+- Add read-only `RedesignRtPrimers` / `primers redesign-rt` with a strict
+  versioned request and portable report. Compose canonical mature-transcript
+  enumeration, shared metrics and the existing comparison/assessment contracts;
+  preserve source/CDS geometry, digests and the complete comparison denominator.
+- Require an explicit transcript subset and mature anchor interval. Shared mode
+  requires an exact full-tail site per required member; strict 3′-UTR mode also
+  rejects exact or ambiguity-compatible sites outside its known annotated UTR.
+  Keep comparison-only isoforms visible and the fixed handle separately typed.
+- Deduplicate exhaustive admitted enumeration, disclose the capped first
+  shortlist and leave additional qualifying tails background-unassessed.
+  Preserve failed/unresolved declared seed limits without refill or ranking;
+  use all-site mismatch counts including intended sites, without inferred
+  exclusions. Unknown or ambiguous background evidence cannot pass a limit.
+- Bound generation, geometry, background/comparison work and response output.
+  Empty generation does not open background files; resource failures cannot
+  masquerade as an empty design. Managed execution retains the project snapshot
+  lane; no content mutation, artifact publication, scientific acceptance,
+  abundance, calibrated structure or order-readiness change follows.
+- The owner requested and obtained commit `fee72185` for the previous three
+  slices before this separate implementation. See the [fourth-slice ledger](rt_capture_primer_redesign_plan.md#fourth-slice-implementation-ledger).
+  Seventeen focused checks, 42 related Rust regressions and 105 Python checks
+  pass locally on macOS arm64, including the all-ambiguous reference projection
+  regression and temporary LF/CRLF boundaries. Canonical parity and scoped
+  formatting/documentation/manual/maturity checks and default-feature Cargo
+  check pass. Session-close has four OK, two expected reminders, zero failures;
+  see the ledger for provenance and unrun native/scientific acceptance.
+
+## 2026-11-04 - Inspect Saved Primer–Payload Junction Evidence
+
+- Add read-only `InspectPrimerPayloadJunctions` / `rna-reads primer-junctions`
+  and a portable joined report. Reuse saved trace/query validation and the
+  existing payload aggregator; fully verify evidence sidecars and population
+  before capped row previews, filters or pagination.
+- Preserve original-read hit alternatives, observed full/core boundaries,
+  primer-oriented query geometry, masks and terminal seed reasons. Show up to
+  64 saved masked payload bases per query without a second reverse complement
+  or fabricated reference flanks. Core-only observations do not become full
+  synthetic-primer trim claims.
+- Reproduce and validate partner/edge counts using original whole ambiguity
+  sets and distinct `(file_id, record_index)` keys. Keep anchor observations,
+  overlapping denominators and source outcomes/missing units independent;
+  refuse duplicate source-byte aliases and inconsistent rehashed aggregates.
+- Extract the existing query validator's already-verified trace rows/bases
+  without changing its legacy wrapper behavior or producer report formats.
+  Wire typed/shared-shell/MCP discovery, expensive project-free observation
+  and required parity/maturity projections. No original FASTQ, original
+  reference/annotation or PAF is reopened and no new artifact is published.
+- Retain bounded input/table/response controls, cancellation and saved
+  cancelled/control-error evidence. See the [third-slice ledger](rt_capture_primer_redesign_plan.md#third-slice-implementation-ledger).
+  Native forms, abundance, candidate-specific flank rescoring, ordering and
+  RT-mechanism conclusions remain separate. No dependency/lockfile changes,
+  private-data replay, push or publication is part of this slice.
+- Verification on macOS arm64 in the worktree based on `89df315a`: all 15
+  inspector tests, 38 existing payload and 29 trace tests, 105 Python checks,
+  canonical Rust parity comparison and default-feature offline Cargo check
+  pass. Documentation/maturity/format/whitespace checks pass; session-close
+  has four OK, two expected reminders and zero failures. The ledger retains
+  exact binary/stack settings, existing linker warning, prior separate
+  discovery failure and unrun native/platform/scientific acceptance.
+
+## 2026-11-04 - Compare RT Candidates In Explicit Isoform Context
+
+- Add shared `CompareRtPrimerCandidates` / `primers compare-rt-candidates`
+  and a separate portable comparison request/report, preserving the original
+  assessment schema and bytes. Compose the prospective assessment once with
+  one explicit loaded transcript universe and source/cDNA revision digests.
+- Extract the existing capture CDS projection into one shared geometry helper.
+  Retain every exact tail binding on both source strands, with CDS/5′-UTR/
+  3′-UTR/mixed/unknown context and source coordinates. Keep CDS gaps, missing
+  annotations and ambiguity-compatible sites distinct from proven absence;
+  repeated sites count once per covered member, without shrinking denominators.
+- Compare tail/full-oligo GC/Tm and shared complementary-run diagnostics in
+  caller order, without a universal ranking, hairpin prediction or readiness
+  upgrade. Add pre-view annotation/depth/geometry and later search/output
+  limits, partial-CDS parse refusal and cooperative cancellation.
+- Wire read-only typed/shared-shell/MCP access, project-source provenance,
+  registry/discovery and required parity/maturity projections. Comparison uses
+  the normal project snapshot lane; it does not generalize the prior file-only
+  artifact policy. Document the [comparison contract](cli/rt-primer-assessment.md)
+  and [second-slice ledger](rt_capture_primer_redesign_plan.md#second-slice-implementation-ledger).
+- Retrospective junction inspection, abundance, automatic redesign, native GUI
+  lanes, calibrated structure and ordering remain separate. No private data,
+  dependency change, push, dispatch or publication is included.
+- Verification on macOS arm64 in the worktree based on `89df315a`: 14 new
+  comparison tests, 9 existing capture tests, 14 first-slice assessment tests,
+  105 Python checks, canonical Rust parity rendering and default-feature offline
+  Cargo check pass. The broader headless full-registry introspection test fails
+  on unchanged `primers_preflight` metadata (`registry_only`); this is retained
+  as a separate follow-up, not repaired or hidden by this slice. See the ledger
+  for the exact binary/stack setting, compiler workaround and unrun native/
+  cross-platform/process/scientific checks. Session-close: four OK, two
+  expected reminders, zero failures. Lockfile and prior `outputs/` unchanged.
+
+## 2026-11-04 - Assess Supplied RT Primers Against Explicit Backgrounds
+
+- Add shared `AssessRtPrimerCandidates` / `primers assess-rt-candidates`,
+  strict versioned request and portable result. Reuse existing component-based
+  oligos, panel validation, content-bound FASTA files, verified byte intake,
+  callback cancellation and managed expensive observation policy.
+- Count terminal 6/8/10/12 positional mismatches and contiguous 3′ runs per
+  physical reference window. Preserve genomic strand alternatives, biological
+  RNA orientation, circular-origin windows, repeated-site versus record units,
+  verified intended-orientation exclusions and bounded exact examples.
+- Keep missing scopes, ambiguous windows and short inputs explicitly unassessed.
+  Work/byte/base/record limits refuse excess without a partial report. The
+  report changes no order readiness or project content; generic engine apply
+  retains its ordinary journal without a content revision/undo checkpoint.
+- Add synthetic Rust intake/geometry/identity/cancellation and shared-shell,
+  discovery/history/managed-policy regressions. Register the command and its
+  manual topic, refreshing only required navigation, parity and glossary-input
+  maturity digests; no maturity evidence is upgraded. Legacy trace/payload
+  schemas, algorithms and bytes are unchanged.
+- Retrospective old-primer cohorts, abundance, isoform/CDS context,
+  thermodynamics, automatic redesign, saved-report publication and native forms
+  remain separate. This is bounded subset screening, not whole-human-genome
+  scalability or biological validation. See the
+  [implementation ledger](rt_capture_primer_redesign_plan.md#first-slice-implementation-ledger).
+- Verification in the macOS arm64 worktree based on `89df315a`: 14 new Rust
+  tests, 29 trace and 38 payload regressions, 105 Python checks, canonical Rust
+  parity rendering and documentation/format/whitespace checks pass. The default
+  offline Cargo check passes after allowing Swift's nested build sandbox and
+  using temporary module caches. Lockfile unchanged; native Windows/Linux,
+  actual process/VM/GUI, whole-reference performance and scientific acceptance
+  remain separate. Session-close: four OK, two reminders, zero failures.
+
+## 2026-11-04 - Scope Glen's RT Capture Primer Redesign Findings
+
+- Fetch `origin/main` at `89df315a`; the working branch already matches it,
+  so the requested rebase requires no rewritten commits. Preserve unrelated
+  untracked `outputs/`.
+- Read Glen's linked HTTPS report and candidate table, then map the requested
+  RT identity, terminal-risk matrix, junction inspection, isoform context and
+  comparison onto existing shared primer/capture/trace/payload owners in
+  [the implementation plan](rt_capture_primer_redesign_plan.md).
+- Propose supplied-candidate assessment first, followed by per-isoform context,
+  joined inspection, constrained redesign and explicit abundance weighting.
+  Keep prospective searches separate from the old-primer-selected cohort,
+  and retain missing/incomplete evidence and experimental limitations.
+- This change is planning only: no new command, Rust implementation, reference
+  download, private-read replay, order approval or release gate. Claude review
+  was offered but not performed; prepare a separate
+  [read-only review prompt](rt_capture_primer_claude_review_prompt.md) at the
+  owner's request without invoking or waiting for Claude.
+  Runtime/native/scientific acceptance is open.
 
 ## 2026-11-03 - Restore Exact Pins For Glen's Flagged Dependencies
 

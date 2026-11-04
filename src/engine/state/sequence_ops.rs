@@ -2695,6 +2695,36 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::InspectPrimerPayloadJunctions { request } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.source_report.path);
+            }
+            Operation::RedesignRtPrimers { request } => {
+                for source in &request.sources {
+                    Self::push_unique_token(&mut summary.sequence_ids, &source.source.seq_id);
+                }
+                for reference in &request.references {
+                    if let Some(file) = &reference.fasta {
+                        Self::push_unique_token(&mut summary.file_paths, &file.path);
+                    }
+                }
+            }
+            Operation::CompareRtPrimerCandidates { request } => {
+                for source in &request.sources {
+                    Self::push_unique_token(&mut summary.sequence_ids, &source.source.seq_id);
+                }
+                for reference in &request.assessment.references {
+                    if let Some(file) = &reference.fasta {
+                        Self::push_unique_token(&mut summary.file_paths, &file.path);
+                    }
+                }
+            }
+            Operation::AssessRtPrimerCandidates { request } => {
+                for reference in &request.references {
+                    if let Some(file) = &reference.fasta {
+                        Self::push_unique_token(&mut summary.file_paths, &file.path);
+                    }
+                }
+            }
             Operation::ValidateRnaPrimerPanel { panel, .. } => {
                 if let RnaPrimerPanelBinding::File { path, .. } = panel.as_ref() {
                     Self::push_unique_token(&mut summary.file_paths, path);

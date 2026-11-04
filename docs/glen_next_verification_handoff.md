@@ -7,6 +7,46 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## RT Capture Integration Follow-Up, 2026-11-04
+
+Integrate `fee72185` and `be6de439` from `gentle_rs_3` without inheriting their
+worktree-local Rust passes as merged-source acceptance. The assessment,
+comparison, junction-inspection and constrained-redesign contracts and earlier
+verification limits remain in the [implementation ledger](rt_capture_primer_redesign_plan.md).
+Main's microarray raw evidence and protein-length provenance repair are retained.
+
+Merge-specific adaptation: all four new glossary JSON routes must obtain their
+parser-only request from the corresponding discovery descriptor. Their strict
+typed parsers reject the generic `{}` fallback. A focused Rust test exercises
+the real smoke helper, parser and operation deserializer for each route, keeps
+read-only admission and retains empty-object refusal. The existing full
+glossary assertions are not weakened; the new offline guard is source evidence.
+
+The four maturity projections were regenerated canonically in Python from the
+merged glossary. Parity totals were reconciled from 965 distinct source/name
+rows; row identities and ordering agree with merged declaration inputs. The
+canonical Rust parity generator was not run. Glen/CI should execute affected
+ledger scopes plus these integration gates with nonzero test counts:
+
+```sh
+cargo check -q --locked --tests
+cargo test --locked --lib glossary_ -- --test-threads=1
+cargo test --locked --test capability_registry_parity --test parity_matrix_freshness
+cargo run --locked --bin gentle_examples_docs -- parity-matrix-check
+```
+
+Keep native/process, whole-reference performance and scientific acceptance
+separate; no private data replay is authorized by this merge. The Q-Q utility
+repair was interrupted before any implementation and remains a separate task.
+No local Rust, push or dispatch was performed here.
+
+Merge authoring checks: 37 offline metadata/documentation and targeted LF/CRLF
+checks passed with zero skips. Manual/status, scoped regression formatting and
+whitespace checks passed; roadmap remains 400 lines. These are not Rust/runtime
+acceptance. Session-close reports four OK, two expected worktree/scope reminders
+and no failures; unrelated `paper`, private data, prompts and `output/` are
+excluded from the merge.
+
 ## Microarray Native Evidence Port, 2026-11-04
 
 Glen / `smoe-bot` published the seven-file documentation commit

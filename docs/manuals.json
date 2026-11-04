@@ -1301,6 +1301,13 @@
           "no_counterpart_reason": "This chapter documents an automation interface, example or command-only workflow; no dedicated GUI chapter is paired with it."
         },
         {
+          "id": "rt-primer-assessment",
+          "title": "Prospective RT-Primer Assessment",
+          "group": "RNA and sequencing reads",
+          "path": "docs/cli/rt-primer-assessment.md",
+          "no_counterpart_reason": "Shared-shell RT background assessment has no dedicated native GUI form in this slice."
+        },
+        {
           "id": "observed-transcripts",
           "title": "Observed Transcript Structures And Junctions",
           "group": "RNA and sequencing reads",
