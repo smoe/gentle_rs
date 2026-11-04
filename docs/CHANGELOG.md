@@ -38,6 +38,28 @@
   cases skipped. The visual-only gate, manual/status and whitespace checks pass;
   this is archive/documentation verification, not new native GUI acceptance.
 
+## 2026-11-04 - Narrow The Equipment Conformance Proposal
+
+- Split the robotics roadmap's first CAD-source gate from catalog expansion,
+  simulator contracts/worlds and the later CUT&RUN benchmark. Propose one
+  existing Safe-Lock floor-seated family, a 1.5 ml reference-tube visualization
+  and the existing OpenSCAD-source backend; retain the carrier's joint 1.5/2.0 ml
+  derivation inputs and preserve all shipped geometry and equipment-v1 bytes.
+- Define exact-source versus numerical-replay verdicts and later receipt
+  completeness, retry/idempotence and partial-run acceptance requirements.
+  Keep D1/rights review explicit, D2 repository-wide, and unknown physical
+  capabilities unavailable. Add a read-only Claude review prompt.
+- Incorporate the owner-supplied source-only Claude review: make emission
+  checks distinct from literal derivation oracles, document independent tube
+  and rack checks and different blocked-position semantics, and pin the rack
+  identity, empty blocked set and numerical tolerances. Reuse existing tube
+  coverage and defer the proposed runtime report/schema; the new pilot is a
+  test-only rack-emission regression with temporary outputs.
+- This is a documentation-only proposal, not implementation, tool execution,
+  review sign-off, simulator installation or physical/scientific acceptance.
+  Manual/status and whitespace checks pass; Rust/CAD execution was not run and
+  no local Claude invocation or new-source runtime acceptance is claimed.
+
 ## 2026-11-04 - Clarify Tutorial Views And Protein-Length Provenance
 
 - Respond to the available portion of Glen's overnight tutorial review:

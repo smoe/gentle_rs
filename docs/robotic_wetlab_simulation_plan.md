@@ -4,12 +4,20 @@ Status: future post-0.1 roadmap track. This document records the intended
 ownership and evidence boundaries; it does not authorize physical robot
 execution or add a release gate to the current internal series.
 
+Planning revision, 2026-11-04, incorporating the supplied source-only Claude
+review: the next proposed slice is a test-only emission regression for one
+existing rack family and the independent reference-tube checks, using one
+OpenSCAD-source backend. It adds no simulator, CAD language or runtime report.
+The proposal remains subject to its explicit decision gates; this documentation
+update implements no exporter or test and supplies no runtime evidence.
+
 ## Goal
 
 Make selected GENtle protocols executable as provenance-bound simulations in a
 robotics environment such as Gazebo. The first benchmark should be an
-automated CUT&RUN workflow in a synthetic reference laboratory. The simulation
-must expose material flow, equipment use, timing, robot reach and collision
+automated CUT&RUN workflow in a synthetic reference laboratory. That is the
+first end-to-end protocol benchmark, not the first CAD-conformance gate. The
+simulation must expose material flow, equipment use, timing, robot reach and collision
 constraints, checkpoints and recoverable failures without claiming that a
 virtual run validates biological performance.
 
@@ -47,12 +55,13 @@ asset should bind at least:
   content hashes;
 - source CAD plus named exchange artifacts where appropriate (for example STEP,
   glTF/mesh and Gazebo SDF or URDF);
-- physical dimensions, scale, coordinate frames, simplified collision and
-  inertial geometry, movable joints and safety envelopes;
+- physical dimensions, scale and coordinate frames; collision/inertial
+  geometry, joints and safety envelopes only when separately supported by
+  reviewed evidence, otherwise explicitly unavailable;
 - semantic interaction points such as deck slots, tube or plate positions,
   lids, doors, grippers, pipette tips, liquid ports and observable states;
 - supported actions, preconditions, resource requirements and known fidelity
-  limits;
+  limits, with no inferred action capability when these are unknown;
 - calibration or local override records kept separately from the public base
   asset.
 
@@ -69,9 +78,11 @@ into SolidCraft- and FreeCAD-targeted source or projects and then produce
 exchange and simulator artifacts. Generated files bind back to the source
 description, generator version and parameters by digest.
 
-The representation must support parametric primitives, reusable subassemblies,
-constraints, materials and named coordinate frames as well as the semantic
-interaction points above. The first conformance family is tubes and racks:
+Parametric primitives, reusable subassemblies, constraints, materials and
+interaction points are longer-term requirements, not a mandate to build a
+general CAD language in the next slice. Reuse existing source-backed profiles
+and template derivations first; add a new abstraction only for a demonstrated
+consumer. Richer families may eventually describe:
 
 - tubes describe body, base, rim, opening, cap or lid, nominal capacity,
   material, grasp region, liquid frame and observable open/closed state;
@@ -87,6 +98,12 @@ Round-trip editing in every CAD tool is not a prerequisite. When a generated
 model is manually refined, the change must either be expressed back in the
 abstract source or recorded as a derived, tool-specific override with explicit
 provenance; silent divergence is not acceptable.
+
+The shipped `gentle.rack_equipment_description.v1` remains a closed geometry
+description. Preserve its schema/projection constants, existing bytes, unknown
+mass/inertia and empty permitted actions. Future physics, interaction frames
+or capabilities require a separately reviewed new schema/version or companion
+record; do not populate v1 placeholders or reinterpret slot origins as poses.
 
 ## Protocol-To-Simulation Boundary
 
@@ -108,42 +125,92 @@ material-lineage transitions, checkpoint outcomes, injected faults and output
 artifact hashes. Simulator-reported facts remain observations; GENtle derives a
 separate assessment with explicit reasons.
 
+Before any receipt importer is implemented, its contract must also define:
+
+- stable plan-step and execution-attempt identifiers, exact input/plan/world/
+  asset bindings, and explicit terminal outcomes for every required step;
+- execution status separately from evidence completeness and GENtle's
+  `pass`, `fail` or `incomplete` assessment; a completed simulator process is
+  not automatically a successful protocol;
+- refusal or non-passing findings for missing/conflicting evidence, duplicate
+  step identifiers within an attempt, mismatched bindings, invalid dependency
+  order and failed processes. A valid empty result must be distinguishable
+  from absent execution evidence;
+- idempotent imports and explicit retry/checkpoint rules: identical repeated
+  evidence cannot transfer material twice, and conflicting retries cannot
+  silently replace accepted evidence;
+- explicit units and material balances, including declared losses/waste.
+  Nominal tube capacity is not an observed liquid volume;
+- bounded validation and a separate assessment/preview before any confirmed,
+  freshness-checked, atomic engine update. Retain partial-run observations;
+  do not imply that physical or simulated transfers were undone just because
+  receipt acceptance failed. Missing evidence cannot mean zero collisions or
+  completed lineage transitions.
+
+These are requirements for the later protocol contract, not new public enums,
+receipt schemas or lineage mutations authorized by the CAD-source pilot.
+
+### Determinism And Replay Levels
+
+- GENtle-generated CAD source and canonical input bindings must reproduce
+  byte-for-byte for pinned inputs, generator and parameters. Declare any
+  volatile diagnostic fields separately; do not erase scientific input fields
+  or change existing byte contracts to make a comparison pass.
+- Geometry conformance uses named, predeclared tolerances and explicit units,
+  accounting for current decimal formatting and f32 widening. Numerical
+  tolerance is not manufacturing clearance or a physical-fit claim.
+- Later simulation receipts must bind random seeds, timestep, physics backend,
+  plugins, controller/configuration digests and relevant runtime/platform
+  versions. State which logical outcomes must agree and which numerical
+  measurements use tolerances. Do not promise bitwise-identical trajectories
+  across unspecified platforms or runtime versions.
+- Exact plan/binding checks remain deterministic even when numerical replay
+  is unavailable. Source generation, native CAD acceptance, simulator replay
+  and physical/scientific acceptance are separate verdicts.
+
 ## Staged Development
 
-1. **Catalog, abstract representation and generators.** Define the
-   equipment/labware manifest, canonical parametric representation and the
-   simulator-neutral protocol execution plan. Demonstrate deterministic
-   SolidCraft and FreeCAD generation with a small tube-and-rack family. Resolve
-   ownership, licensing and private-local overrides before adding
-   simulator-specific operations.
-2. **Synthetic reference cell.** Build a small redistributable lab world with
-   one robot, bench, racks, plates/tubes, pipetting and representative
-   instrument interfaces. Prove deterministic loading, placement and collision
-   checks.
-3. **CUT&RUN benchmark.** Map a reviewed CUT&RUN protocol to typed operations,
+1. **One-family CAD-source conformance.** Execute only the bounded proposal
+   below: one existing rack family and independent tube-emitter checks, one
+   OpenSCAD-source backend and ordinary test diagnostics. No new engine record,
+   schema, CAD representation, backend, catalog, execution plan or world is
+   required.
+2. **Shareable catalog and justified extensions.** Resolve repository,
+   licensing, review and local-override policy before new asset publication.
+   Add another family or CAD backend only for a named consumer and its own
+   conformance gate. SolidCraft and FreeCAD remain candidates, not simultaneous
+   prerequisites. Reconcile any abstract representation with existing models.
+3. **Minimal synthetic reference cell and protocol contract.** After a reviewed,
+   quantity/sample-bound synthetic protocol input exists, define the neutral
+   execution/receipt contract above and test one bounded operation before a
+   whole protocol. Bind one world/robot and the minimum equipment needed;
+   loading, placement and collision checks use the declared replay levels.
+4. **CUT&RUN benchmark.** Map a reviewed CUT&RUN protocol to typed operations,
    including consumable and sample lineage, timing and explicit manual or
    unsupported steps. Exercise success, missing-equipment, unreachable-pose,
    collision, depleted-consumable and interrupted-run cases.
-4. **Private real-lab world.** Bind the locally reconstructed room and equipment
+5. **Private real-lab world.** Bind the locally reconstructed room and equipment
    inventory without moving its geometry or sensitive metadata into public
    fixtures. Compare planned paths and resource schedules with the synthetic
    benchmark.
-5. **Physical rehearsal later.** Only after separate robotics safety review,
+6. **Physical rehearsal later.** Only after separate robotics safety review,
    calibrated hardware identities, emergency-stop and human-presence policy,
    execute bounded dry motions or hardware-in-the-loop tests. Physical wet-lab
    execution remains a separately approved capability.
 
 ## Acceptance Boundaries
 
-The first useful milestone requires:
+The first CAD-source gate is the one-family acceptance checklist below. It
+does not require a public catalog, a second CAD tool or a simulator.
+
+The later end-to-end simulation benchmark separately requires:
 
 - one public equipment catalog and synthetic Gazebo world reproducible from
   exact hashes;
-- one canonical tube-and-rack family reproducibly generated for SolidCraft and
-  FreeCAD, with exported geometry and semantic invariants checked against the
-  same abstract source;
+- one reviewed tube-and-rack family with exporter conformance against the
+  same bound source; a second backend requires separate justification;
 - one CUT&RUN simulation plan that can be previewed, approved, replayed and
-  refused deterministically;
+  refused under the declared exact-binding and numerical-replay rules;
 - preserved sample/material lineage and protocol checkpoints across the run;
 - negative tests for stale assets/worlds, scale or frame mismatch, missing
   capabilities, collision and interrupted execution;
@@ -174,6 +241,164 @@ inspection surface.
 - **D2 - Published file mode:** tempfile-based no-clobber exporters publish 0600
   on Unix, unlike ordinary `fs::write` exports. Set repository-wide publication
   policy separately; do not change one exporter in isolation.
+
+## Next Slice: One Family, One Exporter
+
+Status: proposed test-only emitter regression, not implementation approval,
+geometric validation or completion of a simulation milestone. A
+[read-only Claude review prompt](robotic_wetlab_plan_review_prompt_20261104.md)
+covers the source-review follow-up and remaining decision gates.
+
+### Fixed Working Set
+
+- Family: the existing `safe_lock_tube_rack_floor_seated` Safe-Lock carrier,
+  with `RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6)`, fixed
+  `rack_id="conformance_safe_lock_floor_4x6"`, no placements, no compact-pitch
+  override and `blocked_coordinates=[]`. There is no sample data.
+- Reference tube: `eppendorf_safe_lock_1_5ml`. The carrier is already derived
+  jointly from the 1.5 and 2.0 ml profiles; retain both as bound derivation
+  inputs rather than silently changing its geometry. The 2.0 ml profile is not
+  a second rendered model or an expansion to another carrier family.
+- Backend: OpenSCAD source only, reusing `ExportTubeOpenScad` /
+  `gentle_render::labware::render_tube_openscad` and
+  `racks openscad` / `export_rack_openscad`. A tube file and rack file are two
+  artifacts from one backend, not two new exporters or command vocabularies.
+- Result: test assertions and ordinary test-runner diagnostics only. Defer a
+  portable conformance record, runtime reader, report ledger and schema until
+  a real runtime consumer needs them; do not overload equipment v1.
+
+The tube and rack checks are independent. The rack source does not reference
+or place the exported tube; selecting the 1.5 ml reference does not change the
+carrier. No cross-artifact pairing, assembly, fit or insertion invariant is
+being tested. The family relationship is shared source provenance, not a
+demonstrated physical tube/rack relationship.
+
+The zero-blocked baseline must emit 24 hole cuts. Preserve the existing
+distinction outside that baseline: rack OpenSCAD omits holes at blocked
+coordinates, while equipment v1 retains those physical slots with
+`blocked=true`. Do not test or describe those outputs as equivalent for a
+nonempty blocked set, or change either behavior to force agreement.
+
+The reference tube remains the existing outer-body/collar visualization.
+Caps, hinges, cavities, liquid/grasp frames and a calibrated slot-to-tube
+insertion transform remain unavailable. Do not make a printable vessel, infer
+fit from combined renderings or add an assembly pose to fill these gaps.
+PCR96, the undocumented individual PCR seating collar, strips, collar-seated
+carriers, storage boxes and other tube variants are outside this pilot.
+
+### Admission And Compatibility Gates
+
+- Before implementation, record the limited D1 decision: whether this pilot
+  may pin the existing row-A / label-strip-edge convention. Retaining it is the
+  proposed compatibility choice, not an ANSI/SLAS deck mapping or approval to
+  migrate existing frames. Stop if a different orientation is required.
+- Generate test artifacts only in owned temporary directories; commit no new
+  `.scad`, drawing, mesh or JSON snapshot. This avoids a new fixture-publication
+  gate, not the existing source-use/provenance obligations. Document the inline
+  synthetic setup and existing drawing sources. Any later committed artifact
+  needs separate rights review; drawing digests are not a licence grant.
+  No catalog publication, private lab geometry or sample data.
+- Reuse the existing source/profile/template ownership and existing command
+  routes; do not introduce a generic constraint solver or CAD geometry DSL.
+- D2 remains a separate repository-wide decision. Do not change legacy
+  overwrite/file-mode behavior or introduce a new publication path in this
+  pilot; use fresh owned temporary destinations for conformance execution.
+- Preserve equipment v1, its projection and pinned hashes, legacy output bytes,
+  project content/history and existing adapter approval rules. Any needed
+  geometry, writer-policy or shipped-schema change is a separate reviewed slice.
+
+### First-Gate Acceptance And Verification
+
+1. Keep the fixed inputs above and use the existing tube/rack operation paths;
+   artifact writes keep their normal confirmation requirements. Reuse the
+   existing tube dimension/provenance/repeatability tests, not a duplicate suite.
+2. **Emission check, not independent derivation verification:** parse the
+   controlled generated rack source and compare its scalar declarations and
+   all 24 row-major hole translations with the emitted values expected from
+   the current spec. Expected spec and exporter share derivation helpers;
+   agreement alone proves only emission/formatting consistency. Do not build a
+   general OpenSCAD parser or accept arbitrary user CAD input.
+3. **Independent literal oracle:** additionally pin the constants and arithmetic
+   below in test code without calling the production derivation for expected
+   values. This catches shared-helper drift against the declared source/rules,
+   not physical correctness. Keep existing derivation tests rather than adding
+   a second derivation implementation.
+4. Assert byte-identical repeated rack source with the fixed `rack_id`, profile
+   and generator inputs, using fresh temporary destinations. Reuse the existing
+   tube repeatability/profile-JSON checks. No committed artifact freshness check
+   is proposed; if introduced later, scoped LF policy, LF/CRLF coverage and
+   fixture provenance are mandatory. The full embedded tube `profile_json`
+   remains part of any future artifact-publication review.
+5. Retain existing missing-dimension, invalid-geometry and export-refusal tests;
+   do not add a runtime validator just to create new refusal/staleness cases.
+   Missing physical data remains unavailable. Equipment-v1 unit conversion,
+   hash/validation and blocked-slot behavior keep their existing regressions.
+6. Probe installed CAD availability/version only when execution is separately
+   authorized. A controlled native parser/load check is a separate verdict;
+   absent tooling is unverified, not a pass or permission to install/download.
+   On macOS check the direct OpenSCAD app binary before suggesting installation.
+7. Preserve legacy bytes, equipment v1 and existing project/history/approval
+   behavior through existing regression tests. No GUI, backend vocabulary,
+   command route, engine report or screenshot campaign is required.
+
+**Literal oracle and fixed numerical rules.** All values below are millimetres.
+The existing profile data gives body diameter 9.85, lengths 38.9/40.0 and
+cylindrical lengths 20.0/32.3. Under the existing engineering assumptions:
+
+- opening: `9.85 + 2 * 0.30 = 10.45`;
+- bore: `floor(max(38.9 - 20.0, 40.0 - 32.3) + 3.0) + 1 = 22.0`;
+- rack height: `22.0 + 2.0 = 24.0`; pitch: `20.0`;
+- edge: `(20.0 - 10.45) / 2 = 4.775`;
+- width: `2 * 4.775 + 10.45 + 5 * 20.0 = 120.0`;
+- depth: `10.0 + 4.775 + 10.45 + 3 * 20.0 = 85.225`;
+- hole coordinates: row-major Cartesian product of
+  `x=[10, 30, 50, 70, 90, 110]` and `y=[15.225, 35.225, 55.225, 75.225]`;
+  iterate rows (`y`) outside columns (`x`). A1 is `(10, 15.225)` and D6 is
+  `(110, 75.225)`.
+
+Pin the canonical three-decimal declarations and hole translations, not just
+their presence. In particular:
+
+```text
+outer_width = 120.000;
+outer_depth = 85.225;
+rack_height = 24.000;
+opening_diameter = 10.450;
+floor_thickness = 2.000;
+front_top_clearance = 10.000;
+front_label_strip_depth = 6.000;
+front_label_strip_recess = 0.800;
+corner_radius = 2.000;
+```
+
+`SCAD_EMISSION_ABS_TOL_MM = 0.000500001` covers three-decimal rounding plus a
+`1e-9` mm floating-point comparison guard when comparing parsed emission to
+the already widened f32 spec. Do not add the spec's f32 error a second time.
+`SPEC_LITERAL_ABS_TOL_MM = 0.0001` separately compares spec fields to the
+hand-calculated literals, matching the existing carrier-test allowance for
+f32 arithmetic. Exact string pins remain exact; neither tolerance weakens
+those checks or represents fabrication clearance. No adaptive tolerance or
+new unit conversion is needed; changing either constant requires review.
+
+**Increment beyond existing coverage.** In `src/engine/tests.rs`,
+`labware_carriers_preserve_legacy_json_and_export_both_support_modes` already
+pins 4x9 JSON derivation values and SCAD disclosures;
+`labware_legacy_carrier_exports_omit_drawing_disclosures` protects legacy
+headers; `export_rack_fabrication_isometric_svg_and_openscad_include_template_markers` checks basic
+SCAD/module/floor output. `rack_openscad_all_templates_preserve_bottom_floor_and_open_top`
+already covers the floor/open-top structure. The render crate's
+`tube_models_bind_their_source_dimensions_and_disclose_omissions` already pins
+tube literals, repeated bytes and embedded profile JSON. Reuse those unchanged.
+The new value is the fixed 4x6 rack's parsed numerical declarations, exact
+hole count/order/coordinates and repeatability; do not relabel existing tests
+as newly implemented coverage. Native CAD and full geometric validation remain
+unverified by these source assertions.
+
+Passing this gate establishes only the specified emitter regression checks.
+Native CAD acceptance, mesh geometry, collision, inertia, actions, protocol
+execution, Gazebo/worlds, physical fit and biological performance are separate
+or deferred. A reviewed CUT&RUN input is needed for the later protocol stage,
+not for this sample-free geometry pilot.
 
 ## First Implementation Slice
 
@@ -207,11 +432,13 @@ Here "front" means the row-A / label-strip edge, not the side facing an
 operator; it does not define a calibrated ANSI/SLAS deck pose. D1 is an owner
 decision, not a request to rotate or relabel existing exports in this slice.
 
-The next useful slice needs maintainer decisions on catalog ownership/licensing
-and an explicitly reviewed, quantity/sample-bound protocol input. Only then
-should a neutral plan and synthetic-world adapter be designed. A shareable CAD
-representation must reconcile with the existing source-backed labware model,
-not duplicate it. Physical execution requires its own later approval.
+The next proposed work is the [one-family, one-exporter conformance pilot](#next-slice-one-family-one-exporter),
+with its explicit orientation, rights and compatibility gates. Reviewed,
+quantity/sample-bound protocol input and catalog ownership/licensing remain
+prerequisites for the later protocol/world stage, not invented inputs to the
+CAD-source check. A shareable CAD representation must reconcile with the
+existing source-backed labware model, not duplicate it. Physical execution
+requires its own later approval.
 
 See [CLI usage](cli/rendering.md), [wire semantics](protocol.md)
 and the [review prompt](robotic_wetlab_equipment_review_prompt_20261103.md).
