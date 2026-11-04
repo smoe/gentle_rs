@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-05 - Record Post-BLAST Phase Attribution At dfca3261
+
+- Verify Glen's 17,854-byte evidence archive, all 82 manifest entries and the
+  byte-identical published report. Retain 28 focused Rust passes and locked
+  Cargo check at their actual Linux source/toolchain, not later MCP changes.
+- Close only the phase-attribution diagnostic: both real imports stop inside
+  `forward_hits`, with earlier full annotation decodes and alias construction
+  measured separately. Keep all four timeouts, unfinished spans and timing-
+  origin limits explicit; no speedup, CPU-stack or specificity pass is claimed.
+- Record repeated prepared-window/index work as a source-level repair
+  candidate, with scoped equivalence/staleness tests proposed before any new
+  real replay. No production change, local Rust, BLAST/reference preparation,
+  push, dispatch or six-gate acceptance is performed.
+
 ## 2026-11-04 - Advertise RT Capture Commands In MCP Discovery
 
 - Add the four existing RT assessment/comparison/redesign and saved-junction

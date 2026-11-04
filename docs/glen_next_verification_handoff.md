@@ -7,6 +7,61 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Post-BLAST Phase-Trace Return, 2026-11-05
+
+Glen completed the diagnostic at `dfca32611ad2b217382186038a4c3879d907fdde`,
+tree `b5428910481eeaf23fe23ec0e04d885997fe62ac`, Linux x86_64 / Rust-Cargo
+1.97.1, ordinary dev/default-feature CLI, one job, `CARGO_INCREMENTAL=0`.
+The diff from `108cc5e5` contains only four documentation files. Retained
+streams confirm 5 trace, 10 multi-reference and 13 matrix tests passed, plus
+locked Cargo check. These results do not accept the later MCP-path repair.
+
+The owner's 17,854-byte archive matches SHA-256
+`978f85f6a18c19cc81475bfc9b68cc0aac882aea8af9ce8e09fc3569796926cc`.
+Codex independently checked all 82 manifest entries and exact regular-file
+coverage (83 files including the manifest). Manifest SHA-256:
+`f87e592dd2cbb4ea798c453509a03cdc3730f42750b4d15a199c0e1577998d59`.
+The [published report](https://github.com/smoe-bot/gentle_rs/blob/05055a36fb95528f9931fd1556498995c13005e0/docs/audits/glen_followups_20261008/post_blast_phase_trace_dfca3261/REPORT.md)
+is byte-identical to the archive report. Historical evidence is unchanged.
+
+All four ACTB/TP53 baseline/traced attempts ended at the prescribed deadline,
+exit 124, with no stdout, saved state or surviving run-owned process. Each
+trace contains 50 valid records, 27 begins and 23 completions, no truncation.
+Both end with unfinished `forward_hits`: begin at 22.602560 s / 22.694039 s
+from trace origin. Four earlier annotation decodes per run each process
+465,769 records in 3.565-4.145 s; aliases take 5.212 / 5.260 s. Do not sum
+nested spans or claim CPU stacks, completed hits, speedup or specificity.
+The 37.397440 / 37.305961 s residuals in the supplied analyzer subtract trace
+elapsed time from the external CLI deadline. Because those clocks start at
+different boundaries, treat them as approximate deadline-budget residuals,
+not independently established strict phase-duration lower bounds.
+
+All 213 input-check lines and both reference-inspection receipts are identical
+before/after. This verifies the retained receipts, not an independent rehash of
+the absent large inputs or CLI binary. The diagnostic request is fulfilled;
+real-import performance and full scientific acceptance remain open. Do not
+repeat the unchanged four-run diagnostic or rerun BLAST/reference preparation.
+
+**Proposed next repair, not implemented or authorized by the diagnostic:**
+`primer_specificity_hit_from_blast` unconditionally requests reference-backed
+3-prime mismatch evidence before using complete aligned BLAST strings. The
+prepared-window reader resolves/validates the resource and reloads the entire
+FASTA index on each successful read. This is a source-level amplification
+candidate inside `forward_hits`, not measured attribution to that subcall.
+Consider an interpretation-local prepared reference/index reader, preserving
+existing resolution, alias, coordinate/strand, warning/fallback and pre/post
+reference checks. No global cache, hit truncation, mismatch-policy change or
+skipped validation. Keep annotation-decode/alias reuse a separate later change.
+
+Before a new real replay, require synthetic old/new result equivalence and
+deterministic index-load-count checks, including partial/gapped/negative-strand
+HSPs, missing/corrupt/stale references and full-alignment fallback. Glen/CI owns
+Rust execution and the later bounded same-profile ACTB/TP53 comparison; no new
+run, local Rust build, push or dispatch was performed for this review. The
+plan has not been Claude-reviewed; a read-only second opinion is optional.
+The documentation-only recording passes 19 documentation checks, manual
+catalog/status and whitespace checks; roadmap remains 400 lines.
+
 ## RT Capture MCP Command-Path Repair, 2026-11-04
 
 The reported `capability_registry_parity` failures are discovery drift, not a

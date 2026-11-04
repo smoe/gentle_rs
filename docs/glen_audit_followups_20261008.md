@@ -654,6 +654,10 @@ push, dispatch, publication or new six-gate completion is claimed.
 
 ### Current Main Diagnostic Follow-Up: Awaiting Execution
 
+Historical authoring status: the phase-trace request below was subsequently
+fulfilled at `dfca3261`; see the separately attributed return below. Do not
+repeat its unchanged execution or infer any new six-gate completion.
+
 Glen's 2026-10-13 clarification confirms the completed software/learner scope
 at `f35a58e6`; the earlier `5e6201a6` worktree request is not a new full task.
 The [active consolidated tutorial residuals](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks)
@@ -676,6 +680,32 @@ tests are authored, not Rust-verified locally. Glen needs the exact new commit
 through an owner push or bundle, plus focused tests and bounded real imports.
 All six gate verdicts above remain bound to their recorded source; no additional
 native, live-agent, package, scientific or performance closure follows.
+
+### Phase-Trace Return At `dfca3261`, 2026-11-05
+
+Glen's [source-bound return](glen_next_verification_handoff.md#post-blast-phase-trace-return-2026-11-05)
+closes the phase-attribution diagnostic, not the real-import performance gate.
+Codex verified the owner-supplied archive SHA-256 and all 82 manifest entries;
+the public report at bot evidence commit `05055a36` matches the archive bytes.
+Retained streams show 5/5 trace, 10/10 multi-reference and 13/13 matrix tests,
+plus locked Cargo check, on exact `dfca3261` / Linux x86_64 / Rust-Cargo 1.97.1.
+This is not acceptance of the later `f3d8f86f` MCP discovery change.
+
+Both traced real cases enter unfinished `forward_hits` after about 22.6 s;
+all four baseline/traced attempts hit the 60 s deadline with no saved state,
+stdout or survivor. Each trace has 50 valid records without truncation. Four
+465,769-record annotation decodes and about 5.2 s of alias construction precede
+that phase. No CPU-stack attribution, completed hit count or specificity pass
+follows; the supplied deadline-residual arithmetic is approximate because the
+trace and external timeout have different origins. Input/reference integrity
+is supported by identical retained before/after receipts, not a new local
+rehash of large originals. Historical audit trees and gate verdicts stay intact.
+
+The next proposed bounded repair targets repeated prepared-window/index work
+inside hit interpretation, with result-equivalence and stale-reference tests.
+It is not implemented here; global caching, skipped validation, biological
+policy changes and annotation/alias optimization are not bundled into it.
+No local Rust execution, new real replay, push or dispatch occurred here.
 
 ### Next Package Recipe After The Internal.12 Publication
 
