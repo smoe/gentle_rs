@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-04 - Clarify Tutorial Views And Protein-Length Provenance
+
+- Respond to the available portion of Glen's overnight tutorial review:
+  distinguish CD44's current native tables from its separately exported SVG,
+  add readable product/coordinate checkpoints and a microarray evidence card,
+  and replace 08.02's machine-local backbone link with a checkout-relative link.
+- Remove the current protein table's external/legacy expected-length fallback
+  from `derived aa`. Missing derivations remain unavailable; reference lengths
+  retain their separate source/expectation label. Engine translation, comparison
+  records, SVG geometry and scientific verdicts are unchanged.
+- Add source/teaching guards and four synthetic Rust regressions, including a
+  bounded semantic paint check. Keep raw captures, evidence manifests, catalog
+  projections and historical review dates unchanged. Glen's unpublished native
+  overview/color mapping and new screenshots still require their source files;
+  track those limits and image derivation requirements in the focused handoff.
+  Offline verification: 116 tests passed, three binary-dependent cases skipped;
+  LF/CRLF, manual/status, scoped formatting and whitespace checks passed.
+  No local Rust build/test, new capture, push or CI dispatch is performed.
+
 ## 2026-11-04 - Annotate The MCP Primer Preflight Contract
 
 - Add the missing fact-annotated `primers_preflight` descriptor alongside

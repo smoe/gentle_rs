@@ -31,6 +31,30 @@ sidecars; label crops and annotations as derived teaching images.
 Do not reopen the completed 08.18 repeat-cohort run, tutorial-CI registration
 or release-link repair merely to obtain more images.
 
+### Overnight Review Follow-Up, 2026-11-04
+
+The forwarded review covers Glen's local `1e75d926` on top of the public
+`069bd37b` boundary. His newer native overview, CD44/TSS captures and dirty
+microarray tranche are not present on the fetched public branch. Preserve
+that separate work; do not treat this list as an instruction to merge it blindly.
+
+- For 06.08, current main's tables and derived SVG are now explained separately.
+  Verify unavailable derived lengths versus external expectations natively.
+  Once Glen supplies the overview patch, reuse the shared renderer's exon-family
+  identity for both exon and CDS/protein segments; test a CDS starting within
+  an exon, reverse-strand ordering and the historical 742/139-aa checkpoints.
+- Keep raw captures and manifests byte-identical. For new teaching captures,
+  use an opaque, high-contrast profile and readable text at ordinary tutorial
+  width. A crop cannot remove translucency; recapture if background detail
+  obscures the labels. Crop/annotate only a separate derivative, never evidence.
+- Each derivative needs its raw input hash/path, crop bounds, transformations,
+  output hash and source revision. Label it as a teaching derivative and retain
+  a link to the raw capture. Do not call an SVG export a native screenshot.
+- Keep historical machine-local capture locators intact, labelled as
+  non-replayable context when their manifests arrive. Add repository-relative
+  or logical replay inputs separately; a `/home/...` or ephemeral `/tmp/...`
+  path is not a public download or a reproducible input identity.
+
 ## Under-taught product areas
 
 Address these as separate reviewable commits rather than one large tutorial

@@ -15,6 +15,15 @@ It contrasts canonical membrane CD44 with the short CD44RC product. It does
 splicing: proteolytic shedding and extracellular-vesicle-associated CD44 are
 separate mechanisms.
 
+**Start small:** import one locus, inspect the canonical transcript, then repeat
+with CD44RC. UniProt is an optional comparison, not a prerequisite for deriving
+the protein. Keep the transcript ID visible throughout; a gene name alone does
+not identify an isoform.
+
+The current native specialist is **table-based**. Its coordinate and product
+tables are not the graphical exon-to-protein SVG. Use the export step below
+for that diagram; an exported SVG is **not a native screenshot**.
+
 ## Expected Reference Result
 
 The bounded acceptance run on 2026-11-03 used Ensembl gene
@@ -27,6 +36,8 @@ The bounded acceptance run on 2026-11-03 used Ensembl gene
 
 Public annotations can change. Record the returned source versions and explain
 any changed transcript version or length rather than forcing these values.
+These are historical reference checkpoints, not acceptance of your current
+binary or a measurement of CD44 in a sample.
 
 ## Step 1: Import the CD44 Locus
 
@@ -57,27 +68,64 @@ Use the newly explicit route:
 3. enter transcript `ENST00000428726`
 4. click `Open Genome / Transcript / Protein View`
 
-Read the view from top to bottom:
+Read the native tables from top to bottom:
 
-- the upper lanes retain genomic exon/intron and CDS geometry
-- matching exon-family colors connect genomic structure to the product
-- the lower lane uses the transcript-local protein axis
-- the details table reports the derived sequence length and derivation mode
+| Look At | Question To Answer |
+| --- | --- |
+| Transcript ID and strand | Am I inspecting the intended transcript and orientation? |
+| Exon coordinates | Which genomic intervals belong to this row? These are not amino-acid coordinates. |
+| `derived aa`, translation table and mode | Was a protein actually derived, and by which recorded method? |
+| `external opinion`, reference span and status | What did a separate source expect, and does it agree with the derivation? |
 
-The protein axis must end at 742 aa for the reviewed reference result. A
+For this transcript-native comparison, the `exons` column lists mapped coding
+spans. Do not treat those CDS boundaries as the full transcript's UTR/exon
+boundaries; compare the transcript annotation and the SVG's separate geometry.
+
+If `derived aa` is `unavailable`, stop short of claiming a derived product.
+An external expected length, even 742 aa, does not fill that gap. Review the
+warning, CDS annotation and derivation mode instead of substituting UniProt's
+length. Likewise, an inferred ORF is not automatically an annotated CDS.
+
+Resize the specialist or use its horizontal and vertical scrolling to read the
+full rows. Do not interpret a clipped column or an off-screen row as missing
+evidence. Read the ID, length, status and warning together, not by color alone.
+
+### Export a Readable Coordinate Diagram
+
+In `File -> Protein Evidence...`, keep `Project entry to sequence` set to the
+same locus and the transcript filter set to `ENST00000428726`. Choose
+`Render Derived Protein SVG...`, save to a fresh filename and open that SVG
+at a readable zoom. The export is a separate, approved file write; it does
+not save the project. If the save dialog is unavailable, the shared route is:
+
+```text
+render-feature-expert-svg cd44_ensembl_locus protein-comparison --transcript ENST00000428726 cd44-canonical-derived.svg
+```
+
+Use the shared Shell on that same project, or a CLI bound to its saved state.
+A separate CLI process does not see an unsaved GUI project. A headless
+`inspect-feature-expert` returns data; it does not open the native window.
+
+In the SVG, compare exon/CDS intervals with the protein segments and their
+coordinates; the graphical renderer's exon-family colors are a guide, not
+independent evidence. A CDS may start inside an exon, so its start coordinate
+is not necessarily the exon boundary. On a reverse-strand transcript, genomic
+coordinate order and transcript 5'-to-3' order differ.
+
+The derived protein axis must end at 742 aa for the reviewed reference result. A
 terminal stop codon belongs to CDS geometry but is not an amino acid and must
 not appear as residue 743.
 
 ## Step 3: Add UniProt Context
 
-Return to the same specialist window:
+Return to `File -> Protein Evidence...`:
 
 1. fetch reviewed UniProt accession `P16070`
 2. project it to `cd44_ensembl_locus`
 3. restrict the projection to `ENST00000428726`
 4. open `Open Protein Expert`
 
-The optional external overlay should show the signal peptide, extracellular
+The optional external evidence should list the signal peptide, extracellular
 region, transmembrane helix, and cytoplasmic region without replacing GENtle's
 transcript-derived product as the primary model.
 
@@ -99,6 +147,17 @@ Open the transcript-native view again with transcript
 - the canonical transmembrane region is absent because the product ends far
   before residues 650–670
 - the unique C terminus is structurally compatible with a secreted product
+
+Repeat the SVG export with the new transcript filter and a different filename.
+Check the end of the **derived** axis, rather than copying the external
+expected length or a domain's last residue into the length column.
+
+| Historical Checkpoint | Canonical CD44 | CD44RC |
+| --- | --- | --- |
+| Transcript | `ENST00000428726.8` | `ENST00000278386.11` |
+| Derived length | 742 aa | 139 aa |
+| Canonical residues 650-670 | Within the canonical product | Beyond this short product's end |
+| Sample expression or secretion | Not established here | Not established here |
 
 Optionally create a second UniProt projection restricted to this transcript:
 
@@ -129,12 +188,14 @@ protein evidence.
 ## Checkpoints
 
 - The comparison is reachable from the `Genome` menu and command palette.
-- Genomic exon/CDS context and transcript-local protein lanes are visible in
-  one native window.
+- The native tables retain transcript/strand, exon coordinates, derived length
+  and the separate external-opinion status; the SVG supplies graphical geometry.
 - The canonical reviewed product ends at 742 aa; CD44RC ends at 139 aa.
 - Terminal stops remain part of CDS accounting but never extend a protein axis.
 - UniProt is visibly an optional external opinion, not the source of transcript
   identity.
+- An external-only row reports `unavailable` under `derived aa`, even if an
+  external expected length is present.
 - The conclusion distinguishes alternative splicing from shedding and
   vesicle association.
 

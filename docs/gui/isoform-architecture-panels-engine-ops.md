@@ -27,13 +27,21 @@ Buttons:
 - `Export Isoform SVG`
   - executes `RenderIsoformArchitectureSvg` and writes a deterministic SVG.
 
-Expected output structure:
+The native expert window currently presents two scrollable tables:
 
-- top section: transcript/exon lanes on genomic coordinates
-- bottom section: protein/domain lanes on amino-acid coordinates
+- top section: transcript IDs, strand, mapping status and genomic exon coordinates
+- bottom section: derived protein lengths, reference spans, translation settings,
+  external opinions/status and domain coordinates
 - shared isoform row ordering across both sections
-- warning/instruction footer from the same engine payload used by shell/CLI
-  inspection commands.
+- warnings from the same engine payload used by shell/CLI inspection commands.
+
+`derived aa` reports `unavailable` when no transcript-derived product exists.
+External expected lengths stay in the separate opinion column; an unattributed
+legacy expectation is labelled as such, not promoted to a derivation.
+Resize or scroll horizontally to inspect a wide row. The graphical exon/CDS
+and protein lanes belong to the SVG export, not a native screenshot. The
+[CD44 walkthrough](../tutorial/06-08_cd44_genome_transcript_protein_gui.md)
+explains the distinction and the separate transcript-derived SVG route.
 
 VCF display filtering (no recomputation needed):
 

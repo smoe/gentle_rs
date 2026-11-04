@@ -9756,6 +9756,188 @@ fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows()
     );
 }
 
+mod isoform_protein_length_tests {
+    use super::*;
+    use gentle_protocol::{
+        IsoformArchitectureProteinLane, TranscriptProteinComparison,
+        TranscriptProteinComparisonStatus, TranscriptProteinExternalOpinion,
+    };
+
+    // Synthetic presentation records, not CD44 sequence or translation evidence.
+    fn lane(
+        derived_length: Option<usize>,
+        expected_length: Option<usize>,
+    ) -> IsoformArchitectureProteinLane {
+        let derived = derived_length.map(|length| {
+            serde_json::from_value(serde_json::json!({
+                "transcript_id": "synthetic_transcript",
+                "transcript_label": "synthetic product",
+                "source_seq_id": "seq1",
+                "source_feature_id": 0,
+                "cds_length_bp": length * 3 + 3,
+                "protein_sequence": "A".repeat(length),
+                "protein_length_aa": length,
+                "translation_table": 1,
+                "translation_table_label": "Standard",
+                "codon_start": 1,
+                "terminal_stop_trimmed": true
+            }))
+            .unwrap()
+        });
+        IsoformArchitectureProteinLane {
+            isoform_id: "synthetic_product".to_string(),
+            label: "synthetic product".to_string(),
+            transcript_id: Some("synthetic_transcript".to_string()),
+            expected_length_aa: expected_length,
+            reference_start_aa: None,
+            reference_end_aa: None,
+            domains: vec![],
+            transactivation_class: None,
+            comparison: Some(TranscriptProteinComparison {
+                status: match (derived_length, expected_length) {
+                    (Some(_), Some(_)) => {
+                        TranscriptProteinComparisonStatus::LowConfidenceExternalOpinion
+                    }
+                    (Some(_), None) => TranscriptProteinComparisonStatus::DerivedOnly,
+                    (None, Some(_)) => TranscriptProteinComparisonStatus::ExternalOpinionOnly,
+                    (None, None) => TranscriptProteinComparisonStatus::NoTranscriptCds,
+                },
+                derived,
+                external_opinion: expected_length.map(|length| TranscriptProteinExternalOpinion {
+                    source: gentle_protocol::ProteinExternalOpinionSource::Other,
+                    source_id: "synthetic_reference".to_string(),
+                    source_label: "Synthetic external reference".to_string(),
+                    expected_length_aa: Some(length),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn isoform_protein_length_external_only_never_becomes_derived() {
+        let lane = lane(None, Some(742));
+        assert_eq!(
+            MainAreaDna::isoform_protein_length_labels(&lane),
+            (
+                "unavailable".to_string(),
+                "Synthetic external reference; expected 742 aa".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn isoform_protein_length_derived_keeps_its_own_length() {
+        for length in [742, 139] {
+            let lane = lane(Some(length), Some(999));
+            let before = serde_json::to_value(&lane).unwrap();
+            assert_eq!(
+                MainAreaDna::isoform_protein_length_labels(&lane),
+                (
+                    length.to_string(),
+                    "Synthetic external reference; expected 999 aa".to_string()
+                )
+            );
+            assert_eq!(serde_json::to_value(&lane).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn isoform_protein_length_unknown_and_zero_remain_distinct() {
+        assert_eq!(
+            MainAreaDna::isoform_protein_length_labels(&lane(None, None)).0,
+            "unavailable"
+        );
+        assert_eq!(
+            MainAreaDna::isoform_protein_length_labels(&lane(Some(0), Some(742))).0,
+            "0"
+        );
+        let mut legacy = lane(None, Some(139));
+        legacy.comparison = None;
+        assert_eq!(
+            MainAreaDna::isoform_protein_length_labels(&legacy),
+            (
+                "unavailable".to_string(),
+                "reference expectation 139 aa (source not recorded)".to_string()
+            )
+        );
+        let mut external = lane(None, Some(139));
+        let opinion = external
+            .comparison
+            .as_mut()
+            .unwrap()
+            .external_opinion
+            .as_mut()
+            .unwrap();
+        opinion.source_label.clear();
+        opinion.expected_length_aa = None;
+        assert_eq!(
+            MainAreaDna::isoform_protein_length_labels(&external),
+            (
+                "unavailable".to_string(),
+                "external opinion (source not recorded); expected length unavailable".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn isoform_protein_length_table_paints_external_expectation_separately() {
+        let view = IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "synthetic_panel".to_string(),
+            gene_symbol: "SYNTHETIC".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
+            panel_source: None,
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "synthetic presentation control".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![
+                lane(None, Some(999)),
+                lane(Some(742), None),
+                lane(Some(139), None),
+            ],
+            expression_matrix: None,
+            warnings: vec![],
+        };
+        let before = serde_json::to_value(&view).unwrap();
+        let area = MainAreaDna::new(
+            DNAsequence::from_sequence("ACGT").unwrap(),
+            Some("seq1".to_string()),
+            None,
+        );
+        let ctx = egui::Context::default();
+        let mut texts = Vec::new();
+        for _ in 0..2 {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(3000.0, 900.0),
+                )),
+                ..Default::default()
+            });
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| area.render_isoform_architecture_expert_view_ui(ui, &view),
+            );
+            texts = collect_pass_texts(&ctx);
+        }
+        for label in [
+            "derived aa",
+            "unavailable",
+            "742",
+            "139",
+            "Synthetic external reference; expected 999 aa",
+        ] {
+            assert!(texts.iter().any(|text| text == label), "{label}: {texts:?}");
+        }
+        assert!(!texts.iter().any(|text| text == "999"));
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    }
+}
+
 #[test]
 fn isoform_expert_window_title_uses_protein_expert_for_transcript_native_source() {
     let view = IsoformArchitectureExpertView {

@@ -7,6 +7,56 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Tutorial Review Follow-Up, 2026-11-04
+
+The owner's forwarded overnight report has SHA-256
+`2efc2501a1b2143f849a187bf0de3c25f5d95eeecdcb0d17af0a81d32e584cea`.
+It distinguishes upstream `069bd37b` from Glen's local `1e75d926`. A bounded
+fetch of the named bot branch still returns `89eec1b9`, whose foundation is
+already integrated; `503cb391`, `3839426f` and `1e75d926` are unavailable here.
+Do not claim to have fixed or independently verified those newer drawings or
+seven captures. Preserve Glen's dirty microarray tranche separately.
+
+The existing main table has the same expected-to-derived length fallback.
+Repair only its presentation: derived length requires `comparison.derived`;
+external expectations and unattributed legacy expectations remain separate.
+No translation, coordinate, comparison-status, engine/schema or SVG algorithm
+changes are made. Four synthetic regressions cover external-only records,
+conflicting expected lengths, 742/139 label controls, zero versus unavailable,
+missing source/length and semantic table painting without model changes.
+These length controls are not new CD44 derivation evidence.
+
+Tutorial 06.08 now distinguishes the native tables from the exported SVG and
+teaches unavailable-versus-expected data, reverse-strand reading and separate
+project/file persistence. The 07.04 reading card keeps authentic coordinates
+apart from synthetic effects; 08.02's backbone link is checkout-relative.
+All are hand-written canonical guides, not generated chapters. Catalog,
+manifest, historical review dates, raw images and evidence manifests stay
+unchanged. The [image backlog](tutorial/coverage_backlog.md#overnight-review-follow-up-2026-11-04)
+records the still-missing overview/color mapping and readable-image work.
+
+Run only the changed scopes before ordinary CI; require four regression matches:
+
+```sh
+cargo test --locked --lib isoform_protein_length_ -- --test-threads=1
+cargo check -q --locked --tests
+```
+
+Native follow-up: inspect an external-only row and both genuinely derived
+rows, horizontal scrolling and warnings. Reopen the same project and verify
+that the display did not change its evidence. Keep Windows/native acceptance
+separate from the semantic paint test. Do not repeat completed CD44 source
+fetches, TSS DuckDB or array/CEL campaigns merely for these wording changes.
+The existing offline source checks reproduce the old link/guide/fallback gaps;
+no local Rust build, real-process replay, new capture, push or dispatch ran.
+
+Authoring verification: 119 offline tutorial/checkout/screenshot-policy tests
+were selected, 116 passed and three binary-dependent cases skipped. LF/CRLF,
+manual/status, scoped rustfmt and whitespace checks passed. Session-close:
+four OK, two expected worktree/scope reminders and no failures. Rust and native
+acceptance remain pending; unrelated `paper`, private data and untracked files
+are untouched.
+
 ## Primer Preflight Introspection Repair, 2026-11-04
 
 The owner's local library run reported 4,838 passed, two failed and 16 ignored

@@ -7575,6 +7575,36 @@ impl MainAreaDna {
         }
     }
 
+    pub(super) fn isoform_protein_length_labels(
+        lane: &gentle_protocol::IsoformArchitectureProteinLane,
+    ) -> (String, String) {
+        let comparison = lane.comparison.as_ref();
+        let derived = comparison.and_then(|comparison| comparison.derived.as_ref());
+        let derived_length = derived
+            .map(|derivation| derivation.protein_length_aa.to_string())
+            .unwrap_or_else(|| "unavailable".to_string());
+        let external_label =
+            match comparison.and_then(|comparison| comparison.external_opinion.as_ref()) {
+                Some(opinion) => {
+                    let source = opinion.source_label.trim();
+                    let source = if source.is_empty() {
+                        "external opinion (source not recorded)"
+                    } else {
+                        source
+                    };
+                    match opinion.expected_length_aa {
+                        Some(length) => format!("{source}; expected {length} aa"),
+                        None => format!("{source}; expected length unavailable"),
+                    }
+                }
+                None => match lane.expected_length_aa.filter(|_| derived.is_none()) {
+                    Some(length) => format!("reference expectation {length} aa (source not recorded)"),
+                    None => "none".to_string(),
+                },
+            };
+        (derived_length, external_label)
+    }
+
     pub(super) fn render_isoform_architecture_expert_view_ui(
         &self,
         ui: &mut egui::Ui,
@@ -7620,7 +7650,7 @@ impl MainAreaDna {
         {
             ui.label(
                 egui::RichText::new(
-                    "Genome / Transcript / Protein comparison: transcript-native translation is primary; optional external protein opinions are treated as comparison overlays. CONFLICT stays hidden by default; the top panel keeps coordinate-true genomic exon/intron and CDS context; the lower panel reuses shared genomic exon-family columns before handing off to isoform-local protein lanes; exon colors follow genomic exon family/position; membrane topology features render in a dedicated lower band.",
+                    "Genome / Transcript / Protein comparison: transcript-native translation is primary; external protein opinions are separate comparisons, not derived products. These tables retain exon/CDS coordinates, protein derivation and external status. Use Render Derived Protein SVG... in Protein Evidence for the graphical exon/protein layout. CONFLICT stays hidden by default.",
                 )
                 .size(font_size)
                 .color(egui::Color32::from_rgb(71, 85, 105)),
@@ -7725,7 +7755,7 @@ impl MainAreaDna {
                 for lane in &view.protein_lanes {
                     let comparison = lane.comparison.as_ref();
                     let derived = comparison.and_then(|comparison| comparison.derived.as_ref());
-                    let external = comparison.and_then(|comparison| comparison.external_opinion.as_ref());
+                    let (derived_length, external_label) = Self::isoform_protein_length_labels(lane);
                     let status = comparison.map(|comparison| comparison.status.as_str()).unwrap_or("-");
                     let status_color = match comparison.map(|comparison| comparison.status) {
                         Some(gentle_protocol::TranscriptProteinComparisonStatus::DerivedOnly)
@@ -7745,16 +7775,7 @@ impl MainAreaDna {
                     };
                     ui.label(egui::RichText::new(&lane.label).size(font_size));
                     ui.label(
-                        egui::RichText::new(
-                            derived
-                                .map(|derivation| derivation.protein_length_aa.to_string())
-                                .or_else(|| {
-                                    lane.expected_length_aa
-                                        .filter(|value| *value > 0)
-                                        .map(|value| value.to_string())
-                                })
-                                .unwrap_or_else(|| "-".to_string()),
-                        )
+                        egui::RichText::new(derived_length)
                         .monospace()
                         .size(font_size),
                     );
@@ -7817,14 +7838,7 @@ impl MainAreaDna {
                         .monospace()
                         .size(font_size),
                     );
-                    ui.label(
-                        egui::RichText::new(
-                            external
-                                .map(|external| external.source_label.clone())
-                                .unwrap_or_else(|| "none".to_string()),
-                        )
-                        .size(font_size),
-                    );
+                    ui.label(egui::RichText::new(external_label).size(font_size));
                     ui.label(
                         egui::RichText::new(
                             status.replace('_', " "),

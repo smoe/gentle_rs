@@ -8,6 +8,10 @@ downloads. Probeset IDs and hg38 coordinates are derived from vendor annotation;
 **all contrast statistics in this exercise are synthetic**. They are not
 expression measurements from E-MTAB-14704 and must not support a disease claim.
 
+**The short route:** inspect the manifest, project its five teaching rows, then
+focus one Array feature and read its coordinates and contrast. Stop there on
+the first pass. The public CEL workflow at the end is a different exercise.
+
 ## Before You Start
 
 Run from the checkout root and use a disposable project. Keep the same state
@@ -110,6 +114,23 @@ Color summarizes a named effect, not signal detection, RNA-seq abundance or
 evidence that a specific promoter is active. A broad or shared probe interval
 does not establish unique transcript coverage. Fold change, adjusted p-value
 and absolute expression are different quantities; none alone proves regulation.
+
+### Read One Feature Before Comparing Colors
+
+Use this evidence card beside the live hover/detail, rather than trying to read
+small labels in a screenshot:
+
+| Field | Check In This Exercise | Do Not Conclude |
+| --- | --- | --- |
+| Probeset and contrast | `PSR0100145779.hg.1`, alpha or beta contrast named explicitly | Two contrasts are two independent probes. |
+| Coordinates | Genomic 3652520..3652564 inclusive; local `[4,49)` | A local offset is a second genomic coordinate. |
+| Effect/statistics | Synthetic values from the named TSV | These are measured TP73 expression or CEL-analysis results. |
+| Coverage | Only the projected intervals are represented | An uncovered interval has zero expression. |
+
+Zoom or focus the live feature until its labels are readable. For your own
+notes retain the feature ID, contrast, assembly and exact coordinate convention;
+color alone loses those distinctions. Save the disposable project, close and
+reopen it, then inspect the same row. An exported figure is not a saved project.
 
 ## 5. Recover When Nothing Is Visible
 

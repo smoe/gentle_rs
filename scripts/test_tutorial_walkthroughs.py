@@ -27,6 +27,44 @@ BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
 
 
 class WalkthroughSourceTests(unittest.TestCase):
+    def test_cd44_guide_separates_native_tables_from_exported_geometry(self):
+        guide = ROOT / "docs/tutorial/06-08_cd44_genome_transcript_protein_gui.md"
+        prose = guide.read_text(encoding="utf-8")
+        for newline in ("\n", "\r\n"):
+            text = prose.replace("\n", newline)
+            for term in ("table-based", "derived aa", "unavailable", "external opinion",
+                         "Render Derived Protein SVG...", "not a native screenshot",
+                         "742", "139", "terminal stop", "horizontal"):
+                with self.subTest(term=term, newline=repr(newline)):
+                    self.assertTrue(term in text, term)
+        self.assertNotIn("matching exon-family colors connect", prose)
+
+    def test_reviewed_tutorial_links_do_not_depend_on_capture_host_paths(self):
+        for filename in ("06-08_cd44_genome_transcript_protein_gui.md",
+                         "07-04_microarray_evidence_gui_cli.md",
+                         "08-02_vkorc1_variant_followup_expert_gui.md"):
+            guide = ROOT / "docs/tutorial" / filename
+            for target in re.findall(r"\]\(([^)]+)\)", guide.read_text(encoding="utf-8")):
+                if target.startswith(("https://", "http://", "#")):
+                    continue
+                with self.subTest(guide=filename, target=target):
+                    self.assertFalse(target.startswith(("/", "file:")))
+                    self.assertTrue((guide.parent / target.split("#")[0]).is_file())
+
+    def test_isoform_length_presentation_has_no_expected_to_derived_fallback(self):
+        source = (ROOT / "src/main_area_dna/auxiliary_workspaces.rs").read_text(encoding="utf-8")
+        marker = "pub(super) fn isoform_protein_length_labels("
+        self.assertTrue(marker in source, "Protein table needs a provenance-aware length helper")
+        helper = source.split(marker, 1)[1].split("pub(super) fn render_isoform_", 1)[0]
+        derived = helper.split("let derived_length =", 1)[1].split("let external_label =", 1)[0]
+        self.assertNotIn("expected_length_aa", derived)
+        self.assertIn('"unavailable"', derived)
+        self.assertTrue("Self::isoform_protein_length_labels(lane)" in source)
+        tests = (ROOT / "src/main_area_dna/tests.rs").read_text(encoding="utf-8")
+        for name in ("external_only_never_becomes_derived", "derived_keeps_its_own_length",
+                     "unknown_and_zero_remain_distinct", "table_paints_external_expectation_separately"):
+            self.assertTrue(f"fn isoform_protein_length_{name}()" in tests, name)
+
     def test_agent_readiness_exercise_keeps_unknown_diagnostics_separate(self):
         guide = ROOT / "docs/tutorial/01-01_agent_interfaces.md"
         text = guide.read_text(encoding="utf-8")

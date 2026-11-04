@@ -63,7 +63,7 @@ This is a human-cell reporter-design story, not a bacterial-expression story.
    `File -> Prepare Reference Genome...`
 3. dbSNP fetch is reachable for `rs9923231`.
 4. The pinned local backbone is present:
-   [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+   [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](../../data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
 
 ## Step 1: Fetch the Local SNP Context
 
