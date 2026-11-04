@@ -413,3 +413,23 @@ main integration pending. No main update, merge, rebase or push is performed.
 Session-close reports four OK, two warnings and zero failures: the expected
 working-tree/generated-artifact warning and the manual plan-fidelity reminder.
 The unrelated untracked `output/` directory remains untouched.
+
+### Status After Integration, 2026-11-04
+
+The delivery note above is historical. `10c3545b` has since been integrated
+into `main` and reached `origin/main`. The later `069bd37b` annotates the MCP
+`primers_preflight` descriptor, so the inherited global fact-annotation failure
+recorded above is no longer open.
+
+Claude's review of `602d7fe6` is closed: `10c3545b` addresses every finding.
+At `069bd37b` on macOS arm64 (`rustc 1.101.0-nightly (3e92e1a2d 2026-11-01)`),
+with the unchanged lockfile and the transient settings above, this command
+passed 59/59 tests (the 58 focused tests plus the global guard):
+
+```sh
+cargo test -q --locked --offline --lib -- rack_equipment_ export_rack_ parse_racks_ lifecycle_slice4_ execute_introspect_all_capability_section_has_full_fact_annotations --test-threads=1
+```
+
+The protocol, parity and Python suites were not rerun for this note. D1, D2,
+native Windows publication, JS/Lua VM execution and physical/scientific
+acceptance remain open.
