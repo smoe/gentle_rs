@@ -66,6 +66,39 @@ struct GlossaryCommand {
     engine_operations: Vec<String>,
 }
 
+#[test]
+fn mcp_op_glossary_commands_are_advertised_by_the_operation_tool() {
+    let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();
+    let operation_tools = tools
+        .as_array()
+        .expect("tools/list array")
+        .iter()
+        .filter(|tool| tool["name"] == "op")
+        .collect::<Vec<_>>();
+    assert_eq!(operation_tools.len(), 1, "one generic operation tool");
+    let operation_tool = operation_tools[0];
+    assert_eq!(operation_tool["mutating"], true);
+    let paths = operation_tool["commandPaths"]
+        .as_array()
+        .expect("op commandPaths array")
+        .iter()
+        .map(|path| path.as_str().expect("command path string").to_string())
+        .collect::<BTreeSet<_>>();
+    assert!(paths.contains("op"), "retain the generic operation route");
+    let commands = glossary_commands()
+        .into_iter()
+        .filter(|command| command.interfaces.iter().any(|name| name == "mcp-op"))
+        .collect::<Vec<_>>();
+    assert!(!commands.is_empty(), "retain declared mcp-op routes");
+    for command in commands {
+        assert!(
+            paths.contains(&command.path),
+            "declared mcp-op command `{}` is absent from op tools/list commandPaths",
+            command.path
+        );
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ParityMatrixOverrides {
     overrides: Vec<ParityMatrixOverride>,

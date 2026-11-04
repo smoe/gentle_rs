@@ -221,6 +221,17 @@ class CapabilityMaturityTests(unittest.TestCase):
 class DiscoveryCatalogTests(unittest.TestCase):
     """Committed discovery metadata invariants, not Rust registry execution."""
 
+    def test_mcp_op_glossary_commands_are_advertised_by_the_operation_tool(self):
+        commands = json.loads((ROOT / "docs/glossary.json").read_bytes())["commands"]
+        expected = {row["path"] for row in commands if "mcp-op" in row["interfaces"]}
+        source = (ROOT / "src/mcp_server.rs").read_text()
+        mapping = source.split("fn tool_command_paths(", 1)[1].split('"op" => &[', 1)[1].split("],", 1)[0]
+        advertised = {line.strip()[1:-2] for line in mapping.splitlines()
+                      if line.strip().startswith('"') and line.strip().endswith('",')}
+        self.assertTrue(expected, "the glossary must retain its generic MCP operation routes")
+        self.assertEqual(sorted(expected - advertised), [],
+                         "declared mcp-op routes must appear in tools/list commandPaths")
+
     def test_rt_glossary_smokes_use_typed_discovery_templates(self):
         source = (ROOT / "src/engine_shell/tests.rs").read_text()
         helper = source.split("fn smoke_command_line_for_glossary_command(", 1)[1].split(

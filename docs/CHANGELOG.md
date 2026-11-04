@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-04 - Advertise RT Capture Commands In MCP Discovery
+
+- Add the four existing RT assessment/comparison/redesign and saved-junction
+  command paths to the generic MCP `op` tool's `tools/list` metadata. Their
+  glossary/registry entries already exist; the reported missing-registry error
+  also matches adapter surfacing and arose from the absent discovery paths.
+- Keep the existing registry, parity assertions, request schemas, operation
+  execution and approval rules unchanged. Add an actual-tools/list Rust
+  regression and an offline source guard for every declared `mcp-op` path;
+  the source guard first reproduced exactly these four omissions.
+- No matrix/maturity regeneration, new tool or biological logic is required.
+  Rust/runtime verification remains pending with Glen/CI; no local Rust build,
+  push or dispatch is performed.
+- Authoring checks: 36 offline metadata/documentation tests passed, zero skips;
+  manual/status, scoped regression formatting and whitespace checks passed.
+  The Rust tools/list integration regression remains unrun locally.
+
 ## 2026-11-04 - Record Focused Native Windows Comparator Verification
 
 - Record Glen's 16/16 native Windows x64 / NTFS / Python 3.15.2 comparator

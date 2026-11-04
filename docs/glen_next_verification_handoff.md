@@ -7,6 +7,40 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## RT Capture MCP Command-Path Repair, 2026-11-04
+
+The reported `capability_registry_parity` failures are discovery drift, not a
+missing engine operation or duplicate registry key. The registry already marks
+`rna-reads primer-junctions` as MCP-prominent from `mcp-op`, but the generic
+`op` tool omitted it from `tools/list.commandPaths`. The same omission affected
+`primers assess-rt-candidates`, `primers compare-rt-candidates` and
+`primers redesign-rt`. All four paths now appear on the existing tool; no
+request, biological algorithm, permission, operation route or registry
+classification changes. The parity/maturity projections remain unchanged.
+
+The new offline source guard failed before the repair with exactly those four
+paths and passes after it. A new Rust integration regression inspects the
+actual tools/list projection, requires every glossary `mcp-op` path on the
+single generic `op` tool and preserves its mutation/approval classification.
+The two original failing parity assertions are unchanged.
+
+Glen/CI should run only the affected discovery/freshness gate, including the
+new regression; no repeat of completed comparator, gel or RT biology checks:
+
+```sh
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo check -q --locked --tests -j1
+```
+
+Record actual tested source/toolchain/platform and nonzero counts. Local Rust
+execution remains prohibited here; source-level passes are not a runtime pass.
+Native, scientific and wider release acceptance remain separate.
+
+Authoring checks on the working tree based at `dfca3261`: 36 offline metadata/
+documentation checks passed, zero skips, including LF/CRLF policy checks.
+Manual catalog/status, scoped regression formatting and whitespace checks
+passed; roadmap remains 400 lines. The Rust integration test remains unrun.
+
 ## Read-End Metric Comparator Repair, 2026-11-04
 
 The standalone Python utility is adapted from Glen / `smoe-bot`
