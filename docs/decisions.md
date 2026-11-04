@@ -297,6 +297,15 @@ junctions. A candidate payload containing another anchor remains unsegmented
 and unresolved in Phase 1. Do not emit mechanism-confirmation labels including
 "trans-splicing", "fusion" or "chimera confirmed" as result classes.
 
+Saved primer–payload inspection projects verified trace/query/alignment
+artifacts without replaying original reads or references. Preserve original-read
+versus primer-oriented query coordinates, observed approximate boundaries and
+all full/core/handle alternatives; a representative hit is not every primer's
+classification. Count distinct source records separately from anchor observations,
+keep complete ambiguity sets and overlapping profile denominators, and never
+let preview filters redefine cohort support. Successful inspection cannot
+upgrade a partial/control-error analysis or invent unretained flank sequence.
+
 Policy/budgets, exact references and input bytes are content-bound. Independent
 file effects require approval. Standalone managed trace publication is a
 named artifact-only exception with its own result binding, never a generic
@@ -836,6 +845,16 @@ infer oligo availability from a design, or borrow paired-assay/unique-genomic-
 hit approval for a multi-target single-primer pool. Fixed protocol oligos
 participate only in declared stages; recorded heuristic Tm is not reaction Ta.
 See [the portable capture contract](transcript_capture_pools.md).
+
+RT candidate comparison keeps exact binding presence, annotated region and
+prospective background compatibility independent. Resolve each isoform through
+shared mature-transcript/CDS geometry and retain the declared denominator;
+repeat sites are not additional covered isoforms. Empty CDS and gaps inside a
+CDS envelope are unknown, never implicit UTR or coding sequence. Unknown bases
+dominate a site's region label; mixed labels require verified known-region
+crossings. Ambiguity-compatible transcript windows prevent a clean absence
+call. Descriptive Tm/complementarity heuristics and a low terminal burden do
+not confer experimental specificity, secondary-structure or order approval.
 
 ## Contextual Launcher Readiness
 

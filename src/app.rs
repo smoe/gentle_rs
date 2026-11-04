@@ -12557,10 +12557,13 @@ Error: `{err}`"
             })
             .map(|report| OpResult {
                 rna_primer_panel: None,
+                rt_primer_assessment: None,
+                rt_primer_comparison: None,
                 rna_primer_trace: None,
                 primer_payload_queries: None,
                 primer_payload_alignments: None,
                 primer_payload_inspection: None,
+                primer_payload_junctions: None,
                 observed_transcript_structures: None,
                 observed_sam_structures: None,
                 observed_sam_inspection: None,

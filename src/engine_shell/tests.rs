@@ -50166,3 +50166,37 @@ fn tss_local_score_ui_intent_keeps_exact_accessions_and_own_settings() {
             .is_some_and(|a| a.detail.contains("refused") && !a.required)
     );
 }
+
+#[test]
+fn rt_primer_assessment_discovery_and_read_only_admission_are_consistent() {
+    let mut engine = GentleEngine::new();
+    let discovery = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities --kind operation").unwrap(),
+    )
+    .unwrap();
+    let descriptors = discovery.output["capabilities"].as_array().unwrap();
+    for id in ["AssessRtPrimerCandidates", "primers assess-rt-candidates"] {
+        let descriptor = descriptors.iter().find(|d| d["id"] == id).unwrap();
+        let op: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        assert!(matches!(op, Operation::AssessRtPrimerCandidates { .. }));
+        assert_eq!(descriptor["mutating"], "false");
+        assert_eq!(descriptor["requires_confirmation"], false);
+        let request = descriptor["request_template"].clone();
+        let typed: crate::engine::AssessRtPrimerCandidatesRequest =
+            serde_json::from_value(request.clone()).unwrap();
+        assert!(
+            GentleEngine::new()
+                .assess_rt_primer_candidates(typed, &mut |_| true)
+                .is_err()
+        );
+        let command = parse_shell_line(&format!(
+            "primers assess-rt-candidates {}",
+            quote_shell_arg(&request.to_string())
+        ))
+        .unwrap();
+        assert!(!command.is_state_mutating());
+        assert!(capability_precondition_atoms(id).is_some());
+    }
+}

@@ -30,9 +30,20 @@ pub use rna_panel::*;
 mod primer_trace;
 pub use primer_trace::*;
 
+#[path = "protocol/rt_primer_assessment.rs"]
+mod rt_primer_assessment;
+pub use rt_primer_assessment::*;
+
+#[path = "protocol/rt_primer_comparison.rs"]
+mod rt_primer_comparison;
+pub use rt_primer_comparison::*;
+
 #[path = "protocol/primer_payload.rs"]
 mod primer_payload;
 pub use primer_payload::*;
+#[path = "protocol/primer_junction.rs"]
+mod primer_junction;
+pub use primer_junction::*;
 #[path = "protocol/observed_transcripts.rs"]
 mod observed_transcripts;
 pub use observed_transcripts::*;
@@ -5530,6 +5541,10 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_panel: Option<Box<RnaPrimerPanel>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rt_primer_assessment: Option<Box<RtPrimerAssessmentReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rt_primer_comparison: Option<Box<RtPrimerComparisonReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_trace: Option<Box<RnaPrimerTraceReport>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primer_payload_queries: Option<Box<PrimerPayloadQueries>>,
@@ -5537,6 +5552,8 @@ pub struct OpResult {
     pub primer_payload_alignments: Option<Box<PrimerPayloadAlignmentReport>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub primer_payload_inspection: Option<Box<PrimerPayloadInspection>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_payload_junctions: Option<Box<PrimerPayloadJunctionInspection>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_transcript_structures: Option<Box<ObservedTranscriptStructuresReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

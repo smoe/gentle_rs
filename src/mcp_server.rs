@@ -3627,10 +3627,13 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         || matches!(
             &operation,
             Operation::EvaluateGenomeEditIntent { .. }
+                | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }
                 | Operation::PreparePrimerPayloadAlignmentQueries { .. }
                 | Operation::SummarizePrimerPayloadAlignments { .. }
+                | Operation::InspectPrimerPayloadJunctions { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::CancelPrimerPayload { .. }
                 | Operation::InspectPrimerTrace { .. }

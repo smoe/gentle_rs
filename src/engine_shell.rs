@@ -14294,8 +14294,11 @@ impl ShellCommand {
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectRnaReadPanel { .. }
+                | Operation::CompareRtPrimerCandidates { .. }
+                | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
+                | Operation::InspectPrimerPayloadJunctions { .. }
                 | Operation::InspectPrimerPayload { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }
                 | Operation::InspectObservedTranscriptStructuresFromSam { .. }
@@ -19836,6 +19839,50 @@ fn sequencing_primer_suggest_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn primer_junction_descriptor(id: &str) -> Value {
+    let template = json!({"schema":crate::engine::PRIMER_JUNCTION_INSPECTION_REQUEST_SCHEMA,
+        "source":{"schema":crate::engine::PRIMER_PAYLOAD_BINDING_SCHEMA,"kind":"alignments","request_sha256":"REPLACE","report_content_sha256":"REPLACE","report_path":"/REPLACE/report.json","outcome":"completed"},
+        "source_report":{"path":"/REPLACE/report.json","sha256":"REPLACE","bytes":0},
+        "file_id":null,"primer_id":null,"offset":0,"rows":100,"budgets":crate::engine::primer_junction_inspection_default_budgets()});
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"gentle.primer_junction_inspection_request.v1 with exact saved alignment result/file bindings and inspection budgets"}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},
+        "description":"Verify and join saved trace hits, oriented query geometry and payload partners/seeds. Preserves ambiguity, source outcomes and full distinct-read/profile denominators independently of row filters. No original read/reference/PAF replay, re-alignment, file output or mechanism claim.",
+        "request_template":template,"operation_template":{"InspectPrimerPayloadJunctions":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
+fn rt_primer_comparison_descriptor(id: &str) -> Value {
+    let template = json!({"schema":crate::engine::RT_PRIMER_COMPARISON_REQUEST_SCHEMA,
+        "assessment":{"schema":crate::engine::RT_PRIMER_ASSESSMENT_REQUEST_SCHEMA,"primers":[],"references":[],"intended_sites":[]},
+        "sources":[], "budgets":crate::engine::RtPrimerComparisonBudgets::default()});
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"gentle.rt_primer_comparison_request.v1: common background assessment and explicit loaded transcript sources"},
+            {"name":"SOURCE_SEQ_ID","required":true,"subject_kind":"sequence","detail":"repeat for each sources[].source.seq_id"}],
+        "reads":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}],"effects":[],
+        "precondition_expr":{"all":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}]},
+        "description":"Read-only per-isoform RT-tail presence and CDS/5-prime-UTR/3-prime-UTR/mixed/unknown classification, common prospective background assessment and shared oligo metrics. Keeps ambiguous sites unresolved, explicit member denominators and multiple binding sites. No ranking, abundance, hairpin prediction or order approval.",
+        "request_template":template,"operation_template":{"CompareRtPrimerCandidates":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
+        "registry":registry_metadata_for_introspection(id)})
+}
+
+fn rt_primer_assessment_descriptor(id: &str) -> Value {
+    let template = json!({"schema":crate::engine::RT_PRIMER_ASSESSMENT_REQUEST_SCHEMA,
+        "primers":[], "references":[], "intended_sites":[],
+        "budgets":crate::engine::RtPrimerAssessmentBudgets::default()});
+    json!({
+        "id": id, "kind": "operation", "mutating": "false", "requires_confirmation": false,
+        "args": [{"name":"REQUEST_JSON", "required":true, "detail":"gentle.rt_primer_assessment_request.v1: explicit existing RnaLibraryPrimer definitions, content-bound uncompressed FASTA references or named missing scopes, intended sites and budgets"}],
+        "reads": [], "effects": [], "precondition_expr": {"all":[]},
+        "description":"Read-only prospective terminal 6/8/10/12 compatibility counts for supplied RT oligos. Hashes the FASTA bytes parsed, distinguishes physical sites, positional mismatches and contiguous 3-prime runs, and leaves missing/ambiguous evidence unassessed. No abundance, retrospective replay, full-tail specificity, design, file output or order approval.",
+        "request_template": template,
+        "operation_template": {"AssessRtPrimerCandidates":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,
+        "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
+    })
+}
+
 fn transcript_capture_descriptor(id: &str) -> Value {
     json!({
         "id": id, "kind": "operation", "mutating": "true", "requires_confirmation": false,
@@ -22268,6 +22315,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         observed_transcript_descriptor("rna-reads transcript-structures-show"),
         observed_transcript_descriptor("rna-reads transcript-structures-cancel"),
         primer_payload_descriptor("SummarizePrimerPayloadAlignments"),
+        primer_junction_descriptor("InspectPrimerPayloadJunctions"),
+        primer_junction_descriptor("rna-reads primer-junctions"),
         primer_payload_descriptor("InspectPrimerPayload"),
         primer_payload_descriptor("CancelPrimerPayload"),
         primer_payload_descriptor("rna-reads primer-payload-prepare"),
@@ -26549,6 +26598,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primer_design",
             "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
         ),
+        rt_primer_comparison_descriptor("CompareRtPrimerCandidates"),
+        rt_primer_comparison_descriptor("primers compare-rt-candidates"),
+        rt_primer_assessment_descriptor("AssessRtPrimerCandidates"),
+        rt_primer_assessment_descriptor("primers assess-rt-candidates"),
         transcript_capture_descriptor("DesignTranscriptCapturePool"),
         transcript_capture_descriptor("primers design-transcript-capture-pool"),
         json!({
@@ -32611,6 +32664,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-transcript-capture-pool" | "DesignTranscriptCapturePool" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
         ]),
+        "CompareRtPrimerCandidates" | "primers compare-rt-candidates" => Some(vec![
+            json!({"fact":"sequence.exists", "subject":{"arg":"SOURCE_SEQ_ID"}}),
+        ]),
+        "InspectPrimerPayloadJunctions" | "rna-reads primer-junctions" => Some(vec![]),
+        "AssessRtPrimerCandidates" | "primers assess-rt-candidates" => Some(vec![]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}}),
@@ -66812,6 +66870,34 @@ fn execute_op_command(
             return Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({"cancel_requested":true,"termination_confirmed":false,"message":message}),
+            });
+        }
+        Operation::InspectPrimerPayloadJunctions { request } => {
+            let report = engine.inspect_primer_payload_junctions(*request.clone(), &mut |progress| {
+                forward_shell_progress(options, progress).unwrap_or(false)
+            }).map_err(|e|e.to_string())?;
+            return Ok(ShellRunResult { state_changed:false, output:json!({"result":{"primer_payload_junctions":report}}) });
+        }
+        Operation::CompareRtPrimerCandidates { request } => {
+            let report = engine
+                .compare_rt_primer_candidates(*request.clone(), &mut |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"rt_primer_comparison":report}}),
+            });
+        }
+        Operation::AssessRtPrimerCandidates { request } => {
+            let report = engine
+                .assess_rt_primer_candidates(*request.clone(), &mut |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+                .map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"rt_primer_assessment":report}}),
             });
         }
         Operation::ValidateRnaPrimerPanel { panel, seal } => {

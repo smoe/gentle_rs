@@ -146,5 +146,5 @@ Phase 2 report formats remain unchanged.
 
 ---
 
-[CLI Manual](../cli.md) | [Previous: Primer-Free Payload Evidence](primer-payload.md) | [Next: Target Rescue Screen](rescue-screen.md)
+[CLI Manual](../cli.md) | [Previous: Prospective RT-Primer Assessment](rt-primer-assessment.md) | [Next: Target Rescue Screen](rescue-screen.md)
 <!-- manual-page-nav:end -->

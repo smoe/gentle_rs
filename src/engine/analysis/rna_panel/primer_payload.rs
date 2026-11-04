@@ -12,6 +12,8 @@ mod alignment_tests;
 mod evidence;
 #[path = "primer_payload/inspect.rs"]
 mod inspect;
+#[path = "primer_payload/junction_inspector.rs"]
+mod junction_inspector;
 #[path = "primer_payload/junction_assessment.rs"]
 mod junction_assessment;
 #[path = "primer_payload/observed.rs"]
@@ -25,6 +27,8 @@ mod observed_tests;
 mod paf;
 #[path = "primer_payload/reference.rs"]
 mod reference;
+#[path = "primer_payload/rt_assessment.rs"]
+mod rt_assessment;
 #[path = "primer_payload/summarize.rs"]
 mod summarize;
 

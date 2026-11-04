@@ -92,6 +92,14 @@
          "usage": "rna-reads primer-payload-summarize REQUEST_JSON_OR_@FILE"
       },
       {
+         "aliases": [],
+         "engine_operations": ["InspectPrimerPayloadJunctions"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "rna-reads primer-junctions",
+         "summary": "Verify and join saved primer-trace/query/payload evidence, preserving observed orientation, ambiguity and full distinct-read denominators independently of paginated rows.",
+         "usage": "rna-reads primer-junctions REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["InspectPrimerPayload"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads primer-payload-show",
@@ -4382,6 +4390,22 @@
          "path": "primers design-terminal-exon-rt-pool",
          "summary": "Compose annotated mature-transcript geometry and shared oligo metrics into a persisted ordered fixed-adapter RT-primer pool near explicit terminal-exon starts.",
          "usage": "primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["CompareRtPrimerCandidates"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "primers compare-rt-candidates",
+         "summary": "Compare supplied RT candidates across explicit annotated isoforms, retaining CDS/UTR/unknown/absent context, common background counts and shared oligo metrics without ranking or order approval.",
+         "usage": "primers compare-rt-candidates REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["AssessRtPrimerCandidates"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "primers assess-rt-candidates",
+         "summary": "Assess supplied RT-primer terminal compatibility against explicit content-bound FASTA backgrounds; unweighted advisory counts, no design or order approval.",
+         "usage": "primers assess-rt-candidates REQUEST_JSON_OR_@FILE"
       },
       {
          "aliases": [],

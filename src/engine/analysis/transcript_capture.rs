@@ -277,39 +277,9 @@ impl GentleEngine {
                             "Capture discovery is bounded to 256 transcripts and 1,000,000 total cDNA bases",
                         ));
                     }
-                    let feature = dna
-                        .features()
-                        .get(template.transcript_feature_id)
-                        .ok_or_else(|| {
-                            EngineError::internal("Capture transcript feature is absent")
-                        })?;
-                    let cds = Self::resolve_transcript_source_cds_ranges_0based(
-                        feature,
-                        dna.features(),
-                        &template.exon_chain,
-                    )?;
-                    let mut exons = template.exon_chain.clone();
-                    exons.sort_unstable();
-                    let mut cursor = 0;
-                    let forward = exons
-                        .iter()
-                        .map(|&(start, end)| {
-                            let span = (start, end, cursor, cursor + end - start);
-                            cursor += end - start;
-                            span
-                        })
-                        .collect::<Vec<_>>();
-                    if cursor != template.sequence.len() {
-                        return Err(EngineError::invalid_input(
-                            "Capture source has clipped/inconsistent exon geometry; retrieve the complete annotated transcript locus",
-                        ));
-                    }
-                    let local_cds = Self::map_source_ranges_to_transcript_local_ranges_0based(
-                        &cds,
-                        &forward,
-                        template.strand == "-",
-                        cursor,
-                    );
+                    let local_cds =
+                        Self::transcript_design_local_cds_ranges(dna, &template, "Capture")?;
+                    let cursor = template.sequence.len();
                     let utr_length = local_cds.iter().map(|range| range.0).min();
                     let mut notes = Vec::new();
                     if utr_length.is_none() {

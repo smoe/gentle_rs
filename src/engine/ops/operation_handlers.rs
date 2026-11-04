@@ -25,6 +25,8 @@ mod gene_set_arrangement;
 mod rna_panel;
 #[path = "../analysis/transcript_capture.rs"]
 mod transcript_capture;
+#[path = "../analysis/rt_primer_comparison.rs"]
+mod rt_primer_comparison;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
 use crate::primer_import_trace::{self as import_trace, Phase as ImportPhase};
 use crate::{
@@ -4225,6 +4227,46 @@ impl GentleEngine {
             }
         }
         Self::merge_adjacent_ranges_0based(&source_ranges)
+    }
+
+    /// Resolve annotated CDS intervals onto the shared biological-order cDNA geometry.
+    /// Empty CDS stays unknown; clipped source geometry is never a shortened isoform.
+    fn transcript_design_local_cds_ranges(
+        dna: &DNAsequence,
+        template: &TranscriptQpcrDesignTemplate,
+        context: &str,
+    ) -> Result<Vec<(usize, usize)>, EngineError> {
+        let feature = dna
+            .features()
+            .get(template.transcript_feature_id)
+            .ok_or_else(|| EngineError::internal("Transcript feature is absent"))?;
+        let cds = Self::resolve_transcript_source_cds_ranges_0based(
+            feature,
+            dna.features(),
+            &template.exon_chain,
+        )?;
+        let mut exons = template.exon_chain.clone();
+        exons.sort_unstable();
+        let mut cursor = 0;
+        let forward = exons
+            .iter()
+            .map(|&(start, end)| {
+                let span = (start, end, cursor, cursor + end - start);
+                cursor += end - start;
+                span
+            })
+            .collect::<Vec<_>>();
+        if cursor != template.sequence.len() {
+            return Err(EngineError::invalid_input(format!(
+                "{context} source has clipped/inconsistent exon geometry; retrieve the complete annotated transcript locus"
+            )));
+        }
+        Ok(Self::map_source_ranges_to_transcript_local_ranges_0based(
+            &cds,
+            &forward,
+            template.strand == "-",
+            cursor,
+        ))
     }
 
     pub(crate) fn resolve_transcript_source_cds_ranges_0based(
@@ -40553,10 +40595,13 @@ impl GentleEngine {
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
             rna_primer_panel: None,
+            rt_primer_assessment: None,
+            rt_primer_comparison: None,
             rna_primer_trace: None,
             primer_payload_queries: None,
             primer_payload_alignments: None,
             primer_payload_inspection: None,
+            primer_payload_junctions: None,
             observed_transcript_structures: None,
             observed_sam_structures: None,
             observed_sam_inspection: None,
@@ -52216,6 +52261,16 @@ impl GentleEngine {
                     result.messages.push(format!("Synthetic motif-removal preview: {:?}; {} candidate(s) evaluated; source unchanged", report.status, report.evaluated_candidates));
                     result.dna_sequence_design = Some(Box::new(report));
                 }
+                Operation::CompareRtPrimerCandidates { request } => {
+                    result.rt_primer_comparison = Some(Box::new(
+                        self.compare_rt_primer_candidates(*request, on_progress)?,
+                    ));
+                }
+                Operation::AssessRtPrimerCandidates { request } => {
+                    result.rt_primer_assessment = Some(Box::new(
+                        self.assess_rt_primer_candidates(*request, on_progress)?,
+                    ));
+                }
                 Operation::ValidateRnaPrimerPanel { panel, seal } => {
                     result.rna_primer_panel =
                         Some(Box::new(Self::validate_rna_primer_panel(&panel, seal)?));
@@ -52229,6 +52284,11 @@ impl GentleEngine {
                 Operation::SummarizePrimerPayloadAlignments { request } => {
                     result.primer_payload_alignments = Some(Box::new(
                         self.summarize_primer_payload_alignments(*request, on_progress)?,
+                    ));
+                }
+                Operation::InspectPrimerPayloadJunctions { request } => {
+                    result.primer_payload_junctions = Some(Box::new(
+                        self.inspect_primer_payload_junctions(*request, on_progress)?,
                     ));
                 }
                 Operation::InspectPrimerPayload {

@@ -127,6 +127,24 @@ pub(super) fn queries(
     b: &PrimerPayloadBudgets,
     additional_input_bytes: u64,
 ) -> Result<PrimerPayloadQueries, EngineError> {
+    queries_with_rows(file, trace, expected_trace, b, additional_input_bytes)
+        .map(|(report, _, _)| report)
+}
+
+pub(super) fn queries_with_rows(
+    file: &PrimerPayloadFile,
+    trace: &RnaPrimerTraceReport,
+    expected_trace: &RnaPrimerTraceResultBinding,
+    b: &PrimerPayloadBudgets,
+    additional_input_bytes: u64,
+) -> Result<
+    (
+        PrimerPayloadQueries,
+        BTreeMap<String, Vec<RnaPrimerTraceRow>>,
+        BTreeMap<String, Vec<u8>>,
+    ),
+    EngineError,
+> {
     let report: PrimerPayloadQueries = read_json(file, b)?;
     validate_queries(&report)?;
     if encode(&report.request.trace)? != encode(expected_trace)? {
@@ -318,7 +336,7 @@ pub(super) fn queries(
         return Err(bad("primer_payload_query_fasta_coverage"));
     }
     validate_anchor_accounting(&report, &seen_rows)?;
-    Ok(report)
+    Ok((report, seen_rows, seqs))
 }
 
 impl GentleEngine {

@@ -6386,6 +6386,32 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
             })
         }
+        "compare-rt-candidates" => {
+            if tokens.len() != 3 {
+                return Err("primers compare-rt-candidates requires REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::CompareRtPrimerCandidatesRequest>(
+                &tokens[2], "RT primer comparison request",
+            )?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::CompareRtPrimerCandidates {
+                    request: Box::new(request),
+                }).map_err(|e| e.to_string())?,
+            })
+        }
+        "assess-rt-candidates" => {
+            if tokens.len() != 3 {
+                return Err("primers assess-rt-candidates requires REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::AssessRtPrimerCandidatesRequest>(
+                &tokens[2], "RT primer assessment request",
+            )?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::AssessRtPrimerCandidates {
+                    request: Box::new(request),
+                }).map_err(|e| e.to_string())?,
+            })
+        }
         "design-transcript-capture-pool" => {
             if tokens.len() != 3 {
                 return Err(
@@ -13483,6 +13509,17 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
             })
+        }
+        "primer-junctions" => {
+            if tokens.len() != 3 {
+                return Err("rna-reads primer-junctions requires REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::InspectPrimerPayloadJunctionsRequest>(
+                &tokens[2], "primer-payload junction inspection request",
+            )?;
+            Ok(ShellCommand::Op { payload: serde_json::to_string(
+                &Operation::InspectPrimerPayloadJunctions { request: Box::new(request) },
+            ).map_err(|e|e.to_string())? })
         }
         "primer-payload-prepare" | "primer-payload-summarize" | "primer-payload-cancel" => {
             if tokens.len() != 3 {
