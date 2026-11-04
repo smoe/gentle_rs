@@ -19,6 +19,21 @@
   LF/CRLF, manual/status, scoped formatting and whitespace checks passed.
   No local Rust build/test, new capture, push or CI dispatch is performed.
 
+## 2026-11-04 - Reconcile Primer Preflight Readiness Coverage
+
+- Clean up the parallel repairs after merge `82996294`: retain `069bd37b`'s
+  descriptor, fallback preconditions and catalog regression, replacing the
+  duplicate catalog test with focused shell/MCP readiness coverage.
+- Check bound MCP arguments with a missing executable name, unbound readiness,
+  empty unmet/unknown atoms and unchanged engine state. Preserve the useful
+  canonical introspection/protocol clarification: readiness permits requesting
+  a probe, not proof of tool reachability. Execution and schemas do not change.
+- The incoming `5fb2ae1d` author reports locked/offline headless verification
+  on macOS arm64: 102 introspection tests, Cargo check, 15 offline metadata
+  tests and documentation/whitespace checks passed. Existing dead-code/linker
+  warnings remain. This is source-bound evidence, not a merged-source pass;
+  default-feature/GUI, full-suite and native Windows checks were not run.
+
 ## 2026-11-04 - Annotate The MCP Primer Preflight Contract
 
 - Add the missing fact-annotated `primers_preflight` descriptor alongside

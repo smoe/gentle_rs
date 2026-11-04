@@ -72,6 +72,7 @@ Run only the affected Rust scopes before the ordinary suite, with nonzero counts
 
 ```sh
 cargo test --locked --lib execute_introspect_primer_preflight_mcp_contract_preserves_read_only_semantics -- --test-threads=1
+cargo test --locked --lib execute_introspect_primers_preflight_readiness_is_not_tool_reachability -- --test-threads=1
 cargo test --locked --lib execute_introspect_capabilities_projects_full_registry_with_fact_annotations -- --test-threads=1
 cargo test --locked --lib execute_introspect_all_capability_section_has_full_fact_annotations -- --test-threads=1
 ```
