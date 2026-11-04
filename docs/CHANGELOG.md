@@ -6,12 +6,20 @@
   `primers preflight`, with the MCP tool's three optional argument names and
   matching read-only, no-confirmation, empty-project-precondition semantics.
   Backend/tool availability stays a probe result, not an invented project fact.
-- Add a focused both-route regression and offline source guard. Preserve the
-  full-registry annotation assertions that exposed the omission; no capability
-  is hidden, relabelled globally or exempted from those checks. Execution,
-  dependencies, maturity and scientific verdicts are unchanged.
-- Update the bounded Glen handoff; Rust execution remains pending. No local
-  Rust build/test, push or CI dispatch is performed.
+- Retain both branches' regressions for the capability catalogs, unique MCP
+  row, bound/unbound readiness and unchanged project state, plus the offline
+  source guard. Preserve the full-registry annotation assertions that exposed
+  the omission; no capability is hidden, relabelled globally or exempted from
+  those checks. Execution, dependencies, maturity and scientific verdicts are
+  unchanged. Catalog readiness permits a probe, not proof of tool reachability.
+- Update the bounded Glen handoff and introspection/protocol documentation.
+  Main's authoring checks passed 46 offline tests; no local Rust build/test,
+  push or CI dispatch was performed by the integrating thread.
+- The incoming `7de50ad9` author reports locked/offline headless verification
+  on macOS arm64: 101 introspection tests, six preflight tests (overlapping
+  filters) and Cargo check passed. Existing dead-code/linker warnings remain.
+  These results do not certify the merged source; default-feature/GUI,
+  full-suite and native Windows verification remain separate.
 
 ## 2026-11-03 - Accept Exact Pins In The egui Compatibility Guard
 

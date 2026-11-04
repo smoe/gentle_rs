@@ -9,6 +9,12 @@ fact-aware annotations for every current catalog row. List-valued
 pool/container rows use descriptor-side `foreach_arg` atoms so bound readiness
 can prove every supplied sequence or container id before execution.
 
+The MCP `primers_preflight` capability has the same read-only, no-project-fact
+preconditions as `primers preflight`, with optional `state_path`, `backend`,
+and `primer3_executable` arguments. Its `ready` status means the probe can be
+requested, not that Primer3 is installed or reachable. Introspection does not
+run the probe or change the project's backend settings.
+
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
 Where this contract keeps a different mechanism than the review literally proposed,
@@ -840,7 +846,7 @@ on semantic glyphs.
    `primers list-restriction-cloning-handoffs`,
    `primers show-restriction-cloning-handoff`,
    `primers export-restriction-cloning-handoff`,
-   `primers preflight`, `primers seed-from-feature`,
+   `primers preflight`, `primers_preflight`, `primers seed-from-feature`,
    `primers seed-from-splicing`,
    `primers restriction-cloning-vector-suggestions`,
    `primers seed-restriction-cloning-handoff`,

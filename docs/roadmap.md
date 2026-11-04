@@ -124,7 +124,7 @@ and preserve the shared `ui ...` intent catalog across menu, command palette,
 shell, agent, MCP, and ClawBio discovery. Useful work here is parity,
 discoverability, confirmation wording, and `ui_intent`-shaped operator handoff;
 defer autonomous planning policy or biology-specific reasoning that is not
-backed by current engine records. Carry forward to `.13` Glen's validation of explicit Splicing Expert open/focus/close and the [transcript-assay playbook](ai_task_playbooks.md#playbook-12-gene-informed-primer-pairs-and-isoform-discrimination) with a live inner agent: real feature IDs, assay objectives, coverage and separate QA gates. This is not a retroactive `.10` gate or order approval. Run `tutorial-check` for declared command/confirmation parity before model review; live review remains for model quality, voice and broader MCP parity.
+backed by current engine records. Preserve full fact-annotation guards for both introspection catalogs, including named MCP routes such as `primers_preflight`; probe readiness is not tool reachability. Carry forward to `.13` Glen's validation of explicit Splicing Expert open/focus/close and the [transcript-assay playbook](ai_task_playbooks.md#playbook-12-gene-informed-primer-pairs-and-isoform-discrimination) with a live inner agent: real feature IDs, assay objectives, coverage and separate QA gates. This is not a retroactive `.10` gate or order approval. Run `tutorial-check` for declared command/confirmation parity before model review; live review remains for model quality, voice and broader MCP parity.
 
 For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
