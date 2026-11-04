@@ -20,6 +20,153 @@ fn engine(rows: usize, columns: usize) -> GentleEngine {
 const TEMPLATE: RackPhysicalTemplateKind = RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated;
 
 #[test]
+fn rack_equipment_safe_lock_4x6_scad_emission_matches_spec_and_literals() {
+    const RACK_ID: &str = "conformance_safe_lock_floor_4x6";
+    const SCAD_EMISSION_ABS_TOL_MM: f64 = 0.000500001;
+    const SPEC_LITERAL_ABS_TOL_MM: f64 = 0.0001;
+
+    // Synthetic unoccupied grid; drawing/engineering arithmetic is documented in
+    // docs/robotic_wetlab_simulation_plan.md. No model fixture or fit proof is stored.
+    let profile = RackProfileSnapshot::from_kind(RackProfileKind::SmallTube4x6);
+    assert!(profile.blocked_coordinates.is_empty());
+    let spec = GentleEngine::rack_physical_template_spec(TEMPLATE, &profile, None).unwrap();
+    let mut state = ProjectState::default();
+    state.container_state.racks.insert(
+        RACK_ID.into(),
+        Rack {
+            rack_id: RACK_ID.into(),
+            name: "Synthetic emitter conformance".into(),
+            profile,
+            placements: vec![],
+            carrier_pitch_override_um: None,
+            ..Rack::default()
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history = engine.history_summary();
+    let directory = tempfile::tempdir().unwrap();
+    let mut outputs = Vec::new();
+    for name in ["first.scad", "second.scad"] {
+        let path = directory.path().join(name);
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: RACK_ID.into(),
+                template: TEMPLATE,
+                path: path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        outputs.push(fs::read(path).unwrap());
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(engine.history_summary().undo_count, history.undo_count);
+        assert_eq!(engine.history_summary().redo_count, history.redo_count);
+    }
+    assert_eq!(outputs[0], outputs[1]);
+    let source = std::str::from_utf8(&outputs[0]).unwrap();
+    assert!(
+        source
+            .lines()
+            .any(|line| line == format!("// rack_id={RACK_ID}"))
+    );
+    assert_eq!((spec.rows, spec.columns), (4, 6));
+
+    // These literals are independent of the production derivation, not values
+    // populated from spec or regenerated when an assertion fails.
+    let scalars: [(&str, f32, f64); 9] = [
+        ("outer_width", spec.overall_width_mm, 120.0),
+        ("outer_depth", spec.overall_depth_mm, 85.225),
+        ("rack_height", spec.rack_height_mm, 24.0),
+        ("opening_diameter", spec.opening_diameter_mm, 10.45),
+        ("floor_thickness", spec.floor_thickness_mm, 2.0),
+        ("front_top_clearance", spec.front_top_clearance_mm, 10.0),
+        (
+            "front_label_strip_depth",
+            spec.front_label_strip_depth_mm,
+            6.0,
+        ),
+        (
+            "front_label_strip_recess",
+            spec.front_label_strip_recess_mm,
+            0.8,
+        ),
+        ("corner_radius", spec.corner_radius_mm, 2.0),
+    ];
+    for (name, spec_value, literal) in scalars {
+        let prefix = format!("{name} = ");
+        let declarations = source
+            .lines()
+            .filter_map(|line| line.strip_prefix(&prefix))
+            .collect::<Vec<_>>();
+        assert_eq!(declarations.len(), 1, "declaration count: {name}");
+        assert_eq!(declarations[0], format!("{literal:.3};"), "{name}");
+        let emitted: f64 = declarations[0].strip_suffix(';').unwrap().parse().unwrap();
+        assert!(
+            (emitted - f64::from(spec_value)).abs() <= SCAD_EMISSION_ABS_TOL_MM,
+            "emission versus spec: {name}"
+        );
+        assert!(
+            (f64::from(spec_value) - literal).abs() <= SPEC_LITERAL_ABS_TOL_MM,
+            "spec versus literal: {name}"
+        );
+    }
+    for (name, value, literal) in [
+        ("pitch_x_mm", spec.pitch_x_mm, 20.0),
+        ("pitch_y_mm", spec.pitch_y_mm, 20.0),
+        ("edge_margin_mm", spec.edge_margin_mm, 4.775),
+    ] {
+        assert!(
+            (f64::from(value) - literal).abs() <= SPEC_LITERAL_ABS_TOL_MM,
+            "spec versus literal: {name}"
+        );
+    }
+
+    let holes = source
+        .lines()
+        .filter(|line| line.contains("cylinder("))
+        .collect::<Vec<_>>();
+    assert_eq!(holes.len(), 24);
+    let xs: [f64; 6] = [10.0, 30.0, 50.0, 70.0, 90.0, 110.0];
+    let ys: [f64; 4] = [15.225, 35.225, 55.225, 75.225];
+    for (row, y) in ys.into_iter().enumerate() {
+        for (column, x) in xs.into_iter().enumerate() {
+            let line = holes[row * 6 + column];
+            assert_eq!(
+                line,
+                format!(
+                    "        translate([{x:.3}, {y:.3}, floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10, d=opening_diameter);"
+                ),
+                "hole at row {row}, column {column}"
+            );
+            let coordinates = line
+                .trim_start()
+                .strip_prefix("translate([")
+                .unwrap()
+                .split_once(", floor_thickness])")
+                .unwrap()
+                .0;
+            let (emitted_x, emitted_y) = coordinates.split_once(", ").unwrap();
+            let emitted = [
+                emitted_x.parse::<f64>().unwrap(),
+                emitted_y.parse::<f64>().unwrap(),
+            ];
+            let (spec_x, spec_y) = GentleEngine::rack_physical_hole_center_mm(&spec, row, column);
+            for ((emitted, spec_value), literal) in
+                emitted.into_iter().zip([spec_x, spec_y]).zip([x, y])
+            {
+                assert!(
+                    (emitted - f64::from(spec_value)).abs() <= SCAD_EMISSION_ABS_TOL_MM,
+                    "hole emission versus spec at row {row}, column {column}"
+                );
+                assert!(
+                    (f64::from(spec_value) - literal).abs() <= SPEC_LITERAL_ABS_TOL_MM,
+                    "hole spec versus literal at row {row}, column {column}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn rack_equipment_frames_match_existing_simulation_in_metres_for_every_template() {
     let mut engine = engine(8, 12);
     let temp = tempfile::tempdir().unwrap();

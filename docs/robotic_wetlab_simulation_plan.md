@@ -4,12 +4,12 @@ Status: future post-0.1 roadmap track. This document records the intended
 ownership and evidence boundaries; it does not authorize physical robot
 execution or add a release gate to the current internal series.
 
-Planning revision, 2026-11-04, incorporating the supplied source-only Claude
-review: the next proposed slice is a test-only emission regression for one
-existing rack family and the independent reference-tube checks, using one
-OpenSCAD-source backend. It adds no simulator, CAD language or runtime report.
-The proposal remains subject to its explicit decision gates; this documentation
-update implements no exporter or test and supplies no runtime evidence.
+Pilot scope, 2026-11-04: the owner authorized the narrowed test-only emission
+regression and retained the existing row-A / label-strip orientation. One new
+rack test and the unchanged reference-tube tests have scoped source-emission
+verification, recorded [below](#test-only-emitter-pilot-2026-11-04). This adds no
+exporter, simulator, CAD language or runtime report and establishes no native
+CAD, physical or scientific acceptance.
 
 ## Goal
 
@@ -234,18 +234,20 @@ inspection surface.
 - first robot, pipetting and instrument interfaces represented by the public
   reference cell;
 - retention, access and publication policy for private world and run artifacts.
-- **D1 - Orientation:** retain and explicitly name the current row-A / label-strip
-  edge as GENtle's "front" (not the operator-facing side), or adopt ANSI/SLAS
-  plan-view orientation in a separate legacy-export migration. See the
-  [current-output characterization](protocol.md); frames and labels are unchanged here.
+- **D1 - Pilot orientation resolved, 2026-11-04:** the owner confirms retaining
+  the existing row-A / label-strip edge as GENtle's "front" for the test-only
+  pilot. Future ANSI/SLAS deck mapping or legacy-orientation migration remains
+  separately reviewed; no frames or labels change. See the
+  [durable decision](decisions.md#equipment-descriptions-do-not-grant-execution-authority).
 - **D2 - Published file mode:** tempfile-based no-clobber exporters publish 0600
   on Unix, unlike ordinary `fs::write` exports. Set repository-wide publication
   policy separately; do not change one exporter in isolation.
 
 ## Next Slice: One Family, One Exporter
 
-Status: proposed test-only emitter regression, not implementation approval,
-geometric validation or completion of a simulation milestone. A
+Status: implemented as one test-only emitter regression, with the scoped
+[verification receipt](#test-only-emitter-pilot-2026-11-04). This is not
+geometric validation or completion of a simulation milestone. The original
 [read-only Claude review prompt](robotic_wetlab_plan_review_prompt_20261104.md)
 covers the source-review follow-up and remaining decision gates.
 
@@ -288,10 +290,10 @@ carriers, storage boxes and other tube variants are outside this pilot.
 
 ### Admission And Compatibility Gates
 
-- Before implementation, record the limited D1 decision: whether this pilot
-  may pin the existing row-A / label-strip-edge convention. Retaining it is the
-  proposed compatibility choice, not an ANSI/SLAS deck mapping or approval to
-  migrate existing frames. Stop if a different orientation is required.
+- D1 is owner-confirmed on 2026-11-04: retain and pin the existing row-A /
+  label-strip-edge convention for this pilot. This is not an ANSI/SLAS deck
+  mapping or approval to migrate existing frames. A different orientation
+  requires a separate decision and implementation scope.
 - Generate test artifacts only in owned temporary directories; commit no new
   `.scad`, drawing, mesh or JSON snapshot. This avoids a new fixture-publication
   gate, not the existing source-use/provenance obligations. Document the inline
@@ -400,6 +402,53 @@ execution, Gazebo/worlds, physical fit and biological performance are separate
 or deferred. A reviewed CUT&RUN input is needed for the later protocol stage,
 not for this sample-free geometry pilot.
 
+### Test-Only Emitter Pilot, 2026-11-04
+
+Owner D1 decision: retain the existing row-A / label-strip-edge convention
+for this pilot; no legacy coordinates, labels or production geometry change.
+The durable decision is in `docs/decisions.md`.
+
+`src/engine/state/lineage_containers/equipment/tests.rs` adds only
+`rack_equipment_safe_lock_4x6_scad_emission_matches_spec_and_literals`.
+The existing equipment test module can call the actual private geometry
+helpers for the emission/spec comparison without exposing another API; the
+separate literal assertions remain independent of those helpers. The test
+uses the normal `ExportRackOpenScad` operation, parses nine declarations and
+all 24 hole translations, pins the agreed constants/tolerances and checks
+repeat bytes plus unchanged project/undo/redo state. Outputs are temporary;
+no CAD, drawing, mesh or JSON fixture is committed.
+
+Source: `c03cdca8` plus this working-tree pilot on macOS arm64,
+`rustc 1.100.0-beta.7 (fd8e211ae 2026-10-17)`. Verification used:
+
+```sh
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1
+cargo test -q --locked --offline -p gentle-render --lib tube_models_bind_their_source_dimensions_and_disclose_omissions -- --test-threads=1
+cargo test -q --locked --offline --no-default-features --lib rack_equipment_safe_lock_4x6_scad_emission_matches_spec_and_literals -- --test-threads=1
+cargo test -q --locked --offline --no-default-features --lib -- rack_equipment_ labware_ export_rack_ rack_openscad_ --test-threads=1
+cargo test -q --locked --offline -p gentle-render --lib labware::tests -- --test-threads=1
+cargo check -q --locked --offline --no-default-features
+rustfmt --edition 2024 --config skip_children=true --check src/engine/state/lineage_containers/equipment/tests.rs
+python3 scripts/manual_docs.py
+python3 scripts/check_documentation_status.py
+git diff --check
+```
+
+The new test passes alone; the 43 selected engine regressions and four existing
+render-labware tests all pass without skips. The separately run tube and new
+rack tests overlap those groups, not additional unique coverage. Headless
+Cargo check, scoped formatting, documentation and whitespace checks pass.
+Existing headless dead-code and linker compact-unwind warnings remain.
+
+The tube tests, production helpers/exporters, equipment v1, schema/projection
+constants, dependency manifests and lockfile are unchanged. No native CAD
+application or simulator was launched, and no physical fit, pairing or
+manufacturing claim follows. Native Windows, default-feature/GUI and full
+workspace execution were not run. D2 and all later simulation/physical gates
+remain separate. The original implementation ledgers below are historical;
+their results are not relabelled as this pilot's verification.
+
 ## First Implementation Slice
 
 2026-11-03: the three forward-ported Glen commits (`8d91d696`, `5ae0b514`,
@@ -432,13 +481,13 @@ Here "front" means the row-A / label-strip edge, not the side facing an
 operator; it does not define a calibrated ANSI/SLAS deck pose. D1 is an owner
 decision, not a request to rotate or relabel existing exports in this slice.
 
-The next proposed work is the [one-family, one-exporter conformance pilot](#next-slice-one-family-one-exporter),
-with its explicit orientation, rights and compatibility gates. Reviewed,
-quantity/sample-bound protocol input and catalog ownership/licensing remain
-prerequisites for the later protocol/world stage, not invented inputs to the
-CAD-source check. A shareable CAD representation must reconcile with the
-existing source-backed labware model, not duplicate it. Physical execution
-requires its own later approval.
+The [one-family emitter pilot](#test-only-emitter-pilot-2026-11-04) now provides
+only its bounded source-level regressions. Further CAD or simulator work needs
+its own proposal. Reviewed, quantity/sample-bound protocol input and catalog
+ownership/licensing remain prerequisites for the later protocol/world stage,
+not invented inputs to the CAD-source check. A shareable CAD representation
+must reconcile with existing source-backed labware rather than duplicate it.
+Physical execution requires its own later approval.
 
 See [CLI usage](cli/rendering.md), [wire semantics](protocol.md)
 and the [review prompt](robotic_wetlab_equipment_review_prompt_20261103.md).

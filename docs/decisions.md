@@ -2436,6 +2436,12 @@ physical-controller integrations require separate reviewed contracts. Do not
 infer material transfers or executable CUT&RUN steps from the synthetic
 cloning dependency model, or embed private real-lab geometry in public fixtures.
 
+Owner decision D1, 2026-11-04: retain the existing row-A / label-strip-edge
+orientation for the narrowed test-only OpenSCAD emitter pilot. Pin current
+coordinates without rotating or relabelling legacy exports. This resolves the
+pilot's orientation gate only; it is not an ANSI/SLAS robot-deck mapping,
+calibration, fit approval or authorization for a later orientation migration.
+
 ## Advisory Cloning Time And Cost Boundaries
 
 Status: active

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-04 - Implement The Test-Only OpenSCAD Emitter Pilot
+
+- Add one fixed, unoccupied, unblocked 4x6 Safe-Lock floor-seated rack
+  regression using the existing export operation and temporary outputs only.
+  Check all nine scalar declarations, 24 row-major hole translations, fixed
+  literals, separately bounded spec comparisons and byte-identical repeats.
+  Reuse the existing tube tests; add no runtime schema, route, exporter or CAD
+  execution. Preserve production geometry and legacy publication behavior.
+- Record the owner's limited D1 approval to retain the row-A / label-strip-edge
+  orientation; later deck mapping and D2 file-mode policy remain separate.
+- Locked/offline headless verification on macOS arm64 passes the new case,
+  43 selected engine regressions and four unchanged render-labware tests
+  (filters overlap), plus Cargo check. Scoped formatting/documentation and
+  whitespace checks pass; existing dead-code/linker warnings remain. See the
+  [source-bound receipt](robotic_wetlab_simulation_plan.md#test-only-emitter-pilot-2026-11-04).
+  Native CAD, Windows, default-feature/GUI, full-workspace and physical/scientific
+  acceptance were not run or inferred.
+
 ## 2026-11-04 - Reconcile RT Capture Integration Metadata And Smoke Inputs
 
 - Integrate `gentle_rs_3` through `be6de439`, retaining both branches' histories
