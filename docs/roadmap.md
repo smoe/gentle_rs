@@ -355,7 +355,7 @@ Useful work here improves proposal formats, evidence records, reproducible cohor
 - CUT&RUN controls/replicate comparison, calibrated differential support, formal
   peak calling, and whole-genome read processing beyond the ROI-first release scope.
 - Add viewport-bounded quantitative Ensembl/ENCODE regulatory-signal lanes, retaining assay/biosample/condition/replicate/units and separate activity rules.
-- Deeper Primer3 parity and bounded asynchronous preflight ([audit and reader scope](primer3_parity_audit_20261103.md)); virtual PCR/off-target filtering, multiplex tiling, LAMP, and
+- Deeper Primer3 parity and bounded asynchronous preflight ([audit and reader scope](primer3_parity_audit_20261103.md)); verify the [MCP fact-annotation repair](glen_next_verification_handoff.md#primer-preflight-introspection-repair-2026-11-04); virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - First-class global RT-PCR specificity/redesign workflow: build on the local
   assembly-aware variant screen and native panel-matrix review (pending);

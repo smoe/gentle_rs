@@ -221,6 +221,17 @@ class CapabilityMaturityTests(unittest.TestCase):
 class DiscoveryCatalogTests(unittest.TestCase):
     """Committed discovery metadata invariants, not Rust registry execution."""
 
+    def test_primer_preflight_mcp_has_explicit_fact_annotations(self):
+        source = (ROOT / "src/engine_shell.rs").read_text()
+        marker = 'no_project_inspection_operation_descriptor(\n            "primers_preflight",'
+        self.assertTrue(marker in source, "MCP preflight must not fall back to registry_only")
+        descriptor = source.split(marker, 1)[1].split("        ),", 1)[0]
+        for argument in ("state_path", "backend", "primer3_executable"):
+            self.assertIn(f'"name": "{argument}", "required": false', descriptor)
+        self.assertTrue('"primers preflight" | "primers_preflight" => Some(vec![])' in source)
+        tests = (ROOT / "src/engine_shell/tests.rs").read_text()
+        self.assertTrue("fn execute_introspect_primer_preflight_mcp_contract_preserves_read_only_semantics()" in tests)
+
     def test_glossary_signatures_agree_within_interfaces_and_readiness_is_canonical(self):
         commands = json.loads((ROOT / "docs/glossary.json").read_bytes())["commands"]
 

@@ -44,6 +44,10 @@ Duplicate glossary rows do not count as additional capabilities or parity gaps.
         fact-annotated as
         read-only self-description/status routes with no project-state
         preconditions
+      - MCP `primers_preflight` has the same empty project-fact preconditions
+        as `primers preflight`, with MCP-named optional arguments. This makes
+        the diagnostic discoverable; it does not assert that Primer3 is installed
+        or run the executable during introspection
 
 ## Live Runtime Inspection
 

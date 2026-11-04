@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-04 - Annotate The MCP Primer Preflight Contract
+
+- Add the missing fact-annotated `primers_preflight` descriptor alongside
+  `primers preflight`, with the MCP tool's three optional argument names and
+  matching read-only, no-confirmation, empty-project-precondition semantics.
+  Backend/tool availability stays a probe result, not an invented project fact.
+- Add a focused both-route regression and offline source guard. Preserve the
+  full-registry annotation assertions that exposed the omission; no capability
+  is hidden, relabelled globally or exempted from those checks. Execution,
+  dependencies, maturity and scientific verdicts are unchanged.
+- Update the bounded Glen handoff; Rust execution remains pending. No local
+  Rust build/test, push or CI dispatch is performed.
+
 ## 2026-11-03 - Accept Exact Pins In The egui Compatibility Guard
 
 - Teach the GUI version-family guard to accept Cargo's leading `=` while

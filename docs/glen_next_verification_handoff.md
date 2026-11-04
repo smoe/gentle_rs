@@ -7,6 +7,41 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Primer Preflight Introspection Repair, 2026-11-04
+
+The owner's local library run reported 4,838 passed, two failed and 16 ignored
+(exact source/toolchain not supplied). Both failures name only the new MCP
+`primers_preflight` row as `registry_only`; the shell-spelled command already
+had its descriptor. Add the MCP descriptor using the existing shared read-only
+inspection helper, its exact optional MCP argument names and matching empty
+project-fact preconditions. Keep both whole-registry tests unchanged. This
+does not probe Primer3 during discovery, change approvals or assert that a
+backend is installed. The separate JS `u128` transport issue remains open.
+
+Run only the affected Rust scopes before the ordinary suite, with nonzero counts:
+
+```sh
+cargo test --locked --lib execute_introspect_primer_preflight_mcp_contract_preserves_read_only_semantics -- --test-threads=1
+cargo test --locked --lib execute_introspect_capabilities_projects_full_registry_with_fact_annotations -- --test-threads=1
+cargo test --locked --lib execute_introspect_all_capability_section_has_full_fact_annotations -- --test-threads=1
+```
+
+The new regression compares both introspection routes with the shell contract,
+checks the MCP registry origin/argument names and unchanged engine state. The
+offline source guard fails before adding the descriptor; it is not Rust/runtime
+acceptance. No completed scientific, Lua/MCP execution or publication campaign
+is reopened by this metadata repair. No local Rust build, push or dispatch.
+Authoring verification: 46 offline metadata/GUI/documentation checks passed,
+including LF/CRLF documentation checkouts; manual/status and whitespace checks
+passed. These counts do not establish the pending Rust regression results.
+
+The attempted report transfer has no verified readable source path yet. A
+bounded read-only SSH search through the owner's `gentle` alias received
+`Permission denied` for `/home/clawbio/.openclaw/workspace/artifacts`; no sudo,
+access-policy bypass or large download was attempted. Ask Glen for the small
+report plus its manifest at an explicitly transfer-readable path/URL, rather
+than treating his host-local working path as an established transfer path.
+
 ## Glen's Scoped Return At 89df315a, 2026-11-03
 
 Owner-forwarded report for exact source
