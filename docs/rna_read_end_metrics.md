@@ -84,9 +84,10 @@ whole-read and 5′-UTR controls do not show the same displacement.
 
 ## 4. Rank genes with explicit like-library contrasts
 
-The biological Sample 2 contributed barcodes 14, 16 and 18, but these are not
-three interchangeable replicates. Barcode 16 belongs to the regular-cDNA pair
-15/16. Pairs 13/14 and 17/18 used enrichment and therefore remain separate
+The biological samples are SK-MEL-28 (barcodes 13, 15 and 17) and WM793
+(barcodes 14, 16 and 18), but the three barcodes per cell line are not
+interchangeable replicates. Barcode 16 belongs to the regular-cDNA pair 15/16.
+Pairs 13/14 and 17/18 used enrichment and therefore remain separate
 directional counterchecks.
 
 Create `contrasts.tsv`:
@@ -109,10 +110,10 @@ python3 scripts/compare_rna_read_end_gene_contrasts.py \
   --projection barcode17-read-end-metrics/projections.tsv \
   --projection barcode18-read-end-metrics/projections.tsv \
   --contrast-sheet contrasts.tsv \
-  --focus-label 'Sample 2' \
+  --focus-label 'WM793 vs SK-MEL-28' \
   --minimum-observed 10 \
   --maximum-censored-fraction 0.25 \
-  --output-dir sample2-gene-ranking
+  --output-dir wm793-gene-ranking
 ```
 
 The ranking uses the regular-cDNA barcode16-minus-barcode15 median difference.
@@ -128,7 +129,7 @@ frozen annotation remain alternative explanations.
 
 ## Interpretation picture
 
-![Synthetic gene-wise regular-cDNA comparison with enriched counterchecks for Sample 2](figures/rna_read_end_gene_ranking.synthetic.svg)
+![Synthetic gene-wise regular-cDNA comparison with enriched counterchecks for WM793 versus SK-MEL-28](figures/rna_read_end_gene_ranking.synthetic.svg)
 
 The committed figure is synthetic. Regenerate its six-sample fixture and SVG:
 

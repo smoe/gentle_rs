@@ -23,7 +23,7 @@
     }
   ],
   "directional_policy": "differently prepared contrasts are displayed separately and never pooled",
-  "focus_label": "Sample 2",
+  "focus_label": "WM793 vs SK-MEL-28",
   "inputs": {
     "contrast_sheet": {
       "name": "contrasts.tsv",

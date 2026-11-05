@@ -41,8 +41,8 @@ def main() -> None:
                 five_center = 70 + 5 * gene_index + sample_number
                 ordinary_three = 180 + 30 * gene_index + 3 * sample_number
                 focus_shift = {"MDM2": 90, "MDM4": -65, "FUS": 35, "ACTB": 0}[gene]
-                # Even barcodes are the synthetic Sample-2 member of each
-                # like-library pair. Enrichment pairs are counterchecks only.
+                # Even barcodes are synthetic WM793; odd barcodes are
+                # synthetic SK-MEL-28. Enrichment pairs are counterchecks only.
                 multiplier = 1.0 if barcode == 16 else 0.55 if barcode == 14 else 0.35 if barcode == 18 else 0.0
                 three_center = ordinary_three + round(focus_shift * multiplier)
                 for metric, values in (
@@ -66,7 +66,7 @@ def main() -> None:
         encoding="utf-8",
     )
     output = FIXTURE / "ranked"
-    contrasts.run(projections, contrast_sheet, "Sample 2", output, 4, 0.25, 12)
+    contrasts.run(projections, contrast_sheet, "WM793 vs SK-MEL-28", output, 4, 0.25, 12)
     FIGURE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(output / "top_genes.svg", FIGURE)
     GEOMETRY.write_text("""<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="380" viewBox="0 0 1180 380">

@@ -47,7 +47,7 @@ class ContrastTests(unittest.TestCase):
                 encoding="utf-8",
             )
             output = root / "out"
-            MODULE.run(paths, contrasts, "Sample 2", output, 3, 0.25, 10)
+            MODULE.run(paths, contrasts, "WM793 vs SK-MEL-28", output, 3, 0.25, 10)
             with (output / "gene_contrasts.tsv").open(encoding="utf-8", newline="") as handle:
                 row = next(row for row in csv.DictReader(handle, delimiter="\t") if row["metric"] == "utr3_reach_bp")
             self.assertEqual(row["primary_delta_median_bp"], "50")
@@ -72,7 +72,7 @@ class ContrastTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "reused across contrasts"):
-                MODULE.summarize(paths, contrast, "Sample 2", 1, 0.25)
+                MODULE.summarize(paths, contrast, "WM793 vs SK-MEL-28", 1, 0.25)
 
 
 if __name__ == "__main__":

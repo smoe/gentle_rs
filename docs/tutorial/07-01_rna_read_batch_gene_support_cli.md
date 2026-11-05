@@ -433,9 +433,10 @@ that does not cross the relevant CDS boundary is `missing` for that metric.
 
 After projecting all six barcodes, the global all-pairs Q–Q matrices remain a
 useful technical overview. For biological interpretation, however, compare
-like preparations first. Sample 2 contributed barcodes 14, 16 and 18:
-barcode16 is compared with barcode15 as the primary regular-cDNA pair, while
-13/14 and 17/18 remain separate enrichment counterchecks.
+like preparations first. SK-MEL-28 contributed barcodes 13, 15 and 17; WM793
+contributed barcodes 14, 16 and 18. Barcode16 (WM793) is compared with barcode15
+(SK-MEL-28) as the primary regular-cDNA pair, while 14/13 and 18/17 remain
+separate enrichment counterchecks.
 
 Create the explicit `contrasts.tsv` shown in the read-end reference, then run:
 
@@ -448,10 +449,10 @@ python3 scripts/compare_rna_read_end_gene_contrasts.py \
   --projection "$OUT/barcode17-read-end-metrics/projections.tsv" \
   --projection "$OUT/barcode18-read-end-metrics/projections.tsv" \
   --contrast-sheet contrasts.tsv \
-  --focus-label 'Sample 2' \
+  --focus-label 'WM793 vs SK-MEL-28' \
   --minimum-observed 10 \
   --maximum-censored-fraction 0.25 \
-  --output-dir "$OUT/sample2-gene-ranking"
+  --output-dir "$OUT/wm793-gene-ranking"
 ```
 
 ![Synthetic six-sample gene ranking with separate read-length, 5′-UTR and 3′-UTR panels](../figures/rna_read_end_gene_ranking.synthetic.svg)
