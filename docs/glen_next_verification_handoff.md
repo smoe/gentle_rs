@@ -7,6 +7,55 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Standalone UTR Boundary Repair, 2026-11-05
+
+This repair is based on Glen / smoe-bot's three-commit UTR stack ending at
+`3ff288027ba3bede9a3aeaadb951459f4d418832`. Preserve that authorship. Codex's
+review reproduced four counterexamples; the owner-forwarded Claude review
+independently confirmed the censoring, candidate-loss and anchor defects and
+the stop-convention mismatch. Claude's reported 29 original passes and nine
+probes are attributed evidence, not tests rerun by Codex on the repaired source.
+
+Only the standalone Python boundary is changed: censored metrics are blank
+for the unchanged comparator while detailed bounds remain numeric; full-path
+candidate intersections precede model availability; connected coding-side
+anchors preserve true zero; model/report v2 carries original CDS and explicit
+stop evidence. Separate/included/overlapping/split stops normalize in transcript
+coordinates. Partial/absent or legacy v1 stops give unknown 3′ reach, not `+3`.
+See [the decision](decisions.md#standalone-transcript-read-end-projection) and
+[model/recovery instructions](rna_read_end_metrics.md).
+
+Authoring verification on macOS arm64 / Python 3.15.0: 45 focused read-end
+tests, 86 documentation/checkout tests and 51 release-candidate helper tests
+passed, zero failures or skips (182 total). This includes 16 new focused
+regressions and the real Python CLI chain. Manual/status and whitespace checks
+pass; the roadmap remains 400 lines. These are repaired worktree results based
+on the named Glen tip, not an integrated-main or native Windows verdict.
+
+Glen/CI: on the eventual integrated source, run only the affected Python scope
+and actual synthetic subprocess chain; do not repeat reader, BLAST, comparator
+Windows-at-108cc5e5, gel or private six-barcode analysis campaigns:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*rna_read_end*.py' -v
+python3 -m unittest scripts.test_tutorial_checkouts.TutorialCheckoutTests.test_rna_read_end_tutorial_hashes_and_generation_survive_both_checkout_modes -v
+```
+
+The boundary suite includes the real preparer/projector/comparator subprocesses,
+LF/CRLF raw hashes, input-byte preservation and spaced/apostrophe/Unicode paths;
+the checkout gate regenerates the synthetic teaching files after real policy
+checkouts and has a missing-policy control. Normal Windows CI now runs this
+same focused Python discovery; wait for that normal run rather than asking
+the Linux-only Glen host to supply native Windows evidence or dispatching anew.
+Require nonzero counts and report failures/skips with platform/Python/source.
+
+Native Windows, large-reference preparation memory/performance, real frozen
+annotation joins, mapping adequacy and biological interpretation remain unrun.
+Do not reuse old exact 3′ values from v1 models as accepted v2 evidence. No Rust
+changes/builds, GUI, live-model/provider calls, private-data analysis or release
+acceptance follow. This worktree repair does not itself authorize a main merge,
+push or CI dispatch. Existing closed Linux reader/MCP checks remain closed.
+
 ## Interpretation-Local Reference Reader Repair, 2026-11-05
 
 Owner-authorized implementation follows the `dfca3261` diagnostic below.

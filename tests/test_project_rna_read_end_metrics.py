@@ -24,14 +24,18 @@ SHA = "sha256:" + "a" * 64
 ANNOTATION_SHA = "sha256:" + "b" * 64
 
 
-def model(transcript_id="tx1", strand="+", cds=None):
+def model(transcript_id="tx1", strand="+", cds=None, stops=None):
+    cds = cds or ([[105, 110], [120, 130]] if strand == "+" else [[105, 110], [120, 135]])
+    if stops is None:
+        stops = [[cds[-1][1] - 3, cds[-1][1]]] if strand == "+" else [[cds[0][0], cds[0][0] + 3]]
     return {
         "transcript_id": transcript_id,
         "gene_id": "gene1",
         "contig": "chr1",
         "strand": strand,
         "genomic_exons_0based_half_open": [[100, 110], [120, 140]],
-        "genomic_cds_0based_half_open": cds or ([[105, 110], [120, 130]] if strand == "+" else [[105, 110], [120, 135]]),
+        "genomic_cds_0based_half_open": cds,
+        "genomic_stop_codon_0based_half_open": stops,
     }
 
 
@@ -139,11 +143,12 @@ class ProjectionTests(unittest.TestCase):
                 }
             ],
         )
-        directory, metrics, _details, report = self.execute(data=data)
+        directory, metrics, details, report = self.execute(data=data)
         self.addCleanup(directory.cleanup)
         self.assertEqual(metrics[1]["observation_status"], "observed")
-        self.assertEqual(metrics[2]["value_bp"], "5")
+        self.assertEqual(metrics[2]["value_bp"], "")
         self.assertEqual(metrics[2]["observation_status"], "right_censored")
+        self.assertEqual(details[2]["value_bp"], "5")
         self.assertEqual(report["counts"]["right_censored"], 1)
 
     def test_minus_strand_uses_transcript_orientation(self):
@@ -188,7 +193,7 @@ class ProjectionTests(unittest.TestCase):
         directory, metrics, details, _report = self.execute(data=data_document(observations=[obs]))
         self.addCleanup(directory.cleanup)
         self.assertEqual([row["observation_status"] for row in metrics[1:]], ["missing", "missing"])
-        self.assertEqual([row["reason"] for row in details[1:]], ["resolved", "resolved"])
+        self.assertEqual([row["reason"] for row in details[1:]], ["cds_boundary_unanchored", "cds_boundary_unanchored"])
 
     def test_projection_rows_retain_gene_identity(self):
         directory, _metrics, details, _report = self.execute()

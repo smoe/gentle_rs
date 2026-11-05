@@ -428,8 +428,16 @@ python3 scripts/project_rna_read_end_metrics.py \
 
 The model must bind the same assembly, reference FASTA hash and annotation hash
 as the saved analysis. A clipped transcript-facing end is retained as
-`right_censored`; it is not changed into an exact short UTR or zero. A read
-that does not cross the relevant CDS boundary is `missing` for that metric.
+`right_censored`; it is not changed into an exact short UTR or zero.
+`metrics.tsv` leaves that number blank for the comparator; `projections.tsv`
+retains the measured lower bound. The v2 model preserves explicit stop-codon
+intervals: 3′ reach starts after a complete annotated stop, including split
+codons. Missing/partial stops and legacy v1 models leave 3′ reach unknown;
+never add three bases automatically. A UTR-only read touching a boundary has
+no coding anchor, whereas a coding-anchored read can validly have zero reach.
+Compatible candidates without models remain visible and make UTR geometry
+unavailable instead of silently selecting another transcript. See the
+[model preparation and comparison reference](../rna_read_end_metrics.md).
 
 After projecting all six barcodes, the global all-pairs Q–Q matrices remain a
 useful technical overview. For biological interpretation, however, compare

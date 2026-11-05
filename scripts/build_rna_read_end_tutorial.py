@@ -85,7 +85,7 @@ def main() -> None:
 <line x1="800" x2="955" y1="192" y2="192" stroke="#d1495b" stroke-width="4"/><path d="M800 192l10 -6v12zM955 192l-10 -6v12z" fill="#d1495b"/><text x="878" y="215" text-anchor="middle" class="s">3′ reach</text>
 <text x="28" y="275" class="l">clipped 3′ end</text><line x1="286" x2="900" y1="267" y2="267" stroke="#263238" stroke-width="8" stroke-linecap="round"/><line x1="900" x2="1005" y1="267" y2="267" stroke="#d1495b" stroke-width="4" stroke-dasharray="7 5"/><text x="952" y="251" text-anchor="middle" class="s">unknown continuation</text>
 <rect x="781" y="292" width="260" height="42" rx="6" fill="#fff3cd" stroke="#b58b00"/><text x="911" y="309" text-anchor="middle" class="s">right-censored lower bound</text><text x="911" y="325" text-anchor="middle" class="s">never converted to an exact zero</text>
-<text x="28" y="358" class="s">If the alignment never crosses a CDS boundary, that UTR metric is missing. Alternative transcripts must agree on value and status.</text>
+<text x="28" y="358" class="s">Cover coding-side bases at the boundary; anchored zero is valid. Unknown stop boundary or candidate geometry stays missing.</text>
 </svg>
 """, encoding="utf-8")
 

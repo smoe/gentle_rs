@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-11-05 - Repair Standalone UTR Projection Boundaries
+
+- Repair the four independently reproduced boundaries in Glen / smoe-bot's
+  UTR stack ending at `3ff28802`. Keep numeric censored bounds in detailed
+  projections but leave the comparator's censored/missing cells blank; do not
+  weaken the existing comparator or its refusal of insufficient exact evidence.
+- Intersect candidates across each whole path before checking model availability;
+  preserve absent candidates and unknown gene assignments. Require coding-side
+  support at each connected boundary, retaining legitimate observed zero.
+- V2 models retain original CDS and explicit stop intervals. Derive a shared
+  boundary for separate/included/overlapping and exon-split stops on both
+  strands. Partial, absent and legacy v1 stop evidence stays unknown; invalid
+  complete stops are refused. No inferred `+3`, provider/barcode/gene hardcode,
+  aligner work or scientific acceptance.
+- Add synthetic regressions and real Python preparer/projector/comparator CLI
+  replay under LF/CRLF and spaced/apostrophe/Unicode paths, scoped tutorial
+  byte policies and checkout/regeneration tests. Expand the existing fast
+  Python CI scope and wire the same scope into normal Windows CI. Correct the
+  directly affected comparator argument example; update model guidance and
+  Glen's bounded handoff. No local Rust, push, dispatch or private-data run.
+- Authoring: 45 focused Python tests, 86 documentation/checkout tests and
+  51 release-candidate helpers pass on macOS arm64 / Python 3.15.0, zero skips.
+  Native Windows and real frozen-annotation/biological acceptance remain open;
+  results are worktree-bound, not acceptance of an integrated main revision.
+
 ## 2026-11-05 - Add Transcript-Bound RNA Read-End Projection And Gene Ranking
 
 - Add a standalone GTF-to-model preparer and downstream projector for completed

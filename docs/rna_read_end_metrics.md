@@ -12,15 +12,26 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 ## 1. Freeze the transcript model
 
 `scripts/project_rna_read_end_metrics.py` requires a CDS-aware model document
-with schema `gentle.rna_read_end_transcript_models.v1`. Coordinates are genomic,
+with schema `gentle.rna_read_end_transcript_models.v2`. Coordinates are genomic,
 zero-based and half-open. Each transcript has stable transcript and gene IDs,
-contig, strand, exons and CDS intervals. The document also binds the assembly,
+contig, strand, exons, original CDS and explicit stop-codon intervals. The document also binds the assembly,
 reference FASTA SHA-256 and annotation SHA-256 already present in the completed
 `gentle.observed_sam_structures_data.v1` artifact.
 
 This extra binding is necessary because the observed-SAM report retains exon
 comparisons but does not itself define CDS boundaries. A mismatched model is
 refused.
+
+The 3′-UTR begins **after the annotated stop codon**, not automatically after
+the last raw GTF `CDS` interval. The preparer preserves `stop_codon` features,
+including codons split across exons. Complete three-base stops that are separate
+from, included in or partly overlap the CDS give the same derived boundary.
+The raw CDS is never extended or rewritten. Missing/partial stop evidence leaves
+3′ reach `missing`; there is no automatic `+3`. Legacy v1 models remain readable
+but have unknown stop evidence and cannot supply a known 3′ boundary. The
+[projection decision](decisions.md#standalone-transcript-read-end-projection)
+records the source-format and compatibility limits. Reprepare a new model from
+explicit evidence rather than relabelling an old v1 document as v2.
 
 Prepare the model from an explicit GTF and the exact reference FASTA. Supply
 the annotation digest recorded in the completed observed-SAM analysis; it is
@@ -55,18 +66,29 @@ python3 scripts/project_rna_read_end_metrics.py \
 The fresh output directory contains:
 
 - `metrics.tsv`: the four-column input expected by
-  `compare_rna_read_end_metrics.py`;
-- `projections.tsv`: per-read metrics plus transcript and gene identities; and
-- `report.json`: exact input hashes, policy, counts and nonclaims.
+  `compare_rna_read_end_metrics.py`, with blank values for censored/missing rows;
+- `projections.tsv`: per-read metrics plus transcript and gene identities,
+  retaining numeric censored lower bounds separately from exact observations; and
+- `report.json`: v2 projection policy, exact input hashes, model schema,
+  stop-evidence counts and nonclaims.
 
 Only saved optimal hypotheses and resolved `exact_full_chain`,
 `exact_partial_chain` or `within_exon` transcript relations are eligible. A UTR
 value is retained across transcript ambiguity only when all eligible paths and
 models give the same value and status.
+All compatible candidates are considered before model lookup. A remaining
+candidate without a CDS model (for example, a noncoding alternative) keeps
+both UTR metrics missing with `candidate_model_unavailable`; it does not
+silently disappear. Candidate IDs remain visible; an incomplete model set
+does not supply a supposedly complete gene assignment for ranking.
 
 An aligned end that is clipped is **right-censored**: its value is a lower
 bound, not an exact length. An alignment that does not cross the relevant CDS
-boundary is **missing**, not zero.
+boundary with coding-side support in the same connected projected interval is
+**missing**, not zero. Merely touching the boundary from the UTR side is not
+an anchor. Conversely, a coding-anchored read ending exactly at the boundary
+may legitimately have observed reach zero. Unknown stop evidence affects only
+the 3′ metric, not independently available 5′ or whole-read measurements.
 
 ## 3. Compare all six samples globally
 
@@ -74,13 +96,15 @@ Concatenate the six `metrics.tsv` files (retaining one header) and run:
 
 ```sh
 python3 scripts/compare_rna_read_end_metrics.py \
-  --input six-sample-metrics.tsv \
-  --output-dir six-sample-qq
+  six-sample-metrics.tsv six-sample-qq
 ```
 
 This produces the 15 sample-pair comparisons for each metric. Read the three
 Q–Q matrices together: a 3′-UTR displacement is more interesting when the
 whole-read and 5′-UTR controls do not show the same displacement.
+Each sample/metric needs at least two exact observed values. An entirely
+missing/censored metric cannot produce a Q–Q distribution; the comparator
+refuses rather than inventing zero observations or relaxing its input contract.
 
 ## 4. Rank genes with explicit like-library contrasts
 

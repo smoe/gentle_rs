@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from compare_rna_read_end_metrics import staged_output
-from project_rna_read_end_metrics import HASH, MODEL_SCHEMA, TOKEN, fail, merged
+from project_rna_read_end_metrics import HASH, MODEL_SCHEMA, TOKEN, fail, merged, prepare_model
 
 
 ATTRIBUTE = re.compile(r'(?:^|;\s*)([A-Za-z][A-Za-z0-9_]*)\s+"([^"]*)"')
@@ -32,7 +32,7 @@ def parse_gtf(text: str):
         if not line or line.startswith("#"):
             continue
         fields = line.split("\t")
-        if len(fields) != 9 or fields[2] not in {"exon", "CDS"}:
+        if len(fields) != 9 or fields[2] not in {"exon", "CDS", "stop_codon"}:
             continue
         contig, feature, strand = fields[0], fields[2], fields[6]
         if not TOKEN.fullmatch(contig) or strand not in {"+", "-"}:
@@ -49,11 +49,11 @@ def parse_gtf(text: str):
             raise fail(f"missing or invalid gene_id/transcript_id at GTF line {line_number}")
         row = records.setdefault(transcript_id, {
             "transcript_id": transcript_id, "gene_id": gene_id,
-            "contig": contig, "strand": strand, "exons": [], "cds": [],
+            "contig": contig, "strand": strand, "exons": [], "cds": [], "stops": [],
         })
         if (row["gene_id"], row["contig"], row["strand"]) != (gene_id, contig, strand):
             raise fail(f"inconsistent transcript identity at GTF line {line_number}")
-        row["exons" if feature == "exon" else "cds"].append((start, end))
+        row[{"exon": "exons", "CDS": "cds", "stop_codon": "stops"}[feature]].append((start, end))
     transcripts = []
     for transcript_id in sorted(records):
         row = records[transcript_id]
@@ -62,14 +62,17 @@ def parse_gtf(text: str):
             continue
         if any(sum(max(0, min(z, ez) - max(a, ea)) for ea, ez in exons) != z - a for a, z in cds):
             raise fail(f"CDS falls outside exons for {transcript_id}")
-        transcripts.append({
+        transcript = {
             "transcript_id": transcript_id,
             "gene_id": row["gene_id"],
             "contig": row["contig"],
             "strand": row["strand"],
             "genomic_exons_0based_half_open": [list(value) for value in exons],
             "genomic_cds_0based_half_open": [list(value) for value in cds],
-        })
+            "genomic_stop_codon_0based_half_open": [list(value) for value in merged(set(row["stops"]))],
+        }
+        prepare_model(transcript, len(transcripts))
+        transcripts.append(transcript)
     if not transcripts:
         raise fail("GTF contains no transcript with both exon and CDS records")
     return transcripts

@@ -22,14 +22,16 @@ from compare_rna_read_end_metrics import staged_output
 
 
 DATA_SCHEMA = "gentle.observed_sam_structures_data.v1"
-MODEL_SCHEMA = "gentle.rna_read_end_transcript_models.v1"
-REPORT_SCHEMA = "gentle.rna_read_end_projection.v1"
+MODEL_SCHEMA = "gentle.rna_read_end_transcript_models.v2"
+LEGACY_MODEL_SCHEMA = "gentle.rna_read_end_transcript_models.v1"
+REPORT_SCHEMA = "gentle.rna_read_end_projection.v2"
 TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 ACCEPTED_RELATIONS = {"exact_full_chain", "exact_partial_chain", "within_exon"}
 MAX_MODELS = 100_000
 MAX_INTERVALS = 2_000_000
 MAX_UNITS = 2_000_000
+MetricProjection = tuple[int | None, str, str]
 
 
 def fail(message: str) -> ValueError:
@@ -81,6 +83,9 @@ class Model:
     cds_start: int
     cds_end: int
     offsets: tuple[tuple[int, int, int], ...]
+    stop_codon: tuple[tuple[int, int], ...] = ()
+    utr3_start: int | None = None
+    stop_codon_evidence: str = "unknown"
 
     def project(self, ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]] | None:
         projected: list[tuple[int, int]] = []
@@ -100,15 +105,18 @@ class Model:
         return merged(projected)
 
 
-def prepare_model(row: object, index: int) -> Model:
-    if not isinstance(row, dict) or set(row) != {
+def prepare_model(row: object, index: int, *, legacy: bool = False) -> Model:
+    expected = {
         "transcript_id",
         "gene_id",
         "contig",
         "strand",
         "genomic_exons_0based_half_open",
         "genomic_cds_0based_half_open",
-    }:
+    }
+    if not legacy:
+        expected.add("genomic_stop_codon_0based_half_open")
+    if not isinstance(row, dict) or set(row) != expected:
         raise fail(f"transcripts[{index}] has unexpected fields")
     transcript_id, gene_id, contig, strand = (
         row["transcript_id"], row["gene_id"], row["contig"], row["strand"]
@@ -148,6 +156,30 @@ def prepare_model(row: object, index: int) -> Model:
     projected_cds = provisional.project(cds)
     if not projected_cds:
         raise fail(f"transcripts[{index}] CDS projection is empty")
+    raw_stops = [] if legacy else row["genomic_stop_codon_0based_half_open"]
+    if not isinstance(raw_stops, list):
+        raise fail(f"transcripts[{index}] stop codon must be a list")
+    stops = [interval(value, f"transcripts[{index}].stop_codon") for value in raw_stops]
+    if stops != sorted(stops) or merged(stops) != stops:
+        raise fail(f"transcripts[{index}] stop-codon intervals must be sorted and nonoverlapping")
+    projected_stop = provisional.project(stops)
+    if projected_stop is None:
+        raise fail(f"transcripts[{index}] stop codon must be contained in exons")
+    cds_start = min(start for start, _ in projected_cds)
+    cds_end = max(end for _, end in projected_cds)
+    stop_bases = sum(end - start for start, end in projected_stop)
+    if stop_bases > 3:
+        raise fail(f"transcripts[{index}] stop codon exceeds three transcript bases")
+    utr3_start, stop_evidence = None, "partial" if stops else "unknown"
+    if stop_bases == 3:
+        # Work in spliced transcript coordinates, including split minus-strand codons.
+        if len(projected_stop) != 1:
+            raise fail(f"transcripts[{index}] stop codon is not transcript-contiguous")
+        start, end = projected_stop[0]
+        if not cds_start <= start <= cds_end <= end:
+            raise fail(f"transcripts[{index}] stop codon is not at the terminal CDS boundary")
+        utr3_start = end
+        stop_evidence = "included" if end == cds_end else "separate" if start == cds_end else "overlapping"
     return Model(
         transcript_id,
         gene_id,
@@ -156,9 +188,12 @@ def prepare_model(row: object, index: int) -> Model:
         tuple(exons),
         tuple(cds),
         cursor,
-        min(start for start, _ in projected_cds),
-        max(end for _, end in projected_cds),
+        cds_start,
+        cds_end,
         tuple(offsets),
+        tuple(stops),
+        utr3_start,
+        stop_evidence,
     )
 
 
@@ -173,7 +208,7 @@ def read_models(document: dict, analysis: dict) -> tuple[str, dict[str, Model]]:
         "model_source",
         "transcripts",
     }
-    if set(document) != expected or document.get("schema") != MODEL_SCHEMA:
+    if set(document) != expected or document.get("schema") not in {MODEL_SCHEMA, LEGACY_MODEL_SCHEMA}:
         raise fail("transcript-model document has an unsupported shape or schema")
     source_id = document["source_id"]
     if (
@@ -206,8 +241,8 @@ def read_models(document: dict, analysis: dict) -> tuple[str, dict[str, Model]]:
     models: dict[str, Model] = {}
     total_intervals = 0
     for index, row in enumerate(document["transcripts"]):
-        model = prepare_model(row, index)
-        total_intervals += len(model.exons) + len(model.cds)
+        model = prepare_model(row, index, legacy=document["schema"] == LEGACY_MODEL_SCHEMA)
+        total_intervals += len(model.exons) + len(model.cds) + len(model.stop_codon)
         if total_intervals > MAX_INTERVALS or model.transcript_id in models:
             raise fail("transcript-model interval budget or unique-ID constraint failed")
         models[model.transcript_id] = model
@@ -238,12 +273,13 @@ def comparison_models(observation: dict, source_id: str) -> set[str]:
 
 def reach(intervals: list[tuple[int, int]], boundary: int, side: str) -> int | None:
     for start, end in intervals:
-        if start <= boundary <= end:
+        anchored = start <= boundary < end if side == "five" else start < boundary <= end
+        if anchored:
             return boundary - start if side == "five" else end - boundary
     return None
 
 
-def one_projection(path: list[dict], model: Model) -> tuple[int | None, str, int | None, str] | None:
+def one_projection(path: list[dict], model: Model) -> tuple[MetricProjection, MetricProjection] | None:
     ranges: list[tuple[int, int]] = []
     query_ranges: list[tuple[int, int]] = []
     axis_lengths: set[int] = set()
@@ -275,18 +311,22 @@ def one_projection(path: list[dict], model: Model) -> tuple[int | None, str, int
     if not projected:
         return None
     five = reach(projected, model.cds_start, "five")
-    three = reach(projected, model.cds_end, "three")
+    three = None if model.utr3_start is None else reach(projected, model.utr3_start, "three")
     qmin = min(start for start, _ in query_ranges)
     qmax = max(end for _, end in query_ranges)
     axis = next(iter(axis_lengths))
     same = next(iter(orientations))
     five_clipped = qmin > 0 if same else qmax < axis
     three_clipped = qmax < axis if same else qmin > 0
+
+    def metric(value: int | None, clipped: bool, unavailable: str) -> MetricProjection:
+        if value is None:
+            return None, "missing", unavailable
+        return value, "right_censored" if clipped else "observed", "clipped_transcript_end" if clipped else "resolved"
+
     return (
-        five,
-        "right_censored" if five is not None and five_clipped else "observed" if five is not None else "missing",
-        three,
-        "right_censored" if three is not None and three_clipped else "observed" if three is not None else "missing",
+        metric(five, five_clipped, "cds_boundary_unanchored"),
+        metric(three, three_clipped, "stop_codon_unavailable" if model.utr3_start is None else "cds_boundary_unanchored"),
     )
 
 
@@ -296,6 +336,7 @@ def project_unit(unit: dict, observations: dict[str, dict], source_id: str, mode
         return None, "no_optimal_hypothesis", []
     values = []
     candidate_ids: set[str] = set()
+    paths = []
     for hypothesis in hypotheses:
         if not isinstance(hypothesis, list) or not hypothesis:
             return None, "invalid_optimal_hypothesis", []
@@ -305,29 +346,30 @@ def project_unit(unit: dict, observations: dict[str, dict], source_id: str, mode
             return None, "unbound_optimal_hypothesis", []
         candidates: set[str] | None = None
         for observation in path:
-            current = comparison_models(observation, source_id) & models.keys()
+            current = comparison_models(observation, source_id)
             candidates = current if candidates is None else candidates & current
         if not candidates:
             return None, "no_compatible_cds_model", []
+        candidate_ids.update(candidates)
+        paths.append((path, candidates))
+    if not candidate_ids <= models.keys():
+        return None, "candidate_model_unavailable", sorted(candidate_ids)
+    for path, candidates in paths:
         for transcript_id in sorted(candidates):
-            candidate_ids.add(transcript_id)
             value = one_projection(path, models[transcript_id])
             if value is None:
                 return None, "model_projection_incompatible", sorted(candidate_ids)
             values.append(value)
     if not values:
         return None, "no_projected_values", sorted(candidate_ids)
-    five = {(value[0], value[1]) for value in values}
-    three = {(value[2], value[3]) for value in values}
-    result = (
-        next(iter(five)) if len(five) == 1 else (None, "missing"),
-        next(iter(three)) if len(three) == 1 else (None, "missing"),
-    )
-    reasons = (
-        "resolved" if len(five) == 1 else "ambiguous_transcript_end_geometry",
-        "resolved" if len(three) == 1 else "ambiguous_transcript_end_geometry",
-    )
-    return (result, reasons), "resolved", sorted(candidate_ids)
+    result = []
+    for index in (0, 1):
+        metrics = {value[index] for value in values}
+        if len(metrics) == 1:
+            result.append(next(iter(metrics)))
+        else:
+            result.append((None, "missing", "ambiguous_transcript_end_geometry"))
+    return tuple(result), "resolved", sorted(candidate_ids)
 
 
 def write_rows(path: Path, header: list[str], rows: list[list[object]]) -> None:
@@ -365,7 +407,10 @@ def run(data_path: Path, model_path: Path, sample_id: str, output_dir: Path) -> 
             raise fail("unit identity is missing")
         unit_id, source_sha256 = key["unit_id"], key["source_sha256"]
         projection, reason, transcript_ids = project_unit(unit, observations, source_id, models)
-        gene_ids = sorted({models[transcript_id].gene_id for transcript_id in transcript_ids})
+        gene_ids = (
+            sorted({models[identifier].gene_id for identifier in transcript_ids})
+            if set(transcript_ids) <= models.keys() else []
+        )
         axis = unit.get("unclipped_axis_length")
         if axis is None:
             metrics.append([sample_id, "read_length_bp", "", "missing"])
@@ -378,10 +423,8 @@ def run(data_path: Path, model_path: Path, sample_id: str, output_dir: Path) -> 
             details.append([sample_id, source_sha256, unit_id, "read_length_bp", axis, "observed", "resolved", ",".join(transcript_ids), ",".join(gene_ids)])
             counts["resolved"] += 1
         for metric, index in (("utr5_reach_bp", 0), ("utr3_reach_bp", 1)):
-            value = None if projection is None else projection[0][index][0]
-            status = "missing" if projection is None else projection[0][index][1]
-            metric_reason = reason if projection is None else projection[1][index]
-            metrics.append([sample_id, metric, "" if value is None else value, status])
+            value, status, metric_reason = (None, "missing", reason) if projection is None else projection[index]
+            metrics.append([sample_id, metric, value if status == "observed" else "", status])
             details.append([
                 sample_id,
                 source_sha256,
@@ -414,7 +457,12 @@ def run(data_path: Path, model_path: Path, sample_id: str, output_dir: Path) -> 
             "sha256": hashlib.sha256(model_raw).hexdigest(),
             "source_id": source_id,
             "count": len(models),
+            "schema": model_document["schema"],
             "model_source": model_document["model_source"],
+            "stop_codon_evidence": {
+                status: sum(model.stop_codon_evidence == status for model in models.values())
+                for status in ("included", "separate", "overlapping", "partial", "unknown")
+            },
         },
         "counts": counts,
         "unit_count": len(units),
@@ -423,7 +471,10 @@ def run(data_path: Path, model_path: Path, sample_id: str, output_dir: Path) -> 
             "optimal_paths_only": True,
             "accepted_model_relations": sorted(ACCEPTED_RELATIONS),
             "transcript_ambiguity": "retain only when every candidate and optimal path has identical metric/status",
-            "utr_anchor": "contiguous projected alignment must cross the annotated CDS boundary",
+            "utr_anchor": "the boundary-containing projected interval must cover coding-side bases; anchored zero is valid",
+            "utr3_boundary": "after a complete, transcript-contiguous annotated stop codon; unknown/partial remains missing",
+            "raw_cds": "preserved, never extended or inferred",
+            "comparator_censoring": "metrics.tsv leaves censored values blank; projections.tsv retains lower bounds",
             "clipped_end": "right_censored",
             "unavailable_or_unresolved": "missing",
         },
