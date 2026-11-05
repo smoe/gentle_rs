@@ -19,6 +19,40 @@ with the committed attributes, source text, binaries and verbatim records.
 Missing-scoped-rule negative controls also remove the general LF default so
 they still reproduce the original unprotected CRLF boundary.
 
+## Standalone Transcript Read-End Projection
+
+Status: active
+
+The owner-requested 2026-11-05 repair of Glen's experimental standalone UTR
+stack preserves uncertainty before descriptive comparison. It does not promote
+the Python utilities into shared engine/MCP capabilities or biological evidence.
+Intersect compatible transcript IDs over each complete retained path before
+checking model availability. Any still-compatible candidate without a model
+makes UTR geometry unavailable; do not silently choose the remaining model or
+assign a known gene from an incomplete candidate set.
+
+An end measurement requires coding-side support in the same connected projected
+interval as its boundary. A coding-anchored zero remains observed. The ordinary
+comparator retains its strict blank-value contract for censored/missing rows;
+the detailed projection table separately preserves numeric lower bounds.
+
+V2 transcript models retain original CDS and explicit stop-codon intervals
+separately. Derive the 3-prime measurement boundary after a complete three-base
+annotated stop, projected in transcript order, including split minus-strand
+codons. Separate, included or partly overlapping CDS/stop representations must
+not double-count bases. Invalid complete-stop geometry is refused. Missing or
+partial stops remain unknown, not an inferred three-base extension; the 3-prime
+metric stays missing while independently anchored 5-prime/read-length evidence
+remains available. Legacy v1 models lack stop evidence and follow that same
+conservative policy. V2 projection reports name this policy explicitly.
+
+The [preserved GTF 2.2 specification](https://sources.debian.org/data/main/g/genometools/1.5.10%2Bds-3/doc/notes/GTF22.html)
+places the stop outside its CDS and outside the 3UTR and permits split codons.
+That is not a universal rule for every annotation export. Preserve explicit
+interval evidence rather than guessing a convention from a filename, provider,
+gene, barcode or current experiment. No reference bases or molecular completeness
+are verified by this downstream projection.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active

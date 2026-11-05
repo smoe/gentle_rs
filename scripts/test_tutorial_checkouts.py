@@ -753,6 +753,52 @@ class TutorialCheckoutTests(unittest.TestCase):
         prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
 
+    def test_rna_read_end_tutorial_hashes_and_generation_survive_both_checkout_modes(self):
+        base = Path("docs/tutorial/reproducibility/rna_read_end_gene_ranking")
+        paths = [path.relative_to(checker.ROOT) for path in (checker.ROOT / base).rglob("*") if path.is_file()]
+        paths.extend(Path(name) for name in (
+            "docs/figures/rna_read_end_projection_geometry.svg",
+            "docs/figures/rna_read_end_gene_ranking.synthetic.svg",
+        ))
+        expected = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        report = json.loads(expected[base / "ranked/report.json"])
+        for record in [report["inputs"]["contrast_sheet"], *report["inputs"]["projections"]]:
+            self.assertEqual(hashlib.sha256(expected[base / record["name"]]).hexdigest(), record["sha256"])
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        rules = (
+            b"docs/tutorial/reproducibility/rna_read_end_gene_ranking/** text eol=lf",
+            b"docs/figures/rna_read_end_projection_geometry.svg text eol=lf",
+            b"docs/figures/rna_read_end_gene_ranking.synthetic.svg text eol=lf",
+        )
+        for rule in rules:
+            self.assertIn(rule, attributes.splitlines())
+        (self.root / ".gitattributes").write_bytes(attributes)
+        scripts = [Path("scripts") / name for name in (
+            "build_rna_read_end_tutorial.py", "rank_rna_read_end_genes.py",
+            "compare_rna_read_end_gene_contrasts.py", "compare_rna_read_end_metrics.py",
+        )]
+        for path in [*paths, *scripts]:
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((checker.ROOT / path).read_bytes())
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic RNA read-end tutorial")
+        broken = Path(self.tmp.name) / "rna-read-end-unprotected"
+        unprotected = b"\n".join(line for line in attributes.split(b"\n") if line not in rules)
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        self.assertNotEqual((broken / base / "barcode13.projections.tsv").read_bytes(), expected[base / "barcode13.projections.tsv"])
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"rna-read-end-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                for path, payload in expected.items():
+                    self.assertEqual((target / path).read_bytes(), payload, str(path))
+                result = subprocess.run([os.sys.executable, str(target / "scripts/build_rna_read_end_tutorial.py")],
+                                        cwd=target, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for path, payload in expected.items():
+                    self.assertEqual((target / path).read_bytes(), payload, str(path))
+
     def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
         relative = Path("docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter")
         files = ["variant_promoter_context.json", "promoter_reporter_candidates.json",

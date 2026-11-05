@@ -397,6 +397,86 @@ Interpretation:
 - `exact`
   - `100%` template coverage only
 
+## Follow-up: Compare 3′-UTR Reach Without Confusing It with Read Length
+
+The sample sheet above answers gene-support questions, but it does not yet say
+how far each alignment reaches beyond the coding sequence. For that question,
+use the downstream read-end utilities with a frozen, CDS-aware transcript
+model. The distinction matters:
+
+![Transcript-oriented UTR reach, missing anchors and a right-censored clipped end](../figures/rna_read_end_projection_geometry.svg)
+
+Measure and compare three distributions separately:
+
+1. whole-read length, as a library/sequencing control;
+2. 5′-UTR reach, as a truncation/control comparison; and
+3. 3′-UTR reach, as the annotation-relative quantity of interest.
+
+Do not subtract the first two from the third. Instead, ask whether the 3′ shift
+has a different direction or gene ranking from the controls.
+
+For each sample, project a completed `gentle.observed_sam_structures_data.v1`
+artifact:
+
+```bash
+python3 scripts/project_rna_read_end_metrics.py \
+  --observed-sam-data barcode16.observed-sam.data.json \
+  --transcript-models frozen-transcript-models.json \
+  --sample-id barcode16 \
+  --output-dir "$OUT/barcode16-read-end-metrics"
+```
+
+The model must bind the same assembly, reference FASTA hash and annotation hash
+as the saved analysis. A clipped transcript-facing end is retained as
+`right_censored`; it is not changed into an exact short UTR or zero.
+`metrics.tsv` leaves that number blank for the comparator; `projections.tsv`
+retains the measured lower bound. The v2 model preserves explicit stop-codon
+intervals: 3′ reach starts after a complete annotated stop, including split
+codons. Missing/partial stops and legacy v1 models leave 3′ reach unknown;
+never add three bases automatically. A UTR-only read touching a boundary has
+no coding anchor, whereas a coding-anchored read can validly have zero reach.
+Compatible candidates without models remain visible and make UTR geometry
+unavailable instead of silently selecting another transcript. See the
+[model preparation and comparison reference](../rna_read_end_metrics.md).
+
+After projecting all six barcodes, the global all-pairs Q–Q matrices remain a
+useful technical overview. For biological interpretation, however, compare
+like preparations first. SK-MEL-28 contributed barcodes 13, 15 and 17; WM793
+contributed barcodes 14, 16 and 18. Barcode16 (WM793) is compared with barcode15
+(SK-MEL-28) as the primary regular-cDNA pair, while 14/13 and 18/17 remain
+separate enrichment counterchecks.
+
+Create the explicit `contrasts.tsv` shown in the read-end reference, then run:
+
+```bash
+python3 scripts/compare_rna_read_end_gene_contrasts.py \
+  --projection "$OUT/barcode13-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode14-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode15-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode16-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode17-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode18-read-end-metrics/projections.tsv" \
+  --contrast-sheet contrasts.tsv \
+  --focus-label 'WM793 vs SK-MEL-28' \
+  --minimum-observed 10 \
+  --maximum-censored-fraction 0.25 \
+  --output-dir "$OUT/wm793-gene-ranking"
+```
+
+![Synthetic six-sample gene ranking with separate read-length, 5′-UTR and 3′-UTR panels](../figures/rna_read_end_gene_ranking.synthetic.svg)
+
+The figure is a synthetic teaching result, not evidence from the six biological
+samples. It shows the intended reading order: prioritize the 3′-UTR panel, then
+check whether whole-read and 5′-UTR shifts suggest a general truncation or
+library effect. The three panels use separate scales.
+
+The solid points rank the regular-cDNA 16-minus-15 median differences. Small
+ticks retain the enriched-pair deltas without pooling them into that score.
+This does not treat reads or differently prepared libraries as interchangeable
+biological replicates, and it does not establish that TP73, MDM2 or MDM4 caused a difference. See
+[`docs/rna_read_end_metrics.md`](../rna_read_end_metrics.md) for the exact input
+contract, censoring policy and reproducible synthetic fixture.
+
 ## Engine / Shell Mapping
 
 This tutorial exercises these shared routes and engine operations:
@@ -490,6 +570,8 @@ It gives you one deterministic route for:
   [`docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md`](./generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md)
 - CLI reference for RNA-read commands:
   [`docs/cli.md`](../cli.md)
+- transcript-oriented read-end projection and gene ranking:
+  [`docs/rna_read_end_metrics.md`](../rna_read_end_metrics.md)
 - tutorial landing page:
   [`docs/tutorial/README.md`](./README.md)
 

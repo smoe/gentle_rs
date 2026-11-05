@@ -14,6 +14,11 @@ src/app/help_manual_sources.rs text eol=lf
 docs/tutorial/generated export-ignore
 docs/tutorial/generated/** export-ignore
 
+# RNA read-end tutorial inputs and regenerated figures are raw-byte contracts.
+docs/tutorial/reproducibility/rna_read_end_gene_ranking/** text eol=lf
+docs/figures/rna_read_end_projection_geometry.svg text eol=lf
+docs/figures/rna_read_end_gene_ranking.synthetic.svg text eol=lf
+
 # PDFs are generated/binary figure artifacts; do not run text whitespace checks
 # against their xref tables.
 *.pdf binary

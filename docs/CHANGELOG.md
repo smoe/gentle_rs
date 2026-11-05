@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-06 - Integrate Glen's Repaired Standalone UTR Stack
+
+- Merge Glen / smoe-bot's three original commits through `3ff28802` with
+  repair `cf4f59d3`, preserving attribution and the newer main primer/reader
+  records. Reconcile only the changelog and verification-handoff conflicts.
+- The merged working tree passes 45 read-end, 87 documentation/checkout and
+  51 release-helper Python tests (183 total, zero skips), plus manual/status
+  and whitespace checks. The roadmap remains 400 lines. No Rust code,
+  dependency, comparator or historical evidence is changed by this merge.
+- Native Windows, canonical Rust tutorial/parity checks, real annotation and
+  biological/release acceptance remain separate. No local Rust build/test,
+  push, workflow dispatch or private sequencing analysis is performed.
+
 ## 2026-11-05 - Add Standalone Multi-Reference Specificity For Synthetic Panels
 
 - Prepare one existing all-assay handoff per available reference and import one
@@ -29,6 +42,56 @@
   non-counterbalanced timing boundary. Native Windows and scientific/release
   acceptance stay open. No reader code change, Rust execution, new replay,
   UTR integration, push or dispatch is performed here.
+
+## 2026-11-05 - Repair Standalone UTR Projection Boundaries
+
+- Repair the four independently reproduced boundaries in Glen / smoe-bot's
+  UTR stack ending at `3ff28802`. Keep numeric censored bounds in detailed
+  projections but leave the comparator's censored/missing cells blank; do not
+  weaken the existing comparator or its refusal of insufficient exact evidence.
+- Intersect candidates across each whole path before checking model availability;
+  preserve absent candidates and unknown gene assignments. Require coding-side
+  support at each connected boundary, retaining legitimate observed zero.
+- V2 models retain original CDS and explicit stop intervals. Derive a shared
+  boundary for separate/included/overlapping and exon-split stops on both
+  strands. Partial, absent and legacy v1 stop evidence stays unknown; invalid
+  complete stops are refused. No inferred `+3`, provider/barcode/gene hardcode,
+  aligner work or scientific acceptance.
+- Add synthetic regressions and real Python preparer/projector/comparator CLI
+  replay under LF/CRLF and spaced/apostrophe/Unicode paths, scoped tutorial
+  byte policies and checkout/regeneration tests. Expand the existing fast
+  Python CI scope and wire the same scope into normal Windows CI. Correct the
+  directly affected comparator argument example; update model guidance and
+  Glen's bounded handoff. No local Rust, push, dispatch or private-data run.
+- Authoring: 45 focused Python tests, 86 documentation/checkout tests and
+  51 release-candidate helpers pass on macOS arm64 / Python 3.15.0, zero skips.
+  Native Windows and real frozen-annotation/biological acceptance remain open;
+  results are worktree-bound, not acceptance of an integrated main revision.
+
+## 2026-11-05 - Add Transcript-Bound RNA Read-End Projection And Gene Ranking
+
+- Add a standalone GTF-to-model preparer and downstream projector for completed
+  observed-SAM evidence. Bind assembly, reference FASTA and annotation digests;
+  project exon blocks in transcript orientation; require explicit CDS-boundary
+  anchors; retain clipped ends as right-censored and incompatible/ambiguous
+  geometry as missing rather than zero.
+- Emit comparator-ready whole-read, 5′-UTR and 3′-UTR metrics plus detailed
+  transcript/gene rows. Add focus-sample gene ranking based on the median of
+  sample-level median differences, with minimum-depth and censoring gates so
+  individual reads are not presented as biological replicates.
+- Add an explicit contrast-sheet path for the actual six-barcode design:
+  SK-MEL-28 is barcodes 13/15/17 and WM793 is 14/16/18; barcode16 versus 15 is
+  the primary regular-cDNA comparison, while enriched pairs 14/13 and 18/17
+  remain separate directional counterchecks and are never pooled into the
+  primary ranking.
+- Extend tutorial 07.01 with two deterministic SVG teaching figures and a
+  six-sample synthetic replay. Keep the TP73–MDM2/MDM4 motivation explicit but
+  make no causal, polyadenylation-site, molecule-completeness or real-sample
+  claim. This first slice is a standalone analysis utility, not an engine/MCP
+  route or GUI.
+- Focused Python verification covers plus/minus strand, CDS anchoring, clipping,
+  transcript ambiguity, GTF coordinates, per-sample ranking and censoring;
+  private sequencing inputs and biological acceptance are not run.
 
 ## 2026-11-05 - Reuse Parsed Reference Indexes Within Specificity Interpretation
 

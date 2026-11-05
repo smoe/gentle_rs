@@ -1,0 +1,13 @@
+gene_id	metric	focus_label	primary_contrast_id	primary_focus_sample	primary_comparison_sample	primary_focus_observed_n	primary_focus_right_censored_n	primary_focus_missing_n	primary_comparison_observed_n	primary_comparison_right_censored_n	primary_comparison_missing_n	primary_delta_median_bp	directional_contrasts_eligible	directional_deltas_bp_json	directional_concordant_count	ranking_status
+ACTB	read_length_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	4	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":4,""enrichment_17_18"":4}"	2	eligible
+ACTB	utr5_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	1	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":1,""enrichment_17_18"":1}"	2	eligible
+ACTB	utr3_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	3	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":3,""enrichment_17_18"":3}"	2	eligible
+FUS	read_length_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	4	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":4,""enrichment_17_18"":4}"	2	eligible
+FUS	utr5_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	1	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":1,""enrichment_17_18"":1}"	2	eligible
+FUS	utr3_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	38	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":22,""enrichment_17_18"":15}"	2	eligible
+MDM2	read_length_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	4	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":4,""enrichment_17_18"":4}"	2	eligible
+MDM2	utr5_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	1	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":1,""enrichment_17_18"":1}"	2	eligible
+MDM2	utr3_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	93	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":53,""enrichment_17_18"":34}"	2	eligible
+MDM4	read_length_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	4	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":4,""enrichment_17_18"":4}"	2	eligible
+MDM4	utr5_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	1	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":1,""enrichment_17_18"":1}"	2	eligible
+MDM4	utr3_reach_bp	WM793 vs SK-MEL-28	regular_cdna	barcode16	barcode15	5	0	0	5	0	0	-62	enrichment_13_14,enrichment_17_18	"{""enrichment_13_14"":-33,""enrichment_17_18"":-20}"	2	eligible

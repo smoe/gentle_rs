@@ -1,0 +1,76 @@
+{
+  "contrasts": [
+    {
+      "comparison_sample": "barcode15",
+      "contrast_id": "regular_cdna",
+      "evidence_role": "primary",
+      "focus_sample": "barcode16",
+      "library_preparation": "regular_cdna"
+    },
+    {
+      "comparison_sample": "barcode13",
+      "contrast_id": "enrichment_13_14",
+      "evidence_role": "directional_countercheck",
+      "focus_sample": "barcode14",
+      "library_preparation": "enrichment_13_14"
+    },
+    {
+      "comparison_sample": "barcode17",
+      "contrast_id": "enrichment_17_18",
+      "evidence_role": "directional_countercheck",
+      "focus_sample": "barcode18",
+      "library_preparation": "enrichment_17_18"
+    }
+  ],
+  "directional_policy": "differently prepared contrasts are displayed separately and never pooled",
+  "focus_label": "WM793 vs SK-MEL-28",
+  "inputs": {
+    "contrast_sheet": {
+      "name": "contrasts.tsv",
+      "sha256": "3db0c0496ca2f1e4a7ab05f961158d2ecf42865b9e5cebb0c6e52188dd14eefe"
+    },
+    "projections": [
+      {
+        "name": "barcode13.projections.tsv",
+        "sha256": "7f4a16107ac603a834709c2a6c607e4d3d359dfb364a014d0e359424b9274cf3"
+      },
+      {
+        "name": "barcode14.projections.tsv",
+        "sha256": "a11993913f657cf3e930bb6a92967064bd803b4ee564bfdcb1217a9586d8d21c"
+      },
+      {
+        "name": "barcode15.projections.tsv",
+        "sha256": "4a85978a30f11b9eb27f7f8c90a36ded68743cf8dc6be4fa380fd10dafa37431"
+      },
+      {
+        "name": "barcode16.projections.tsv",
+        "sha256": "d5da85c3a3162215aabf4bba7319f375a792f543a03c17433b923b589e436e1e"
+      },
+      {
+        "name": "barcode17.projections.tsv",
+        "sha256": "c3581b2126d83eb30824e51c45159b38f2e9f638d8562435667674594e659a5f"
+      },
+      {
+        "name": "barcode18.projections.tsv",
+        "sha256": "19ef53e88a1112e6949eef0cbf2b980cb6ad0697a3d639b0474706f32b4390c8"
+      }
+    ]
+  },
+  "maximum_right_censored_fraction": 0.25,
+  "minimum_observed_per_sample": 4,
+  "nonclaims": [
+    "The ranking is descriptive and does not establish TP73, MDM2 or MDM4 causality.",
+    "Enriched-library counterchecks do not replace the primary regular-cDNA contrast.",
+    "Right-censored values are counts and lower-bound evidence, not exact lengths used in medians."
+  ],
+  "ranking_metric": "absolute primary regular-cDNA median difference",
+  "samples": [
+    "barcode13",
+    "barcode14",
+    "barcode15",
+    "barcode16",
+    "barcode17",
+    "barcode18"
+  ],
+  "schema": "gentle.rna_read_end_gene_contrasts.v1"
+}
