@@ -1,0 +1,13 @@
+gene_id	metric	focus_sample	focus_observed_n	focus_right_censored_n	focus_missing_n	focus_median_bp	comparison_samples_eligible	comparison_sample_count	median_sample_delta_bp	min_sample_delta_bp	max_sample_delta_bp	ranking_status
+ACTB	read_length_bp	sample2	5	0	0	1098	sample1,sample3,sample4,sample5,sample6	5	-8	-16	4	eligible
+ACTB	utr5_reach_bp	sample2	5	0	0	87	sample1,sample3,sample4,sample5,sample6	5	-2	-4	1	eligible
+ACTB	utr3_reach_bp	sample2	5	0	0	276	sample1,sample3,sample4,sample5,sample6	5	-6	-12	3	eligible
+FUS	read_length_bp	sample2	5	0	0	1068	sample1,sample3,sample4,sample5,sample6	5	-8	-16	4	eligible
+FUS	utr5_reach_bp	sample2	5	0	0	82	sample1,sample3,sample4,sample5,sample6	5	-2	-4	1	eligible
+FUS	utr3_reach_bp	sample2	5	0	0	281	sample1,sample3,sample4,sample5,sample6	5	29	23	38	eligible
+MDM2	read_length_bp	sample2	5	0	0	1008	sample1,sample3,sample4,sample5,sample6	5	-8	-16	4	eligible
+MDM2	utr5_reach_bp	sample2	5	0	0	72	sample1,sample3,sample4,sample5,sample6	5	-2	-4	1	eligible
+MDM2	utr3_reach_bp	sample2	5	0	0	276	sample1,sample3,sample4,sample5,sample6	5	84	78	93	eligible
+MDM4	read_length_bp	sample2	5	0	0	1038	sample1,sample3,sample4,sample5,sample6	5	-8	-16	4	eligible
+MDM4	utr5_reach_bp	sample2	5	0	0	77	sample1,sample3,sample4,sample5,sample6	5	-2	-4	1	eligible
+MDM4	utr3_reach_bp	sample2	5	0	0	151	sample1,sample3,sample4,sample5,sample6	5	-71	-77	-62	eligible

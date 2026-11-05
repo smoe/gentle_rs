@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-11-05 - Add Transcript-Bound RNA Read-End Projection And Gene Ranking
+
+- Add a standalone GTF-to-model preparer and downstream projector for completed
+  observed-SAM evidence. Bind assembly, reference FASTA and annotation digests;
+  project exon blocks in transcript orientation; require explicit CDS-boundary
+  anchors; retain clipped ends as right-censored and incompatible/ambiguous
+  geometry as missing rather than zero.
+- Emit comparator-ready whole-read, 5′-UTR and 3′-UTR metrics plus detailed
+  transcript/gene rows. Add focus-sample gene ranking based on the median of
+  sample-level median differences, with minimum-depth and censoring gates so
+  individual reads are not presented as biological replicates.
+- Extend tutorial 07.01 with two deterministic SVG teaching figures and a
+  six-sample synthetic replay. Keep the TP73–MDM2/MDM4 motivation explicit but
+  make no causal, polyadenylation-site, molecule-completeness or real-sample
+  claim. This first slice is a standalone analysis utility, not an engine/MCP
+  route or GUI.
+- Focused Python verification covers plus/minus strand, CDS anchoring, clipping,
+  transcript ambiguity, GTF coordinates, per-sample ranking and censoring;
+  private sequencing inputs and biological acceptance are not run.
+
 ## 2026-11-05 - Reuse Parsed Reference Indexes Within Specificity Interpretation
 
 - Add an interpretation-local prepared reader shared by both primer directions

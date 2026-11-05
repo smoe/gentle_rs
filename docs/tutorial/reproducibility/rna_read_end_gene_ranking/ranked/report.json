@@ -1,0 +1,21 @@
+{
+  "focus_sample": "sample2",
+  "maximum_right_censored_fraction": 0.25,
+  "method": "median across per-comparison-sample differences of read-level medians",
+  "minimum_eligible_comparison_samples": 3,
+  "minimum_observed_per_sample": 4,
+  "nonclaims": [
+    "The ranking is descriptive and does not establish TP73, MDM2 or MDM4 causality.",
+    "Whole-read and 5-prime-UTR shifts are shown as truncation/library controls, not corrections.",
+    "Right-censored values are counts and lower-bound evidence, not exact lengths used in medians."
+  ],
+  "samples": [
+    "sample1",
+    "sample2",
+    "sample3",
+    "sample4",
+    "sample5",
+    "sample6"
+  ],
+  "schema": "gentle.rna_read_end_gene_ranking.v1"
+}

@@ -16,6 +16,20 @@
       "caption": "The native cohort view reports six target-assigned fragments but no full-length or direct-transition evidence. Target assignment therefore must not be reported as seed-filter acceptance, complete molecules, or junction support.",
       "illustrates_step": 6,
       "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/rna_read_end_projection_geometry.svg",
+      "caption": "Transcript-oriented teaching diagram: 5′- and 3′-UTR reach begin at explicit CDS boundaries, while a clipped transcript-facing end remains a right-censored lower bound rather than becoming an exact short UTR.",
+      "illustrates_step": 8,
+      "regen_command": "python3 scripts/build_rna_read_end_tutorial.py"
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/rna_read_end_gene_ranking.synthetic.svg",
+      "caption": "Synthetic six-sample focus comparison showing whole-read, 5′-UTR-control and 3′-UTR median shifts in separate panels. This is a teaching fixture, not biological evidence.",
+      "illustrates_step": 8,
+      "regen_command": "python3 scripts/build_rna_read_end_tutorial.py"
     }
   ],
   "catalog": {
@@ -29,7 +43,7 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, and direct-transition evidence.",
+    "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, exporting one target-gene cohort sample sheet, and continuing into transcript-bound 5′/3′-UTR reach projection plus focus-sample gene ranking. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, direct-transition evidence and later synthetic read-end teaching assets.",
     "interfaces": [
       "native GUI",
       "CLI / shared shell",
