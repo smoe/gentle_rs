@@ -7,6 +7,57 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Slice B Panel Multi-Reference Specificity
+
+Source work is based on `0d9909b5`, following the bounded single-pair Linux
+return below. Use the final Slice B SHA/tree/lock, not the older reader binary.
+Only synthetic panel evaluation is authorized: 24 assays, 8 references, 384
+commands, 128 MiB cumulative TSV and 25,000 rows. These are input limits, not
+measured runtime or RSS limits. No repeat ACTB/TP53 campaign or new BLAST run.
+
+On the source-matched host, record platform/toolchain/features, exact nonzero
+counts, skips, primary failures and commands. Run:
+
+```sh
+cargo check -q --locked --tests -j1
+cargo test --locked --lib --features script-interfaces transcript_assay_panel_multi_ -- --test-threads=1
+cargo test --locked --lib engine::primer_specificity_multi::tests:: -- --test-threads=1
+cargo test --locked --lib transcript_assay_panel_specificity_ -- --test-threads=1
+cargo test --locked --lib specificity_matrix_ -- --test-threads=1
+cargo test --locked -p gentle-protocol
+```
+
+Exercise scripting cases with the JS/Lua features enabled; report zero matches
+or platform skips separately. The mock BLAST end-to-end and historical panel
+finalization fixtures are Unix-only; Windows must exercise pure admission,
+manifest, byte/row, quoted-path and rollback cases as well as the outstanding
+reader checks. Partial/cancelled is not an assay pass. Do not backfill sources
+or attach to the panel to make a test pass.
+
+Glen regenerates the parity matrix from final registry inputs using
+`cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate`
+and returns the generated Markdown change for owner integration. No hand-written
+rows. On the **integrated** SHA, without regenerating first, run
+`cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-check`,
+`cargo test --locked --test capability_registry_parity --test parity_matrix_freshness`
+and the separate examples check `cargo run --locked --bin gentle_examples_docs -- --check`.
+Until then the checked-in projection is intentionally stale and not accepted.
+Local source/format/metadata checks do not establish a Rust or scientific pass.
+
+Authoring checks on macOS arm64: 14 focused offline primer/tutorial/reader
+checks passed. The wider 96-check selection had 89 passes, five skips and two
+failures: the intentionally pending parity projection and an unrelated 10.04
+RNA source-text assertion about command admission, reproduced on untouched
+`0d9909b5`. Neither guard was weakened. The capability-maturity projections
+were refreshed via the Python generator, not the Rust parity generator.
+The shared pair reader still validates the database before interpretation and
+again before retaining the report; its source guard follows the extracted call
+path. The new import commits through the store serializer without the ordinary
+writer's panel-source backfill. The five feature/adapter modules pass scoped
+rustfmt checks; comparing 17 larger touched files against the base finds the
+same 58 pre-existing formatting hunks and no new ones. Manual catalog,
+documentation status, maturity freshness and whitespace checks pass.
+
 ## Linux Reader And MCP Return At e4bc7386, 2026-11-05
 
 Glen reports a scoped Linux pass at exact

@@ -5685,6 +5685,14 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_assay_specificity_matrix: Option<Box<TranscriptAssayPanelSpecificityMatrix>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_panel_multi_handoff:
+        Option<Box<TranscriptAssayPanelMultiReferenceHandoff>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_assay_panel_multi_summary:
+        Option<Box<TranscriptAssayPanelMultiReferenceSummary>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_assay_panel_multi_summaries: Vec<TranscriptAssayPanelMultiReferenceSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,

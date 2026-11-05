@@ -298,8 +298,46 @@ isoform discrimination are separate questions answered by different evidence.
 
 This command reads retained project evidence only. It does not authenticate the
 external runner, probe installed references, start BLAST, write a report, replace
-a selection or change order readiness. Export/import fan-out across a panel is
-not added by this inspection; use the existing approved workflows for new QA.
+a selection or change order readiness. To organize new **synthetic** panel
+searches, use the separate workflow below, not the inspection button.
+
+### Prepare One Inventory For A Synthetic Panel
+
+Suppose a saved panel has three assays. Genomic DNA and cDNA ask different
+questions: could genomic DNA amplify, and which transcripts might amplify?
+With both references prepared there are **two children, not six**: each covers
+all three assays and contains six primer commands. The parent has twelve.
+Keeping one inventory makes a missing assay or a result from the wrong reference
+detectable. It also prevents results from attaching to a redesigned panel.
+
+Create a request like this for a disposable project. Replace the example IDs
+with IDs from your synthetic fixture. The request is JSON; this compact example
+uses the common default policy and supplies no target coordinates.
+
+```text
+{"schema":"gentle.transcript_assay_panel_multi_reference_request.v1",
+ "panel_report_id":"SYNTHETIC_PANEL",
+ "references":[
+  {"target_genome_id":"SYNTHETIC_GENOME","expected_index_kind":"genomic_dna","required":true},
+  {"target_genome_id":"SYNTHETIC_CDNA","expected_index_kind":"transcriptome_cdna","required":true}]}
+```
+
+```sh
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-handoff @panel-request.json NEW_DIR
+# A trusted external runner executes the structured commands and fills in the manifest.
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-import NEW_DIR/handoff.json NEW_DIR/execution_manifest.json
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-list
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-show SUMMARY_ID
+```
+
+An unavailable **required** reference stops preparation before any files are
+written. An unavailable **optional** reference stays visible as unassessed.
+Inspect each assay's genomic and transcriptome cells. Incompatible target
+geometry cannot become a pass. For a partial run keep the failed/cancelled or
+pending command rows; do not invent zero-hit files or finalize individual
+children. The standalone summary changes neither the saved panel's selections
+nor its order readiness. This preview is for synthetic evaluation only; the
+single-pair Linux measurements do not establish real panel capacity.
 
 ## 6. Use The Same Contract Through Agents And Scripts
 
@@ -349,6 +387,7 @@ real-reference and native-GUI acceptance:
 cargo test --locked --lib specificity_reference_
 cargo test --locked --lib specificity_multi_
 cargo test --locked --lib specificity_matrix_
+cargo test --locked --lib transcript_assay_panel_multi_
 cargo test --locked --lib writing_routes_require_confirmation_before_state_or_file_access
 cargo test --locked --lib primer_specificity_handoff_plans_without_running_and_imports_completed_outputs
 cargo test --locked --lib transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_outcomes

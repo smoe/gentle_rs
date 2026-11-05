@@ -1,7 +1,7 @@
 # Primer Design Specialist: Current Status And Remaining Scope
 
-Documentation reconciled 2026-10-15; preserve the 2026-10-13 source and conditional
-fan-out plan below. This residual plan is not implementation authorization or
+Slice B was authorized on 2026-11-05 for implementation and synthetic evaluation.
+The remaining specialist proposals are not implementation authorization or
 scientific acceptance.
 
 ## Verified Starting Point
@@ -32,9 +32,10 @@ receipts now prevent a newer report on another database from silently replacing
 the active evidence. Legacy unbound evidence is inspectable, not passing.
 The standalone multi-reference handoff/import/show/list core and
 [tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) are
-implemented pending Glen/CI Rust verification. This core does not add panel fan-out or
-automatically attach its aggregate to order readiness. Those integrations,
-automatic tail selection and engine-native single-primer design remain separate.
+verified for the bounded Linux pair cases in Glen's report below. The standalone
+pair contract does not attach anything to order readiness. Panel orchestration
+is a separate operation; automatic tail selection and engine-native single-primer
+design remain separate.
 
 Read-only `primers transcript-assay-specificity-matrix PANEL_REPORT_ID` now
 projects retained panel receipts with separate design/reference/policy scopes,
@@ -45,83 +46,54 @@ new handoff/import machinery, reference selection or readiness attachment.
 
 ## Conditional Slice B: Bound Panel Fan-Out
 
-Status: retained proposal, not implementation authorization, a `.12` gate or
-an acceptance claim. Slice A landed at `dee6033d`; its Rust/native/real-reference
-verification remains with Glen/CI. The owner must separately approve B after
-reconciling this outline with current source; offer a read-only Claude review.
+Status: implemented for synthetic evaluation, pending Glen/CI verification of the
+new source. No dedicated GUI, new BLAST execution, changes to the matrix or
+readiness attachment are included.
 
 ### Motivation And Entry Conditions
 
-Slice A answers "what evidence have we retained?", but neither requests nor
-executes the searches still needed for a panel. With several isoform assays and
-genomic/cDNA references, repeated manual preparation/import can omit one pair,
-mix references or import results against a changed design. B would give the
-external runner one bounded, reproducible inventory of required work and the
-reviewer one assay-by-reference result with inspectable failures and gaps.
-It improves orchestration, not primer design, biological specificity or ordering.
+A retained matrix answers what evidence exists; a single-reference panel handoff
+cannot bind an inventory across multiple references for one atomic cross-reference import.
+The owner authorized this bounded composition after [Glen's phase attribution](glen_next_verification_handoff.md#post-blast-phase-trace-return-2026-11-05)
+at `dfca3261` and the [Linux reader verification](audits/glen_followups_20261008/reader_verify_e4bc7386/REPORT.md)
+at `e4bc7386`. All four single-pair imports completed and reopened. TP53
+untraced took 58.26 s of a 60 s budget; peak RSS reached about 1.08 GiB.
+That is neither a measured panel throughput nor a guaranteed speedup ratio.
+Do not repeat that campaign or infer native Windows or scientific acceptance.
 
-1. Have Glen/CI verify A and the existing pair/panel specificity contracts at
-   one frozen candidate, without borrowing nearby revisions' acceptance.
-2. Complete phase attribution through the main-maintaining thread, following
-   the [bounded real-reference import profile](glen_post_blast_import_profiling_f35a58e6.md)
-   and its [retained measurements](audits/glen_followups_20261008/post_blast_profile_f35a58e6/README.md).
-   Both imports timed out; the sampled trace had zero prepared FASTA/FAI opens,
-   so repeated FASTA-index loading is not established as the cause. Repair a
-   demonstrated bottleneck before multiplying the workload; these measurements
-   do not authorize a speculative optimization or identify a dominant phase.
-3. Confirm that retained-evidence inspection and existing single-reference panel
-   handoffs do not meet the actual batching need. If they do, do not build B.
-   Otherwise approve its final contract and numerical admission limits separately.
+### Implemented Contract
 
-### Proposed Minimal Composition
+Prepare one existing child per available reference covering all selected assays.
+Bind current design, source, full pairs/tails, derived intended geometry, common
+policy and exact command inventory. A scientific ID is independent of the bundle
+location; a separate transport digest locks paths and commands. Preflight required
+indexes before reserving a fresh directory. Optional unavailable references remain
+explicit. No inferred liftover, caller geometry override or external execution.
 
-- Reuse `TranscriptAssayPanelSpecificityHandoff` children: one saved panel,
-  one explicit reference and every selected assay per child. Add only the parent
-  binding/manifest needed for atomic cross-reference import and shared limits.
-  Do not recreate existing pair-level verdicts, applicability or interpretation.
-- Bind the normalized panel design, source snapshot, assay identities, full
-  oligos, annealing/tail boundaries, exact references, common policy and commands.
-  Preserve derived intended-product geometry for its own reference/target space;
-  additional caller mappings cannot override it or transfer coordinates by alias.
-  Reject a hidden single-target selector in the common policy; record explicit
-  per-child target normalization rather than silently changing that policy.
-- Preflight all required references before publishing a fresh bundle. Optional
-  unavailable references stay explicit. No download, indexing, BLAST execution,
-  scheduler, macro loop or generic collection abstraction is introduced.
-- Extract non-persisting validation/result construction from existing import
-  seams. Repeated calls to persisting pair import or panel finalization are not
-  atomic composition. Validate all retained bytes/bindings first, then perform
-  one guarded store commit; tampering or late source conflicts leave no writes.
-- Keep partial/cancelled batches structurally separate from panel acceptance:
-  completed evidence may be retained as immutable standalone diagnostics, never
-  through `record_primer_specificity_reference_selection` or the state-writing
-  `finalize_transcript_assay_panel_specificity_handoff`. Active receipts and
-  readiness remain unchanged. Readiness attachment needs a later policy decision.
-- Reuse required/optional and genomic/transcriptome verdict semantics. Required
-  failure dominates, missing/stale/incomplete required evidence cannot pass, and
-  optional biological failures remain visible without becoming required failures.
-  No universal specificity, isoform discrimination, oligo-QC or order claim.
+Import checks all command rows (including pending/failed/cancelled), validates
+successful retained outputs before interpretation, and uses the existing pair-level
+interpreter, reference freshness checks and per-assay dimension rules. One store
+commit retains standalone diagnostics, never the panel or its selection receipts.
+Do not call `record_primer_specificity_reference_selection` or finalize children.
+Readiness attachment needs a later policy decision.
 
-### Limits And Acceptance To Set Before Implementation
+### Admission And Verification
 
-Reuse the existing 1-8 reference admission and per-output byte ceiling through
-shared constants rather than duplicated literals. Proposed initial cumulative
-TSV budget: **128 MiB total across the entire parent**, derived from the current
-pair-level `MULTI_MAX_OUTPUT_BYTES`, not 128 MiB multiplied by every command.
-Check declared and actual retained-byte totals before allocation/interpretation;
-unknown sizes are not zero and exceeding a limit is not accepted truncation.
-The earlier 32-assay / 512-command proposal is not an approved limit. Choose
-assay, command, parsed-HSP and memory/work caps from bounded profile evidence,
-record exact limits in the effective request, and refuse excess before work.
+Owner-selected draft ceilings **for synthetic use only**: 1-24 assays, 1-8
+references (at least one required), at most 384 commands (two primers per assay
+per prepared reference), 128 MiB per output and **128 MiB total across the entire parent**,
+25,000 nonblank TSV rows total. Effective limits travel with the bundle; tighter
+recorded ceilings apply. Check declared byte totals before touching outputs:
+unknown sizes are not zero. The importer works serially; input ceilings do not
+bound RSS, reference decoding, alignment/join work or run time. Real-reference
+panel use requires separate resource measurements and approval. Do not add
+cross-assay reference caching on the strength of the single-pair trace.
 
-Author synthetic tests for omitted/duplicate cells, common-policy conflicts,
-source/pair/tail/reference replacement, intended geometry on both target spaces,
-required/optional verdicts, partial execution, cumulative budgets, manifest/hash
-tampering, LF/CRLF and quoted paths, stable IDs, save/reload and atomic rollback.
-Explicitly assert unchanged active selections/readiness and no partial panel
-attachment. All adapters use the shared engine; no dedicated GUI is in this slice.
-Extend tutorial 04.09 only with implemented routes after approval. Glen/CI owns
-Rust execution and exact-candidate acceptance; no private report regeneration.
+See [the protocol](protocol.md#panel-multi-reference-specificity), [tutorial
+04.09](tutorial/04-09_reference_bound_primer_specificity.md) and the
+[verification handoff](glen_next_verification_handoff.md#slice-b-panel-multi-reference-specificity).
+Canonical parity regeneration and checking, Rust execution and Windows behavior
+remain with Glen/CI. No production-capacity or biological pass is implied.
 
 ## Remaining Proposal: Persisted Filtered Views
 

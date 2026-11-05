@@ -14293,6 +14293,10 @@ impl ShellCommand {
                 Operation::EvaluateGenomeEditIntent { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                | Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary { .. }
+                | Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {
+                    ..
+                }
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
@@ -17941,6 +17945,14 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
     );
     graph.facts.extend(
         engine
+            .list_panel_multi_specificity()
+            .into_iter()
+            .map(|row| {
+                introspection_report_fact(row.summary_id, "transcript_assay_panel_multi_reference")
+            }),
+    );
+    graph.facts.extend(
+        engine
             .list_qpcr_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
@@ -21006,12 +21018,30 @@ fn primer_specificity_alignment_html_descriptor(id: &str, description: &str) -> 
 }
 
 fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
+    multi_reference_descriptor(
+        id,
+        action,
+        "primer_specificity_multi",
+        "gentle.primer_pair_multi_reference_request.v1 JSON or @file; saved or explicit pair, common policy, explicit kinds/requirements and optional caller mappings",
+    )
+}
+
+fn panel_specificity_multi_descriptor(id: &str, action: &str) -> Value {
+    multi_reference_descriptor(
+        id,
+        action,
+        "transcript_assay_panel_multi_reference",
+        "gentle.transcript_assay_panel_multi_reference_request.v1 JSON or @file; synthetic evaluation only; one saved panel, all selected assays, explicit required/optional references; geometry comes from the panel",
+    )
+}
+
+fn multi_reference_descriptor(id: &str, action: &str, kind: &str, request_detail: &str) -> Value {
     if action == "handoff" {
         let mut descriptor = pool_artifact_descriptor(
             id,
             "Prepare one non-executing handoff for 1..=8 exact references after file-write approval; preflight required indexes before writing, never attach readiness.",
             vec![
-                json!({"name":"REQUEST","required":true,"subject_kind":"other","detail":"gentle.primer_pair_multi_reference_request.v1 JSON or @file; saved or explicit pair, common policy, explicit kinds/requirements and optional caller mappings"}),
+                json!({"name":"REQUEST","required":true,"subject_kind":"other","detail":request_detail}),
                 json!({"name":"OUTPUT_PATH","required":true,"subject_kind":"other","detail":"fresh external bundle directory"}),
             ],
         );
@@ -21026,7 +21056,7 @@ fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
             ],
             vec![],
             vec![
-                json!({"fact":"report.exists","equals":"primer_specificity_multi","report_kind":"primer_specificity_multi","effect_kind":"may_on_success"}),
+                json!({"fact":"report.exists","equals":kind,"report_kind":kind,"effect_kind":"may_on_success"}),
             ],
             true,
             "Validate exact references, commands and retained output bytes; atomically persist an immutable standalone summary, never attach order readiness.",
@@ -21035,9 +21065,7 @@ fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
             vec![
                 json!({"name":"SUMMARY_ID","required":true,"subject_kind":"report","detail":"historical content-derived multi-reference summary ID"}),
             ],
-            vec![
-                json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
-            ],
+            vec![json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":kind})],
             vec![],
             false,
             "Inspect a historical multi-reference summary without probing databases; applicability is recorded at import.",
@@ -22696,6 +22724,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         primer_specificity_multi_descriptor("primers specificity-multi-list", "list"),
         primer_specificity_multi_descriptor("primer_specificity_multi_list", "list"),
         primer_specificity_multi_descriptor("primer_specificity_multi_handoff", "handoff"),
+        panel_specificity_multi_descriptor(
+            "PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff",
+            "handoff",
+        ),
+        panel_specificity_multi_descriptor(
+            "primers transcript-assay-specificity-multi-handoff",
+            "handoff",
+        ),
+        panel_specificity_multi_descriptor("transcript_assay_specificity_multi_handoff", "handoff"),
+        panel_specificity_multi_descriptor(
+            "ImportTranscriptAssayPanelMultiReferenceSpecificity",
+            "import",
+        ),
+        panel_specificity_multi_descriptor(
+            "primers transcript-assay-specificity-multi-import",
+            "import",
+        ),
+        panel_specificity_multi_descriptor("transcript_assay_specificity_multi_import", "import"),
+        panel_specificity_multi_descriptor(
+            "GetTranscriptAssayPanelMultiReferenceSpecificitySummary",
+            "show",
+        ),
+        panel_specificity_multi_descriptor(
+            "primers transcript-assay-specificity-multi-show",
+            "show",
+        ),
+        panel_specificity_multi_descriptor("transcript_assay_specificity_multi_show", "show"),
+        panel_specificity_multi_descriptor(
+            "ListTranscriptAssayPanelMultiReferenceSpecificitySummaries",
+            "list",
+        ),
+        panel_specificity_multi_descriptor(
+            "primers transcript-assay-specificity-multi-list",
+            "list",
+        ),
+        panel_specificity_multi_descriptor("transcript_assay_specificity_multi_list", "list"),
         transcript_assay_specificity_matrix_descriptor(
             "InspectTranscriptAssayPanelSpecificityMatrix",
         ),
@@ -32567,6 +32631,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "resources list-ensembl-regulation-sources"
         | "resources install-ensembl-regulatory-features"
         | "resources prepare-ensembl-regulation-index" => Some(vec![]),
+        "GetTranscriptAssayPanelMultiReferenceSpecificitySummary"
+        | "primers transcript-assay-specificity-multi-show"
+        | "transcript_assay_specificity_multi_show" => Some(vec![
+            json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"transcript_assay_panel_multi_reference"}),
+        ]),
         "GetPrimerPairMultiReferenceSpecificitySummary"
         | "primers specificity-multi-show"
         | "primer_specificity_multi_show" => Some(vec![
@@ -32582,6 +32651,15 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "collections run primer-specificity"
         | "PreparePrimerPairSpecificityHandoff"
         | "PreparePrimerPairMultiReferenceSpecificityHandoff"
+        | "PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff"
+        | "primers transcript-assay-specificity-multi-handoff"
+        | "transcript_assay_specificity_multi_handoff"
+        | "ImportTranscriptAssayPanelMultiReferenceSpecificity"
+        | "primers transcript-assay-specificity-multi-import"
+        | "transcript_assay_specificity_multi_import"
+        | "ListTranscriptAssayPanelMultiReferenceSpecificitySummaries"
+        | "primers transcript-assay-specificity-multi-list"
+        | "transcript_assay_specificity_multi_list"
         | "primers specificity-multi-handoff"
         | "ImportPrimerPairMultiReferenceSpecificity"
         | "ListPrimerPairMultiReferenceSpecificitySummaries"

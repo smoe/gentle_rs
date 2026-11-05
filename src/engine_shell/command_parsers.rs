@@ -6356,6 +6356,38 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 .map_err(|e| e.to_string())?,
             })
         }
+        "transcript-assay-specificity-multi-handoff" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "primers transcript-assay-specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR".into(),
+                );
+            }
+            let request = parse_required_json_payload::<
+                crate::engine::TranscriptAssayPanelMultiReferenceRequest,
+            >(&tokens[2], "multi-reference specificity request")?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(
+                    &Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+                        request: Box::new(request),
+                        output_dir: tokens[3].clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?,
+            })
+        }
+        "transcript-assay-specificity-multi-import"
+        | "transcript-assay-specificity-multi-show"
+        | "transcript-assay-specificity-multi-list" => {
+            let operation = match tokens[1].as_str() {
+                "transcript-assay-specificity-multi-import" if tokens.len() == 4 => Operation::ImportTranscriptAssayPanelMultiReferenceSpecificity { handoff_path: tokens[2].clone(), manifest_path: tokens[3].clone() },
+                "transcript-assay-specificity-multi-show" if tokens.len() == 3 => Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary { summary_id: tokens[2].clone() },
+                "transcript-assay-specificity-multi-list" if tokens.len() == 2 => Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {},
+                _ => return Err("Use primers transcript-assay-specificity-multi-import HANDOFF_PATH MANIFEST_PATH, transcript-assay-specificity-multi-show SUMMARY_ID or transcript-assay-specificity-multi-list".into()),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "specificity-multi-handoff" => {
             if tokens.len() != 4 {
                 return Err(

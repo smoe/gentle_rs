@@ -13709,7 +13709,7 @@ fn test_cdna_qpcr_operation_materializes_probe_supported_products() {
     assert!(materialization.product_gel_svg_path.is_none());
 }
 
-fn transcript_qpcr_panel_test_engine() -> GentleEngine {
+pub(super) fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     let common_tail = "GCTAGTCGATCGTACCGTACGATCGTACGA";
     let tx1 = format!("ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAAC{common_tail}");
     let tx2 = format!("CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTA{common_tail}");
@@ -14556,7 +14556,7 @@ fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_ro
     assert_eq!(op_report.transcript_rows.len(), 3);
 }
 
-fn transcript_assay_panel_relaxed_side() -> PrimerDesignSideConstraint {
+pub(super) fn transcript_assay_panel_relaxed_side() -> PrimerDesignSideConstraint {
     PrimerDesignSideConstraint {
         min_length: 18,
         max_length: 24,
@@ -14569,7 +14569,7 @@ fn transcript_assay_panel_relaxed_side() -> PrimerDesignSideConstraint {
     }
 }
 
-fn transcript_assay_panel_operation(
+pub(super) fn transcript_assay_panel_operation(
     coverage_policy: TranscriptAssayCoveragePolicy,
     side: PrimerDesignSideConstraint,
     max_mismatches: usize,

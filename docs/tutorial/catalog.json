@@ -2269,7 +2269,7 @@
         "transcript_analysis",
         "wet_lab_biologists"
       ],
-      "notes": "Explain the biological motivation for exact reference/assembly/release binding, caller mappings, annealing/tail boundaries, required/optional references, complete retained searches, independent genomic/transcriptome verdicts, immutable history and exact panel selection receipts. Prepare one pair's non-executing handoff, use a trusted external runner, approve import and inspect a standalone summary without automatic readiness attachment. Inspect retained panel evidence separately by design/reference/policy, including binding failures and unlinked same-oligo summaries; no aggregate pass or readiness change. Templates are not validated real biology. Codex source/readability review 2026-10-13; Rust execution, native GUI, real-reference specificity and human scientific approval remain pending.",
+      "notes": "Explain the biological motivation for exact reference/assembly/release binding, caller mappings, annealing/tail boundaries, required/optional references, complete retained searches, independent genomic/transcriptome verdicts, immutable history and exact panel selection receipts. Prepare one pair's non-executing handoff, use a trusted external runner, approve import and inspect a standalone summary without automatic readiness attachment. Inspect retained panel evidence separately by design/reference/policy, including binding failures and unlinked same-oligo summaries; no aggregate pass or readiness change. Practice separate panel fan-out on synthetic fixtures: one child per reference, a complete command inventory and one standalone import. Codex source/readability review 2026-11-05; panel Rust/native execution, real-reference capacity and human scientific approval remain pending.",
       "estimated_minutes": 30,
       "difficulty": "intermediate",
       "network": "offline with already prepared local references",
@@ -2283,13 +2283,14 @@
       "produces": [
         "reference-bound external handoff",
         "standalone immutable specificity summary",
-        "read-only retained panel specificity matrix"
+        "read-only retained panel specificity matrix",
+        "synthetic panel multi-reference handoff and standalone summary"
       ],
       "prerequisites": [
         "gene_assay_study_gui"
       ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-10-13"
+      "codex_reviewed_at": "2026-11-05"
     },
     {
       "id": "synthetic_biology_design_build_verify",

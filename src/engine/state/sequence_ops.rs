@@ -2551,7 +2551,23 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
-            Operation::ImportPrimerPairMultiReferenceSpecificity {
+            Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+                request,
+                output_dir,
+            } => {
+                for reference in &request.references {
+                    Self::push_unique_token(&mut summary.genome_ids, &reference.target_genome_id);
+                }
+                Self::push_unique_token(&mut summary.file_paths, output_dir);
+                if let Some(path) = &request.catalog_path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ImportTranscriptAssayPanelMultiReferenceSpecificity {
+                handoff_path,
+                manifest_path,
+            }
+            | Operation::ImportPrimerPairMultiReferenceSpecificity {
                 handoff_path,
                 manifest_path,
             } => {
@@ -3080,6 +3096,10 @@ impl GentleEngine {
             }
             Operation::ExportSequenceContextBundle { output_dir, .. }
             | Operation::PreparePrimerPairSpecificityHandoff { output_dir, .. }
+            | Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+                output_dir,
+                ..
+            }
             | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { output_dir, .. } => {
                 push(output_dir)
             }

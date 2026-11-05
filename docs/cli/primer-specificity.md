@@ -49,6 +49,25 @@ passed at `e4bc7386`, with matching traced/untraced output and reopened reports.
 Native Windows and general throughput remain unverified; successful imports
 are not biological acceptance. No new command or request flag is needed.
 
+## Panel Multi-Reference Specificity
+
+For a saved synthetic panel, prepare one external search inventory across exact
+references, then import the returned receipts once. Do not finalize the children.
+These routes are not approved for real-reference panel workloads.
+
+```sh
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-handoff @panel-request.json NEW_DIR
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-import NEW_DIR/handoff.json NEW_DIR/execution_manifest.json
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-list
+gentle_cli --state demo.json primers transcript-assay-specificity-multi-show SUMMARY_ID
+```
+
+Preparation writes only to a new directory, not the project. Import writes one
+standalone summary; a partial run never attaches evidence to panel readiness.
+Use [tutorial 04.09](../tutorial/04-09_reference_bound_primer_specificity.md)
+for a synthetic request and [the protocol](../protocol.md#panel-multi-reference-specificity)
+for limits, reference binding, MCP confirmation and nonclaims.
+
 ### Inspect Retained Panel Specificity
 
 ```sh

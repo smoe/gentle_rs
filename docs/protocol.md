@@ -1073,6 +1073,50 @@ unreceipted panel assessments cannot establish verified matrix evidence.
 Inspection does not probe databases, authenticate process execution, write
 state/files, record selections or change readiness. See tutorial 04.09.
 
+## Panel Multi-Reference Specificity
+
+Synthetic-evaluation contract for one saved panel and several explicit references.
+The four `gentle.transcript_assay_panel_multi_reference_*.v1` schemas are
+`request`, `handoff`, `execution_manifest` and `summary`. The engine operations are
+`PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff`,
+`ImportTranscriptAssayPanelMultiReferenceSpecificity`,
+`GetTranscriptAssayPanelMultiReferenceSpecificitySummary` and
+`ListTranscriptAssayPanelMultiReferenceSpecificitySummaries`.
+Use the [shared shell routes](cli/primer-specificity.md#panel-multi-reference-specificity)
+or the same typed operations from scripts. The MCP tools
+`transcript_assay_specificity_multi_{handoff,import,show,list}` use the same parser;
+handoff and import require explicit confirmation.
+
+The strict request requires `schema`, `panel_report_id`, and ordered `references`
+with `target_genome_id`, `expected_index_kind` and `required`. Optional:
+`expected_panel_digest`, common `policy`, `catalog_path`, `cache_dir`. No caller
+geometry or common policy target. Derive targets from each saved assay, normalize
+policy per reference exactly as in the single-reference panel route and never
+transfer coordinates to an incompatible reference. Each available reference gets
+one unchanged panel handoff. An unavailable optional reference gets no commands.
+
+`effective_limits`: at most 24 assays, 8 references, 384 commands, 128 MiB per
+output and total across the parent, and 25,000 nonblank TSV rows total. These
+are synthetic admission ceilings, not runtime or memory guarantees. Parent JSON
+and manifest reads are bounded; unknown completed sizes are refused. Command
+rows bind the exact ID, command digest, local output path, state, exit, size and
+hash. Keep a row for every command, even when a search failed or was cancelled.
+Only successful completed rows claim retained TSV bytes. The importer checks
+every query and the published child handoff records against the parent.
+`retained_command_ids` identifies verified files, including genuine zero-byte
+outputs; a missing output cannot masquerade as an empty file.
+The path-independent scientific handoff ID is distinct from `bundle_sha256`,
+which locks the exact local bundle. Tampered bytes, manifest disagreement and
+late panel/pair/source conflicts refuse without a partial store write.
+
+Each summary assay retains its cells in reference order and independent
+`genomic` and `transcriptome` verdicts from the pair-level rules. Process
+completion is not biological acceptance. A stale reference or missing output
+cannot pass; partial executions can retain standalone diagnostics. Show/list
+read stored history without database probes. No selection, readiness change,
+panel verdict, GUI button or new BLAST execution follows, and the Slice A
+receipt matrix does not list these standalone summaries.
+
 ## Standalone Multi-Reference Primer Specificity
 
 `PreparePrimerPairMultiReferenceSpecificityHandoff { request, output_dir }` and

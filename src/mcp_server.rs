@@ -1392,11 +1392,13 @@ fn tool_mutating_descriptor(name: &str) -> Value {
         | "construct_reasoning_set_annotation_status"
         | "construct_reasoning_write_annotation"
         | "transcript_assay_specificity_finalize"
-        | "primer_specificity_multi_import" => Value::Bool(true),
+        | "primer_specificity_multi_import"
+        | "transcript_assay_specificity_multi_import" => Value::Bool(true),
         "gene_isoform_assay_publication"
         | "primer_reports"
         | "transcript_assay_specificity_plan"
-        | "primer_specificity_multi_handoff" => Value::String("external".to_string()),
+        | "primer_specificity_multi_handoff"
+        | "transcript_assay_specificity_multi_handoff" => Value::String("external".to_string()),
         _ => Value::Bool(false),
     }
 }
@@ -3815,6 +3817,10 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         | "primer_specificity_multi_import"
         | "primer_specificity_multi_show"
         | "primer_specificity_multi_list"
+        | "transcript_assay_specificity_multi_handoff"
+        | "transcript_assay_specificity_multi_import"
+        | "transcript_assay_specificity_multi_show"
+        | "transcript_assay_specificity_multi_list"
         | "transcript_assay_specificity_matrix" => {
             primer_tools::call(default_state_path, params.name.trim(), &params.arguments)
         }

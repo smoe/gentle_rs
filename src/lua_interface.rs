@@ -2779,6 +2779,29 @@ mod tests {
     }
 
     #[test]
+    fn transcript_assay_panel_multi_lua_reads_through_apply_operation() {
+        let interface = LuaInterface::new();
+        interface.register_rust_functions().unwrap();
+        let lua = interface.lua();
+        lua.globals()
+            .set("project", lua.to_value(&ProjectState::default()).unwrap())
+            .unwrap();
+        let op =
+            crate::engine::Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {};
+        lua.globals()
+            .set("list_op", serde_json::to_string(&op).unwrap())
+            .unwrap();
+        let op =
+            crate::engine::Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary {
+                summary_id: "unknown".into(),
+            };
+        lua.globals()
+            .set("show_op", serde_json::to_string(&op).unwrap())
+            .unwrap();
+        lua.load("out=apply_operation(project,list_op); assert(out.result ~= nil); local ok,err=pcall(apply_operation,out.state,show_op); assert(not ok and string.find(tostring(err),'Unknown panel multi',1,true))").exec().unwrap();
+    }
+
+    #[test]
     fn lua_apply_operation_imports_primer_specificity_handoff() {
         let temp = tempdir().expect("tempdir");
         let operation = crate::test_support::primer_specificity_import_adapter_fixture(temp.path());

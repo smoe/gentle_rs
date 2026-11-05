@@ -19462,7 +19462,7 @@ impl GentleEngine {
         })
     }
 
-    fn transcript_assay_panel_primer_pair_digest(
+    pub(super) fn transcript_assay_panel_primer_pair_digest(
         assay_id: &str,
         assay_rank: usize,
         forward: &PrimerSpecificityInputPrimer,
@@ -19482,7 +19482,7 @@ impl GentleEngine {
         })
     }
 
-    fn transcript_assay_panel_handoff_id(
+    pub(super) fn transcript_assay_panel_handoff_id(
         panel_report_id: &str,
         panel_digest: &str,
         requested_target_genome_id: &str,
@@ -19796,7 +19796,7 @@ impl GentleEngine {
         }
     }
 
-    fn primer_specificity_intended_target_from_transcript_assay(
+    pub(super) fn primer_specificity_intended_target_from_transcript_assay(
         &self,
         report: &TranscriptAssayPanelReport,
         assay: &TranscriptAssayPanelAssay,
@@ -19864,12 +19864,32 @@ impl GentleEngine {
         Ok(intended)
     }
 
+    pub(super) fn panel_specificity_policy(
+        report: &TranscriptAssayPanelReport,
+        target_genome_id: &str,
+        mut policy: PrimerSpecificityPolicy,
+    ) -> Result<(String, PrimerSpecificityPolicy), EngineError> {
+        if policy.readiness_max_target_amplicon_bp.is_none() {
+            policy.readiness_max_target_amplicon_bp = Some(report.max_amplicon_bp);
+            policy.readiness_max_target_amplicon_bp_source =
+                PrimerSpecificityAmpliconCeilingSource::TranscriptAssayPanelAllowedRange;
+            policy.readiness_max_target_amplicon_bp_reason = Some(format!(
+                "Transcript assay panel '{}' declares an allowed product range of {}-{} bp; its upper bound is the ordinary assay/readiness ceiling.",
+                report.report_id, report.min_amplicon_bp, report.max_amplicon_bp
+            ));
+            policy.max_target_amplicon_bp =
+                policy.max_target_amplicon_bp.max(report.max_amplicon_bp);
+        }
+        policy.specificity_check = PrimerSpecificityCheckMode::RequirePass;
+        Self::normalize_primer_specificity_policy(target_genome_id, policy)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_transcript_assay_panel_specificity_handoff(
         &self,
         panel_report_id: &str,
         target_genome_id: &str,
-        mut policy: PrimerSpecificityPolicy,
+        policy: PrimerSpecificityPolicy,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
         output_dir: &str,
@@ -19885,20 +19905,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        if policy.readiness_max_target_amplicon_bp.is_none() {
-            policy.readiness_max_target_amplicon_bp = Some(report.max_amplicon_bp);
-            policy.readiness_max_target_amplicon_bp_source =
-                PrimerSpecificityAmpliconCeilingSource::TranscriptAssayPanelAllowedRange;
-            policy.readiness_max_target_amplicon_bp_reason = Some(format!(
-                "Transcript assay panel '{}' declares an allowed product range of {}-{} bp; its upper bound is the ordinary assay/readiness ceiling.",
-                report.report_id, report.min_amplicon_bp, report.max_amplicon_bp
-            ));
-            policy.max_target_amplicon_bp =
-                policy.max_target_amplicon_bp.max(report.max_amplicon_bp);
-        }
-        policy.specificity_check = PrimerSpecificityCheckMode::RequirePass;
         let (target_genome_id, policy) =
-            Self::normalize_primer_specificity_policy(target_genome_id, policy)?;
+            Self::panel_specificity_policy(&report, target_genome_id, policy)?;
         let output_dir = output_dir.trim();
         if output_dir.is_empty() {
             return Err(EngineError {
@@ -40691,6 +40699,9 @@ impl GentleEngine {
             primer_specificity_multi_summary: None,
             primer_specificity_multi_summaries: vec![],
             transcript_assay_specificity_matrix: None,
+            transcript_assay_panel_multi_handoff: None,
+            transcript_assay_panel_multi_summary: None,
+            transcript_assay_panel_multi_summaries: vec![],
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
@@ -47529,6 +47540,36 @@ impl GentleEngine {
                 Operation::ListPrimerPairMultiReferenceSpecificitySummaries {} => {
                     result.primer_specificity_multi_summaries =
                         self.list_primer_pair_multi_reference_specificity_summaries();
+                }
+                Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+                    request,
+                    output_dir,
+                } => {
+                    result.transcript_assay_panel_multi_handoff = Some(Box::new(
+                        self.prepare_panel_multi_specificity(*request, &output_dir)?,
+                    ));
+                    result.messages.push(
+                        "Prepared external panel/reference handoffs; no searches executed.".into(),
+                    );
+                }
+                Operation::ImportTranscriptAssayPanelMultiReferenceSpecificity {
+                    handoff_path,
+                    manifest_path,
+                } => {
+                    result.transcript_assay_panel_multi_summary = Some(Box::new(
+                        self.import_panel_multi_specificity(&handoff_path, &manifest_path)?,
+                    ));
+                    result.messages.push("Retained standalone panel/reference evidence without changing panel readiness.".into());
+                }
+                Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary {
+                    summary_id,
+                } => {
+                    result.transcript_assay_panel_multi_summary =
+                        Some(Box::new(self.get_panel_multi_specificity(&summary_id)?));
+                }
+                Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {} => {
+                    result.transcript_assay_panel_multi_summaries =
+                        self.list_panel_multi_specificity();
                 }
                 Operation::InspectTranscriptAssayPanelSpecificityMatrix { panel_report_id } => {
                     result.transcript_assay_specificity_matrix = Some(Box::new(

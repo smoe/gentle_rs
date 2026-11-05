@@ -1813,6 +1813,12 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "rna-reads panel-demo" => Some("rna-reads panel-demo synthetic-demo"),
         "rna-reads panel-show" => Some("rna-reads panel-show synthetic-report.json --rows 4"),
         "racks set-carrier-pitch" => Some("racks set-carrier-pitch demo 14"),
+        "primers transcript-assay-specificity-multi-handoff" => Some(concat!(
+            "primers transcript-assay-specificity-multi-handoff '",
+            r#"{"schema":"gentle.transcript_assay_panel_multi_reference_request.v1","panel_report_id":"synthetic_panel","#,
+            r#""references":[{"target_genome_id":"synthetic-a","expected_index_kind":"genomic_dna","required":true}]}"#,
+            "' 'synthetic bundle'",
+        )),
         // Hand-crafted parser-only request; execution still needs a saved pair and references.
         "primers specificity-multi-handoff" => Some(concat!(
             "primers specificity-multi-handoff '",
@@ -2445,6 +2451,65 @@ fn glossary_specificity_multi_smoke_retains_typed_request_and_rejects_empty_json
     let error = parse_shell_line("primers specificity-multi-handoff '{}' 'synthetic bundle'")
         .expect_err("an empty object must not become a typed specificity request");
     assert!(error.contains("missing field `schema`"), "{error}");
+}
+
+#[test]
+fn transcript_assay_panel_multi_shell_uses_typed_request_and_quoted_file_paths() {
+    let path = "primers transcript-assay-specificity-multi-handoff";
+    let ShellCommand::Op { payload } =
+        parse_shell_line(smoke_command_override(path).unwrap()).unwrap()
+    else {
+        panic!("shared op expected")
+    };
+    let Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+        request,
+        output_dir,
+    } = serde_json::from_str(&payload).unwrap()
+    else {
+        panic!("wrong operation")
+    };
+    assert_eq!(request.panel_report_id, "synthetic_panel");
+    assert_eq!(output_dir, "synthetic bundle");
+    let td = tempfile::tempdir().unwrap();
+    let input = td.path().join("request ' \u{03b2}.json");
+    for ending in ["\n", "\r\n"] {
+        std::fs::write(
+            &input,
+            serde_json::to_string_pretty(&request)
+                .unwrap()
+                .replace('\n', ending),
+        )
+        .unwrap();
+        let line = format!(
+            "{path} {} {}",
+            quote_shell_arg(&format!("@{}", input.display())),
+            quote_shell_arg(&output_dir)
+        );
+        let parsed = parse_shell_line(&line).unwrap();
+        assert!(parsed.is_state_mutating());
+        let ShellCommand::Op { payload: actual } = parsed else {
+            panic!("shared op expected")
+        };
+        assert_eq!(actual, payload);
+    }
+    assert!(parse_shell_line(&format!("{path} '{{}}' out")).is_err());
+    for (suffix, args, mutation) in [
+        ("import", "'bound handoff' 'external manifest'", true),
+        ("show", "summary", false),
+        ("list", "", false),
+    ] {
+        let parsed = parse_shell_line(&format!(
+            "primers transcript-assay-specificity-multi-{suffix} {args}"
+        ))
+        .unwrap();
+        assert_eq!(parsed.is_state_mutating(), mutation);
+        assert!(
+            parse_shell_line(&format!(
+                "primers transcript-assay-specificity-multi-{suffix} {args} extra"
+            ))
+            .is_err()
+        );
+    }
 }
 
 #[test]

@@ -10,16 +10,24 @@ use std::fs;
 use std::io::Read;
 use std::path::Component;
 
-const MULTI_NONCLAIMS: &[&str] = &[
+pub(super) const MULTI_NONCLAIMS: &[&str] = &[
     "Specificity applies only to the explicitly bound prepared references and policy, not every genome or transcript.",
     "A hash binds retained content; it does not authenticate external process execution.",
     "This standalone summary does not establish isoform discrimination, oligo QC, laboratory validation or order readiness.",
     "Current applicability is checked at import; historical display performs no database probes.",
 ];
 
-const MULTI_MAX_OUTPUT_BYTES: u64 = 128 * 1024 * 1024;
+pub(super) const MULTI_MAX_REFERENCES: usize = 8;
+pub(super) const MULTI_MAX_OUTPUT_BYTES: u64 = 128 * 1024 * 1024;
+const MULTI_MAX_JSON_BYTES: u64 = 16 * 1024 * 1024;
 
-fn multi_equal<T: Serialize>(left: &T, right: &T) -> bool {
+pub(super) struct SpecificityOutputBudget {
+    pub bytes_left: u64,
+    pub per_output: u64,
+    pub rows_left: usize,
+}
+
+pub(super) fn multi_equal<T: Serialize + ?Sized>(left: &T, right: &T) -> bool {
     match (serde_json::to_value(left), serde_json::to_value(right)) {
         (Ok(left), Ok(right)) => left == right,
         _ => false,
@@ -31,30 +39,55 @@ impl GentleEngine {
         &self,
         input: &PrimerSpecificityResolvedInput,
     ) -> Result<Option<String>, EngineError> {
-        input.primary_seq_id.as_ref().map(|id| {
-            let dna = self.state.sequences.get(id).ok_or_else(|| EngineError::invalid_input("Saved primer-pair template is no longer loaded"))?;
-            let anchor = self.sequence_genome_anchor_summary(id).ok();
-            serde_json::to_vec(&json!({"record":dna.clone_seq_record(), "overhang":dna.overhang(), "anchor":anchor, "source_reference":input.intended_target.source_reference}))
-                .map(|bytes| sha256_prefixed_bytes(&bytes)).map_err(|e| EngineError::internal(e.to_string()))
-        }).transpose()
+        input
+            .primary_seq_id
+            .as_deref()
+            .map(|id| {
+                self.specificity_source_snapshot(
+                    id,
+                    input.intended_target.source_reference.as_ref(),
+                )
+            })
+            .transpose()
+    }
+
+    pub(super) fn specificity_source_snapshot(
+        &self,
+        id: &str,
+        source_reference: Option<&PrimerSpecificitySourceReference>,
+    ) -> Result<String, EngineError> {
+        let dna = self.state.sequences.get(id).ok_or_else(|| {
+            EngineError::invalid_input("Saved primer-pair template is no longer loaded")
+        })?;
+        let anchor = self.sequence_genome_anchor_summary(id).ok();
+        serde_json::to_vec(&json!({"record":dna.clone_seq_record(), "overhang":dna.overhang(), "anchor":anchor, "source_reference":source_reference}))
+            .map(|bytes| sha256_prefixed_bytes(&bytes)).map_err(|e| EngineError::internal(e.to_string()))
     }
     fn validate_specificity_multi_request(
         request: &PrimerSpecificityMultiRequest,
     ) -> Result<(), EngineError> {
-        if request.schema != PRIMER_SPECIFICITY_MULTI_REQUEST_SCHEMA
-            || !(1..=8).contains(&request.references.len())
-            || !request
-                .references
-                .iter()
-                .any(|reference| reference.required)
-            || request.policy.specificity_target_genome_id.is_some()
+        if request.schema != PRIMER_SPECIFICITY_MULTI_REQUEST_SCHEMA {
+            return Err(EngineError::invalid_input(
+                "specificity_multi_request_invalid: expected v1",
+            ));
+        }
+        Self::validate_specificity_references(&request.policy, &request.references)
+    }
+
+    pub(super) fn validate_specificity_references(
+        policy: &PrimerSpecificityPolicy,
+        references: &[PrimerSpecificityMultiReference],
+    ) -> Result<(), EngineError> {
+        if !(1..=MULTI_MAX_REFERENCES).contains(&references.len())
+            || !references.iter().any(|r| r.required)
+            || policy.specificity_target_genome_id.is_some()
         {
             return Err(EngineError::invalid_input(
-                "specificity_multi_request_invalid: require v1, 1..=8 explicit references, at least one required reference and no common policy target selector",
+                "specificity_multi_request_invalid: require 1..=8 explicit references, at least one required reference and no common policy target selector",
             ));
         }
         let mut seen = HashSet::new();
-        for reference in &request.references {
+        for reference in references {
             let id = reference.target_genome_id.trim();
             if id.is_empty()
                 || id.contains(['*', '?'])
@@ -169,7 +202,7 @@ impl GentleEngine {
             })
     }
 
-    fn specificity_multi_command_digest(
+    pub(super) fn specificity_multi_command_digest(
         command: &PrimerSpecificityHandoffCommand,
     ) -> Result<String, EngineError> {
         serde_json::to_vec(command)
@@ -182,22 +215,15 @@ impl GentleEngine {
             })
     }
 
-    /// Inspect every exact reference before writing any file; never prepares resources.
-    pub fn prepare_primer_pair_multi_reference_specificity_handoff(
-        &self,
-        mut request: PrimerSpecificityMultiRequest,
-        output_dir: &str,
-    ) -> Result<PrimerSpecificityMultiHandoff, EngineError> {
-        Self::validate_specificity_multi_request(&request)?;
-        let input = self.specificity_multi_input(&request.pair)?;
-        let source_snapshot_sha256 = self.specificity_multi_source_snapshot(&input)?;
-        let (catalog, catalog_path) =
-            Self::open_reference_genome_catalog(request.catalog_path.as_deref())?;
-        let cache_dir = request.cache_dir.clone();
-        let cache = cache_dir.as_deref();
+    pub(super) fn specificity_preflight_references<C>(
+        requests: &mut [PrimerSpecificityMultiReference],
+        catalog_path: Option<&str>,
+        cache: Option<&str>,
+    ) -> Result<(String, Vec<PrimerSpecificityMultiHandoffReference<C>>), EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
         let mut resolved = HashSet::new();
         let mut references = Vec::new();
-        for reference in &mut request.references {
+        for reference in requests {
             let requested = reference.target_genome_id.trim().to_string();
             let (id, entry) = catalog
                 .exact_catalog_entry(&requested)
@@ -281,6 +307,25 @@ impl GentleEngine {
                 child: None,
             });
         }
+        Ok((catalog_path, references))
+    }
+
+    /// Inspect every exact reference before writing any file; never prepares resources.
+    pub fn prepare_primer_pair_multi_reference_specificity_handoff(
+        &self,
+        mut request: PrimerSpecificityMultiRequest,
+        output_dir: &str,
+    ) -> Result<PrimerSpecificityMultiHandoff, EngineError> {
+        Self::validate_specificity_multi_request(&request)?;
+        let input = self.specificity_multi_input(&request.pair)?;
+        let source_snapshot_sha256 = self.specificity_multi_source_snapshot(&input)?;
+        let (catalog_path, mut references) = Self::specificity_preflight_references(
+            &mut request.references,
+            request.catalog_path.as_deref(),
+            request.cache_dir.as_deref(),
+        )?;
+        let cache_dir = request.cache_dir.clone();
+        let cache = cache_dir.as_deref();
         references.sort_by(|a, b| a.resolved_genome_id.cmp(&b.resolved_genome_id));
         request
             .references
@@ -292,14 +337,7 @@ impl GentleEngine {
         )?
         .1;
         request.policy.specificity_target_genome_id = None;
-        let destination = specificity_multi_destination(output_dir)?;
-        fs::create_dir(&destination).map_err(|e| {
-            EngineError::new(
-                ErrorCode::Io,
-                format!("Could not create multi-reference bundle: {e}"),
-            )
-        })?;
-        let build = (|| {
+        with_fresh_specificity_bundle(output_dir, |destination| {
             for (ordinal, row) in references.iter_mut().enumerate() {
                 let Some(identity) = &row.reference else {
                     continue;
@@ -394,11 +432,7 @@ impl GentleEngine {
             specificity_multi_write_json(&destination.join("handoff.json"), &handoff)?;
             specificity_multi_write_json(Path::new(&handoff.manifest_path), &manifest)?;
             Ok(handoff)
-        })();
-        if build.is_err() {
-            let _ = fs::remove_dir_all(&destination);
-        }
-        build
+        })
     }
 }
 
@@ -477,11 +511,6 @@ impl GentleEngine {
                 handoff.request.policy.clone(),
             )?
             .1;
-            let expected_options = self.resolve_blast_options_for_request(
-                None,
-                Some("blastn-short"),
-                Some(expected_policy.max_hits_per_primer),
-            )?;
             let mut expected_target = requested
                 .intended_target
                 .clone()
@@ -507,98 +536,310 @@ impl GentleEngine {
                 .parent()
                 .ok_or_else(|| EngineError::invalid_input("Invalid manifest path"))?
                 .join(format!("reference_{ordinal:02}"));
-            if child.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA
-                || child.handoff_id != Self::primer_specificity_handoff_id_from_record(child)?
-                || row.availability != PrimerSpecificityMultiAvailability::Prepared
-                || reference.index_kind != row.expected_index_kind
-                || reference.genome_id != row.resolved_genome_id
-                || Some(reference.clone()) != Self::primer_specificity_reference_identity(database)
-                || child.resolved_target_genome_id != row.resolved_genome_id
-                || child.requested_target_genome_id != row.resolved_genome_id
-                || child.catalog_path != handoff.request.catalog_path
-                || child.cache_dir != handoff.request.cache_dir
-                || !multi_equal(&child.policy, &expected_policy)
-                || !multi_equal(
-                    &child.effective_blast_options,
-                    &Some(expected_options.clone()),
-                )
-                || !multi_equal(&child.primers, &handoff.primers)
-                || !multi_equal(&child.intended_target, &expected_target)
-                || child.commands.len() != 2
-                || Path::new(&child.bundle_dir) != bundle
-                || child.blast_db_prefix != database.prefix
-                || child.completion_policy != "all_commands_success"
+            self.specificity_validate_bound_child(
+                child,
+                row,
+                &handoff.primers,
+                &expected_target,
+                &expected_policy,
+                handoff.request.catalog_path.as_deref(),
+                handoff.request.cache_dir.as_deref(),
+                &bundle,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn specificity_command_primer<'a>(
+        commands: &[PrimerSpecificityHandoffCommand],
+        primers: &'a [PrimerSpecificityInputPrimer],
+        command: &PrimerSpecificityHandoffCommand,
+    ) -> Result<&'a PrimerSpecificityInputPrimer, EngineError> {
+        if commands.len() != 2
+            || primers.len() != 2
+            || commands.iter().filter(|c| c.role == command.role).count() != 1
+            || primers.iter().filter(|p| p.role == command.role).count() != 1
+        {
+            return Err(EngineError::invalid_input(
+                "Missing or duplicate primer command role",
+            ));
+        }
+        primers
+            .iter()
+            .find(|p| p.role == command.role)
+            .ok_or_else(|| EngineError::invalid_input("Missing primer role"))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn specificity_validate_bound_child<C>(
+        &self,
+        child: &PrimerSpecificityHandoff,
+        row: &PrimerSpecificityMultiHandoffReference<C>,
+        primers: &[PrimerSpecificityInputPrimer],
+        expected_target: &PrimerSpecificityIntendedTarget,
+        expected_policy: &PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        bundle: &Path,
+    ) -> Result<(), EngineError> {
+        let reference = row
+            .reference
+            .as_ref()
+            .ok_or_else(|| EngineError::invalid_input("Missing reference identity"))?;
+        let database = child
+            .blast_database
+            .as_ref()
+            .ok_or_else(|| EngineError::invalid_input("Missing bound database"))?;
+        let expected_options = self.resolve_blast_options_for_request(
+            None,
+            Some("blastn-short"),
+            Some(expected_policy.max_hits_per_primer),
+        )?;
+        if child.schema != PRIMER_SPECIFICITY_HANDOFF_SCHEMA
+            || child.handoff_id != Self::primer_specificity_handoff_id_from_record(child)?
+            || row.availability != PrimerSpecificityMultiAvailability::Prepared
+            || reference.index_kind != row.expected_index_kind
+            || reference.genome_id != row.resolved_genome_id
+            || Some(reference.clone()) != Self::primer_specificity_reference_identity(database)
+            || child.resolved_target_genome_id != row.resolved_genome_id
+            || child.requested_target_genome_id != row.resolved_genome_id
+            || child.catalog_path.as_deref() != catalog_path
+            || child.cache_dir.as_deref() != cache_dir
+            || !multi_equal(&child.policy, expected_policy)
+            || !multi_equal(
+                &child.effective_blast_options,
+                &Some(expected_options.clone()),
+            )
+            || !multi_equal(child.primers.as_slice(), primers)
+            || !multi_equal(&child.intended_target, expected_target)
+            || child.commands.len() != 2
+            || Path::new(&child.bundle_dir) != bundle
+            || child.blast_db_prefix != database.prefix
+            || child.completion_policy != "all_commands_success"
+        {
+            return Err(EngineError::invalid_input(
+                "specificity_multi_child_binding_invalid",
+            ));
+        }
+        let subject_limit = database
+            .sequence_count
+            .filter(|n| *n > 0)
+            .and_then(|n| n.checked_add(1))
+            .ok_or_else(|| {
+                EngineError::invalid_input("Missing complete database sequence count")
+            })?;
+        for command in &child.commands {
+            let primer = Self::specificity_command_primer(&child.commands, primers, command)?;
+            let role = primer.role.as_str();
+            let query = bundle
+                .join(format!("{}.{role}.fa", child.handoff_id))
+                .to_string_lossy()
+                .to_string();
+            let output = bundle
+                .join(format!("{}.{role}.blast.tsv", child.handoff_id))
+                .to_string_lossy()
+                .to_string();
+            let expected_args = vec![
+                "-db".into(),
+                child.blast_db_prefix.clone(),
+                "-query".into(),
+                query.clone(),
+                "-task".into(),
+                expected_options.task.clone(),
+                "-outfmt".into(),
+                super::operation_handlers::PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS.into(),
+                "-evalue".into(),
+                "1000".into(),
+                "-dust".into(),
+                "no".into(),
+                "-soft_masking".into(),
+                "false".into(),
+                "-max_target_seqs".into(),
+                subject_limit.to_string(),
+                "-out".into(),
+                output.clone(),
+            ];
+            if command.role != primer.role
+                || command.command_id != format!("{}:{role}", child.handoff_id)
+                || command.query_label != format!("{role}_annealing_segment")
+                || command.query_length_bp != primer.annealing_length_bp
+                || command.query_fasta_path != query
+                || command.output_tsv_path != output
+                || command.args != expected_args
+                || command.success_exit_codes != vec![0]
+                || command.program.trim().is_empty()
+                || (!child.blast_preflight.blastn.executable.trim().is_empty()
+                    && command.program != child.blast_preflight.blastn.executable)
             {
                 return Err(EngineError::invalid_input(
-                    "specificity_multi_child_binding_invalid",
+                    "specificity_multi_expected_command_changed",
                 ));
             }
-            let subject_limit = database
-                .sequence_count
-                .filter(|n| *n > 0)
-                .and_then(|n| n.checked_add(1))
-                .ok_or_else(|| {
-                    EngineError::invalid_input("Missing complete database sequence count")
-                })?;
-            for (command, primer) in child.commands.iter().zip(&handoff.primers) {
-                let role = primer.role.as_str();
-                let query = bundle
-                    .join(format!("{}.{role}.fa", child.handoff_id))
-                    .to_string_lossy()
-                    .to_string();
-                let output = bundle
-                    .join(format!("{}.{role}.blast.tsv", child.handoff_id))
-                    .to_string_lossy()
-                    .to_string();
-                let expected_args = vec![
-                    "-db".into(),
-                    child.blast_db_prefix.clone(),
-                    "-query".into(),
-                    query.clone(),
-                    "-task".into(),
-                    expected_options.task.clone(),
-                    "-outfmt".into(),
-                    super::operation_handlers::PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS.into(),
-                    "-evalue".into(),
-                    "1000".into(),
-                    "-dust".into(),
-                    "no".into(),
-                    "-soft_masking".into(),
-                    "false".into(),
-                    "-max_target_seqs".into(),
-                    subject_limit.to_string(),
-                    "-out".into(),
-                    output.clone(),
-                ];
-                if command.role != primer.role
-                    || command.command_id != format!("{}:{role}", child.handoff_id)
-                    || command.query_label != format!("{role}_annealing_segment")
-                    || command.query_length_bp != primer.annealing_length_bp
-                    || command.query_fasta_path != query
-                    || command.output_tsv_path != output
-                    || command.args != expected_args
-                    || command.success_exit_codes != vec![0]
-                    || command.program.trim().is_empty()
-                    || (!child.blast_preflight.blastn.executable.trim().is_empty()
-                        && command.program != child.blast_preflight.blastn.executable)
-                {
-                    return Err(EngineError::invalid_input(
-                        "specificity_multi_expected_command_changed",
+        }
+        let actual = Self::primer_specificity_search_completeness_for_commands(
+            Some(database),
+            &child
+                .commands
+                .iter()
+                .map(|c| c.args.clone())
+                .collect::<Vec<_>>(),
+        );
+        if !actual.complete || !multi_equal(&actual, &child.search_completeness) {
+            return Err(EngineError::invalid_input(
+                "specificity_multi_search_completeness_invalid",
+            ));
+        }
+        Ok(())
+    }
+
+    fn specificity_validate_query(
+        command: &PrimerSpecificityHandoffCommand,
+        primer: &PrimerSpecificityInputPrimer,
+    ) -> Result<(), EngineError> {
+        let query = specificity_multi_read_bytes(&command.query_fasta_path, 1024 * 1024)?;
+        if query != format!(">{}\n{}\n", command.query_label, primer.annealing_sequence).as_bytes()
+        {
+            return Err(EngineError::invalid_input(
+                "specificity_multi_query_sequence_changed",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn specificity_multi_read_outputs(
+        child: &PrimerSpecificityHandoff,
+        primers: &[PrimerSpecificityInputPrimer],
+        executions: &BTreeMap<String, &PrimerSpecificityMultiExecutionCommand>,
+        diagnostics: &mut Vec<String>,
+        execution_complete: &mut bool,
+        mut budget: Option<&mut SpecificityOutputBudget>,
+    ) -> Result<BTreeMap<String, String>, EngineError> {
+        let output_trace = import_trace::span(ImportPhase::OutputValidation);
+        let mut outputs = BTreeMap::new();
+        if child.commands.len() != 2 {
+            return Err(EngineError::invalid_input(
+                "Missing or duplicate primer command role",
+            ));
+        }
+        for command in &child.commands {
+            let primer = Self::specificity_command_primer(&child.commands, primers, command)?;
+            // Panel receipts also bind pending/cancelled queries; preserve the pair reader's original I/O order.
+            if budget.is_some() {
+                Self::specificity_validate_query(command, primer)?;
+            }
+            let Some(execution) = executions.get(&command.command_id) else {
+                diagnostics.push(format!("Missing execution: {}", command.command_id));
+                continue;
+            };
+            if execution.state != PrimerSpecificityMultiExecutionState::Completed
+                || execution.exit_code != Some(0)
+            {
+                diagnostics.push(format!(
+                    "Execution is {:?}, exit {:?}: {}",
+                    execution.state, execution.exit_code, command.command_id
+                ));
+                continue;
+            }
+            let bytes = match specificity_multi_read_bytes(
+                &command.output_tsv_path,
+                budget.as_ref().map_or(MULTI_MAX_OUTPUT_BYTES, |b| {
+                    b.bytes_left
+                        .min(b.per_output)
+                        .min(execution.output_size_bytes.unwrap_or(0))
+                }),
+            ) {
+                Ok(bytes) => bytes,
+                Err(error) if error.code == ErrorCode::Io => {
+                    *execution_complete = false;
+                    diagnostics.push(format!(
+                        "Retained output unavailable for {}: {}",
+                        command.command_id, error.message
                     ));
+                    continue;
                 }
-            }
-            let actual = Self::primer_specificity_search_completeness_for_commands(
-                Some(database),
-                &child
-                    .commands
-                    .iter()
-                    .map(|c| c.args.clone())
-                    .collect::<Vec<_>>(),
-            );
-            if !actual.complete || !multi_equal(&actual, &child.search_completeness) {
+                Err(error) => return Err(error),
+            };
+            if execution.output_size_bytes != Some(bytes.len() as u64)
+                || execution.output_sha256.as_deref()
+                    != Some(sha256_prefixed_bytes(&bytes).as_str())
+            {
                 return Err(EngineError::invalid_input(
-                    "specificity_multi_search_completeness_invalid",
+                    "specificity_multi_output_size_or_hash_mismatch",
                 ));
+            }
+            if budget.is_none() {
+                Self::specificity_validate_query(command, primer)?;
+            }
+            let text = String::from_utf8(bytes)
+                .map_err(|_| EngineError::invalid_input("BLAST output must be UTF-8"))?;
+            if let Some(budget) = budget.as_deref_mut() {
+                budget.bytes_left = budget
+                    .bytes_left
+                    .checked_sub(text.len() as u64)
+                    .ok_or_else(|| {
+                        EngineError::invalid_input("panel total output byte limit exceeded")
+                    })?;
+                budget.rows_left = budget
+                    .rows_left
+                    .checked_sub(text.lines().filter(|s| !s.trim().is_empty()).count())
+                    .ok_or_else(|| EngineError::invalid_input("panel parsed row limit exceeded"))?;
+            }
+            if !crate::genomes::parse_blastn_tabular_hits(&text)
+                .1
+                .is_empty()
+            {
+                return Err(EngineError::invalid_input(
+                    "Malformed BLAST rows cannot establish complete specificity",
+                ));
+            }
+            outputs.insert(command.command_id.clone(), text);
+        }
+        output_trace.finish(true, Some(outputs.len()));
+        Ok(outputs)
+    }
+
+    pub(super) fn specificity_multi_interpret_outputs(
+        &self,
+        child: &PrimerSpecificityHandoff,
+        outputs: &BTreeMap<String, String>,
+        row: &mut PrimerSpecificityMultiSummaryReference,
+    ) -> Result<(), EngineError> {
+        if outputs.len() == child.commands.len() {
+            match self.primer_specificity_report_from_handoff_outputs(child, Some(outputs)) {
+                Ok(mut report) => {
+                    // Recheck after subject-window/annotation lookups, not just before parsing.
+                    if let Err(error) = self.validate_primer_specificity_handoff_database(child) {
+                        row.applicability = "stale_or_unavailable_reference".into();
+                        row.diagnostics.push(error.message);
+                    } else {
+                        row.verdict = if !report.search_completeness.complete
+                            || report.intended_target.reference_binding.is_none()
+                        {
+                            PrimerSpecificityMultiVerdict::Incomplete
+                        } else if report.summary.status == "pass" && report.summary.specificity_pass
+                        {
+                            PrimerSpecificityMultiVerdict::Pass
+                        } else if report.summary.status == "fail" {
+                            PrimerSpecificityMultiVerdict::Fail
+                        } else {
+                            PrimerSpecificityMultiVerdict::Incomplete
+                        };
+                        let digest =
+                            serde_json::to_vec(&Self::specificity_multi_report_basis(&report))
+                                .map(|b| sha256_prefixed_bytes(&b))
+                                .map_err(|e| EngineError::internal(e.to_string()))?;
+                        report.report_id = format!(
+                            "primer_multi_child_{}",
+                            digest.trim_start_matches("sha256:")
+                        );
+                        row.diagnostics.push(report.summary.summary.clone());
+                        row.report = Some(report);
+                    }
+                }
+                Err(error) => row.diagnostics.push(format!(
+                    "Shared interpretation incomplete: {}",
+                    error.message
+                )),
             }
         }
         Ok(())
@@ -643,7 +884,7 @@ impl GentleEngine {
         Ok(executions)
     }
 
-    fn specificity_multi_report_basis(report: &PrimerSpecificityReport) -> Value {
+    pub(super) fn specificity_multi_report_basis(report: &PrimerSpecificityReport) -> Value {
         json!({"schema": report.schema, "pair": report.primers, "reference":report.blast_database.as_ref().and_then(Self::primer_specificity_reference_identity),
             "intended_target":report.intended_target, "policy":report.policy, "forward_hits":report.forward_hits, "reverse_hits":report.reverse_hits, "amplicons":report.amplicons,
             "completeness":report.search_completeness, "compaction":report.compaction, "summary":report.summary,
@@ -670,7 +911,7 @@ impl GentleEngine {
             .map_err(|e| EngineError::internal(e.to_string()))
     }
 
-    fn specificity_multi_dimension(
+    pub(super) fn specificity_multi_dimension(
         rows: &[PrimerSpecificityMultiSummaryReference],
         kind: BlastDatabaseIndexKind,
         execution_complete: bool,
@@ -762,108 +1003,15 @@ impl GentleEngine {
                 continue;
             }
             row.applicability = "current_at_import".into();
-            let output_trace = import_trace::span(ImportPhase::OutputValidation);
-            let mut outputs = BTreeMap::new();
-            for (command, primer) in child.commands.iter().zip(&handoff.primers) {
-                let Some(execution) = executions.get(&command.command_id) else {
-                    row.diagnostics
-                        .push(format!("Missing execution: {}", command.command_id));
-                    continue;
-                };
-                if execution.state != PrimerSpecificityMultiExecutionState::Completed
-                    || execution.exit_code != Some(0)
-                {
-                    row.diagnostics.push(format!(
-                        "Execution is {:?}, exit {:?}: {}",
-                        execution.state, execution.exit_code, command.command_id
-                    ));
-                    continue;
-                }
-                let bytes = match specificity_multi_read_bytes(
-                    &command.output_tsv_path,
-                    MULTI_MAX_OUTPUT_BYTES,
-                ) {
-                    Ok(bytes) => bytes,
-                    Err(error) if error.code == ErrorCode::Io => {
-                        execution_complete = false;
-                        row.diagnostics.push(format!(
-                            "Retained output unavailable for {}: {}",
-                            command.command_id, error.message
-                        ));
-                        continue;
-                    }
-                    Err(error) => return Err(error),
-                };
-                if execution.output_size_bytes != Some(bytes.len() as u64)
-                    || execution.output_sha256.as_deref()
-                        != Some(sha256_prefixed_bytes(&bytes).as_str())
-                {
-                    return Err(EngineError::invalid_input(
-                        "specificity_multi_output_size_or_hash_mismatch",
-                    ));
-                }
-                let query = specificity_multi_read_bytes(&command.query_fasta_path, 1024 * 1024)?;
-                if query
-                    != format!(">{}\n{}\n", command.query_label, primer.annealing_sequence)
-                        .as_bytes()
-                {
-                    return Err(EngineError::invalid_input(
-                        "specificity_multi_query_sequence_changed",
-                    ));
-                }
-                let text = String::from_utf8(bytes)
-                    .map_err(|_| EngineError::invalid_input("BLAST output must be UTF-8"))?;
-                if !crate::genomes::parse_blastn_tabular_hits(&text)
-                    .1
-                    .is_empty()
-                {
-                    return Err(EngineError::invalid_input(
-                        "Malformed BLAST rows cannot establish complete specificity",
-                    ));
-                }
-                outputs.insert(command.command_id.clone(), text);
-            }
-            output_trace.finish(true, Some(outputs.len()));
-            if outputs.len() == child.commands.len() {
-                match self.primer_specificity_report_from_handoff_outputs(child, Some(&outputs)) {
-                    Ok(mut report) => {
-                        // Recheck after subject-window/annotation lookups, not just before parsing.
-                        if let Err(error) = self.validate_primer_specificity_handoff_database(child)
-                        {
-                            row.applicability = "stale_or_unavailable_reference".into();
-                            row.diagnostics.push(error.message);
-                        } else {
-                            row.verdict = if !report.search_completeness.complete
-                                || report.intended_target.reference_binding.is_none()
-                            {
-                                PrimerSpecificityMultiVerdict::Incomplete
-                            } else if report.summary.status == "pass"
-                                && report.summary.specificity_pass
-                            {
-                                PrimerSpecificityMultiVerdict::Pass
-                            } else if report.summary.status == "fail" {
-                                PrimerSpecificityMultiVerdict::Fail
-                            } else {
-                                PrimerSpecificityMultiVerdict::Incomplete
-                            };
-                            let digest =
-                                serde_json::to_vec(&Self::specificity_multi_report_basis(&report))
-                                    .map(|b| sha256_prefixed_bytes(&b))
-                                    .map_err(|e| EngineError::internal(e.to_string()))?;
-                            report.report_id = format!(
-                                "primer_multi_child_{}",
-                                digest.trim_start_matches("sha256:")
-                            );
-                            row.diagnostics.push(report.summary.summary.clone());
-                            row.report = Some(report);
-                        }
-                    }
-                    Err(error) => row.diagnostics.push(format!(
-                        "Shared interpretation incomplete: {}",
-                        error.message
-                    )),
-                }
-            }
+            let outputs = Self::specificity_multi_read_outputs(
+                child,
+                &handoff.primers,
+                &executions,
+                &mut row.diagnostics,
+                &mut execution_complete,
+                None,
+            )?;
+            self.specificity_multi_interpret_outputs(child, &outputs, &mut row)?;
             rows.push(row);
             reference_trace.finish(true, Some(outputs.len()));
         }
@@ -993,22 +1141,64 @@ fn specificity_multi_read_bytes(path: &str, limit: u64) -> Result<Vec<u8>, Engin
     Ok(bytes)
 }
 
-fn specificity_multi_read_json<T: serde::de::DeserializeOwned>(
+pub(super) fn specificity_multi_read_json<T: serde::de::DeserializeOwned>(
     path: &str,
 ) -> Result<T, EngineError> {
-    serde_json::from_slice(&specificity_multi_read_bytes(path, 16 * 1024 * 1024)?)
+    serde_json::from_slice(&specificity_multi_read_bytes(path, MULTI_MAX_JSON_BYTES)?)
         .map_err(|e| EngineError::invalid_input(format!("Invalid multi-reference JSON: {e}")))
 }
 
-fn specificity_multi_write_json<T: Serialize>(path: &Path, record: &T) -> Result<(), EngineError> {
+pub(super) fn specificity_multi_write_json<T: Serialize>(
+    path: &Path,
+    record: &T,
+) -> Result<(), EngineError> {
+    specificity_write_json_with_limit(path, record, None)
+}
+
+pub(super) fn specificity_write_panel_bundle_json<T: Serialize>(
+    path: &Path,
+    record: &T,
+) -> Result<(), EngineError> {
+    specificity_write_json_with_limit(path, record, Some(MULTI_MAX_JSON_BYTES))
+}
+
+fn specificity_write_json_with_limit<T: Serialize>(
+    path: &Path,
+    record: &T,
+    limit: Option<u64>,
+) -> Result<(), EngineError> {
     let bytes = serde_json::to_vec_pretty(record)
         .map_err(|e| EngineError::new(ErrorCode::Internal, e.to_string()))?;
+    if limit.is_some_and(|l| bytes.len() as u64 > l) {
+        return Err(EngineError::invalid_input(
+            "Panel bundle JSON exceeds the bound for re-import",
+        ));
+    }
     fs::write(path, bytes).map_err(|e| {
         EngineError::new(
             ErrorCode::Io,
             format!("Could not write '{}': {e}", path.display()),
         )
     })
+}
+
+/// Reserve a new destination before letting the existing child writers create files.
+pub(super) fn with_fresh_specificity_bundle<T>(
+    raw: &str,
+    build: impl FnOnce(&Path) -> Result<T, EngineError>,
+) -> Result<T, EngineError> {
+    let destination = specificity_multi_destination(raw)?;
+    fs::create_dir(&destination).map_err(|e| {
+        EngineError::new(
+            ErrorCode::Io,
+            format!("Could not create multi-reference bundle: {e}"),
+        )
+    })?;
+    let result = build(&destination);
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&destination);
+    }
+    result
 }
 
 // Validate raw components before normalization, including Windows verbatim paths.
@@ -1072,7 +1262,7 @@ fn specificity_multi_ordinary_parent(path: &Path) -> Result<&Path, EngineError> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     // Hand-crafted synthetic oligos/references; no real gene or external resource.
@@ -1475,14 +1665,14 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[test]
-    fn specificity_multi_external_import_is_atomic_reference_bound_and_replayable() {
+    pub(in crate::engine) fn synthetic_specificity_resources(
+        root: &Path,
+    ) -> (
+        PathBuf,
+        String,
+        [crate::tool_overrides::ScopedToolOverrideGuard; 3],
+    ) {
         use std::os::unix::fs::PermissionsExt;
-        let _lock = crate::genomes::genbank_env_lock()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().canonicalize().unwrap();
         // Entire fixture is hand-crafted: placeholder index files, fake tool
         // probes, invented HSPs. It checks contracts, never actual BLAST biology.
         let fasta = root.join("toy.fa");
@@ -1526,6 +1716,18 @@ mod tests {
             crate::genomes::BLASTDBCMD_ENV_BIN,
             dbcmd.to_str().unwrap(),
         );
+        (catalog, reference_sequence, [_make, _blast, _dbcmd])
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn specificity_multi_external_import_is_atomic_reference_bound_and_replayable() {
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let (catalog, reference_sequence, _tools) = synthetic_specificity_resources(&root);
         let mut engine = GentleEngine::new();
         engine
             .apply(Operation::PrepareGenome {

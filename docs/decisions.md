@@ -1543,6 +1543,12 @@ Historical display does not probe resources or assert present applicability.
 Import performs fresh source/reference checks, but a hash is not authentication
 of an external process or a claim of laboratory/isoform/order validity.
 
+A multi-reference panel bundle groups all selected assays by reference. Its
+atomic import stores only immutable standalone diagnostics, including partial
+execution; it never activates a selection, backfills panel sources or changes
+readiness. The scientific identity and the path-bound execution envelope serve
+different purposes and are checked independently.
+
 Import parses and hashes the same retained output bytes. File hashes bind
 content, not the authenticity of an external runner's execution claim.
 

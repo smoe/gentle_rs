@@ -1223,6 +1223,71 @@ fn engine_operations_are_reachable_on_shell_route_adapters() {
 }
 
 #[test]
+fn transcript_assay_panel_multi_paths_share_registered_operations() {
+    let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();
+    for (suffix, op) in [
+        (
+            "handoff",
+            "PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff",
+        ),
+        (
+            "import",
+            "ImportTranscriptAssayPanelMultiReferenceSpecificity",
+        ),
+        (
+            "show",
+            "GetTranscriptAssayPanelMultiReferenceSpecificitySummary",
+        ),
+        (
+            "list",
+            "ListTranscriptAssayPanelMultiReferenceSpecificitySummaries",
+        ),
+    ] {
+        let path = format!("primers transcript-assay-specificity-multi-{suffix}");
+        let tool_name = format!("transcript_assay_specificity_multi_{suffix}");
+        let command = capability_registry()
+            .iter()
+            .find(|c| c.source == CapabilitySource::GlossaryCommand && c.name == path)
+            .unwrap();
+        assert_eq!(command.engine_operations, vec![op.to_owned()]);
+        let entry = capability_registry()
+            .iter()
+            .find(|c| c.source == CapabilitySource::EngineOperation && c.name == op)
+            .unwrap();
+        let expected = match suffix {
+            "handoff" => CapabilityMutation::External,
+            "import" => CapabilityMutation::Mutating,
+            _ => CapabilityMutation::ReadOnly,
+        };
+        assert_eq!(entry.mutating, expected);
+        assert_eq!(command.mutating, expected);
+        for adapter in [
+            CapabilityAdapter::Cli,
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+        ] {
+            assert_eq!(
+                entry.surfacing_for_adapter(adapter),
+                AdapterSurfacing::ShellPassthrough
+            );
+        }
+        let tool = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"].as_str() == Some(tool_name.as_str()))
+            .unwrap();
+        assert_eq!(tool["commandPaths"], serde_json::json!([path]));
+        let confirmation = tool["inputSchema"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "confirm");
+        assert_eq!(confirmation, matches!(suffix, "handoff" | "import"));
+    }
+}
+
+#[test]
 fn transcript_assay_panel_reachability_is_locked_across_adapters() {
     let command = capability_registry()
         .iter()

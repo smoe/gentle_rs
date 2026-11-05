@@ -1347,6 +1347,8 @@ mod genome_editing;
 mod primer_specificity_matrix;
 #[path = "engine/analysis/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
+#[path = "engine/analysis/primer_specificity_panel_multi.rs"]
+mod primer_specificity_panel_multi;
 #[path = "engine/analysis/primer_specificity_references.rs"]
 mod primer_specificity_references;
 #[path = "engine/analysis/regulatory_partners.rs"]
@@ -2936,6 +2938,9 @@ struct PrimerDesignStore {
     active_primer_specificity_reference_selections: BTreeMap<String, String>,
     primer_specificity_panel_sources: BTreeMap<String, PrimerSpecificityPanelSource>,
     primer_specificity_multi_summaries: BTreeMap<String, PrimerSpecificityMultiSummary>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    transcript_assay_panel_multi_reference_summaries:
+        BTreeMap<String, TranscriptAssayPanelMultiReferenceSummary>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
@@ -4966,6 +4971,18 @@ pub enum Operation {
         summary_id: String,
     },
     ListPrimerPairMultiReferenceSpecificitySummaries {},
+    PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff {
+        request: Box<TranscriptAssayPanelMultiReferenceRequest>,
+        output_dir: String,
+    },
+    ImportTranscriptAssayPanelMultiReferenceSpecificity {
+        handoff_path: String,
+        manifest_path: String,
+    },
+    GetTranscriptAssayPanelMultiReferenceSpecificitySummary {
+        summary_id: String,
+    },
+    ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {},
     InspectTranscriptAssayPanelSpecificityMatrix {
         panel_report_id: String,
     },
@@ -10483,6 +10500,9 @@ impl GentleEngine {
                 | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { .. }
                 | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
                 | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+                | Operation::PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff { .. }
+                | Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary { .. }
+                | Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries { .. }
                 | Operation::InspectTranscriptAssayPanelSpecificityMatrix { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
@@ -13157,6 +13177,9 @@ impl GentleEngine {
             && store.primer_specificity_reference_selections.is_empty()
             && store.primer_specificity_multi_summaries.is_empty()
             && store
+                .transcript_assay_panel_multi_reference_summaries
+                .is_empty()
+            && store
                 .active_primer_specificity_reference_selections
                 .is_empty()
             && store.transcript_assay_panels.is_empty()
@@ -13170,7 +13193,6 @@ impl GentleEngine {
                 .remove(PRIMER_DESIGN_REPORTS_METADATA_KEY);
             return Ok(());
         }
-        store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
         for panel in store.transcript_assay_panels.values() {
             let panel_design_digest = Self::primer_specificity_selection_panel_digest(panel)?;
             if store
@@ -13194,6 +13216,15 @@ impl GentleEngine {
                 );
             }
         }
+        self.write_primer_design_store_snapshot(store)
+    }
+
+    /// Commit a nonempty store without deriving or replacing any panel-source binding.
+    fn write_primer_design_store_snapshot(
+        &mut self,
+        mut store: PrimerDesignStore,
+    ) -> Result<(), EngineError> {
+        store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
         store.updated_at_unix_ms = Self::now_unix_ms();
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,

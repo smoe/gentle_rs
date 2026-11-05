@@ -4859,6 +4859,38 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers transcript-assay-specificity-multi-handoff",
+         "summary": "Prepare a non-executing handoff per prepared reference covering every selected assay in a saved panel.",
+         "usage": "primers transcript-assay-specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ImportTranscriptAssayPanelMultiReferenceSpecificity"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers transcript-assay-specificity-multi-import",
+         "summary": "Validate a complete command inventory and atomically retain standalone assay-by-reference evidence; do not attach it to panel readiness.",
+         "usage": "primers transcript-assay-specificity-multi-import HANDOFF_PATH MANIFEST_PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["GetTranscriptAssayPanelMultiReferenceSpecificitySummary"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers transcript-assay-specificity-multi-show",
+         "summary": "Inspect one retained panel multi-reference summary without reference probes.",
+         "usage": "primers transcript-assay-specificity-multi-show SUMMARY_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ListTranscriptAssayPanelMultiReferenceSpecificitySummaries"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers transcript-assay-specificity-multi-list",
+         "summary": "List standalone panel multi-reference summaries in stable content-ID order.",
+         "usage": "primers transcript-assay-specificity-multi-list"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["InspectTranscriptAssayPanelSpecificityMatrix"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
          "path": "primers transcript-assay-specificity-matrix",

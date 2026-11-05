@@ -39,9 +39,14 @@ class PrimerReferenceReaderSourceTests(unittest.TestCase):
                         hit.index("Self::primer_specificity_full_alignment_from_blast_strings("))
         self.assertEqual(hit.count("Self::primer_specificity_full_alignment("), 2)
         multi = (ROOT / "src/engine/analysis/primer_specificity_multi.rs").read_text()
-        multi = multi.split("    pub fn import_primer_pair_multi_reference_specificity(", 1)[1]
-        multi = multi.split("        let mut summary =", 1)[0]
-        self.assertEqual(multi.count("self.validate_primer_specificity_handoff_database(child)"), 2)
+        pair = multi.split("    pub fn import_primer_pair_multi_reference_specificity(", 1)[1]
+        pair = pair.split("        let mut summary =", 1)[0]
+        self.assertLess(pair.index("self.validate_primer_specificity_handoff_database(child)"),
+                        pair.index("self.specificity_multi_interpret_outputs("))
+        shared = multi.split("fn specificity_multi_interpret_outputs(", 1)[1].split("fn specificity_multi_validate_manifest", 1)[0]
+        checks = ("self.primer_specificity_report_from_handoff_outputs(",
+                  "self.validate_primer_specificity_handoff_database(child)", "row.report = Some(report)")
+        self.assertEqual([shared.index(c) for c in checks], sorted(shared.index(c) for c in checks))
 
     def test_every_read_keeps_resolution_manifest_and_file_checks(self):
         source = (ROOT / "src/genomes.rs").read_text()

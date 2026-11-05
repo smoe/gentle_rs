@@ -176,7 +176,7 @@ pub enum PrimerSpecificityMultiAvailability {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PrimerSpecificityMultiHandoffReference {
+pub struct PrimerSpecificityMultiHandoffReference<C = PrimerSpecificityHandoff> {
     pub requested_genome_id: String,
     pub resolved_genome_id: String,
     pub required: bool,
@@ -184,7 +184,7 @@ pub struct PrimerSpecificityMultiHandoffReference {
     pub availability: PrimerSpecificityMultiAvailability,
     pub diagnostic: Option<String>,
     pub reference: Option<PrimerSpecificityReferenceIdentity>,
-    pub child: Option<PrimerSpecificityHandoff>,
+    pub child: Option<C>,
 }
 
 /// Files and commands are bound; this is not proof that a process executed.
@@ -273,5 +273,131 @@ pub struct PrimerSpecificityMultiSummary {
     pub references: Vec<PrimerSpecificityMultiSummaryReference>,
     pub genomic: PrimerSpecificityMultiVerdict,
     pub transcriptome: PrimerSpecificityMultiVerdict,
+    pub nonclaims: Vec<String>,
+}
+
+pub const PANEL_MULTI_REQUEST_SCHEMA: &str =
+    "gentle.transcript_assay_panel_multi_reference_request.v1";
+pub const PANEL_MULTI_HANDOFF_SCHEMA: &str =
+    "gentle.transcript_assay_panel_multi_reference_handoff.v1";
+pub const PANEL_MULTI_MANIFEST_SCHEMA: &str =
+    "gentle.transcript_assay_panel_multi_reference_execution_manifest.v1";
+pub const PANEL_MULTI_SUMMARY_SCHEMA: &str =
+    "gentle.transcript_assay_panel_multi_reference_summary.v1";
+
+/// Coordinates are always derived from the saved assay, never supplied by a caller.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSpecificityReference {
+    pub target_genome_id: String,
+    pub expected_index_kind: crate::genomes::BlastDatabaseIndexKind,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssayPanelMultiReferenceRequest {
+    pub schema: String,
+    pub panel_report_id: String,
+    pub expected_panel_digest: Option<String>,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    pub references: Vec<PanelSpecificityReference>,
+    pub catalog_path: Option<String>,
+    pub cache_dir: Option<String>,
+}
+
+/// Whole-bundle admission ceilings; these do not measure RSS or wall time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSpecificityLimits {
+    pub max_references: usize,
+    pub max_prepared_references: usize,
+    pub max_assays: usize,
+    pub max_commands: usize,
+    pub max_bytes_per_output: u64,
+    pub max_total_output_bytes: u64,
+    pub max_parsed_rows: usize,
+}
+
+pub type PanelSpecificityChild =
+    PrimerSpecificityMultiHandoffReference<TranscriptAssayPanelSpecificityHandoff>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssayPanelMultiReferenceHandoff {
+    pub schema: String,
+    pub handoff_id: String,
+    /// Path-independent scientific content, distinct from the exact file/command binding.
+    pub content_sha256: String,
+    pub bundle_sha256: String,
+    pub request: TranscriptAssayPanelMultiReferenceRequest,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub source_snapshot_sha256: String,
+    pub effective_limits: PanelSpecificityLimits,
+    pub expected_command_count: usize,
+    pub references: Vec<PanelSpecificityChild>,
+    pub manifest_path: String,
+    pub nonclaims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSpecificityExecutionManifest {
+    pub schema: String,
+    pub handoff_id: String,
+    pub handoff_content_sha256: String,
+    pub bundle_sha256: String,
+    pub panel_digest: String,
+    pub commands: Vec<PrimerSpecificityMultiExecutionCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSpecificityAssaySummary {
+    pub assay_id: String,
+    pub assay_rank: usize,
+    pub primer_pair_digest: String,
+    pub cells: Vec<PrimerSpecificityMultiSummaryReference>,
+    pub genomic: PrimerSpecificityMultiVerdict,
+    pub transcriptome: PrimerSpecificityMultiVerdict,
+    pub execution_complete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelSpecificityReferenceSummary {
+    pub requested_genome_id: String,
+    pub resolved_genome_id: String,
+    pub expected_index_kind: crate::genomes::BlastDatabaseIndexKind,
+    pub required: bool,
+    pub reference: Option<PrimerSpecificityReferenceIdentity>,
+    pub availability: PrimerSpecificityMultiAvailability,
+    pub diagnostic: Option<String>,
+}
+
+/// Immutable standalone evidence. Does not alter panel selections or ordering readiness.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptAssayPanelMultiReferenceSummary {
+    pub schema: String,
+    pub summary_id: String,
+    pub content_sha256: String,
+    pub handoff_id: String,
+    pub panel_report_id: String,
+    pub panel_digest: String,
+    pub source_snapshot_sha256: String,
+    pub request: TranscriptAssayPanelMultiReferenceRequest,
+    pub effective_limits: PanelSpecificityLimits,
+    pub execution_manifest: PanelSpecificityExecutionManifest,
+    pub execution_complete: bool,
+    pub declared_output_bytes: u64,
+    /// Successful output files actually validated, including genuine zero-byte outputs.
+    pub retained_command_ids: Vec<String>,
+    pub retained_output_bytes: u64,
+    pub parsed_rows: usize,
+    pub references: Vec<PanelSpecificityReferenceSummary>,
+    pub assays: Vec<PanelSpecificityAssaySummary>,
     pub nonclaims: Vec<String>,
 }

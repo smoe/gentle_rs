@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-05 - Add Standalone Multi-Reference Specificity For Synthetic Panels
+
+- Prepare one existing all-assay handoff per available reference and import one
+  complete external command inventory atomically. Verify exact design/source,
+  oligos, geometry, commands, retained bytes and limits before storing immutable
+  per-assay evidence. Partial runs never activate a selection or alter readiness.
+- Add shared CLI/shell and confirmed MCP routes, historical show/list and generic
+  scripting operation access. No new GUI, BLAST execution or scoring rules.
+- Owner retained the draft admission ceilings for synthetic use after Glen's
+  Linux reader verification at `e4bc7386`. Rust execution, canonical matrix
+  generation/checking, native Windows and real-panel capacity remain unverified.
+
 ## 2026-11-05 - Retain Glen's Scoped Linux Reader And MCP Pass
 
 - Retain Glen's original 6,219-byte report byte-identically at SHA-256

@@ -1993,6 +1993,32 @@ mod tests {
     }
 
     #[test]
+    fn transcript_assay_panel_multi_js_reads_through_apply_operation() {
+        let list = Operation::ListTranscriptAssayPanelMultiReferenceSpecificitySummaries {};
+        let result = apply_operation_impl(
+            ProjectState::default(),
+            &serde_json::to_string(&list).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            result
+                .result
+                .transcript_assay_panel_multi_summaries
+                .is_empty()
+        );
+        let show = Operation::GetTranscriptAssayPanelMultiReferenceSpecificitySummary {
+            summary_id: "unknown".into(),
+        };
+        assert!(
+            apply_operation_impl(result.state, &serde_json::to_string(&show).unwrap())
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("Unknown panel multi-reference summary")
+        );
+    }
+
+    #[test]
     fn js_apply_operation_imports_primer_specificity_handoff() {
         let temp = tempdir().expect("tempdir");
         let operation = primer_specificity_import_adapter_fixture(temp.path());

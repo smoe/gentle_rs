@@ -5916,6 +5916,10 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ImportPrimerPairMultiReferenceSpecificity",
     "GetPrimerPairMultiReferenceSpecificitySummary",
     "ListPrimerPairMultiReferenceSpecificitySummaries",
+    "PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff",
+    "ImportTranscriptAssayPanelMultiReferenceSpecificity",
+    "GetTranscriptAssayPanelMultiReferenceSpecificitySummary",
+    "ListTranscriptAssayPanelMultiReferenceSpecificitySummaries",
     "InspectTranscriptAssayPanelSpecificityMatrix",
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
@@ -6144,6 +6148,30 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "primer_specificity_multi_list",
         "Primer Specificity Multi List",
         "List stored standalone multi-reference specificity summaries without resource probes.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "transcript_assay_specificity_multi_handoff",
+        "Transcript Assay Specificity Multi Handoff",
+        "Prepare a non-executing handoff per prepared reference covering every selected assay in a saved panel.",
+        CapabilityMutation::External,
+    ),
+    (
+        "transcript_assay_specificity_multi_import",
+        "Transcript Assay Specificity Multi Import",
+        "Validate a complete command inventory and atomically retain standalone assay-by-reference evidence; do not attach it to panel readiness.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "transcript_assay_specificity_multi_show",
+        "Transcript Assay Specificity Multi Show",
+        "Inspect one retained panel multi-reference summary without reference probes.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "transcript_assay_specificity_multi_list",
+        "Transcript Assay Specificity Multi List",
+        "List standalone panel multi-reference summaries in stable content-ID order.",
         CapabilityMutation::ReadOnly,
     ),
     (
@@ -7991,6 +8019,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
     if matches!(
         operation,
         "ExportRackEquipmentJson"
+            | "PrepareTranscriptAssayPanelMultiReferenceSpecificityHandoff"
             | "ComputeTssTfbsProfiles"
             | "PlanDnaSequenceDesign"
             | "TracePrimerReads"
@@ -8047,6 +8076,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "PreparePrimerPairSpecificityHandoff"
         || operation == "PreparePrimerPairMultiReferenceSpecificityHandoff"
         || operation == "GetPrimerPairMultiReferenceSpecificitySummary"
+        || operation == "GetTranscriptAssayPanelMultiReferenceSpecificitySummary"
         || operation == "SearchPrimerBank"
         || operation == "ScreenPrimerVariants"
         || operation == "TestCdnaPcr"

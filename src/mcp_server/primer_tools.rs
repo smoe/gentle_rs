@@ -85,6 +85,18 @@ pub(super) fn command_paths(name: &str) -> Option<&'static [&'static str]> {
         "primer_specificity_multi_import" => Some(&["primers specificity-multi-import"]),
         "primer_specificity_multi_show" => Some(&["primers specificity-multi-show"]),
         "primer_specificity_multi_list" => Some(&["primers specificity-multi-list"]),
+        "transcript_assay_specificity_multi_handoff" => {
+            Some(&["primers transcript-assay-specificity-multi-handoff"])
+        }
+        "transcript_assay_specificity_multi_import" => {
+            Some(&["primers transcript-assay-specificity-multi-import"])
+        }
+        "transcript_assay_specificity_multi_show" => {
+            Some(&["primers transcript-assay-specificity-multi-show"])
+        }
+        "transcript_assay_specificity_multi_list" => {
+            Some(&["primers transcript-assay-specificity-multi-list"])
+        }
         "transcript_assay_specificity_matrix" => {
             Some(&["primers transcript-assay-specificity-matrix"])
         }
@@ -161,6 +173,16 @@ pub(super) fn descriptors() -> Vec<Value> {
             "required":["summary_id"],"properties":{"summary_id":{"type":"string"},"state_path":{"type":"string"}}}}),
         json!({"name":"primer_specificity_multi_list", "inputSchema":{"type":"object","additionalProperties":false,
             "required":[],"properties":{"state_path":{"type":"string"}}}}),
+        json!({"name":"transcript_assay_specificity_multi_handoff", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["request","output_dir","confirm"],"properties":{"request":{"type":"object","description":"gentle.transcript_assay_panel_multi_reference_request.v1"},
+                "output_dir":{"type":"string"},"state_path":{"type":"string"},"confirm":{"type":"boolean","const":true}}}}),
+        json!({"name":"transcript_assay_specificity_multi_import", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["handoff_path","manifest_path","confirm"],"properties":{"handoff_path":{"type":"string"},"manifest_path":{"type":"string"},
+                "state_path":{"type":"string"},"confirm":{"type":"boolean","const":true}}}}),
+        json!({"name":"transcript_assay_specificity_multi_show", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["summary_id"],"properties":{"summary_id":{"type":"string"},"state_path":{"type":"string"}}}}),
+        json!({"name":"transcript_assay_specificity_multi_list", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":[],"properties":{"state_path":{"type":"string"}}}}),
         json!({"name":"transcript_assay_specificity_matrix", "inputSchema":{"type":"object","additionalProperties":false,
             "required":["panel_report_id"],"properties":{"panel_report_id":{"type":"string"},"state_path":{"type":"string"}}}}),
     ]
@@ -230,22 +252,25 @@ fn tokens(name: &str, args: &Map<String, Value>) -> Result<Vec<String>, String> 
             string("panel_report_id")?,
         ]);
     }
-    if let Some(path) =
-        command_paths(name).filter(|_| name.starts_with("primer_specificity_multi_"))
-    {
+    if let Some(path) = command_paths(name).filter(|_| {
+        name.starts_with("primer_specificity_multi_")
+            || name.starts_with("transcript_assay_specificity_multi_")
+    }) {
         let mut tokens = path[0]
             .split_whitespace()
             .map(str::to_string)
             .collect::<Vec<_>>();
         match name {
-            "primer_specificity_multi_handoff" => {
+            "primer_specificity_multi_handoff" | "transcript_assay_specificity_multi_handoff" => {
                 tokens.extend([args["request"].to_string(), string("output_dir")?])
             }
-            "primer_specificity_multi_import" => {
+            "primer_specificity_multi_import" | "transcript_assay_specificity_multi_import" => {
                 tokens.extend([string("handoff_path")?, string("manifest_path")?])
             }
-            "primer_specificity_multi_show" => tokens.push(string("summary_id")?),
-            "primer_specificity_multi_list" => {}
+            "primer_specificity_multi_show" | "transcript_assay_specificity_multi_show" => {
+                tokens.push(string("summary_id")?)
+            }
+            "primer_specificity_multi_list" | "transcript_assay_specificity_multi_list" => {}
             _ => unreachable!(),
         }
         return Ok(tokens);
@@ -339,7 +364,10 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
         let writes = match name {
             "primers_preflight" => false,
             "primer_reports" => args["action"] == "export",
-            "primer_specificity_multi_list" | "primer_specificity_multi_show" => false,
+            "primer_specificity_multi_list"
+            | "primer_specificity_multi_show"
+            | "transcript_assay_specificity_multi_list"
+            | "transcript_assay_specificity_multi_show" => false,
             "transcript_assay_specificity_matrix" => false,
             _ => true,
         };
@@ -349,7 +377,9 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
         let tokens = tokens(name, args)?;
         if matches!(
             name,
-            "transcript_assay_specificity_finalize" | "primer_specificity_multi_import"
+            "transcript_assay_specificity_finalize"
+                | "primer_specificity_multi_import"
+                | "transcript_assay_specificity_multi_import"
         ) {
             run_shell_tool_with_optional_persist(default_state_path, args, tokens, name)
         } else {
@@ -532,6 +562,65 @@ mod tests {
         );
         assert_eq!(result["isError"], false, "{result}");
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn transcript_assay_panel_multi_mcp_routes_preserve_shell_payload_and_confirmation() {
+        let td = tempfile::tempdir().unwrap();
+        let state = td.path().join("absent.json");
+        let request = json!({"schema":"gentle.transcript_assay_panel_multi_reference_request.v1", "panel_report_id":"P", "references":[{"target_genome_id":"synthetic","expected_index_kind":"genomic_dna","required":true}]});
+        for (suffix, args, confirm) in [
+            (
+                "handoff",
+                json!({"request":request,"output_dir":"fresh ' bundle","confirm":true}),
+                true,
+            ),
+            (
+                "import",
+                json!({"handoff_path":"handoff.json","manifest_path":"manifest.json","confirm":true}),
+                true,
+            ),
+            ("show", json!({"summary_id":"unknown"}), false),
+            ("list", json!({}), false),
+        ] {
+            let name = format!("transcript_assay_specificity_multi_{suffix}");
+            let parsed = tokens(&name, validate_args(&name, &args).unwrap()).unwrap();
+            assert_eq!(command_paths(&name).unwrap()[0], parsed[..2].join(" "));
+            assert_eq!(
+                crate::engine_shell::parse_shell_tokens(&parsed)
+                    .unwrap()
+                    .is_state_mutating(),
+                confirm
+            );
+            if confirm {
+                for approval in [Some(false), None] {
+                    let mut denied = args.clone();
+                    if let Some(v) = approval {
+                        denied["confirm"] = json!(v);
+                    } else {
+                        denied.as_object_mut().unwrap().remove("confirm");
+                    }
+                    let result = call(state.to_str().unwrap(), &name, &denied);
+                    assert_eq!(result["isError"], true);
+                    assert!(result.to_string().contains("confirm"));
+                }
+            } else {
+                let expected = run_non_mutating_shell_tool(
+                    state.to_str().unwrap(),
+                    args.as_object().unwrap(),
+                    parsed,
+                    &name,
+                );
+                assert_eq!(
+                    call(state.to_str().unwrap(), &name, &args),
+                    match expected {
+                        Ok(v) => tool_result_json(v, false),
+                        Err(e) => tool_result_text(e, "text", true),
+                    }
+                );
+            }
+            assert!(!state.exists());
+        }
     }
 
     #[test]

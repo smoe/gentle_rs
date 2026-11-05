@@ -101,10 +101,10 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
             for match in re.finditer(r"primer_specificity_multi_summaries:\s*vec!\[\],", text):
                 self.assertRegex(text[match.end():], r"^\s*transcript_assay_specificity_matrix:\s*None,", str(path))
 
-    def test_slice_b_is_deferred_and_slice_a_uses_the_printed_command(self):
+    def test_slice_b_is_synthetic_only_and_slice_a_uses_the_printed_command(self):
         plan = (ROOT / "docs/primer_design_specialist_plan.md").read_text()
-        for term in ["## Conditional Slice B: Bound Panel Fan-Out", "not implementation authorization",
-                     "Motivation And Entry Conditions", "atomic cross-reference import",
+        for term in ["## Conditional Slice B: Bound Panel Fan-Out", "for synthetic use only",
+                     "e4bc7386", "atomic cross-reference import",
                      "128 MiB total across the entire parent", "unknown sizes are not zero",
                      "record_primer_specificity_reference_selection", "Readiness attachment needs a later policy decision"]:
             self.assertIn(term, plan)
@@ -116,6 +116,34 @@ class PrimerSpecificityTutorialTests(unittest.TestCase):
         self.assertIn('execute_shell_command(&mut engine, &command)', regression)
         self.assertIn("primers list-transcript-assay-panels", self.page)
         self.assertIn("Hands-on inspection exercise", self.page)
+
+    def test_panel_fanout_has_one_store_commit_and_shared_evidence_rules(self):
+        impl = (ROOT / "src/engine/analysis/primer_specificity_panel_multi.rs").read_text()
+        for required in ("specificity_multi_dimension(", "MULTI_MAX_OUTPUT_BYTES",
+                         "specificity_multi_read_outputs(", "specificity_multi_interpret_outputs("):
+            self.assertIn(required, impl)
+        self.assertEqual(impl.count("self.write_primer_design_store_snapshot("), 1)
+        for forbidden in ("record_primer_specificity_reference_selection(",
+                          "finalize_transcript_assay_panel_specificity_handoff(",
+                          "transcript_assay_panels.insert(", "active_primer_specificity_reference_selections",
+                          "fs::read(", "std::process::Command"):
+            self.assertNotIn(forbidden, impl)
+        glossary = json.loads((ROOT / "docs/glossary.json").read_text())["commands"]
+        for suffix in ("handoff", "import", "show", "list"):
+            path = f"primers transcript-assay-specificity-multi-{suffix}"
+            row, = [r for r in glossary if r["path"] == path]
+            self.assertEqual(row["aliases"], [])
+            self.assertIn("mcp", row["interfaces"])
+            self.assertEqual(len(row["engine_operations"]), 1)
+            self.assertIn(path, self.page)
+        for path in (ROOT / "src").rglob("*.rs"):
+            source = path.read_text()
+            rows = re.findall(r"transcript_assay_specificity_matrix:\s*None,", source)
+            complete = re.findall(r"transcript_assay_specificity_matrix:\s*None,\s*"
+                                  r"transcript_assay_panel_multi_handoff:\s*None,\s*"
+                                  r"transcript_assay_panel_multi_summary:\s*None,\s*"
+                                  r"transcript_assay_panel_multi_summaries:\s*vec!\[\],", source)
+            self.assertEqual(len(rows), len(complete), str(path))
 
     def test_panel_report_offers_the_existing_reader_without_an_execution_path(self):
         source = (ROOT / "src/main_area_dna/transcript_assay_report_ui.rs").read_text()
