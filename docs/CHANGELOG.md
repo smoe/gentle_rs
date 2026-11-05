@@ -11,6 +11,10 @@
   transcript/gene rows. Add focus-sample gene ranking based on the median of
   sample-level median differences, with minimum-depth and censoring gates so
   individual reads are not presented as biological replicates.
+- Add an explicit contrast-sheet path for the actual six-barcode design:
+  barcode16 versus 15 is the primary regular-cDNA comparison for Sample 2;
+  enriched pairs 14/13 and 18/17 remain separate directional counterchecks and
+  are never pooled into the primary ranking.
 - Extend tutorial 07.01 with two deterministic SVG teaching figures and a
   six-sample synthetic replay. Keep the TP73–MDM2/MDM4 motivation explicit but
   make no causal, polyadenylation-site, molecule-completeness or real-sample

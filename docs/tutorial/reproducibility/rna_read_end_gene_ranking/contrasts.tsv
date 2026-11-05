@@ -1,0 +1,4 @@
+contrast_id	focus_sample	comparison_sample	library_preparation	evidence_role
+regular_cdna	barcode16	barcode15	regular_cdna	primary
+enrichment_13_14	barcode14	barcode13	enrichment_13_14	directional_countercheck
+enrichment_17_18	barcode18	barcode17	enrichment_17_18	directional_countercheck

@@ -144,9 +144,8 @@ def svg(rows: list[dict], focus: str, top: int) -> str:
     height = max(210, 115 + 34 * len(genes))
     scales = {
         metric: max(
-            1.0,
-            *[abs(float(row["median_sample_delta_bp"])) for row in rows
-              if row["metric"] == metric and row["ranking_status"] == "eligible"],
+            [1.0] + [abs(float(row["median_sample_delta_bp"])) for row in rows
+                     if row["metric"] == metric and row["ranking_status"] == "eligible"]
         )
         for metric in METRICS
     }

@@ -46,10 +46,10 @@ bound; it is not an observed short UTR.
 
 ```sh
 python3 scripts/project_rna_read_end_metrics.py \
-  --observed-sam-data sample2.observed-sam.data.json \
+  --observed-sam-data barcode16.observed-sam.data.json \
   --transcript-models frozen-transcript-models.json \
-  --sample-id sample2 \
-  --output-dir sample2-read-end-metrics
+  --sample-id barcode16 \
+  --output-dir barcode16-read-end-metrics
 ```
 
 The fresh output directory contains:
@@ -82,30 +82,44 @@ This produces the 15 sample-pair comparisons for each metric. Read the three
 Q–Q matrices together: a 3′-UTR displacement is more interesting when the
 whole-read and 5′-UTR controls do not show the same displacement.
 
-## 4. Rank genes for the TP73-low sample
+## 4. Rank genes with explicit like-library contrasts
 
-If `sample2` is the TP73-low sample, use the detailed projection files:
+The biological Sample 2 contributed barcodes 14, 16 and 18, but these are not
+three interchangeable replicates. Barcode 16 belongs to the regular-cDNA pair
+15/16. Pairs 13/14 and 17/18 used enrichment and therefore remain separate
+directional counterchecks.
+
+Create `contrasts.tsv`:
+
+```text
+contrast_id	focus_sample	comparison_sample	library_preparation	evidence_role
+regular_cdna	barcode16	barcode15	regular_cdna	primary
+enrichment_13_14	barcode14	barcode13	enrichment_13_14	directional_countercheck
+enrichment_17_18	barcode18	barcode17	enrichment_17_18	directional_countercheck
+```
+
+Then use the detailed projection files:
 
 ```sh
-python3 scripts/rank_rna_read_end_genes.py \
-  --projection sample1-read-end-metrics/projections.tsv \
-  --projection sample2-read-end-metrics/projections.tsv \
-  --projection sample3-read-end-metrics/projections.tsv \
-  --projection sample4-read-end-metrics/projections.tsv \
-  --projection sample5-read-end-metrics/projections.tsv \
-  --projection sample6-read-end-metrics/projections.tsv \
-  --focus-sample sample2 \
+python3 scripts/compare_rna_read_end_gene_contrasts.py \
+  --projection barcode13-read-end-metrics/projections.tsv \
+  --projection barcode14-read-end-metrics/projections.tsv \
+  --projection barcode15-read-end-metrics/projections.tsv \
+  --projection barcode16-read-end-metrics/projections.tsv \
+  --projection barcode17-read-end-metrics/projections.tsv \
+  --projection barcode18-read-end-metrics/projections.tsv \
+  --contrast-sheet contrasts.tsv \
+  --focus-label 'Sample 2' \
   --minimum-observed 10 \
   --maximum-censored-fraction 0.25 \
   --output-dir sample2-gene-ranking
 ```
 
-The score is the median across five **sample-level** differences of read-level
-medians. Individual reads are not treated as biological replicates. The report
-keeps censored and missing counts and excludes a comparison when its evidence
-is too sparse or too censored. A gene enters the ranking only when at least
-half of the available comparison samples are eligible (three of five in the
-six-sample design).
+The ranking uses the regular-cDNA barcode16-minus-barcode15 median difference.
+The enriched pairs contribute separate directional deltas and concordance
+counts; they are never pooled into the primary score. Individual reads are not
+treated as biological replicates. The report retains censored and missing
+counts and excludes a pair when its evidence is too sparse or too censored.
 
 The resulting candidates can motivate follow-up around the TP73–MDM2/MDM4
 hypothesis. They do not demonstrate that TP73, MDM2 or MDM4 caused a change.
@@ -114,7 +128,7 @@ frozen annotation remain alternative explanations.
 
 ## Interpretation picture
 
-![Synthetic gene-wise read-end comparison focused on sample2](figures/rna_read_end_gene_ranking.synthetic.svg)
+![Synthetic gene-wise regular-cDNA comparison with enriched counterchecks for Sample 2](figures/rna_read_end_gene_ranking.synthetic.svg)
 
 The committed figure is synthetic. Regenerate its six-sample fixture and SVG:
 
@@ -122,5 +136,6 @@ The committed figure is synthetic. Regenerate its six-sample fixture and SVG:
 python3 scripts/build_rna_read_end_tutorial.py
 ```
 
-The three panels deliberately use separate scales. Compare direction and
+The solid points are the regular-cDNA pair; small ticks are enriched-library
+counterchecks. The three panels deliberately use separate scales. Compare direction and
 candidate ordering, not the apparent horizontal distance between panels.

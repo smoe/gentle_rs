@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 import rank_rna_read_end_genes as ranking
+import compare_rna_read_end_gene_contrasts as contrasts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,8 +27,8 @@ def main() -> None:
         shutil.rmtree(FIXTURE)
     FIXTURE.mkdir(parents=True)
     projections = []
-    for sample_number in range(1, 7):
-        sample = f"sample{sample_number}"
+    for barcode in range(13, 19):
+        sample = f"barcode{barcode}"
         path = FIXTURE / f"{sample}.projections.tsv"
         projections.append(path)
         with path.open("w", encoding="utf-8", newline="") as handle:
@@ -35,11 +36,15 @@ def main() -> None:
             writer.writerow(ranking.HEADER)
             unit = 0
             for gene_index, gene in enumerate(GENES):
+                sample_number = barcode - 12
                 read_center = 1000 + 30 * gene_index + 4 * sample_number
                 five_center = 70 + 5 * gene_index + sample_number
                 ordinary_three = 180 + 30 * gene_index + 3 * sample_number
                 focus_shift = {"MDM2": 90, "MDM4": -65, "FUS": 35, "ACTB": 0}[gene]
-                three_center = ordinary_three + (focus_shift if sample_number == 2 else 0)
+                # Even barcodes are the synthetic Sample-2 member of each
+                # like-library pair. Enrichment pairs are counterchecks only.
+                multiplier = 1.0 if barcode == 16 else 0.55 if barcode == 14 else 0.35 if barcode == 18 else 0.0
+                three_center = ordinary_three + round(focus_shift * multiplier)
                 for metric, values in (
                     ("read_length_bp", series(read_center)),
                     ("utr5_reach_bp", series(five_center)),
@@ -52,8 +57,16 @@ def main() -> None:
                             f"synthetic-{sample}-{unit}", metric, value, "observed",
                             "resolved", f"synthetic-{gene}-tx", gene,
                         ])
+    contrast_sheet = FIXTURE / "contrasts.tsv"
+    contrast_sheet.write_text(
+        "\t".join(contrasts.CONTRAST_HEADER) + "\n"
+        "regular_cdna\tbarcode16\tbarcode15\tregular_cdna\tprimary\n"
+        "enrichment_13_14\tbarcode14\tbarcode13\tenrichment_13_14\tdirectional_countercheck\n"
+        "enrichment_17_18\tbarcode18\tbarcode17\tenrichment_17_18\tdirectional_countercheck\n",
+        encoding="utf-8",
+    )
     output = FIXTURE / "ranked"
-    ranking.run(projections, "sample2", output, 4, 0.25, 12)
+    contrasts.run(projections, contrast_sheet, "Sample 2", output, 4, 0.25, 12)
     FIGURE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(output / "top_genes.svg", FIGURE)
     GEOMETRY.write_text("""<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="380" viewBox="0 0 1180 380">

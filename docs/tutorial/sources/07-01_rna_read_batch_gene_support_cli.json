@@ -27,7 +27,7 @@
     {
       "kind": "generated",
       "path": "docs/figures/rna_read_end_gene_ranking.synthetic.svg",
-      "caption": "Synthetic six-sample focus comparison showing whole-read, 5′-UTR-control and 3′-UTR median shifts in separate panels. This is a teaching fixture, not biological evidence.",
+      "caption": "Synthetic six-barcode Sample-2 comparison showing the primary regular-cDNA 16/15 shift as a solid point and the enriched 14/13 and 18/17 shifts as separate countercheck ticks across whole-read, 5′-UTR-control and 3′-UTR panels. This is a teaching fixture, not biological evidence.",
       "illustrates_step": 8,
       "regen_command": "python3 scripts/build_rna_read_end_tutorial.py"
     }
@@ -43,7 +43,7 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, exporting one target-gene cohort sample sheet, and continuing into transcript-bound 5′/3′-UTR reach projection plus focus-sample gene ranking. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, direct-transition evidence and later synthetic read-end teaching assets.",
+    "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, exporting one target-gene cohort sample sheet, and continuing into transcript-bound 5′/3′-UTR reach projection. The six-barcode teaching contrast keeps barcode16/15 as the primary regular-cDNA pair for Sample 2 and 14/13 plus 18/17 as separately prepared directional counterchecks. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, direct-transition evidence and later synthetic read-end teaching assets.",
     "interfaces": [
       "native GUI",
       "CLI / shared shell",

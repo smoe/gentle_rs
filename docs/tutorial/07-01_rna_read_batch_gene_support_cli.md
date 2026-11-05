@@ -420,10 +420,10 @@ artifact:
 
 ```bash
 python3 scripts/project_rna_read_end_metrics.py \
-  --observed-sam-data sample2.observed-sam.data.json \
+  --observed-sam-data barcode16.observed-sam.data.json \
   --transcript-models frozen-transcript-models.json \
-  --sample-id sample2 \
-  --output-dir "$OUT/sample2-read-end-metrics"
+  --sample-id barcode16 \
+  --output-dir "$OUT/barcode16-read-end-metrics"
 ```
 
 The model must bind the same assembly, reference FASTA hash and annotation hash
@@ -431,19 +431,24 @@ as the saved analysis. A clipped transcript-facing end is retained as
 `right_censored`; it is not changed into an exact short UTR or zero. A read
 that does not cross the relevant CDS boundary is `missing` for that metric.
 
-After projecting all six samples, make the global all-pairs Q–Q matrices with
-`compare_rna_read_end_metrics.py`. Then rank genes for a focus sample—for
-example a `sample2` known independently to have little TP73—with:
+After projecting all six barcodes, the global all-pairs Q–Q matrices remain a
+useful technical overview. For biological interpretation, however, compare
+like preparations first. Sample 2 contributed barcodes 14, 16 and 18:
+barcode16 is compared with barcode15 as the primary regular-cDNA pair, while
+13/14 and 17/18 remain separate enrichment counterchecks.
+
+Create the explicit `contrasts.tsv` shown in the read-end reference, then run:
 
 ```bash
-python3 scripts/rank_rna_read_end_genes.py \
-  --projection "$OUT/sample1-read-end-metrics/projections.tsv" \
-  --projection "$OUT/sample2-read-end-metrics/projections.tsv" \
-  --projection "$OUT/sample3-read-end-metrics/projections.tsv" \
-  --projection "$OUT/sample4-read-end-metrics/projections.tsv" \
-  --projection "$OUT/sample5-read-end-metrics/projections.tsv" \
-  --projection "$OUT/sample6-read-end-metrics/projections.tsv" \
-  --focus-sample sample2 \
+python3 scripts/compare_rna_read_end_gene_contrasts.py \
+  --projection "$OUT/barcode13-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode14-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode15-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode16-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode17-read-end-metrics/projections.tsv" \
+  --projection "$OUT/barcode18-read-end-metrics/projections.tsv" \
+  --contrast-sheet contrasts.tsv \
+  --focus-label 'Sample 2' \
   --minimum-observed 10 \
   --maximum-censored-fraction 0.25 \
   --output-dir "$OUT/sample2-gene-ranking"
@@ -456,10 +461,10 @@ samples. It shows the intended reading order: prioritize the 3′-UTR panel, the
 check whether whole-read and 5′-UTR shifts suggest a general truncation or
 library effect. The three panels use separate scales.
 
-The ranking uses the median of focus-minus-comparison sample medians. It does
-not treat individual reads as independent biological replicates; at least
-three of the five comparison samples must pass the depth/censoring gates. It does
-not establish that TP73, MDM2 or MDM4 caused a difference. See
+The solid points rank the regular-cDNA 16-minus-15 median differences. Small
+ticks retain the enriched-pair deltas without pooling them into that score.
+This does not treat reads or differently prepared libraries as interchangeable
+biological replicates, and it does not establish that TP73, MDM2 or MDM4 caused a difference. See
 [`docs/rna_read_end_metrics.md`](../rna_read_end_metrics.md) for the exact input
 contract, censoring policy and reproducible synthetic fixture.
 
