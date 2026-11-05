@@ -705,8 +705,12 @@ The next proposed bounded repair targets repeated prepared-window/index work
 inside hit interpretation, with result-equivalence and stale-reference tests.
 That diagnostic-only change implemented no optimization. The subsequent
 owner-authorized [interpretation-local reader implementation](glen_next_verification_handoff.md#interpretation-local-reference-reader-repair-2026-11-05)
-is now authored with synthetic equivalence/load-count/staleness regressions;
-Rust, Windows and bounded real-import performance verification remain open.
+is authored with synthetic equivalence/load-count/staleness regressions.
+The subsequent [Glen Linux return at e4bc7386](glen_next_verification_handoff.md#linux-reader-and-mcp-return-at-e4bc7386-2026-11-05)
+reports all focused Rust/MCP/parity checks and all four bounded retained imports
+passed. Its supplied report is retained unchanged; the sealed raw archive has
+not been independently verified locally. Native Windows, broader performance
+and scientific acceptance remain open; no extra six-gate closure follows.
 Global caching, skipped validation, biological policy changes and annotation/
 alias optimization are excluded. No new six-gate completion, local Rust
 execution, real replay, push or dispatch follows from this implementation.

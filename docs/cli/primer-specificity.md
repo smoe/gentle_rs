@@ -43,9 +43,11 @@ full-alignment fallback and outer reference validation; no hits are omitted.
 Changed bound index/manifest bytes refuse the child report with
 `primer_specificity_reference_changed_during_interpretation`, rather than
 publishing results from a stale parsed index. Initial unavailable/corrupt
-resources retain their prior warning/fallback behavior. No speedup or new
-biological acceptance is established until the [focused checks and real replay](../glen_next_verification_handoff.md#interpretation-local-reference-reader-repair-2026-11-05)
-complete; no new command or request flag is needed.
+resources retain their prior warning/fallback behavior. Glen's [scoped Linux
+checks and retained ACTB/TP53 imports](../glen_next_verification_handoff.md#linux-reader-and-mcp-return-at-e4bc7386-2026-11-05)
+passed at `e4bc7386`, with matching traced/untraced output and reopened reports.
+Native Windows and general throughput remain unverified; successful imports
+are not biological acceptance. No new command or request flag is needed.
 
 ### Inspect Retained Panel Specificity
 

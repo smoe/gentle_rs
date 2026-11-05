@@ -7,6 +7,55 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Linux Reader And MCP Return At e4bc7386, 2026-11-05
+
+Glen reports a scoped Linux pass at exact
+`e4bc73868ee691aa87bf7968f431e6fb71c5d599`, tree
+`02ae61eb49f55c8aaeee12b641205898bed47740`, Rust/Cargo 1.97.1,
+ordinary dev/default features, one job, `CARGO_INCREMENTAL=0`. Default/test
+and headless locked checks, CLI build, 9 reader + 2 equivalence + 10
+multi-reference + 5 trace + 13 matrix tests passed without failures/skips.
+Full capability parity 28/28 and freshness 1/1 passed. Separate framed MCP
+discovery recorded 49 tools / 99 generic `op` paths with all four repaired
+RT commands. The queued Linux MCP/parity request is therefore closed at this
+source, not queued for another unchanged run.
+
+The owner supplied [Glen's original report](audits/glen_followups_20261008/reader_verify_e4bc7386/REPORT.md):
+6,219 bytes, SHA-256
+`c8d83113058f4adfe31097db62bd361d9f2aee0d8bf57018afac353f6354f676`.
+It is retained byte-identically with scoped LF/CRLF checkout protection.
+Codex verified those report bytes and local Git source/tree/lock identities;
+the sealed archive hash, binary identity, raw-run results and input/reference
+checks remain attributed to Glen. The reported archive SHA-256 is
+`7f23ce57c9938e2756d75a1feb36f5ced5c9163cf1fda0e3a4c47b8bf7810f15`;
+that bundle and its raw members were not supplied locally or independently
+rehash-verified. See [provenance and limits](audits/glen_followups_20261008/reader_verify_e4bc7386/README.md).
+
+All four retained imports completed with exit 0 and reopened states: ACTB
+untraced/traced 41.39 / 35.08 s, TP53 58.26 / 42.55 s. Both traces contain
+52 begins and 52 completions, no unfinished/failed/truncated spans; the formerly
+blocking forward-hit phases complete. Glen reports 213/213 unchanged input
+checks and byte-identical reference receipts. Trace-mode output/state/reopen
+comparisons match after excluding only `generated_at_unix_ms` and
+`updated_at_unix_ms` and canonical JSON sorting. This is same-source tracing
+equivalence, not real old/new report equivalence: `dfca3261` produced no report.
+
+Do not infer an exact speedup ratio from censored old timeouts, faster tracing
+from non-counterbalanced runs, or general throughput. TP53 untraced has only
+1.74 s nominal deadline headroom; peak RSS is about 1.07-1.08 GiB, above the
+earlier incomplete runs. Record the resource tradeoff without attributing all
+of it to one allocation or opening a new optimization campaign automatically.
+Exit-zero import completion is not a specificity verdict or scientific approval.
+
+Remaining reader acceptance is native Windows: run the nine reader and two
+equivalence cases with source-matched default/headless checks as appropriate;
+retain LF/CRLF, quoted/Unicode paths, timestamp restoration, missing/corrupt
+inputs and handle closure. Windows was unavailable to Glen; do not infer it
+from Linux or rerun the already completed Windows comparator/hard-link suite.
+No repeat Linux replay, new BLAST/reference preparation, package/GUI/live-model
+work, push or dispatch is requested. Keep the published UTR stack separate:
+this report neither reviews nor merges it, and no reader code was changed.
+
 ## Interpretation-Local Reference Reader Repair, 2026-11-05
 
 Owner-authorized implementation follows the `dfca3261` diagnostic below.
@@ -37,9 +86,10 @@ alignment modes. A test-only uncached reader drives the existing path as the
 comparison control, with literal alias/strand/terminal and no-truncation checks.
 All fixtures are inline synthetic data; no external tools or private inputs.
 
-Glen/CI: use one source-matched isolated target, require nonzero counts and stop
-on primary failures. These gates are affected by the reader repair, not repeats
-of unrelated completed comparator, gel, labware or biological campaigns:
+The Linux commands below are now completed at `e4bc7386` as recorded above.
+Retain them for reproduction or affected future source, not an unchanged repeat.
+For unrun Windows checks use a source-matched isolated target and nonzero counts;
+stop on primary failures. Do not repeat unrelated completed campaigns:
 
 ```sh
 cargo check -q --locked --tests -j1
@@ -51,12 +101,13 @@ cargo test --locked --lib -j1 primer_import_trace -- --test-threads=1
 cargo test --locked --lib -j1 specificity_matrix_ -- --test-threads=1
 ```
 
-If the queued MCP/parity check is still open, reuse that build for its existing
-two integration targets below. No interim source freeze or new bundle request.
+The queued Linux MCP/parity check also passed at this source. No interim source
+freeze or new bundle request follows.
 Native Windows must execute LF/CRLF/path, timestamp restoration, rename/delete
 and missing/corrupt cases; Unix passes alone are not Windows acceptance.
 
-Only after focused checks pass, repeat the authorized ACTB/TP53 retained-output
+Historical executed Linux procedure, not a new replay request: after focused
+checks passed, Glen repeated the authorized ACTB/TP53 retained-output
 imports with the existing procedure: same host/dev/default profile and reference
 identities, fresh absent state per attempt, one untraced and one traced run per
 case, 60 s deadline/5 s grace, four launches/300 s total. Do not rerun BLAST,
@@ -67,8 +118,9 @@ compare scientific content/bindings between tracing modes, excluding only named
 volatile fields. Completion or a faster phase is not a specificity/biology pass.
 Return exact source/tree/lock/binary hashes, toolchain/platform/profile, commands,
 counts/skips, failures and small manifest-bound evidence. Keep historical raw
-trees unchanged. No new real replay, local Rust, push or dispatch occurred here;
-Rust/native/performance acceptance remains pending. No Claude review was invoked.
+trees unchanged. At authoring time Rust/native/performance acceptance was pending;
+the Linux return above supersedes that status only within its named scope.
+No local Codex Rust, push or dispatch occurred. No Claude review was invoked.
 
 Authoring checks: 41 offline wiring/metadata/documentation checks passed, zero
 skips, including source-negative controls and LF/CRLF policy checks. New Rust
@@ -148,8 +200,9 @@ actual tools/list projection, requires every glossary `mcp-op` path on the
 single generic `op` tool and preserves its mutation/approval classification.
 The two original failing parity assertions are unchanged.
 
-Glen/CI should run only the affected discovery/freshness gate, including the
-new regression; no repeat of completed comparator, gel or RT biology checks:
+The affected Linux discovery/freshness gate, including the new regression,
+passed at `e4bc7386` in the return above. Keep these reproduction commands,
+not a request to repeat completed comparator, gel, RT biology or Linux checks:
 
 ```sh
 cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness

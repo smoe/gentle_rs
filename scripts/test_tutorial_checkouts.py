@@ -841,6 +841,33 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual((target / relative).read_bytes(), payload)
                 self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
 
+    def test_reader_e4bc7386_report_bytes_survive_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/reader_verify_e4bc7386/REPORT.md")
+        expected = "c8d83113058f4adfe31097db62bd361d9f2aee0d8bf57018afac353f6354f676"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(len(payload), 6219)
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        rule = relative.as_posix().encode() + b" text eol=lf"
+        self.assertIn(rule, attributes.splitlines())
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "Glen source-bound Linux reader verification report")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n") if line != rule)
+        broken = Path(self.tmp.name) / "reader-report-unprotected"
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"reader-report-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
+
     def test_f35a58e6_original_report_and_manifest_survive_both_checkout_modes(self):
         base = Path("docs/audits/glen_followups_20261008/candidate_f35a58e6")
         profile = Path("docs/audits/glen_followups_20261008/post_blast_profile_f35a58e6")

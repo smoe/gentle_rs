@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-05 - Retain Glen's Scoped Linux Reader And MCP Pass
+
+- Retain Glen's original 6,219-byte report byte-identically at SHA-256
+  `c8d83113058f4adfe31097db62bd361d9f2aee0d8bf57018afac353f6354f676`,
+  with provenance, scoped LF policy and a real LF/CRLF checkout regression.
+  Source/tree/lock identities match `e4bc7386`; raw sealed-bundle verification
+  remains outstanding and execution results are explicitly attributed to Glen.
+  Twenty documentation/checkout tests pass, including the scoped LF/CRLF case.
+- Record the Linux default/headless checks, 9/2/10/5/13 focused groups,
+  parity 28/28 and freshness 1/1, plus framed discovery of all four RT paths.
+  All four ACTB/TP53 imports now complete and reopen, unlike the older timeouts.
+  Close only the scoped Linux reader/import and queued MCP/parity requests.
+- Keep same-source tracing equivalence distinct from absent real old/new
+  reports; retain TP53 deadline headroom, increased observed RSS and the
+  non-counterbalanced timing boundary. Native Windows and scientific/release
+  acceptance stay open. No reader code change, Rust execution, new replay,
+  UTR integration, push or dispatch is performed here.
+
 ## 2026-11-05 - Reuse Parsed Reference Indexes Within Specificity Interpretation
 
 - Add an interpretation-local prepared reader shared by both primer directions
