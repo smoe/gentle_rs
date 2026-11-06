@@ -9,24 +9,48 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Slice B Panel Multi-Reference Specificity
 
-Glen's 2026-11-06 return confirms the open projection defect at
+Glen's initial 2026-11-06 return confirmed the projection defect at
 `27a8de33d1b349f6c0dfd9eef75e799e066469f6`: 14 targeted Python checks passed,
 but the locked headless `parity_matrix_freshness` run failed, 0 passed / 1
-failed, because `docs/gui_cli_mcp_parity.md` is stale. This is not evidence of
-a panel-runtime pass or a defect in the later UTR repair. The protocol crate,
-generator, lock and embedded glossary/override/collection-policy inputs have
-no diff from that source through merged `56fe826b`; the UTR merge cannot close
-this gate. The local docs binary reports `f3d8f86f`, before Slice B, and must
-not generate a supposedly current matrix. No local Rust build is authorized.
+failed, because `docs/gui_cli_mcp_parity.md` was stale. Preserve that failure
+as the pre-repair result, not a defect in the later UTR work.
 
-Next bounded return from Glen: supply only the canonically generated
-`docs/gui_cli_mcp_parity.md` or its Git patch, the generating source SHA and
-the focused freshness command/result. The already tested `27a8de33` inputs
-are usable for this file because of the input-equivalence check above; no
-new interim freeze or source bundle is requested. Do not repeat the 14
-completed Python checks, reader/BLAST imports or unrelated campaigns. Until
-that generated artifact is integrated and checked, the projection stays open;
-do not hand-edit rows/counts or weaken the freshness assertion.
+The owner supplied Glen's subsequent `GENtle_27a8de33_parity_handoff.zip`,
+23,333 bytes, SHA-256
+`667043a8aaba7be3f5edbc8138ed8d75632b82840a25e7102a82c9690671cbd2`.
+Codex verified exact membership and all 13 manifest hashes; the manifest hash is
+`25a9516c6104b5b847d1de51ec4d534ad44a87dbd555b8f66443d36f0cf03774`.
+The report and patch match the earlier compact verification ZIP byte-for-byte.
+The source/tree/lock match local Git records. Protocol crate, generator, lock
+and embedded glossary/override/collection-policy inputs have no diff from
+`27a8de33` through pre-import `34660ecf`, so no new interim source freeze is
+needed for this generated artifact.
+
+Import only Glen's original generator patch (17 insertions / 5 deletions),
+SHA-256 `23ef83413e1973bd4474d5563ebfbf7e380bfa71d5b0f998d0da79275b1328b3`.
+The resulting tracked matrix is byte-identical to his supplied 299,119-byte
+file, SHA-256
+`03b3bd99e1342409fd6a4a0130f20355d25bd96fcf1b88de45053fdb1e728c55`.
+No rows/counts were hand-edited. Generator/check logs and exit-zero receipts
+are supplied. The retained Linux test stream records 29/29 capability parity
+and 1/1 freshness after generation at `27a8de33` plus this Markdown-only diff.
+This closes the missing-artifact request and imports the canonical repair;
+it is not a local Rust rerun or acceptance of the later integrated source.
+
+Glen's report additionally records locked check, 10 panel/script-interface,
+10 multi-reference, 1 panel-history and 13 matrix passes; protocol was 119/1
+before generation and 120/0 afterward. It reports 55 examples and 17 Python
+maturity checks passing. Those broader execution results are attributed to
+his report; the compact ZIP supplies raw logs for the generator/check and
+29+1 parity scope, not the full broader campaign. No additional evidence or
+repeat Linux campaign is requested. Windows/full current-source acceptance
+waits for normal CI after the owner's push; no local build or dispatch occurs.
+
+Local import checks: 37 Python metadata/documentation/checkout tests passed,
+including exact LF/CRLF matrix preservation and its missing-policy control.
+Manual/status and whitespace checks passed; the roadmap remains 400 lines.
+The matrix still matches Glen's exact file hash. These checks do not execute
+the Rust freshness test or replace the normal integrated-source CI gate.
 
 Source work is based on `0d9909b5`, following the bounded single-pair Linux
 return below. Use the final Slice B SHA/tree/lock, not the older reader binary.
@@ -34,8 +58,10 @@ Only synthetic panel evaluation is authorized: 24 assays, 8 references, 384
 commands, 128 MiB cumulative TSV and 25,000 rows. These are input limits, not
 measured runtime or RSS limits. No repeat ACTB/TP53 campaign or new BLAST run.
 
-On the source-matched host, record platform/toolchain/features, exact nonzero
-counts, skips, primary failures and commands. Run:
+The Linux scopes below are now reported completed by Glen at that source.
+Keep these reproduction commands for affected future source/normal CI, not a
+request to repeat his completed checks. Retain platform/toolchain/features,
+nonzero counts, skips and primary failures when execution is actually needed:
 
 ```sh
 cargo check -q --locked --tests -j1
@@ -53,19 +79,18 @@ manifest, byte/row, quoted-path and rollback cases as well as the outstanding
 reader checks. Partial/cancelled is not an assay pass. Do not backfill sources
 or attach to the panel to make a test pass.
 
-Glen regenerates the parity matrix from final registry inputs using
-`cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate`
-and returns the generated Markdown change for owner integration. No hand-written
-rows. On the **integrated** SHA, without regenerating first, run
+Glen ran the canonical generator and the returned Markdown is now integrated.
+Normal CI should check the **integrated** source without regenerating first:
 `cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-check`,
 `cargo test --locked --test capability_registry_parity --test parity_matrix_freshness`
 and the separate examples check `cargo run --locked --bin gentle_examples_docs -- --check`.
-Until then the checked-in projection is intentionally stale and not accepted.
-Local source/format/metadata checks do not establish a Rust or scientific pass.
+Do not use the old local `f3d8f86f` docs binary to certify the new registry.
+Local source/format/metadata checks do not establish a Rust or scientific pass;
+the imported matrix and historical Linux verdict do not claim a green new CI.
 
-Authoring checks on macOS arm64: 14 focused offline primer/tutorial/reader
+Earlier authoring checks on macOS arm64 (historical): 14 focused offline primer/tutorial/reader
 checks passed. The wider 96-check selection had 89 passes, five skips and two
-failures: the intentionally pending parity projection and an unrelated 10.04
+failures: the then-pending parity projection and an unrelated 10.04
 RNA source-text assertion about command admission, reproduced on untouched
 `0d9909b5`. Neither guard was weakened. The capability-maturity projections
 were refreshed via the Python generator, not the Rust parity generator.
@@ -75,7 +100,9 @@ path. The new import commits through the store serializer without the ordinary
 writer's panel-source backfill. The five feature/adapter modules pass scoped
 rustfmt checks; comparing 17 larger touched files against the base finds the
 same 58 pre-existing formatting hunks and no new ones. Manual catalog,
-documentation status, maturity freshness and whitespace checks pass.
+documentation status, maturity freshness and whitespace checks pass. The parity
+failure is superseded by the canonical return above; the separate 10.04 source
+assertion is not automatically closed by this documentation-only import.
 
 ## Linux Reader And MCP Return At e4bc7386, 2026-11-05
 

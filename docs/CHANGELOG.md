@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-06 - Import Glen's Canonical Panel-Parity Repair
+
+- Apply Glen / smoe-bot's original generated patch to
+  `docs/gui_cli_mcp_parity.md` unchanged: 17 insertions / 5 deletions, four
+  glossary commands, four operations, four MCP tools and adapter totals.
+  The 299,119-byte file matches SHA-256
+  `03b3bd99e1342409fd6a4a0130f20355d25bd96fcf1b88de45053fdb1e728c55`.
+- Verify all 13 compact-handoff manifest entries and unchanged generator/
+  registry inputs from `27a8de33` through `34660ecf`. Retain Glen's raw
+  generator/check success and 29+1 post-generation Linux parity passes;
+  attribute broader panel/protocol/example results to his supplied report.
+- Close the generated-file request, not integrated Windows/CI, real-reference
+  or scientific acceptance. Preserve the earlier red clean-source result and
+  wait for normal CI rather than repeating completed Linux/BLAST campaigns.
+  No manual matrix reconstruction, guard weakening, local Rust, push or dispatch.
+- Import checks: 37 Python metadata/documentation/checkout tests pass, including
+  exact matrix bytes under LF/CRLF policy; manual/status and whitespace checks
+  pass. Roadmap remains 400 lines. Rust freshness on integrated main remains CI work.
+
 ## 2026-11-06 - Record Glen's Confirmed Panel-Parity Projection Failure
 
 - Attribute the 14 targeted Python passes and 0/1 headless parity-freshness
