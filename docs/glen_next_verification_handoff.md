@@ -9,6 +9,25 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Slice B Panel Multi-Reference Specificity
 
+Glen's 2026-11-06 return confirms the open projection defect at
+`27a8de33d1b349f6c0dfd9eef75e799e066469f6`: 14 targeted Python checks passed,
+but the locked headless `parity_matrix_freshness` run failed, 0 passed / 1
+failed, because `docs/gui_cli_mcp_parity.md` is stale. This is not evidence of
+a panel-runtime pass or a defect in the later UTR repair. The protocol crate,
+generator, lock and embedded glossary/override/collection-policy inputs have
+no diff from that source through merged `56fe826b`; the UTR merge cannot close
+this gate. The local docs binary reports `f3d8f86f`, before Slice B, and must
+not generate a supposedly current matrix. No local Rust build is authorized.
+
+Next bounded return from Glen: supply only the canonically generated
+`docs/gui_cli_mcp_parity.md` or its Git patch, the generating source SHA and
+the focused freshness command/result. The already tested `27a8de33` inputs
+are usable for this file because of the input-equivalence check above; no
+new interim freeze or source bundle is requested. Do not repeat the 14
+completed Python checks, reader/BLAST imports or unrelated campaigns. Until
+that generated artifact is integrated and checked, the projection stays open;
+do not hand-edit rows/counts or weaken the freshness assertion.
+
 Source work is based on `0d9909b5`, following the bounded single-pair Linux
 return below. Use the final Slice B SHA/tree/lock, not the older reader binary.
 Only synthetic panel evaluation is authorized: 24 assays, 8 references, 384

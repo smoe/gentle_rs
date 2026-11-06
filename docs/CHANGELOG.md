@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-11-06 - Record Glen's Confirmed Panel-Parity Projection Failure
+
+- Attribute the 14 targeted Python passes and 0/1 headless parity-freshness
+  failure to Glen's exact `27a8de33` scan. Keep the known stale generated
+  matrix open; neither this record nor the UTR merge establishes its repair.
+- Confirm unchanged generator/registry inputs through `56fe826b`. Request
+  only Glen's canonical generated Markdown/patch and focused receipt; the
+  local docs binary is older (`f3d8f86f`) and cannot certify the new operations.
+  No manual matrix edits, guard weakening, local Rust, push or dispatch.
+
 ## 2026-11-06 - Integrate Glen's Repaired Standalone UTR Stack
 
 - Merge Glen / smoe-bot's three original commits through `3ff28802` with
