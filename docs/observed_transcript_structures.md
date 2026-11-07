@@ -110,13 +110,38 @@ versioned: later changes need an explicit compatibility/version policy, not
 regeneration of old evidence.
 Different anchors may appear in multiple rows/groups; do not add their counts.
 Junction annotation is `null` when comparison is unavailable, not an empty
-annotation match. Novelty means relative to bound source snapshots only.
+annotation match. Novelty is relative to the selected gene's models in each
+bound source snapshot, not to every model in that source.
+
+`SourceComparison.junction_relation` compares exact observed skips with models
+whose `gene_ids` contain the explicitly selected gene ID for that source:
+
+| Relation | Meaning within that selected gene's models |
+|---|---|
+| `consecutive_model_run` | At least one model contains the observed skips as a consecutive run. Supported-block/model compatibility remains a separate relation. |
+| `contains_unannotated_junction` | At least one observed skip is absent from those models on the observed contig. |
+| `all_junctions_annotated_no_single_model_contains_run` | Each observed skip occurs in those models, but no single model contains the complete observed consecutive run. |
+
+A junction annotated only in an antisense or neighbouring gene of the same
+source is therefore still unannotated in this selected-gene comparison. This
+does not establish that the junction is absent from the whole annotation or
+biologically novel. For off-gene evidence and outside-locus qualification, use
+the separate [saved junction assessment](observed_splice_junction_assessment.md)
+(`rna-reads splice-junctions-assess`).
 
 The physical chain digest covers exact genomic skips and coordinate authority,
 not the selected gene, model strand or read endpoints. Query orientation is not
 RNA transcription direction. Unspliced records retain observations but no
 empty-chain family. Detailed `N` skips, supported `M/=/X` blocks, masks, `D`
 deletions and coarse/unavailable geometry remain distinct. Tolerance is zero.
+
+`contained_partial` requires a consecutive shorter skip run and no supported
+genomic block in any same-record observation of that shorter chain overlapping
+a skip missing from it. One base of overlap is a conflict (`alternatives`);
+half-open touching boundaries and deletion gaps without block support are not.
+The guard also checks nonoptimal observations of an already-possible chain,
+without changing hypotheses or definite/possible support. Unspliced observations
+remain outside this containment rule.
 
 ## Control, Limits And Lifecycle
 

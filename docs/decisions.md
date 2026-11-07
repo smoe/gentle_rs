@@ -114,6 +114,13 @@ views, incomplete producer declarations and unknown primer/flank qualification.
 Neither recurrence nor a chain implies independent molecules, natural RNA ends,
 retention mechanism, fusion, expression or protein identity.
 
+A shorter skip run is contained only when every same-record observation of that
+chain has no supported genomic block overlapping a missing longer-chain skip.
+Touching half-open boundaries and unsupported deletion gaps do not conflict.
+Keep these record-local witnesses out of physical-chain identities, and charge
+comparisons to the existing total-work budget. This reconciliation guard does
+not change optimal hypotheses, definite/possible support or unspliced handling.
+
 The exported S0 Rust API remains experimental and pure. It checks declared
 hashes/geometry in memory, not corresponding files or aligner search. The
 separately owner-authorized S1 boundary below owns verified ingress/publication;

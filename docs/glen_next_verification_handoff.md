@@ -7,6 +7,59 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Observed-Structure Containment Conflict, 2026-11-07
+
+Add these authored regressions to the next already-planned consolidated Glen/CI
+run after the owner's normal integration/push. No separate campaign, dispatch,
+real-data replay or local Rust run is requested. This source is the uncommitted
+follow-up over exact HEAD `6c1edcf3e4bf0e765f755e5b0cf5b64866925b25`; fetched
+`origin/main` was `2d2b8b42e3610ef1874f63057b24b92f520a4e04`.
+The supplied read-only review's core/comparison/DAG shapes at `e4bc7386`
+were unchanged at that baseline. Do not attribute new execution to the bare
+baseline or inherit historical S0/S1/S2 results as a pass of this fix.
+
+The private shared core now rejects containment when a supported genomic block
+in any same-record shorter-chain observation overlaps a missing longer-chain
+skip. Earlier `ContainedPartial` labels in these conflicting cases were wrong;
+they become `Alternatives`, without changing possible/definite chains, physical
+chain IDs or Phase 2 behavior/bytes. Touching half-open ends and unsupported
+`D` gaps remain nonconflicting. The record-local witness index also checks
+nonoptimal observations of an already-possible chain without promoting them
+into optimal hypotheses or counts. New witness/skip/block comparisons use the
+existing total-work budget; observed-structure work counters can increase when
+these checks run. Do not regenerate frozen preservation expectations blindly.
+
+Nine inline synthetic tests are **authored but not run**, including compilation:
+
+- `observed_structures_containment_` selects eight new cases: splice/retention
+  conflict, right-flank zero/one-base overlap, reverse-query/minus-model genomic
+  coordinates, left-flank zero/one-base overlap, record isolation/every witness,
+  nonoptimal same-chain witness, deletion-gap control and exact/one-under budget.
+- `sam_containment_` selects the new two-row, one-declared-unit test on both
+  query orientations, keeping both equal-weight hypotheses possible/neither definite.
+- Preserve the unchanged
+  `observed_structures_partial_chain_and_primer_bounded_ends_do_not_become_full_rna`
+  regression, the `observed_structures_s2a_` frozen bytes/IDs/work/order guards,
+  and `primer_payload_s0_legacy_serialized_rows_and_work_are_byte_identical`.
+  Static inspection found those frozen cases have one family or different-contig
+  alternatives, so the new same-contig witness checks do not alter their work;
+  this is reasoning, not an executed verdict.
+
+Use the normal consolidated build/check scope and add these filters to its
+existing run. If its current executable already includes this final source,
+reuse it with the repository's configured test stack; do not use an older binary.
+Record actual commit, platform, toolchain, scope/results and primary failures.
+Windows/Linux/native and scientific acceptance remain unrun here. The local
+checks for this change are formatting, documentation and whitespace only.
+
+Changed-Rust-path fingerprint: `ab4beb68d50d28b412cc4fa048f87a2d7c9d2f76186d62e8b94d787059a3e5a3`.
+Recreate by SHA-256 of the sorted UTF-8 concatenation
+`<path> NUL <lowercase raw-file SHA-256> LF` for exactly
+`src/observed_transcript_structures/{core,tests,sam_tests}.rs`.
+This binds the authored source, not executed behavior or a final integration SHA.
+Selected-gene relation clarification and the corrected future render/lane seam
+are documentation-only; no public schema or relative-to field is added.
+
 ## Reported 15/16 Panel Analysis, 2026-11-07
 
 The owner relayed Glen's already completed regular-cDNA comparison at

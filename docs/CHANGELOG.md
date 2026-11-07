@@ -1,5 +1,35 @@
 # GENtle Changelog
 
+## 2026-11-07 - Preserve Containment Conflicts And Selected-Gene Relation Scope
+
+- Correct shared observed-structure reconciliation: a shorter skip chain is not
+  contained when any same-record observation of it has a supported genomic block
+  overlapping a missing longer-chain skip. Earlier `ContainedPartial` labels in
+  those conflict cases were wrong; they now become `Alternatives`. Keep both
+  physical chains possible and the existing definite-support intersection.
+- Keep record-local block witnesses outside `CoreFamily`, including nonoptimal
+  witnesses of an already-possible chain. Use genomic half-open intervals and
+  the existing total-work budget; touching ends and unsupported deletion gaps
+  remain valid partials. No new schema, chain digest, DAG/path-count policy,
+  unspliced-conflict rule or Phase 2 behavior/bytes change is introduced.
+- Clarify junction-relation labels as relative to the selected gene's models in
+  each source, with off-gene evidence left to the separate junction assessment.
+  Correct stale rendering guidance: observed lanes derive from saved reports,
+  with a future public render/lane seam instead of the project/symbol builder.
+- Author nine inline synthetic regressions: eight shared-kernel cases and one
+  two-row SAM-unit case. They are **not run locally**, and no Cargo check or
+  Rust build is run, following the supplied review's execution restriction.
+  Queue execution/preservation checks in the [existing consolidated handoff](glen_next_verification_handoff.md#observed-structure-containment-conflict-2026-11-07).
+- Rebase fast-forwards to local main `6c1edcf3e4bf0e765f755e5b0cf5b64866925b25`,
+  which already contains the two RT-primer commits. Fetched `origin/main` is
+  `2d2b8b42e3610ef1874f63057b24b92f520a4e04`; reviewed core/comparison/DAG
+  symbols are unchanged from `e4bc7386`. Preserve the 400-line roadmap with one
+  existing list item reflowed solely to make room for the owner-decision line.
+  No private evidence, provider/Claude call, push or dispatch is performed.
+- Documentation-status, scoped rustfmt, static scope and whitespace checks pass.
+  Session-close reports four OK, two expected worktree/plan-fidelity reminders,
+  zero failures; compilation/runtime verification remains with Glen/CI.
+
 ## 2026-11-07 - Retain Glen's Reported 15/16 Panel Outcome
 
 - Record the owner-relayed 80-gene regular-cDNA audit at `7f667f4d`: no gene

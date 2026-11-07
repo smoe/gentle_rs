@@ -595,6 +595,51 @@ fn sam_qname_aliases_and_row_roles_do_not_multiply_unit_support() {
 }
 
 #[test]
+fn sam_containment_conflict_in_one_declared_unit_preserves_both_possible_chains() {
+    for flag in [0, 0x10] {
+        let mut a = input();
+        a.units[0].rows[0].flag = flag;
+        // Both rows support 30 query bases on the same declared axis, keeping
+        // both as best-equivalent hypotheses rather than losing a lower-weight
+        // chain. The second row continuously supports the missing [110,120)
+        // skip and then shares only the later [130,140) skip.
+        let mut retained = row(vec![('M', 20), ('N', 10), ('M', 10)]);
+        retained.ordinal = 2;
+        retained.position_1based = 111;
+        retained.flag = flag | 0x100;
+        a.units[0].rows.push(retained);
+        let result = run(&a);
+        assert_eq!(result.summary.observations.len(), 2);
+        assert_eq!(result.summary.supports.len(), 1);
+        let support = &result.summary.supports[0];
+        assert_eq!(support.reconciliation, Reconciliation::Alternatives);
+        assert_eq!(support.hypotheses.len(), 2);
+        assert_eq!(support.possible_chains.len(), 2);
+        assert!(support.definite_chains.is_empty());
+        assert_eq!(result.summary.families.len(), 2);
+        assert!(
+            result
+                .summary
+                .families
+                .iter()
+                .all(|f| f.supporting_keys == 1 && f.definite_keys == 0)
+        );
+        let retained = result
+            .summary
+            .observations
+            .iter()
+            .find(|o| o.source_ordinal == Some(2))
+            .unwrap();
+        assert_eq!(retained.skips, [(130, 140)]);
+        assert!(retained.blocks.iter().any(|b| b.target == (110, 130)));
+        assert_eq!(
+            retained.query_to_reference_strand,
+            if flag == 0 { '+' } else { '-' }
+        );
+    }
+}
+
+#[test]
 fn sam_unsupported_competitor_clears_entire_unit_not_just_bad_row() {
     for (case, expected) in [
         Unavailable::Paired,

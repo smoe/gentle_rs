@@ -121,7 +121,7 @@ Use symbols, not drifting line-number anchors:
 | `src/engine/analysis/rna_panel/primer_payload/binding.rs` | Source/query accounting and exclusions must remain verified, including original record identity and multiple primer anchors. |
 | [Payload evidence contract](primer_payload_evidence.md) | Existing Phase 2 input is bound PAF, not general SAM/BAM. No general BAM-to-observed-structure route was found in the inspected paths. An explicit ingress adapter is work, not an existing capability. |
 | [Source presentation](transcript_source_presentation.md) | Existing Ensembl/RefSeq source separation and physical exon identities are reusable. Current source formats do not automatically admit this archive's GTF/UCSC JSON; normalization must be explicit and versioned. |
-| `src/engine/analysis/feature_expert_ops.rs`, `build_splicing_expert_view` | Reuse rendering/projection seams later; do not insert observed reads into the reference annotation or silently change its selected transcript set. |
+| `src/engine/analysis/feature_expert_ops.rs`, `build_splicing_expert_view` | Reuse only render/lane primitives after introducing a suitable public seam: `render_splicing` in `crates/gentle-render/src/feature_expert.rs` is currently private and takes a `SplicingExpertView`. Build observed lanes from the saved report, never through the project-bound, symbol-grouped builder or its `support_count`; do not insert observed reads into reference annotation or silently change its selected transcript set. |
 
 The existing [Phase 2 plan](primer_payload_partner_phase2_plan_20261026.md)
 remains unchanged. Its pending acceptance is not inherited by this proposal.
@@ -803,3 +803,47 @@ fresh Claude or scientific verdict. The older
 [S0 follow-up prompt](observed_transcript_structures_claude_review_prompt.md)
 is historical and predates S1 completion, not the current S2 review request.
 SAM/BAM, GUI and later consequences are not authorized by the S1 request.
+
+
+## Containment Conflict And Relation Scope Follow-Up, 2026-11-07
+
+Owner-supplied Claude comments were checked against the current source before
+editing. The branch fast-forwarded onto local main
+`6c1edcf3e4bf0e765f755e5b0cf5b64866925b25`, one documentation commit ahead of fetched
+`origin/main` (`2d2b8b42e3610ef1874f63057b24b92f520a4e04`). Core, comparison
+and DAG files were unchanged from the review at `e4bc7386`; no changed-shape
+stop condition was encountered. The RT-primer commits were already merged.
+This follows the supplied review plan; no new Claude invocation was requested.
+
+The private shared core retains a record/chain index of observation IDs. Once
+the old contiguous skip-window check succeeds, every shorter-chain witness in
+that record is checked for supported genomic blocks overlapping any missing
+longer-chain skip. One base conflicts; half-open touching and unsupported
+`D` gaps do not. Nonoptimal observations of an already-possible chain are
+included by the review's “every observation” rule, without changing hypotheses,
+possible/definite support, catalogs, `CoreFamily`, physical digests or schemas.
+Unspliced-versus-spliced conflicts remain outside this change. All new witness/
+skip/block comparisons charge the existing total-work budget. Reconciliation
+labels change only for the conflict cases; work counters also charge legitimate
+containment checks. Phase 2 decisions, bytes and DAG/path counting stay unchanged.
+
+The relation definitions now say selected gene's models in each bound source,
+with off-gene evidence delegated to J1. The roadmap parks an optional explicit
+`relative_to` as an owner decision, not committed behavior, and records the
+unspliced-view gap. One existing roadmap list item is joined onto one line solely
+to retain the 400-line limit. The stale source-seam row now requires a future
+public render/lane primitive: observed lanes derive from saved reports, never
+from the project/symbol builder or `support_count`. No S3/GUI work is added.
+
+Nine inline synthetic regressions are authored (eight common-kernel, one SAM),
+with the existing payload-bounded partial-chain test unchanged. Their execution
+and the unchanged preservation guards are queued in the
+[existing consolidated Glen/CI handoff](glen_next_verification_handoff.md#observed-structure-containment-conflict-2026-11-07).
+The exact changed-Rust-path fingerprint is `ab4beb68d50d28b412cc4fa048f87a2d7c9d2f76186d62e8b94d787059a3e5a3`
+with the recreation recipe in that handoff. No Rust build, test or Cargo check
+was run locally, as explicitly required by the supplied prompt; authoring and
+format checks do not establish compilation or runtime acceptance. No private
+input, provider call, push or dispatch is part of this repair. Documentation-
+status, scoped formatting, static scope and whitespace checks pass. Session-close
+reports four OK, two expected worktree/manual-plan reminders, zero failures.
+Native/platform/scientific verification remains open.

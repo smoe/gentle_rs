@@ -219,18 +219,39 @@ fn observe<R: Clone>(
     Ok(out)
 }
 
-fn contains(
+fn contains<R>(
     a: &CoreFamily,
     b: &CoreFamily,
+    shorter_observations: &BTreeSet<String>,
+    observations: &BTreeMap<String, CoreObservation<R>>,
     work: &mut usize,
     limit: usize,
 ) -> Result<bool, EngineError> {
     if a.contig != b.contig || a.skips.len() < b.skips.len() {
         return Ok(false);
     }
-    for window in a.skips.windows(b.skips.len()) {
+    for (start, window) in a.skips.windows(b.skips.len()).enumerate() {
         dag::charge_many(work, limit, b.skips.len())?;
         if window == b.skips {
+            // Families identify physical skips across records. Containment also needs
+            // this record's supported target blocks, including same-chain witnesses
+            // outside its optimal hypotheses, without changing those hypotheses.
+            for id in shorter_observations {
+                dag::charge(work, limit)?;
+                let observation = &observations[id];
+                for skip in a.skips[..start]
+                    .iter()
+                    .chain(&a.skips[start + b.skips.len()..])
+                {
+                    dag::charge(work, limit)?;
+                    for block in &observation.blocks {
+                        dag::charge(work, limit)?;
+                        if block.target.0 < skip.1 && skip.0 < block.target.1 {
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
             return Ok(true);
         }
     }
@@ -249,6 +270,7 @@ pub(super) fn run<R: Ord + Clone>(
     let mut work = initial_work;
     let mut observations = BTreeMap::<String, CoreObservation<R>>::new();
     let mut families = BTreeMap::<String, CoreFamily>::new();
+    let mut record_chain_observations = BTreeMap::<R, BTreeMap<String, BTreeSet<String>>>::new();
     let mut record_paths = BTreeMap::<R, (Vec<Vec<String>>, bool, bool)>::new();
     for record in unassessed {
         record_paths.insert(record.clone(), (Vec::new(), false, false));
@@ -262,6 +284,12 @@ pub(super) fn run<R: Ord + Clone>(
             check()?;
             let observation = observe(input, query, segment, &sources, identity, &mut work)?;
             if let Some(chain) = &observation.observed_junction_chain {
+                record_chain_observations
+                    .entry((*query.key).clone())
+                    .or_default()
+                    .entry(chain.clone())
+                    .or_default()
+                    .insert(observation.observation_id.clone());
                 families.entry(chain.clone()).or_insert_with(|| CoreFamily {
                     chain_id: chain.clone(),
                     contig: observation.contig.clone(),
@@ -368,11 +396,15 @@ pub(super) fn run<R: Ord + Clone>(
                 nested &= contains(
                     &families[*a],
                     &families[*b],
+                    &record_chain_observations[&record][*b],
+                    &observations,
                     &mut work,
                     input.budgets.max_total_work,
                 )? || contains(
                     &families[*b],
                     &families[*a],
+                    &record_chain_observations[&record][*a],
+                    &observations,
                     &mut work,
                     input.budgets.max_total_work,
                 )?;

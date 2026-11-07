@@ -355,6 +355,231 @@ fn observed_structures_partial_chain_and_primer_bounded_ends_do_not_become_full_
     );
 }
 
+/// Two invented payload views of one original record; their query axes are independent.
+fn containment_views(start: usize, ops: Vec<(char, usize)>, strand: char) -> Input {
+    let mut a = input();
+    a.queries[0].segments = vec![segment(
+        100,
+        vec![('M', 10), ('N', 10), ('M', 10), ('N', 10), ('M', 10)],
+        strand,
+        &[],
+    )];
+    let mut shorter = a.queries[0].clone();
+    shorter.query_id = "shorter_chain_view".into();
+    shorter.segments = vec![segment(start, ops, strand, &[])];
+    shorter.query_length = shorter.segments[0].query_interval.1;
+    a.queries.push(shorter);
+    a
+}
+
+fn assert_containment_support(a: &Input, expected: Reconciliation) -> Summary {
+    let r = summarize(a).unwrap();
+    assert_eq!(r.records.len(), 1);
+    assert_eq!(r.records[0].reconciliation, expected);
+    assert_eq!(r.records[0].possible_chains.len(), 2);
+    assert!(r.records[0].definite_chains.is_empty());
+    assert_eq!(r.families.len(), 2);
+    assert!(
+        r.families
+            .iter()
+            .all(|f| f.supporting_records == 1 && f.definite_records == 0)
+    );
+    r
+}
+
+#[test]
+fn observed_structures_containment_does_not_hide_splice_retention_conflict() {
+    // Full view skips [110,120) and [130,140); the shorter chain skips only
+    // [130,140), while its first supported block spans the missing first skip.
+    let a = containment_views(100, vec![('M', 30), ('N', 10), ('M', 10)], '+');
+    let r = assert_containment_support(&a, Reconciliation::Alternatives);
+    let shorter = r
+        .observations
+        .iter()
+        .find(|o| o.query_id == "shorter_chain_view")
+        .unwrap();
+    assert_eq!(shorter.skips, [(130, 140)]);
+    assert_eq!(shorter.blocks[0].target, (100, 130));
+}
+
+#[test]
+fn observed_structures_containment_missing_right_skip_uses_half_open_block_overlap() {
+    for overlap in [0, 1] {
+        // The shorter prefix chain ends at 130 for zero overlap, exactly where
+        // the missing [130,140) skip starts; extending one base is a conflict.
+        let a = containment_views(100, vec![('M', 10), ('N', 10), ('M', 10 + overlap)], '+');
+        let expected = if overlap == 0 {
+            Reconciliation::ContainedPartial
+        } else {
+            Reconciliation::Alternatives
+        };
+        let r = assert_containment_support(&a, expected);
+        let shorter = r
+            .observations
+            .iter()
+            .find(|o| o.query_id == "shorter_chain_view")
+            .unwrap();
+        assert_eq!(shorter.skips, [(110, 120)]);
+        assert_eq!(shorter.blocks.last().unwrap().target.1, 130 + overlap);
+    }
+}
+
+#[test]
+fn observed_structures_containment_reverse_query_checks_genomic_target_blocks() {
+    let mut a = containment_views(100, vec![('M', 30), ('N', 10), ('M', 10)], '-');
+    a.annotation_sources[0].annotation.transcripts[0].genomic_strand = Some('-');
+    let r = assert_containment_support(&a, Reconciliation::Alternatives);
+    let shorter = r
+        .observations
+        .iter()
+        .find(|o| o.query_id == "shorter_chain_view")
+        .unwrap();
+    assert_eq!(shorter.query_to_reference_strand, '-');
+    assert!(shorter.blocks.iter().any(|b| b.target == (100, 130)));
+    // No query interval can overlap genomic [110,120); comparing query rather
+    // than target coordinates would incorrectly label these views contained.
+    assert!(shorter.blocks.iter().all(|b| b.query.1 <= 40));
+    assert!(
+        shorter
+            .comparisons
+            .iter()
+            .flat_map(|c| &c.models)
+            .all(|m| m.model_strand == '-')
+    );
+}
+
+#[test]
+fn observed_structures_containment_missing_left_skip_distinguishes_payload_bounds() {
+    for overlap in [0, 1] {
+        // A suffix chain's first supported block begins at 120 or at 119.
+        // Only the latter overlaps the full view's missing [110,120) skip.
+        let a = containment_views(
+            120 - overlap,
+            vec![('M', 10 + overlap), ('N', 10), ('M', 10)],
+            '+',
+        );
+        let expected = if overlap == 0 {
+            Reconciliation::ContainedPartial
+        } else {
+            Reconciliation::Alternatives
+        };
+        let r = assert_containment_support(&a, expected);
+        let shorter = r
+            .observations
+            .iter()
+            .find(|o| o.query_id == "shorter_chain_view")
+            .unwrap();
+        assert_eq!(shorter.skips, [(130, 140)]);
+        assert_eq!(shorter.blocks[0].target.0, 120 - overlap);
+    }
+}
+
+#[test]
+fn observed_structures_containment_conflicts_are_record_local_and_check_every_shorter_view() {
+    let mut a = containment_views(120, vec![('M', 10), ('N', 10), ('M', 10)], '+');
+    let mut conflict = a.queries[1].clone();
+    conflict.query_id = "conflicting_shorter_view".into();
+    conflict.record.record_index = 1;
+    conflict.query_length = 40;
+    conflict.segments = vec![segment(
+        100,
+        vec![('M', 30), ('N', 10), ('M', 10)],
+        '+',
+        &[],
+    )];
+    a.queries.push(conflict);
+    let r = summarize(&a).unwrap();
+    assert_eq!(r.records.len(), 2);
+    assert_eq!(r.records[0].record.record_index, 0);
+    assert_eq!(
+        r.records[0].reconciliation,
+        Reconciliation::ContainedPartial
+    );
+    assert_eq!(r.records[1].reconciliation, Reconciliation::Agreement);
+
+    // Now both shorter-chain observations belong to this original record.
+    // A single conflicting observation suffices, even with a valid partial view.
+    a.queries[2].record.record_index = 0;
+    assert_containment_support(&a, Reconciliation::Alternatives);
+}
+
+#[test]
+fn observed_structures_containment_checks_nonoptimal_same_chain_witnesses_in_the_record() {
+    let mut a = containment_views(120, vec![('M', 10), ('N', 10), ('M', 10)], '+');
+    // This 25-supported-base competitor loses to the first view's 30-base
+    // mapping, but is still an observation of the same shorter physical chain
+    // present in the other payload view. Its [115,130) block conflicts at s1.
+    a.queries[0].segments.push(segment(
+        115,
+        vec![('M', 15), ('N', 10), ('M', 10)],
+        '+',
+        &[],
+    ));
+    let r = assert_containment_support(&a, Reconciliation::Alternatives);
+    assert_eq!(r.observations.len(), 3);
+    assert_eq!(r.records[0].hypotheses.len(), 2);
+    let nonoptimal = r
+        .observations
+        .iter()
+        .find(|o| o.observed_span == (115, 150))
+        .unwrap();
+    assert!(
+        r.records[0]
+            .hypotheses
+            .iter()
+            .flatten()
+            .all(|id| id != &nonoptimal.observation_id)
+    );
+    assert!(
+        r.records[0]
+            .possible_chains
+            .contains(nonoptimal.observed_junction_chain.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn observed_structures_containment_deletion_span_is_not_supported_retention() {
+    let a = containment_views(
+        100,
+        vec![('M', 10), ('D', 10), ('M', 10), ('N', 10), ('M', 10)],
+        '+',
+    );
+    let r = assert_containment_support(&a, Reconciliation::ContainedPartial);
+    let shorter = r
+        .observations
+        .iter()
+        .find(|o| o.query_id == "shorter_chain_view")
+        .unwrap();
+    // The missing [110,120) skip lies inside the observed span but under D,
+    // never under a supported M/=/X block. Span overlap alone is insufficient.
+    assert_eq!(shorter.observed_span, (100, 150));
+    assert!(
+        shorter
+            .blocks
+            .iter()
+            .all(|b| b.target.1 <= 110 || b.target.0 >= 120)
+    );
+}
+
+#[test]
+fn observed_structures_containment_work_uses_the_existing_total_work_budget() {
+    let mut a = containment_views(100, vec![('M', 30), ('N', 10), ('M', 10)], '+');
+    let complete = summarize(&a).unwrap();
+    assert_eq!(
+        complete.records[0].reconciliation,
+        Reconciliation::Alternatives
+    );
+    assert!(complete.comparison_work > 0);
+    a.budgets.max_total_work = complete.comparison_work;
+    assert_eq!(
+        summarize(&a).unwrap().comparison_work,
+        complete.comparison_work
+    );
+    a.budgets.max_total_work -= 1;
+    let error = summarize(&a).unwrap_err();
+    assert_eq!(error.message, "primer_payload_chain_comparison_budget");
+}
+
 #[test]
 fn observed_structures_repeat_anchors_count_once_but_repeated_names_on_distinct_records_do_not() {
     let mut a = input();
