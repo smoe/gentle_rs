@@ -155,6 +155,15 @@ counts; they are never pooled into the primary score. Individual reads are not
 treated as biological replicates. The report retains censored and missing
 counts and excludes a pair when its evidence is too sparse or too censored.
 
+For each gene and sample, the censoring fraction is
+`right_censored / (observed + right_censored)`; missing rows are reported
+separately and are not in that denominator. The minimum-observed and maximum-
+censoring requirements must pass in both samples of a contrast. A percentage
+of censored rows among **all** rows is a different summary, not this gate.
+Aggregate barcode percentages cannot substitute for per-gene eligibility.
+If no gene passes the prespecified thresholds, report that outcome rather
+than loosening the gate to force a ranking.
+
 The resulting candidates can motivate follow-up around the TP73–MDM2/MDM4
 hypothesis. They do not demonstrate that TP73, MDM2 or MDM4 caused a change.
 Library preparation, read truncation, mapping, transcript selection and the

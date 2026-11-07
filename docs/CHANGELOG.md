@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-07 - Retain Glen's Reported 15/16 Panel Outcome
+
+- Record the owner-relayed 80-gene regular-cDNA audit at `7f667f4d`: no gene
+  passes the prespecified exact-count/censoring gate; no threshold was relaxed.
+  Preserve reported counts/read-length differences and the separate weak A/T
+  signal as attributed results, not independently checked biological evidence.
+- Correct the active handoff: the initial analysis is already completed.
+  After the focused ranking repair check, validate only retained projection
+  tables with `2d2b8b42`; valid-data scoring is unchanged. Do not repeat BAM/
+  FASTQ/model/projection campaigns or relabel historical outputs with a new SHA.
+- Clarify the per-gene observed-plus-censored gate denominator versus all-row
+  percentages. Keep the run adapter, cohort scope and missing provenance
+  explicit; scalable complete intake, calibrated poly(A), other contrasts and
+  scientific acceptance remain separate. No private data, thresholds, runtime
+  code, local Rust, push or dispatch changed.
+- Documentation-only checks: 19 status/contract tests, manual inventory and
+  whitespace checks pass; roadmap remains 400 lines. Existing owner changes
+  to `Cargo.toml`, `paper` and private/untracked files are left untouched.
+
 ## 2026-11-07 - Reject Malformed Detailed RNA Projection Values
 
 - Repair Glen's reproduced `missing/17` and blank `right_censored` admissions

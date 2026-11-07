@@ -7,6 +7,60 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Reported 15/16 Panel Analysis, 2026-11-07
+
+The owner relayed Glen's already completed regular-cDNA comparison at
+`7f667f4d1474fa6c4400e3cd99fb59e82240c4cf`, including `cf4f59d3` and a newly
+prepared Ensembl-116 v2 model from the frozen GTF. Do not ask Glen to repeat
+the initial 15/16 analysis. This was a prespecified 80-gene panel audit through
+a run adapter using GENtle's unchanged UTR geometry on validated panel BAMs,
+not an integrated full-data BAM/CRAM-to-structure-to-UTR execution.
+
+These are owner-forwarded reported results only. No adapter source, commands,
+input/model hashes, raw tables or result manifest accompanied this message;
+Codex has not independently verified the biological data or adapter equivalence.
+Retain those existing small provenance records and per-gene gate tables when
+available, without requesting new large transfers or relabelling old results
+as produced by the later ranking repair.
+
+| Reported cohort | Observed 3-prime | Right-censored | Missing | Total |
+|---|---:|---:|---:|---:|
+| SK-MEL-28 / barcode15 | 946 | 29568 | 84381 | 114895 |
+| WM793 / barcode16 | 2871 | 66704 | 181235 | 250810 |
+
+Glen reports no gene passing the prespecified gate of at least ten observed
+values per cell line and at most 25% censoring, without post-hoc relaxation.
+Observed counts are TP73 6/0, MDM2 10/5 and MDM4 0/4 (15/16); E2F1, TP53,
+TP63 and PATZ1 were reported zero. Observed is a metric status, not a complete
+molecule/UTR or polyadenylation-site confirmation. A no-eligible-gene outcome
+is not a product failure or permission to loosen the thresholds.
+
+The reported 25.735% / 26.595% censored shares use all three statuses as the
+denominator. The unchanged ranking gate uses **censored / (observed + censored)
+per gene and sample**, excluding missing values. For the aggregate counts above
+that second fraction is approximately 96.900% / 95.874%; these global fractions
+cannot themselves prove every per-gene gate failed. Preserve the actual
+per-gene gate table rather than substituting library-wide percentages.
+
+Reported median whole-read lengths are 1549 / 1110 bp for the analyzed 15/16
+cohorts. Keep the panel/read-selection scope explicit; do not extrapolate to
+all barcode reads without the input-universe receipt or interpret a shift as
+gene-specific UTR shortening. Glen's separate terminal A/T signal was weak and
+threshold-dependent, not calibrated poly(A) presence or tail length. Causality,
+biological replication and the later 14/13 and 18/17 contrasts remain separate.
+
+Remaining bounded action: after the owner's push, run only the five ranking
+tests below at a source containing `2d2b8b42`, then read-only validate the
+retained detailed tables with the shared `load()` reader and preserve their
+hashes. The repair changes malformed-input admission, not valid-data scoring.
+If the original tables pass, do not reread BAM/FASTQ, rebuild models, reproject
+or recreate the analysis merely for a new SHA. Keep the original analysis
+attributed to `7f667f4d` plus a separate validation receipt. On refusal, report
+the offending row/status and stop for a scoped correction decision; no silent
+dropping, evidence edits or overwriting historical outputs. A scalable complete
+intake and calibrated poly(A) filter are separate development proposals,
+not work authorized or acceptance achieved by this report.
+
 ## UTR Ranking Row Validation, 2026-11-07
 
 Glen's owner-forwarded scan at exact
@@ -41,10 +95,12 @@ is committed/published, only this small target is needed:
 python3 -m unittest discover -s tests -p test_rank_rna_read_end_genes.py -v
 ```
 
-Normal CI can run the whole read-end scope on Linux/Windows. Use the repaired
-reader before producing real 15/16 rankings; do not silently discard invalid
-rows or edit the original evidence to make an analysis pass. No private-data
-run, new biological approval, local Rust, push or dispatch is authorized here.
+Normal CI can run the whole read-end scope on Linux/Windows. The 15/16 panel
+analysis is already reported completed above: validate its retained tables,
+do not request a fresh full analysis. Do not silently discard invalid rows or
+edit original evidence to make a run pass. This repair adds no private-data or
+biological approval; existing explicitly authorized analysis stays separate.
+No local Rust, push or dispatch is performed here.
 
 ## Slice B Panel Multi-Reference Specificity
 
