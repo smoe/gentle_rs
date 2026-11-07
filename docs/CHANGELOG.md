@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-07 - Reject Malformed Detailed RNA Projection Values
+
+- Repair Glen's reproduced `missing/17` and blank `right_censored` admissions
+  in the one shared gene-ranking reader. Validate status/value before gene
+  filtering and counts: observed/censored values must be nonnegative integers;
+  missing values must be empty. Both ordinary and explicit-contrast rankings
+  refuse invalid files before output creation instead of changing eligibility.
+- Add two refusal regressions across LF/CRLF, quoted/Unicode paths and missing/
+  ambiguous genes, plus a literal valid-zero/count/median control. Preserve
+  source bytes, censored lower bounds and all existing ranking thresholds.
+  Clarify detailed-table versus four-column comparator policy and update the
+  bounded Glen handoff; no real inputs are cleaned or analyzed.
+- Retain Glen's 45/45 RNA and 1/1 Linux Rust-freshness pass at `7f667f4d` as
+  historical source-bound evidence, not acceptance of this later repair.
+  No local Rust, matrix regeneration, push, dispatch or biological approval.
+- Local repair checks: 48 read-end and 20 documentation/checkout tests pass
+  on macOS arm64 / Python 3.15.0, no skips. Valid generated tutorial bytes,
+  manual/status, whitespace and the 400-line roadmap contract are preserved.
+
 ## 2026-11-06 - Import Glen's Canonical Panel-Parity Repair
 
 - Apply Glen / smoe-bot's original generated patch to

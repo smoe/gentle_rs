@@ -72,6 +72,15 @@ The fresh output directory contains:
 - `report.json`: v2 projection policy, exact input hashes, model schema,
   stop-evidence counts and nonclaims.
 
+Both gene-ranking utilities validate every detailed `projections.tsv` row
+before counting it or excluding an unavailable/ambiguous gene assignment.
+`observed` and `right_censored` require a nonnegative integer `value_bp`,
+including valid zero; `missing` requires an exactly empty value. A missing
+censored bound is invalid evidence, not an extra censored count. Refusals
+occur before creating ranking outputs and do not rewrite inputs. This is the
+**detailed-table** contract: the four-column comparator `metrics.tsv` still
+requires blank censored values, with numeric lower bounds kept only in details.
+
 Only saved optimal hypotheses and resolved `exact_full_chain`,
 `exact_partial_chain` or `within_exon` transcript relations are eligible. A UTR
 value is retained across transcript ambiguity only when all eligible paths and

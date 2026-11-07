@@ -17,11 +17,12 @@ SPEC = importlib.util.spec_from_file_location("rank_rna_read_end_genes", ROOT / 
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
+import compare_rna_read_end_gene_contrasts as CONTRASTS
 
 
-def write_projection(path: Path, sample: str, gene_values: dict[str, dict[str, list[tuple[str, str]]]]) -> None:
+def write_projection(path: Path, sample: str, gene_values: dict[str, dict[str, list[tuple[str, str]]]], newline="\n") -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer = csv.writer(handle, delimiter="\t", lineterminator=newline)
         writer.writerow(MODULE.HEADER)
         counter = 0
         for gene, metrics in gene_values.items():
@@ -32,6 +33,78 @@ def write_projection(path: Path, sample: str, gene_values: dict[str, dict[str, l
 
 
 class RankingTests(unittest.TestCase):
+    def assert_refused_before_publication(self, status, value, gene, newline, message):
+        # Inline synthetic rows only; both public ranking writers share this loader.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "projection's \u00e4 input"
+            root.mkdir()
+            invalid, control, sheet = root / "sample2.tsv", root / "sample1.tsv", root / "contrasts.tsv"
+            write_projection(invalid, "sample2", {gene: {"utr3_reach_bp": [
+                ("observed", "20"), ("observed", "22"), (status, value),
+            ]}}, newline)
+            write_projection(control, "sample1", {"GENE": {"utr3_reach_bp": [
+                ("observed", "10"), ("observed", "12"),
+            ]}}, newline)
+            sheet.write_bytes(("\t".join(CONTRASTS.CONTRAST_HEADER) + newline
+                               + "primary\tsample2\tsample1\tsynthetic\tprimary" + newline).encode())
+            before = {path: path.read_bytes() for path in (invalid, control, sheet)}
+            for route in ("ranking", "contrasts"):
+                output = root / route
+                with self.subTest(route=route), self.assertRaisesRegex(ValueError, message):
+                    if route == "ranking":
+                        MODULE.run([control, invalid], "sample2", output, 1, 1.0, 10)
+                    else:
+                        CONTRASTS.run([control, invalid], sheet, "synthetic contrast", output, 1, 1.0, 10)
+                self.assertFalse(output.exists())
+            self.assertEqual(set(root.iterdir()), set(before))
+            self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_missing_requires_blank_value_before_ranking_or_contrast_publication(self):
+        for newline in ("\n", "\r\n"):
+            for gene in ("GENE", "", "GENE,OTHER"):
+                for value in ("17", "0", " "):
+                    with self.subTest(newline=repr(newline), gene=gene, value=value):
+                        self.assert_refused_before_publication(
+                            "missing", value, gene, newline, "missing value must be blank"
+                        )
+
+    def test_observed_and_censored_require_nonnegative_integers_before_publication(self):
+        for newline in ("\n", "\r\n"):
+            for gene in ("GENE", "", "GENE,OTHER"):
+                for status in ("observed", "right_censored"):
+                    for value in ("", "-1", "1.5", "invalid"):
+                        with self.subTest(newline=repr(newline), gene=gene, status=status, value=value):
+                            self.assert_refused_before_publication(
+                                status, value, gene, newline, f"{status} value must be a nonnegative integer"
+                            )
+
+    def test_zero_bounds_and_blank_missing_preserve_counts_and_medians(self):
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                focus, control, sheet = root / "sample2.tsv", root / "sample1.tsv", root / "contrasts.tsv"
+                write_projection(focus, "sample2", {"GENE": {"utr3_reach_bp": [
+                    ("observed", "0"), ("observed", "8"),
+                    ("right_censored", "0"), ("right_censored", "1000"), ("missing", ""),
+                ]}}, newline)
+                write_projection(control, "sample1", {"GENE": {"utr3_reach_bp": [
+                    ("observed", "0"), ("observed", "0"),
+                ]}}, newline)
+                sheet.write_bytes(("\t".join(CONTRASTS.CONTRAST_HEADER) + newline
+                                   + "primary\tsample2\tsample1\tsynthetic\tprimary" + newline).encode())
+                before = {path: path.read_bytes() for path in (focus, control, sheet)}
+                values, counts, _samples = MODULE.load([control, focus])
+                key = ("GENE", "sample2", "utr3_reach_bp")
+                self.assertEqual(values[key], [0, 8])
+                self.assertEqual(dict(counts[key]), {"observed": 2, "right_censored": 2, "missing": 1})
+                rows, _samples = MODULE.summarize([control, focus], "sample2", 2, 0.5)
+                row = next(row for row in rows if row["metric"] == "utr3_reach_bp")
+                self.assertEqual((row["median_sample_delta_bp"], row["ranking_status"]), (4.0, "eligible"))
+                rows, _samples, _contrasts = CONTRASTS.summarize([control, focus], sheet, "synthetic contrast", 2, 0.5)
+                row = next(row for row in rows if row["metric"] == "utr3_reach_bp")
+                self.assertEqual((row["primary_delta_median_bp"], row["ranking_status"]), (4.0, "eligible"))
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+
     def test_focus_sample_ranks_3prime_shift_and_keeps_controls(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

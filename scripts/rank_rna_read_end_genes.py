@@ -58,29 +58,28 @@ def load(paths: list[Path]):
                 samples.add(sample)
                 if metric not in METRICS:
                     raise fail(f"unsupported metric at {path}:{row_number}")
-                genes = row["gene_ids"].split(",") if row["gene_ids"] else []
-                if len(genes) != 1:
-                    continue
+                # A non-rankable gene assignment must not hide malformed evidence.
                 status = row["observation_status"]
                 if status not in {"observed", "right_censored", "missing"}:
                     raise fail(f"unsupported status at {path}:{row_number}")
+                value = None
+                if status == "missing":
+                    if row["value_bp"] != "":
+                        raise fail(f"missing value must be blank at {path}:{row_number}")
+                else:
+                    try:
+                        value = int(row["value_bp"])
+                    except (TypeError, ValueError) as exc:
+                        raise fail(f"{status} value must be a nonnegative integer at {path}:{row_number}") from exc
+                    if value < 0:
+                        raise fail(f"{status} value must be a nonnegative integer at {path}:{row_number}")
+                genes = row["gene_ids"].split(",") if row["gene_ids"] else []
+                if len(genes) != 1:
+                    continue
                 key = (genes[0], sample, metric)
                 counts[key][status] += 1
                 if status == "observed":
-                    try:
-                        value = int(row["value_bp"])
-                    except ValueError as exc:
-                        raise fail(f"non-integer observed value at {path}:{row_number}") from exc
-                    if value < 0:
-                        raise fail(f"negative observed value at {path}:{row_number}")
                     values[key].append(value)
-                elif row["value_bp"]:
-                    # Censored values are lower bounds, not exact observations.
-                    try:
-                        if int(row["value_bp"]) < 0:
-                            raise ValueError
-                    except ValueError as exc:
-                        raise fail(f"invalid censored bound at {path}:{row_number}") from exc
     return values, counts, sorted(samples)
 
 

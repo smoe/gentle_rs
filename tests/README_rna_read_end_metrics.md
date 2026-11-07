@@ -17,3 +17,10 @@ both strands, split/included/separate stops, missing candidate geometry, legacy
 models, true anchored zero, censoring and actual Python CLI subprocesses under
 LF/CRLF and spaced/apostrophe/Unicode paths. They establish no Rust/GUI/native
 Windows or biological acceptance on a macOS run.
+
+`test_rank_rna_read_end_genes.py` additionally creates inline synthetic detailed
+rows for status/value validation under LF/CRLF and quoted/Unicode paths. Both
+public ranking writers must refuse malformed rows before creating outputs,
+even when gene assignment is unavailable/ambiguous. Literal controls retain
+observed zero, a zero censored bound and blank missing values; censored bounds
+never enter the median. No external data or persistent fixture is needed.

@@ -7,6 +7,45 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## UTR Ranking Row Validation, 2026-11-07
+
+Glen's owner-forwarded scan at exact
+`7f667f4d1474fa6c4400e3cd99fb59e82240c4cf` reports 45/45 read-end tests and
+1/1 Rust `parity_matrix_freshness` passing. Preserve that source-bound Linux
+return; it is not a Rust run of this subsequent Python-only repair. No new
+logs/archive were supplied with this scan, so those execution results remain
+attributed to Glen's report rather than independently revalidated here.
+
+The scan found two malformed detailed-row cases accepted by the common
+`rank_rna_read_end_genes.load()` reader: `missing/17` and a blank
+`right_censored` bound. Codex reproduced both. The repaired loader validates
+status/value before gene filtering or counts: observed/censored rows need a
+nonnegative integer, missing rows an empty cell. Both ranking routes use that
+one reader. True observed zero and censored zero remain valid; lower bounds
+are not median observations. No threshold, contrast, nomination, model schema,
+four-column comparator or generated-fixture output is changed.
+
+Focused regressions exercise LF/CRLF, spaced/apostrophe/Unicode paths,
+unavailable/multiple gene IDs, both public ranking writers, refusal before
+output creation and unchanged input bytes. The ordinary Python CI discovery
+already includes these tests. Local repair checks on macOS arm64 / Python
+3.15.0 pass 48 read-end tests and 20 documentation/checkout tests (68 total,
+no failures/skips), including unchanged synthetic generation under LF/CRLF.
+Manual/status and whitespace checks pass; the roadmap stays at 400 lines.
+These are worktree checks based on `7f667f4d`, not a new Rust or Windows pass.
+Glen need not repeat completed reader, BLAST,
+45-test or parity campaigns. For an independent focused check after the fix
+is committed/published, only this small target is needed:
+
+```sh
+python3 -m unittest discover -s tests -p test_rank_rna_read_end_genes.py -v
+```
+
+Normal CI can run the whole read-end scope on Linux/Windows. Use the repaired
+reader before producing real 15/16 rankings; do not silently discard invalid
+rows or edit the original evidence to make an analysis pass. No private-data
+run, new biological approval, local Rust, push or dispatch is authorized here.
+
 ## Slice B Panel Multi-Reference Specificity
 
 Glen's initial 2026-11-06 return confirmed the projection defect at
