@@ -19,6 +19,10 @@ length, clip, A/T and signal-estimate toggles are display choices in the hashed
 view spec, not a biological score or a change in censoring. Advanced enumerated
 filters can be supplied in an explicit inspect command; Clear all filters
 removes them deliberately. Exports reuse the same engine page and SVG renderer.
+Long labels/statuses wrap onto additional lines. Virtual lanes use cached
+renderer heights rather than squeezing the text into a fixed-height image;
+export page-height/pixel caps still apply, so reduce the explicit page size if
+needed. Neither wrapping nor paging changes the original denominators.
 
 Jobs use the existing managed service without a live-project commit. A stop
 request is cooperative, not confirmed termination; await the job receipt. Pure

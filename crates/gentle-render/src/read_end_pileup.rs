@@ -4,7 +4,7 @@ use crate::transcript_presentation::Frame;
 use serde::{Deserialize, Serialize};
 use svg::{
     Node,
-    node::element::{Line, Rectangle, Text, Title},
+    node::element::{Group, Line, Rectangle, Text, Title},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,11 +42,47 @@ fn text(x: f64, y: f64, value: &str) -> Text {
         .set("x", x)
         .set("y", y)
         .set("font-size", 12)
+        .set("font-family", "monospace")
+        .set("textLength", value.chars().count() as f64 * 8.0)
+        .set("lengthAdjust", "spacingAndGlyphs")
         .set("fill", "#172b34")
 }
 
-/// Deterministic SVG; dimensions depend only on the explicit page, never the host fonts.
-pub fn render(scene: &Scene) -> Result<String, String> {
+fn wrapped(value: &str, width: u32) -> Vec<String> {
+    let columns = (width / 8).max(1) as usize;
+    value
+        .split('\n')
+        .flat_map(|line| {
+            let chars: Vec<_> = line.chars().collect();
+            if chars.is_empty() {
+                vec![String::new()]
+            } else {
+                chars
+                    .chunks(columns)
+                    .map(|chunk| chunk.iter().collect())
+                    .collect()
+            }
+        })
+        .collect()
+}
+
+fn block(x: f64, y: f64, lines: &[String]) -> Group {
+    let mut group = Group::new();
+    for (index, line) in lines.iter().enumerate() {
+        if !line.is_empty() {
+            group.append(text(x, y + index as f64 * 18.0, line));
+        }
+    }
+    group
+}
+
+fn row_height(row: &Row, width: u32) -> u32 {
+    let label = wrapped(&row.label, 185).len() as u32;
+    let status = wrapped(&row.off_axis, width - 230).len() as u32;
+    (31 + (label - 1) * 18).max(54 + (status - 1) * 18)
+}
+
+fn validate(scene: &Scene) -> Result<(), String> {
     if scene.start >= scene.end
         || !matches!(scene.strand, -1 | 1)
         || !(900..=8000).contains(&scene.width)
@@ -54,8 +90,55 @@ pub fn render(scene: &Scene) -> Result<String, String> {
     {
         return Err("read_end_pileup_render_limits".into());
     }
-    let header = 30.0 + 19.0 * scene.header.len() as f64;
-    let height = header + 95.0 + scene.rows.len() as f64 * 54.0;
+    Ok(())
+}
+
+/// Cache these page-local heights once to keep native virtualization font-independent.
+pub fn lane_heights(scene: &Scene) -> Result<Vec<u32>, String> {
+    validate(scene)?;
+    Ok(scene
+        .rows
+        .iter()
+        .map(|row| row_height(row, scene.width))
+        .collect())
+}
+
+fn row_group(frame: Frame, row: &Row, width: u32, top: f64) -> Group {
+    let mut group = Group::new().add(Title::new(&row.details));
+    group.append(block(10.0, top + 17.0, &wrapped(&row.label, 185)));
+    draw(&mut group, frame, &row.bands, top + 13.0);
+    group.append(block(
+        205.0,
+        top + 40.0,
+        &wrapped(&row.off_axis, width - 230),
+    ));
+    group
+}
+
+/// Deterministic SVG; dimensions depend only on the explicit page, never the host fonts.
+pub fn render(scene: &Scene) -> Result<String, String> {
+    let heights = lane_heights(scene)?;
+    let header_lines: Vec<_> = scene
+        .header
+        .iter()
+        .flat_map(|line| wrapped(line, scene.width - 20))
+        .collect();
+    let title = wrapped(
+        &format!(
+            "{} {}..{} ({:+} transcript direction)",
+            scene.contig, scene.start, scene.end, scene.strand
+        ),
+        scene.width - 20,
+    );
+    let legend = wrapped(
+        "N = solid; other gap = dashed; segment link = dotted. Clips/evidence below axis, not aligned bases.",
+        scene.width - 20,
+    );
+    let title_y = 40.0 + header_lines.len() as f64 * 18.0;
+    let model_y = title_y + title.len() as f64 * 18.0 + 8.0;
+    let legend_y = model_y + 32.0;
+    let rows_y = legend_y + legend.len() as f64 * 18.0 + 8.0;
+    let height = rows_y + heights.iter().map(|h| f64::from(*h)).sum::<f64>() + 8.0;
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -74,29 +157,19 @@ pub fn render(scene: &Scene) -> Result<String, String> {
                 .set("height", "100%")
                 .set("fill", "#ffffff"),
         );
-    for (i, line) in scene.header.iter().enumerate() {
-        document.append(text(10.0, 22.0 + i as f64 * 19.0, line));
-    }
-    document.append(text(
-        10.0,
-        header + 15.0,
-        &format!(
-            "{} {}..{} ({:+} transcript direction)",
-            scene.contig, scene.start, scene.end, scene.strand
-        ),
-    ));
-    draw(&mut document, frame, &scene.model, header + 36.0);
-    document.append(text(10.0, header + 65.0, "N = solid; other gap = dashed; segment link = dotted. Clips/evidence below axis, not aligned bases."));
-    for (i, row) in scene.rows.iter().enumerate() {
-        let y = header + 93.0 + i as f64 * 54.0;
-        document.append(text(10.0, y, &row.label).add(Title::new(&row.details)));
-        draw(&mut document, frame, &row.bands, y - 4.0);
-        document.append(text(205.0, y + 19.0, &row.off_axis).add(Title::new(&row.details)));
+    document.append(block(10.0, 22.0, &header_lines));
+    document.append(block(10.0, title_y, &title));
+    draw(&mut document, frame, &scene.model, model_y);
+    document.append(block(10.0, legend_y, &legend));
+    let mut top = rows_y;
+    for (row, row_height) in scene.rows.iter().zip(heights) {
+        document.append(row_group(frame, row, scene.width, top));
+        top += f64::from(row_height);
     }
     Ok(document.to_string())
 }
 
-fn draw(doc: &mut svg::Document, frame: Frame, bands: &[Band], y: f64) {
+fn draw(doc: &mut impl Node, frame: Frame, bands: &[Band], y: f64) {
     for band in bands {
         if let Some((x, width)) = frame.half_open(band.interval.0, band.interval.1) {
             match band.kind.as_str() {
@@ -140,8 +213,8 @@ fn draw(doc: &mut svg::Document, frame: Frame, bands: &[Band], y: f64) {
 }
 
 /// Compact model row for the same horizontal frame as virtualized lanes.
-pub fn render_model(scene: &Scene) -> Result<String, String> {
-    let model = Scene {
+fn model_scene(scene: &Scene) -> Scene {
+    Scene {
         contig: scene.contig.clone(),
         start: scene.start,
         end: scene.end,
@@ -158,19 +231,24 @@ pub fn render_model(scene: &Scene) -> Result<String, String> {
             ),
             bands: scene.model.clone(),
         }],
-    };
-    render_lane(&model, 0)
+    }
+}
+
+/// Model row with the same wrapping and genomic frame as the virtualized lanes.
+pub fn render_model(scene: &Scene) -> Result<String, String> {
+    render_lane(&model_scene(scene), 0)
+}
+
+/// Height of the model row when a long contig description needs multiple lines.
+pub fn model_height(scene: &Scene) -> Result<u32, String> {
+    Ok(lane_heights(&model_scene(scene))?[0])
 }
 
 /// One visible sublane, using exactly the same frame and drawing code as the complete SVG.
 pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
-    if scene.start >= scene.end
-        || !matches!(scene.strand, -1 | 1)
-        || !(900..=8000).contains(&scene.width)
-    {
-        return Err("read_end_pileup_render_limits".into());
-    }
+    validate(scene)?;
     let row = scene.rows.get(index).ok_or("read_end_pileup_lane_range")?;
+    let height = row_height(row, scene.width);
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -180,24 +258,92 @@ pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
         label_left: 10.0,
     };
     let mut document = svg::Document::new()
-        .set("viewBox", (0, 0, scene.width, 54))
+        .set("viewBox", (0, 0, scene.width, height))
         .set("width", scene.width)
-        .set("height", 54)
+        .set("height", height)
         .add(
             Rectangle::new()
                 .set("width", "100%")
                 .set("height", "100%")
                 .set("fill", "#ffffff"),
         );
-    document.append(text(10.0, 17.0, &row.label).add(Title::new(&row.details)));
-    draw(&mut document, frame, &row.bands, 13.0);
-    document.append(text(205.0, 40.0, &row.off_axis).add(Title::new(&row.details)));
+    document.append(row_group(frame, row, scene.width, 0.0));
     Ok(document.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_end_long_labels_wrap_without_loss_or_crossing_page_or_lane_bounds() {
+        let long = "status observed 0 bp / right_censored / missing / \u{3b1} ".repeat(20);
+        for width in [900, 1400, 8000] {
+            let scene = Scene {
+                contig: "synthetic_contig".repeat(20),
+                start: 100,
+                end: 200,
+                strand: 1,
+                width,
+                header: vec![long.clone()],
+                model: vec![],
+                rows: vec![Row {
+                    label: long.clone(),
+                    details: "complete synthetic provenance".into(),
+                    off_axis: long.clone(),
+                    bands: vec![],
+                }],
+            };
+            assert_eq!(wrapped(&long, width - 230).concat(), long);
+            let heights = lane_heights(&scene).unwrap();
+            assert!(heights[0] > 54);
+            for svg in [
+                render(&scene).unwrap(),
+                render_lane(&scene, 0).unwrap(),
+                render_model(&scene).unwrap(),
+            ] {
+                let numeric = |tag: &str, name: &str| -> f64 {
+                    let pattern = format!("{name}=\"");
+                    tag.split(pattern.as_str())
+                        .nth(1)
+                        .unwrap()
+                        .split('"')
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap()
+                };
+                let root = svg.split('>').next().unwrap();
+                let height = numeric(root, "height");
+                for text in svg.split("<text ").skip(1) {
+                    let tag = text.split('>').next().unwrap();
+                    assert!(
+                        numeric(tag, "x") + numeric(tag, "textLength") <= f64::from(width) - 10.0
+                    );
+                    assert!(numeric(tag, "y") <= height - 8.0);
+                }
+                assert_eq!(svg.matches("<svg").count(), 1);
+            }
+            let lane = render_lane(&scene, 0).unwrap();
+            let shown: String = lane
+                .split("<text ")
+                .skip(1)
+                .map(|part| {
+                    part.split_once('>')
+                        .unwrap()
+                        .1
+                        .split("</text>")
+                        .next()
+                        .unwrap()
+                        .trim_matches('\n')
+                })
+                .collect();
+            assert_eq!(shown, format!("{long}{long}"));
+            assert!(lane.contains("complete synthetic provenance"));
+            assert_eq!(lane, render_lane(&scene, 0).unwrap());
+        }
+    }
+
     #[test]
     fn read_end_virtual_lane_uses_the_same_block_frame_without_rendering_hidden_lanes() {
         let row = Row {
@@ -223,6 +369,7 @@ mod tests {
             };
             let full = render(&scene).unwrap();
             let lane = render_lane(&scene, 0).unwrap();
+            assert_eq!(lane_heights(&scene).unwrap(), vec![54]);
             let x = |text: &str| {
                 text.split("<rect ")
                     .skip(1)

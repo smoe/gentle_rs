@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from scripts import prepare_read_end_rehearsal as rehearsal
 
@@ -112,6 +113,11 @@ class ReadEndRehearsalProcess(unittest.TestCase):
             rehearsal.bind_pileup(root)
             run("rna-reads", "read-ends", "@" + str(root / "inspect-command.json"))
             run("rna-reads", "read-ends", "@" + str(root / "export-command.json"))
+            svg = ET.parse(root / "exports/artifacts/pileup.svg").getroot()
+            width, height = float(svg.attrib["width"]), float(svg.attrib["height"])
+            for text in svg.iter("{http://www.w3.org/2000/svg}text"):
+                self.assertLessEqual(float(text.attrib["x"]) + float(text.attrib["textLength"]), width - 10)
+                self.assertLessEqual(float(text.attrib["y"]), height - 8)
             before = {p.name: p.read_bytes() for p in (root / "exports/artifacts").iterdir()}
             run("rna-reads", "read-ends", "@" + str(root / "export-command.json"), success=False)
             self.assertEqual(before, {p.name: p.read_bytes() for p in (root / "exports/artifacts").iterdir()})

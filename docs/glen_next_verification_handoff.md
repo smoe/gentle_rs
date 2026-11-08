@@ -9,6 +9,10 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Read-End Integration Plan, 2026-11-08
 
+**Active retry scope:** use the [Linux return and bounded repair checklist](#glen-linux-read-end-return-and-bounded-repairs-2026-11-08).
+The earlier compile-failure/retry instructions below are historical; the
+generator and listed downstream scopes have since executed at `7c5214ec`.
+
 The [reconciled plan](rna_read_end_integration_plan.md) supersedes only the earlier
 five-step organization. OD1-OD6 retain their documented defaults. Do not execute
 future-step commands merely because a plan authorizes development: each step's
@@ -16,7 +20,83 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Glen Linux Read-End Return And Bounded Repairs, 2026-11-08
+
+Glen tested `7c5214ec4aa0a28564edf4b7234a1f8386393f90` on Debian Linux x86_64,
+Rust/Cargo 1.97.1, Python 3.14.10, locked default features unless noted, one job,
+incremental off and an isolated target. The archive SHA-256 is
+`560fbf7961d8a9519703bfd329236e1ef23ddb532220ac5e900956c4dde98f37`;
+all 100 outer-manifest entries and the 38-entry tutorial submanifest verify.
+Source-matched CLI SHA-256:
+`696c40660f9dfca7aa06f12e341b16aacc108943f0f06c1760dc52ef345addd7`.
+Lockfile SHA-256: `718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+
+Retain these scoped passes, not a new all-platform or scientific verdict:
+canonical generator; registry 29/29 and freshness 1/1 **after generation**;
+default test-target/headless compilation; read-end 47/47; renderer 2/2;
+supervisor 4/4; async cancellation 2/2; glossary 16/16; script-interface actual
+JS/Lua/MCP 29/29; tutorial 07.01 actual-process 6/6. The retained five exports
+and no-clobber refusal created no project state. Filters overlap; do not sum.
+The already-present local matrix diff is byte-identical to Glen's canonical
+patch (only the two read-end rows and adapter counts).
+
+Selection is **not accepted**: the default group is 6 passed/1 failed (including
+the unconfigured real-tool early return); the explicit samtools 1.24 test is
+0/1. The synthetic CRAM FASTA is 2016 bytes, exceeding its 1024-byte fingerprint
+cap. The existing owner/Claude test edit raises that cap, not a production limit.
+The native stub's existing test-only 30-second timeout is retained separately
+from the production request's explicit timeout.
+
+Source localization corrects the report's binary-input interpretation: in the
+BAM branch, the exact `indexed_locus_invalid utf-8 ...` diagnostic can only come
+from decoding `samtools --version` stdout, before either `view` command. SAM
+decoder errors have the distinct `observed_sam_text_utf8` code. The archive does
+not retain raw version stdout, so its invalid byte's upstream origin is unknown.
+The new repair preserves such diagnostic bytes losslessly as explicitly labelled
+ASCII escapes; valid UTF-8 stays unchanged. SAM and CRAM-header decoding remain
+strict. Two new selection regressions cover version bytes, unchanged tool-name
+requirements and refusal of malformed SAM through the native stub.
+
+The retained PNG also demonstrates overflowing labels. Shared SVG text now
+wraps at fixed, explicit glyph advances; row/header heights grow without
+discarding text. Native lanes cache those renderer heights once per loaded
+page and remain virtualized, with the same genomic frame. JSON/TSV, scientific
+values and denominators are unchanged. Existing raster/output caps remain;
+request a smaller explicit page if its taller output exceeds those caps.
+One new renderer regression covers 900/1400/8000-px bounds, Unicode, complete
+text and lane/full/model layout; the actual-CLI companion now checks SVG bounds.
+These new Rust/native changes are authored, **not compiled/run by Codex**.
+Local repair checks: five Python source/rehearsal tests and one scoped LF/CRLF
+matrix checkout test pass; the actual-CLI companion is skipped without a new
+source-matched binary. Documentation/manual/maturity and Rust parsing checks
+pass, not a Rust/runtime verdict.
+
+After the next owner push, record the actual integrated SHA and an explicit
+run-owned target. Run only the affected scope (require nonzero test counts):
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 indexed_locus::tests -- --test-threads=1
+GENTLE_TEST_SAMTOOLS=/absolute/configured/samtools cargo test --locked --lib -j1 indexed_locus_optional_real_samtools -- --test-threads=1 --nocapture
+cargo test --locked -p gentle-render -j1 read_end -- --test-threads=1
+GENTLE_READ_END_BIN_DIR=/absolute/same-source/bin python3 -m unittest tests.test_read_end_rehearsal.ReadEndRehearsalProcess -v
+```
+
+Build/provide a same-source CLI externally for that last check; the missing
+binary skip is not acceptance. The selection group now authors nine tests on
+Unix/eight on Windows, one still opt-in; the renderer filter authors three.
+Retain BAM and CRAM results
+separately, version-output bytes/hash and actual tool version; CRAM must reach
+its reference/FAI/fallback assertions. Review fresh SVG/PNG/PDF at 1400 px and
+native lane heights/readability/cancellation where a display is available.
+Windows path/handle and full normal CI remain separate. Do not repeat the
+completed 47-test/VM/MCP/glossary/supervisor/biological campaigns merely because
+this return records them. No private data, live model, package or publication.
+
 ## Read-End Compile-Gate Return And Retry, 2026-11-08
+
+Historical return and retry, superseded by the successful generator run above.
 
 Glen tested `1d5eed33bcd58460f93dd45f90d85588e9fb5859` on Debian Linux x86_64
 with Rust/Cargo 1.97.1, Python 3.14.10, one Cargo job, incremental disabled and
@@ -53,7 +133,41 @@ parity/freshness and new read-end scope below, including test-target compilation
 Keep Windows, native GUI and real configured samtools separately reported.
 Do not repeat completed Python/reader/BLAST/containment or real-barcode analyses.
 
+### Local macOS Execution, 2026-11-08
+
+Claude ran the repaired source at `7c5214ec` on macOS arm64 (Darwin 27.2,
+rustc 1.101.0-nightly, `--locked`, Cargo.lock SHA-256
+`718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`, bio 4.2.2)
+with two uncommitted test-only edits to
+`src/observed_transcript_structures/indexed_locus_tests.rs`:
+
+- fixture `timeout_ms` 2000 -> 30000: the first launch of each freshly compiled
+  stub exceeded 2 s (`samtools version exceeded the 2 second timeout`), which
+  also masked the expected `tool_refused`/`byte limit` messages;
+- FASTA/FAI fingerprint cap 1024 -> 1 MiB: the 2016-byte synthetic FASTA
+  deterministically failed `indexed_locus_hash_byte_budget` on every platform.
+
+Results (exit 0 unless noted): `cargo check --locked --tests`; headless
+`--no-default-features` lib and `gentle_cli`/`gentle_mcp` (26 pre-existing
+dead-code warnings); `-p gentle-render --tests`; `--features script-interfaces
+--lib --tests`. Tests: `read_end` 47/47, `supervised_process::tests` 4/4,
+`indexed_locus::tests` 7/7 twice (the real-samtools test returned early without
+`GENTLE_TEST_SAMTOOLS`), `async_blast_probe_cancellation` 2/2, `glossary_` 16/16,
+`gentle-render read_end` 2/2, script-interfaces `read_end_` 29/29,
+`capability_registry_parity` 29/29 and `parity_matrix_freshness` 1/1 after the
+canonical `parity-matrix-generate` (two new rows: `rna-reads read-ends`,
+`RnaReadEnds`). The actual CLI rehearsal
+`GENTLE_READ_END_BIN_DIR=target/debug python3 -m unittest discover -s tests -p
+'test_read_end_rehearsal.py'` passed 6/6 without a skip. The first parity run
+failed only because the disk was full (linker); it passed after freeing space.
+
+Still open: Linux and Windows CI at the pushed SHA, real configured samtools,
+native GUI responsiveness/cancellation, Windows handles and full normal CI.
+
 ## Native Read-End Viewer And Migrated 07.01, 2026-11-08
+
+Historical authoring checklist; use the active bounded-repair scope above rather
+than repeating the now-completed Linux runtime campaigns.
 
 Steps 1-6 are source-implemented, not runtime/native accepted. Preserve OD1-OD6.
 No local Rust build/check/test, live model, private data or screenshot capture

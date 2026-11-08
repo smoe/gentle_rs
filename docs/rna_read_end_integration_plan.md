@@ -41,12 +41,12 @@ remaining acceptance, not an inherited pass.
 | Step | Deliverable | Implementation / Acceptance |
 |---|---|---|
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
-| 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented over `1df2db13`; 20 authored Rust tests unrun, 31+6 shared cases checked by Python in LF/CRLF |
-| 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Pure records/functions implemented; 8 authored Rust tests unrun; no file/service route yet |
-| 3 | Engine-owned pileup/view and deterministic headless renderer | Pure records/view/SVG implemented; 6 root and 1 renderer Rust tests authored, unrun; file/export/native gates pending |
-| 4 | Shared supervised process and bounded configured samtools ingress | Implemented private selection/intake seam and consolidated supervisors; Rust/native/tool checks unrun |
-| 5 | Authenticated shared commands, immutable exports and discovery | Implemented shared operation/parser/service and managed file-only policy; canonical Rust parity generation and all Rust/process acceptance pending externally |
-| 6 | Thin virtualized GUI and migrated synthetic tutorial | Implemented reviewed native tab and migrated 07.01; 3 GUI/1 renderer/1 cooperative Rust controls authored, unrun; source/catalog checks pass, native acceptance pending |
+| 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented; included in Glen's scoped Linux read-end pass at `7c5214ec`; no biological/platform-wide acceptance |
+| 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Implemented and service-connected; included in the scoped Linux pass; no inferred basecalls or real-signal acceptance |
+| 3 | Engine-owned pileup/view and deterministic headless renderer | Linux read-end/renderer passes before wrapping; new layout regression and fresh exports pending |
+| 4 | Shared supervised process and bounded configured samtools ingress | Supervisor passes; selection/real-tool failures retained; fixture/version repairs and new regressions await external execution |
+| 5 | Authenticated shared commands, immutable exports and discovery | Generator, generated-tree parity, VM/MCP and actual CLI rehearsal pass at `7c5214ec`; affected later-source export checks pending |
+| 6 | Thin virtualized GUI and migrated synthetic tutorial | Source/helper/rehearsal evidence retained; cached wrapped lane heights need fresh tests/native review; native acceptance pending |
 
 ### External Compile-Gate Return, 2026-11-08
 
@@ -63,6 +63,34 @@ the repaired pushed source before the remaining checklist. Archive integrity
 and the exact retry boundary are recorded in the
 [consolidated handoff](glen_next_verification_handoff.md#read-end-compile-gate-return-and-retry-2026-11-08).
 No implementation scope, biological contract or prior acceptance is changed.
+
+### Local macOS Execution, 2026-11-08
+
+Claude compiled and ran `7c5214ec` on macOS arm64 (rustc 1.101.0-nightly,
+`--locked`, lockfile with bio 4.2.2) with two test-only fixes to
+`indexed_locus_tests.rs`: the fixture stub timeout (2 s was shorter than the
+first launch of a freshly compiled stub) and a 1 KiB hash cap that refused the
+2016-byte synthetic FASTA. The canonical generator then produced the matrix diff
+(two new rows plus counts). Counts are in the
+[handoff](glen_next_verification_handoff.md#local-macos-execution-2026-11-08).
+This is one platform, not CI, Windows, real-samtools or native acceptance.
+
+### Glen Linux Return And Remaining Repairs, 2026-11-08
+
+At `7c5214ec`, Glen's canonical generation and generated-tree registry/freshness,
+default/headless checks, read-end core/services, renderer, supervisor, glossary,
+actual JS/Lua/MCP and CLI tutorial 07.01 scopes pass. The imported matrix diff
+matches his patch exactly. Preserve those receipts rather than repeating their
+campaigns. The [active handoff](glen_next_verification_handoff.md#glen-linux-read-end-return-and-bounded-repairs-2026-11-08)
+records counts, hashes and the narrowed retry.
+
+Step 4 remains blocked by the synthetic FASTA fingerprint cap and the real
+samtools test's version-output UTF-8 failure. Preserve the existing test cap/
+timeout fixes; the new lossless diagnostic escaping does not weaken SAM or CRAM
+validation. Step 6/export presentation also needs fresh acceptance after shared
+text wrapping and cached virtual-lane height changes. These bounded repairs
+have new regressions but no Codex Rust/native execution. Windows, native GUI,
+real BAM/CRAM, normal CI and scientific acceptance are not closed by the passes.
 
 ## Open Owner Decisions
 

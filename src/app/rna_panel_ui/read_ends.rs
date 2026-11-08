@@ -23,6 +23,9 @@ pub(super) struct UiState {
     error: Option<String>,
     page: Option<pileup::Page>,
     scene: Option<gentle_render::read_end_pileup::Scene>,
+    lane_heights: Vec<u32>,
+    max_lane_height: f32,
+    model_height: f32,
     request_text: String,
 }
 impl Default for UiState {
@@ -61,6 +64,9 @@ impl Default for UiState {
             error: None,
             page: None,
             scene: None,
+            lane_heights: vec![],
+            max_lane_height: 54.0,
+            model_height: 54.0,
             request_text: String::new(),
         }
     }
@@ -144,11 +150,17 @@ impl GENtleApp {
                         let scene: gentle_render::read_end_pileup::Scene =
                             serde_json::from_value(value["scene"].clone())
                                 .map_err(|e| e.to_string())?;
-                        Ok::<_, String>((page, scene))
+                        let heights = gentle_render::read_end_pileup::lane_heights(&scene)?;
+                        let model_height = gentle_render::read_end_pileup::model_height(&scene)?;
+                        Ok::<_, String>((page, scene, heights, model_height))
                     })();
                     match loaded {
-                        Ok((page, scene)) => {
+                        Ok((page, scene, heights, model_height)) => {
                             state.view_dirty = !matches_draft(state, &page.view_sha256);
+                            state.max_lane_height =
+                                heights.iter().copied().max().unwrap_or(54) as f32;
+                            state.lane_heights = heights;
+                            state.model_height = model_height as f32;
                             state.page = Some(page);
                             state.scene = Some(scene);
                         }
@@ -461,14 +473,15 @@ impl GENtleApp {
                             page.report_sha256, page.view_sha256
                         );
                         ui.add(
-                            egui::Image::from_bytes(id, svg.into_bytes())
-                                .fit_to_exact_size(egui::vec2(scene.width as f32, 54.0)),
+                            egui::Image::from_bytes(id, svg.into_bytes()).fit_to_exact_size(
+                                egui::vec2(scene.width as f32, state.model_height),
+                            ),
                         );
                     }
                     egui::ScrollArea::vertical()
                         .id_salt("read_end_virtual_lanes")
                         .max_height(ui.available_height().max(1.0))
-                        .show_rows(ui, 54.0, scene.rows.len(), |ui, range| {
+                        .show_rows(ui, state.max_lane_height, scene.rows.len(), |ui, range| {
                             ui.set_min_width(scene.width as f32);
                             for index in range {
                                 if let Ok(svg) =
@@ -478,14 +491,17 @@ impl GENtleApp {
                                         "bytes://read-end-{}-{}-{index}.svg",
                                         page.report_sha256, page.view_sha256
                                     );
-                                    ui.add(
-                                        egui::Image::from_bytes(id, svg.into_bytes())
-                                            .fit_to_exact_size(egui::vec2(
-                                                scene.width as f32,
-                                                54.0,
-                                            )),
-                                    )
-                                    .on_hover_text(&scene.rows[index].details);
+                                    ui.vertical(|ui| {
+                                        ui.set_min_height(state.max_lane_height);
+                                        ui.add(
+                                            egui::Image::from_bytes(id, svg.into_bytes())
+                                                .fit_to_exact_size(egui::vec2(
+                                                    scene.width as f32,
+                                                    state.lane_heights[index] as f32,
+                                                )),
+                                        )
+                                        .on_hover_text(&scene.rows[index].details);
+                                    });
                                 }
                             }
                         });

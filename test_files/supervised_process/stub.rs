@@ -10,6 +10,15 @@ fn main() {
             stdout
                 .write_all(b"samtools 1.25 synthetic\nUsing htslib 1.25 synthetic\n")
                 .unwrap();
+            if std::env::current_exe()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("non-utf8-version")
+            {
+                stdout.write_all(b"Build flags: \xff\\path\n").unwrap();
+            }
         }
         "view" => {
             let args: Vec<_> = std::env::args().skip(2).collect();

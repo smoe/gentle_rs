@@ -1,5 +1,36 @@
 # GENtle Changelog
 
+## 2026-11-08 - Retain Glen's Read-End Passes And Repair Diagnostic/Text Boundaries
+
+- Verify Glen's `7c5214ec` archive, its 100-entry manifest and 38-entry tutorial
+  submanifest. Preserve Linux generation, generated-tree parity, default/headless,
+  read-end/service/VM/MCP/CLI passes at their actual source; the existing local
+  canonical matrix patch is byte-identical. See the active Glen handoff.
+- Localize the real BAM attempt's UTF-8 failure to `samtools --version` stdout,
+  not binary alignment decoding. Preserve invalid diagnostic bytes with explicit
+  reversible ASCII escapes, keep valid UTF-8 unchanged and retain strict SAM/
+  CRAM-header decoding. Add native-stub and tool-metadata regressions. Preserve
+  the owner's existing synthetic FASTA cap and native-stub timeout repairs.
+- Wrap complete pileup text with deterministic glyph advances and grow SVG/
+  native lane heights without changing scientific values, JSON/TSV or geometry.
+  Add layout bounds/text-preservation and actual-CLI export assertions. Existing
+  raster/output limits remain; native usability and real-tool acceptance stay
+  open. Six scoped Python/source/checkout checks pass; the actual-CLI replay is
+  skipped. No local Rust build/test, private analysis or publication by Codex.
+
+## 2026-11-08 - Run Repaired Read-End Source On macOS And Regenerate Parity
+
+- Compile all targets of `7c5214ec` on macOS arm64 with the committed lockfile
+  and run the read-end, selection, supervisor, VM/MCP, glossary, renderer and
+  parity scopes plus the actual CLI rehearsal; see the
+  [handoff counts](glen_next_verification_handoff.md#local-macos-execution-2026-11-08).
+- Fix two selection-test defects: the synthetic stub's 2 s timeout was shorter
+  than its first launch, and a 1 KiB hash cap refused the 2016-byte FASTA.
+  No production code or contract changed.
+- Regenerate `docs/gui_cli_mcp_parity.md` with the canonical generator (two new
+  read-end rows and counts). Linux/Windows CI, real samtools and native GUI
+  acceptance remain open.
+
 ## 2026-11-08 - Record Read-End Generator Compile Failure And Existing Repair
 
 - Verify Glen's `1d5eed33` archive hash and all 11 manifest entries; the separate

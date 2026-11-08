@@ -14,7 +14,9 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 ### Integrated Saved-Service Contract
 
 `rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
-`src/rna_read_ends.rs`. They are experimental and Rust/runtime-unverified locally.
+`src/rna_read_ends.rs`. They are experimental; scoped Linux/macOS returns and
+the remaining selection/layout/native gates are recorded in the
+[active handoff](glen_next_verification_handoff.md#glen-linux-read-end-return-and-bounded-repairs-2026-11-08).
 The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
 transcript and ordered sample bindings are mandatory. One analysis per sample/
 gene is admitted. Saved report status, result binding and artifact hashes are
@@ -31,6 +33,10 @@ publishes completion last through the existing owned S2.3 publication helper.
 JSON/TSV/SVG are deterministic for identical saved input and view; PNG/PDF use
 the same SVG with the established converters, not a cross-platform pixel promise.
 Raster/vector conversion has an explicit 32-million-pixel page ceiling.
+Long labels/statuses wrap without dropping text; SVG and virtualized native
+lanes use the renderer's deterministic line heights. Smaller explicit pages may
+be needed when wrapping makes an export exceed the unchanged pixel/output cap.
+JSON/TSV remain complete and their scientific values are unaffected by layout.
 
 Coverage reports declared/assessed, gene-assigned and selected-transcript-compatible
 counts, exclusions, exact-only quantiles and **both** censoring fractions.
@@ -52,6 +58,9 @@ hash/size/mtime and tool-warning checks, not an exhaustive index proof. CRAM
 requires a bound uncompressed FASTA and adjacent FAI, matching dictionary and
 private REF_PATH/REF_CACHE. Alternate header UR locations are refused before
 decode, conservatively including otherwise valid external-reference CRAMs.
+Non-UTF-8 `samtools --version` diagnostic bytes are explicitly ASCII-escaped
+without loss; valid UTF-8 is unchanged. This does not relax strict SAM/header
+validation or interpret binary alignments as text inside GENtle.
 See [samtools view](https://www.htslib.org/doc/samtools-view.html) and the
 [HTSlib reference search order](https://www.htslib.org/doc/reference_seqs.html).
 This is a trusted direct-child supervisor, not a process-tree security sandbox

@@ -122,6 +122,17 @@ fn io(e: impl std::fmt::Display) -> EngineError {
     fail(&e.to_string())
 }
 
+fn version_text(stdout: &[u8]) -> String {
+    match std::str::from_utf8(stdout) {
+        Ok(text) => text.to_owned(),
+        // Build paths/flags are diagnostic bytes, not SAM. Preserve them losslessly.
+        Err(_) => format!(
+            "[ASCII-escaped non-UTF-8 --version stdout]\n{}",
+            stdout.escape_ascii()
+        ),
+    }
+}
+
 /// Validate raw spelling before any normalization and reject symlink/reparse-file inputs.
 pub(crate) fn local_file(raw: &str) -> Result<PathBuf, EngineError> {
     let path = sam_intake::path(raw)?;
@@ -487,7 +498,7 @@ pub fn select(
         },
     )
     .map_err(io)?;
-    let versions = String::from_utf8(version.output.stdout).map_err(io)?;
+    let versions = version_text(&version.output.stdout);
     if !version.output.status.success()
         || !versions.contains("samtools")
         || !versions.contains("htslib")
@@ -519,7 +530,8 @@ pub fn select(
         return Err(fail("header_refused"));
     }
     if request.format == Format::Cram {
-        let header = std::str::from_utf8(&header.output.stdout).map_err(io)?;
+        let header = std::str::from_utf8(&header.output.stdout)
+            .map_err(|error| fail(&format!("header_utf8: {error}")))?;
         let reference = request
             .reference_fasta
             .as_ref()

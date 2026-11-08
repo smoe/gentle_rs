@@ -66,7 +66,8 @@ fn fixture() -> (tempfile::TempDir, Request) {
         require_flags: None,
         exclude_flags: None,
         verify_full_alignment: false,
-        timeout_ms: 2000,
+        // First launch of a freshly compiled stub can exceed 2 s under macOS/Windows scanning.
+        timeout_ms: 30_000,
         max_sam_bytes: 1024 * 1024,
         max_stderr_bytes: 1024,
         max_units: 100,
@@ -88,6 +89,51 @@ fn indexed_locus_native_stub_binds_partial_units_without_claiming_full_hash() {
     let sam = selected.sam.path.clone();
     drop(selected);
     assert!(!Path::new(&sam).exists());
+}
+
+#[test]
+fn indexed_locus_version_metadata_is_lossless_but_sam_remains_strict_utf8() {
+    let (root, mut request) = fixture();
+    let executable = root.path().canonicalize().unwrap().join(if cfg!(windows) {
+        "non-utf8-version.exe"
+    } else {
+        "non-utf8-version"
+    });
+    fs::rename(request.samtools.as_ref().unwrap(), &executable).unwrap();
+    request.samtools = Some(executable.to_str().unwrap().into());
+    let selected = select(&request, &mut || Ok(())).unwrap();
+    assert_eq!(
+        selected.receipt.versions,
+        "[ASCII-escaped non-UTF-8 --version stdout]\n\
+         samtools 1.25 synthetic\\nUsing htslib 1.25 synthetic\\nBuild flags: \\xff\\\\path\\n"
+    );
+    drop(selected);
+
+    let mut bytes = fs::read(&request.alignment.path).unwrap();
+    bytes.extend_from_slice(b"\xff\n");
+    fs::write(&request.alignment.path, bytes).unwrap();
+    request.alignment = fingerprint(Path::new(&request.alignment.path), 1024 * 1024, &mut || {
+        Ok(())
+    })
+    .unwrap();
+    request.index_for_alignment_sha256 = request.alignment.sha256.clone();
+    fs::write(&request.index.path, b"synthetic index, not a BAI").unwrap();
+    request.index =
+        fingerprint(Path::new(&request.index.path), 1024 * 1024, &mut || Ok(())).unwrap();
+    let error = select(&request, &mut || Ok(())).err().unwrap();
+    assert!(
+        error.message.contains("observed_sam_text_utf8"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
+fn indexed_locus_utf8_version_metadata_remains_unchanged() {
+    let stdout = "samtools 1.25\nUsing htslib 1.25\nBuild path: /synthetic/\u{3b1}\n";
+    assert_eq!(version_text(stdout.as_bytes()), stdout);
+    assert!(!version_text(b"htslib only\xff").contains("samtools"));
+    assert!(!version_text(b"samtools only\xff").contains("htslib"));
 }
 
 #[test]
@@ -202,9 +248,10 @@ fn indexed_locus_cram_forbids_header_fallback_and_binds_fasta_fai() {
         b"ctg_a\t1000\t7\t1000\t1001\nctg_b\t1000\t1015\t1000\t1001\n",
     )
     .unwrap();
-    request.reference_fasta = Some(fingerprint(&fasta, 1024, &mut || Ok(())).unwrap());
+    // The synthetic FASTA is 2016 bytes; a 1 KiB hash cap refused it before selection.
+    request.reference_fasta = Some(fingerprint(&fasta, 1024 * 1024, &mut || Ok(())).unwrap());
     request.reference_fai =
-        Some(fingerprint(&fasta.with_extension("fa.fai"), 1024, &mut || Ok(())).unwrap());
+        Some(fingerprint(&fasta.with_extension("fa.fai"), 1024 * 1024, &mut || Ok(())).unwrap());
     assert!(
         select(&request, &mut || Ok(()))
             .err()
