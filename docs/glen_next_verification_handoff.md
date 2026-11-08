@@ -9,6 +9,39 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Observed-Structure Containment Conflict, 2026-11-07
 
+### Glen Linux Return, Received 2026-11-08
+
+The owner supplied `REPORT (5).md` and
+`gentle_verification_1cf7e120_20261107.tar.gz` for exact source
+`1cf7e120352e46c2761ae77694892d87a48a4260`. Codex checked all 35 manifest-listed
+files; `SHA256SUMS` itself is the only unlisted file. The separate report is
+byte-identical to the archived report. Archive SHA-256:
+`85f7d2155d3c8e991506ddde6d529c21843fe6fcabd830c29cde7dbe56d37a99`;
+manifest SHA-256:
+`0939d9290c6dce12beac0c36b7f429733f300ea82f0c79fef6d8448376817bad`.
+The recorded lockfile hash and changed-Rust-path fingerprint below match Git
+at that source. The test-binary hash is recorded in the evidence, not locally
+recomputed from a supplied binary.
+
+Raw commands, stdout and exit receipts establish **15 passed, zero failed or
+skipped** on Debian forky/sid x86_64, Rust/Cargo 1.97.1, default dev/test
+profile, one job and an explicit run-owned target: eight
+`observed_structures_containment_`, one `sam_containment_`, four frozen
+`observed_structures_s2a_`, one existing partial-chain/primer-boundary control,
+and one legacy primer-payload byte/work preservation test. All five commands
+exit zero. The clean detached checkout and unchanged final remote tip are
+recorded before/after the run. The existing unused `lints.cargo` manifest-key
+warning is not a containment failure.
+
+This closes the focused Linux execution request below; do not queue those same
+checks again as never run. The original authoring record is retained below as
+history. Normal CI and any affected later-source tests remain separate, as do
+Windows, native GUI, full-suite and scientific acceptance. No new BAM/CRAM,
+UTR-projection or Poly(A) capability is established. No local Rust execution,
+push, dispatch or private-data replay was performed to admit this receipt.
+
+### Original Authoring And Verification Request
+
 Add these authored regressions to the next already-planned consolidated Glen/CI
 run after the owner's normal integration/push. No separate campaign, dispatch,
 real-data replay or local Rust run is requested. This source is the uncommitted

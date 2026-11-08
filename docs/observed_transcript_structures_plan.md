@@ -836,9 +836,11 @@ public render/lane primitive: observed lanes derive from saved reports, never
 from the project/symbol builder or `support_count`. No S3/GUI work is added.
 
 Nine inline synthetic regressions are authored (eight common-kernel, one SAM),
-with the existing payload-bounded partial-chain test unchanged. Their execution
-and the unchanged preservation guards are queued in the
-[existing consolidated Glen/CI handoff](glen_next_verification_handoff.md#observed-structure-containment-conflict-2026-11-07).
+with the existing payload-bounded partial-chain test unchanged. Glen's
+[manifest-checked Linux return](glen_next_verification_handoff.md#glen-linux-return-received-2026-11-08)
+at exact `1cf7e120352e46c2761ae77694892d87a48a4260` passes all nine plus six
+unchanged preservation/control tests, zero failures/skips, on Debian x86_64
+with Rust/Cargo 1.97.1. Do not repeat that focused request as never executed.
 The exact changed-Rust-path fingerprint is `ab4beb68d50d28b412cc4fa048f87a2d7c9d2f76186d62e8b94d787059a3e5a3`
 with the recreation recipe in that handoff. No Rust build, test or Cargo check
 was run locally, as explicitly required by the supplied prompt; authoring and
@@ -846,4 +848,5 @@ format checks do not establish compilation or runtime acceptance. No private
 input, provider call, push or dispatch is part of this repair. Documentation-
 status, scoped formatting, static scope and whitespace checks pass. Session-close
 reports four OK, two expected worktree/manual-plan reminders, zero failures.
-Native/platform/scientific verification remains open.
+Native GUI, Windows, full-suite and scientific verification remain open; the
+focused Linux result does not accept later source or new indexed RNA/Poly(A) work.

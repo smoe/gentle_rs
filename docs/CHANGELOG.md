@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-08 - Record Glen's Focused Linux Containment Verification
+
+- Admit the manifest-sealed return for exact `1cf7e120`: nine new containment
+  tests and six unchanged preservation/control tests pass on Linux, with zero
+  failures/skips. Raw commands, streams and exit codes support all 15 passes.
+- Verify all 35 listed file hashes, separate/archive report identity, the
+  committed lockfile hash and changed-Rust-path fingerprint. Retain archive and
+  manifest identities in the [handoff](glen_next_verification_handoff.md#glen-linux-return-received-2026-11-08).
+  The binary hash is a retained receipt, not a locally rehashed binary.
+- Close only this focused Linux request, retaining the original authored/unrun
+  history. Windows, GUI, full-suite, later-source and biological acceptance are
+  separate; the new indexed RNA/UTR/Poly(A) work is not implemented by this pass.
+  No production source, original evidence, local Rust, push or dispatch changes.
+
 ## 2026-11-07 - Preserve Containment Conflicts And Selected-Gene Relation Scope
 
 - Correct shared observed-structure reconciliation: a shorter skip chain is not
