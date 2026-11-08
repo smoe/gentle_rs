@@ -13467,6 +13467,21 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 payload: serde_json::to_string(&op).map_err(|e| e.to_string())?,
             })
         }
+        "read-ends" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads read-ends COMMAND_JSON_OR_@FILE".into());
+            }
+            let command = Box::new(
+                parse_required_json_payload::<crate::rna_read_ends::Command>(
+                    &tokens[2],
+                    "read-end command",
+                )?,
+            );
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::RnaReadEnds { command })
+                    .map_err(|e| e.to_string())?,
+            })
+        }
         "transcript-structures-from-sam" | "transcript-structures-from-sam-cancel" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads transcript-structures-from-sam|transcript-structures-from-sam-cancel REQUEST_JSON_OR_@FILE".into());

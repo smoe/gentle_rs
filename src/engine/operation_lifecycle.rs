@@ -20,6 +20,7 @@ fn preserves_operation_project_content(op: &Operation) -> bool {
             | Operation::EvaluateGenomeEditIntent { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+            | Operation::RnaReadEnds { .. }
             | Operation::InspectObservedTranscriptStructuresFromSam { .. }
             | Operation::CancelObservedTranscriptStructuresFromSam { .. }
             | Operation::AssessObservedSpliceJunctions { .. }
@@ -65,6 +66,11 @@ impl OperationApprovalPolicy {
 /// `None` leaves an unmigrated operation's existing conservative rules intact.
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
+        Operation::RnaReadEnds { command } => Some(if command.requires_confirmation() {
+            OperationApprovalPolicy::ConfirmArtifactWriteAttempt
+        } else {
+            OperationApprovalPolicy::NoAdditionalConfirmation
+        }),
         Operation::ValidateRackEquipmentJson { .. } => {
             Some(OperationApprovalPolicy::NoAdditionalConfirmation)
         }

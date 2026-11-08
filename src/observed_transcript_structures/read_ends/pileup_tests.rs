@@ -52,6 +52,7 @@ fn report(case: &str, extra_hypothesis: bool) -> Report {
             annotation: &annotation,
             composition: &composition,
             tails: &[],
+            tail_file_sha256: None,
         }],
         Limits::default(),
     )
@@ -69,6 +70,14 @@ fn view() -> View {
         max_sublanes: 10,
         width: 1400,
         scale: "genomic".into(),
+        channels: Channels {
+            utr5: true,
+            utr3: true,
+            read_length: true,
+            clips: true,
+            composition: true,
+            tail: true,
+        },
     }
 }
 

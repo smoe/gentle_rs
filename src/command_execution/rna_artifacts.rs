@@ -13,10 +13,41 @@ pub(super) enum Policy {
     PayloadAlignments(Box<crate::engine::SummarizePrimerPayloadAlignmentsRequest>),
     ObservedStructures(Box<crate::engine::SummarizeObservedTranscriptStructuresRequest>),
     ObservedSam(Box<crate::engine::SummarizeObservedTranscriptStructuresFromSamRequest>),
+    ReadEnds(Box<crate::rna_read_ends::Command>),
     ObservedJunctions(Box<crate::engine::AssessObservedSpliceJunctionsRequest>),
     ObservedAnnotation(Box<crate::engine::PrepareObservedTranscriptAnnotationRequest>),
     Observe { expensive: bool },
     Control,
+}
+
+#[cfg(test)]
+mod read_end_policy_tests {
+    use super::*;
+    fn command()->crate::rna_read_ends::Command {
+        crate::rna_read_ends::Command::Export {report:crate::engine::PrimerPayloadFile {path:"synthetic report.json".into(),sha256:format!("sha256:{}","a".repeat(64)),bytes:0},
+            view:crate::observed_transcript_structures::read_ends::pileup::View {schema:"gentle.rna_read_end_pileup_view.v1".into(),sort:crate::observed_transcript_structures::read_ends::pileup::SortKey::UnitKey,descending:false,filters:vec![],offset:0,count:1,max_sublanes:10,width:1400,scale:"genomic".into(),channels:crate::observed_transcript_structures::read_ends::pileup::Channels {utr5:true,utr3:true,read_length:true,clips:true,composition:true,tail:true}},
+            formats:vec![crate::rna_read_ends::Format::Json],output_dir:"synthetic fresh output".into(),max_output_bytes:1024,cancel_path:None}
+    }
+    #[test]
+    fn read_end_named_admission_never_requires_project_and_keeps_control_separate() {
+        for (command,control) in [(command(),false),(crate::rna_read_ends::Command::Cancel{command:Box::new(command())},true)] {
+            let op=Operation::RnaReadEnds {command:Box::new(command)};
+            let policy=classify(op);
+            assert!(!policy.needs_project());
+            assert_eq!(matches!(policy.lane(),Lane::Control),control);
+        }
+    }
+    #[test]
+    fn read_end_publication_requires_the_exact_executed_command_not_a_rehashed_substitute() {
+        use crate::observed_transcript_structures::read_ends::pileup::hash;
+        let command=command();
+        let mut receipt=crate::rna_read_ends::Completion {schema:"gentle.rna_read_end_completion.v1".into(),status:"completed".into(),request_sha256:hash(&command).unwrap(),content_sha256:String::new(),output_dir:"synthetic fresh output".into(),artifacts:vec![crate::engine::RnaReadPanelArtifact {path:"page.json".into(),sha256:format!("sha256:{}","a".repeat(64)),bytes:2,locus_id:None}]};
+        receipt.content_sha256=hash(&receipt).unwrap();
+        let output=serde_json::json!({"result":{"rna_read_ends":{"completion":receipt}}});
+        assert!(matches!(publication(Policy::ReadEnds(Box::new(command.clone())),&output).unwrap(),Publication::ReadEnds(_)));
+        let mut different=command; if let crate::rna_read_ends::Command::Export {output_dir,..}=&mut different {*output_dir="different output".into();}
+        assert!(publication(Policy::ReadEnds(Box::new(different)),&output).is_err());
+    }
 }
 
 impl Policy {
@@ -34,6 +65,11 @@ impl Policy {
 
 fn classify(op: Operation) -> Policy {
     match op {
+        Operation::RnaReadEnds {command} => match command.as_ref() {
+            crate::rna_read_ends::Command::Inspect{..}=>Policy::Observe{expensive:true},
+            crate::rna_read_ends::Command::Cancel{..}=>Policy::Control,
+            _=>Policy::ReadEnds(command),
+        },
         Operation::PlanDnaSequenceDesign {
             request,
             path: None,
@@ -349,6 +385,16 @@ pub(super) fn publication(
     output: &serde_json::Value,
 ) -> Result<Publication, String> {
     match &policy {
+        Policy::ReadEnds(command)=> {
+            let value=output.pointer("/result/rna_read_ends").ok_or("Read-end command returned no result")?;
+            if matches!(command.as_ref(),crate::rna_read_ends::Command::SelectLocus{..}) {
+                if value["command_sha256"]!=crate::observed_transcript_structures::read_ends::pileup::hash(command).map_err(|e|e.to_string())? {return Err("Read-end selection request mismatch".into());}
+                let report:crate::engine::ObservedSamReport=serde_json::from_value(value["observed_sam_report"].clone()).map_err(|e|e.to_string())?;
+                let binding=GentleEngine::observed_sam_result_binding(&report.request,&report).map_err(|e|e.to_string())?;
+                return Ok(Publication::ObservedSam(binding));
+            }
+            return crate::rna_read_ends::completion_binding(command,value).map(Publication::ReadEnds).map_err(|e|e.to_string());
+        }
         Policy::Preview(request) => {
             let report: gentle_protocol::sequence_design::DnaSequenceDesignReport =
                 serde_json::from_value(
@@ -457,6 +503,7 @@ pub(super) fn publication(
         | Policy::PayloadAlignments(_)
         | Policy::ObservedStructures(_)
         | Policy::ObservedSam(_)
+        | Policy::ReadEnds(_)
         | Policy::ObservedJunctions(_)
         | Policy::ObservedAnnotation(_) => {
             unreachable!("handled above")

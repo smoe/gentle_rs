@@ -5543,6 +5543,8 @@ pub struct Workflow {
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_ends: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_primer_panel: Option<Box<RnaPrimerPanel>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_assessment: Option<Box<RtPrimerAssessmentReport>>,

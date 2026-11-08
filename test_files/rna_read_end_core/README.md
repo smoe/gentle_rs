@@ -29,3 +29,18 @@ The six `clip_cases` are also hand-crafted: they attach explicit soft/hard clip
 descriptors to existing geometry cases, including reverse query and minus-model
 ends. Expected clip kinds/lengths and unchanged metric triples are literal.
 Python checks the unchanged metrics; Rust additionally checks the new metadata.
+
+## Saved-Service Fixtures
+
+`rna_read_ends::tests` constructs additional temporary normalized annotations,
+V2 models and S2.3 saved reports using the existing hand-crafted
+`observed_sam_test_fixture`. All contigs, genes, QNAMEs, samples and transcripts
+are synthetic. Recreate with `cargo test --locked --lib rna_read_ends::tests` on
+the external verification host. LF/CRLF model encodings are created in memory
+and hashed from their actual bytes; no generated or byte-bound file is committed.
+The tests cover the shared shell parser, explicit approval, offline saved
+inspection, no-clobber export, markers, raw hash failure and SVG-derived PNG/PDF.
+`scripts/prepare_read_end_rehearsal.py` separately recreates tutorial 07.01's
+invented two-unit/two-compatible-model example. Its six input files and later
+command drafts are written only to a caller-selected fresh temporary directory.
+No real sample, GTF, reference, barcode or basecall is used or implied.

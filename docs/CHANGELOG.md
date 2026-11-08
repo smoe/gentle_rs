@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-11-08 - Connect Authenticated Read-End Services And Exports
+
+- Add one shared typed `RnaReadEnds` operation and `rna-reads read-ends` route
+  for build, saved inspection, JSON/TSV/SVG/PNG/PDF export, configured indexed
+  selection and exact-request cancellation. Preserve request-aware approval,
+  project-free managed work, retained completions after late cancellation and
+  existing generic MCP/JS/Lua/Python/nested-agent boundaries.
+- Authenticate completed S2.3 result/artifact bindings and actual normalized
+  annotation/model files before pure interpretation. Saved pileup inspection
+  never reopens original alignments/models. Reuse the S2.3 owned-artifact,
+  report-last no-clobber publisher; reject externally fabricated claims of
+  GENtle-executed selection on the old direct-SAM route.
+- Author six service and two managed-policy Rust tests plus an opt-in actual
+  CLI synthetic rehearsal. Local Python: three fixture/source checks pass, one
+  binary-dependent replay skipped. Rust, VM, MCP runtime and native checks are
+  unrun. Maturity sidecars were regenerated canonically; glossary is the
+  authoritative hand-authored source, not a hand-edited generated projection.
+- Canonical parity generation needs the updated Rust registry. It was **not**
+  replaced by a hand-edited matrix or a stale binary: external generation and
+  freshness execution remain pending, so this integration is not CI acceptance.
+
 ## 2026-11-08 - Bound Explicit Local Indexed Alignment Selection
 
 - Consolidate the metadata-probe and DuckDB subprocess loops into one direct-child

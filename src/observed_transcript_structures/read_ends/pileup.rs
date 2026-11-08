@@ -14,6 +14,7 @@ pub struct Input<'a> {
     pub annotation: &'a crate::engine::PrimerPayloadAnnotation,
     pub composition: &'a CompositionEvidence,
     pub tails: &'a [TailEvidence],
+    pub tail_file_sha256: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +61,8 @@ pub struct Lane {
     pub hypotheses: Vec<Hypothesis>,
     pub composition: CompositionEvidence,
     pub tails: Vec<TailEvidence>,
+    pub tail_file_sha256: Option<String>,
+    pub composition_sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,8 +244,16 @@ pub fn build(
                 let links = rows
                     .windows(2)
                     .filter_map(|p| {
-                        let a = p[0].blocks.iter().map(|b| b.target.1).max()?;
-                        let z = p[1].blocks.iter().map(|b| b.target.0).min()?;
+                        let a = if p[0].query_to_reference_strand == '+' {
+                            p[0].blocks.iter().map(|b| b.target.1).max()?
+                        } else {
+                            p[0].blocks.iter().map(|b| b.target.0).min()?
+                        };
+                        let z = if p[1].query_to_reference_strand == '+' {
+                            p[1].blocks.iter().map(|b| b.target.0).min()?
+                        } else {
+                            p[1].blocks.iter().map(|b| b.target.1).max()?
+                        };
                         (a != z).then_some(Connector {
                             interval: (a.min(z), a.max(z)),
                             kind: ConnectorKind::SegmentLink,
@@ -263,6 +274,8 @@ pub fn build(
                 compatibility: coverage::compatibility(unit, transcript),
                 hypotheses,
                 composition: input.composition.clone(),
+                composition_sha256: hash(input.composition)?,
+                tail_file_sha256: input.tail_file_sha256.map(str::to_owned),
                 tails: input
                     .tails
                     .iter()
@@ -344,6 +357,18 @@ pub struct View {
     pub width: u32,
     /// Genomic scale only; no implicit or unlabelled intron compression.
     pub scale: String,
+    pub channels: Channels,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Channels {
+    pub utr5: bool,
+    pub utr3: bool,
+    pub read_length: bool,
+    pub clips: bool,
+    pub composition: bool,
+    pub tail: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -588,30 +613,53 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
                 .iter()
                 .find(|c| c.transcript_id == report.transcript_id);
             let description = if let Some(c) = candidate {
-                format!(
-                    "5' {} / 3' {}; clips {} / {}; sense {:?} (query to annotation, not RNA strand)",
-                    json(&c.utr5)?,
-                    json(&c.utr3)?,
-                    json(&c.clip5)?,
-                    json(&c.clip3)?,
+                let channels = &page.view.channels;
+                let mut fields = vec![format!(
+                    "sense {:?} (query to annotation, not RNA strand)",
                     c.sense_to_annotation
-                )
+                )];
+                if channels.utr5 {
+                    fields.push(format!(
+                        "5' {} [unit {}]",
+                        json(&c.utr5)?,
+                        json(&lane.unit.utr5)?
+                    ));
+                }
+                if channels.utr3 {
+                    fields.push(format!(
+                        "3' {} [unit {}]",
+                        json(&c.utr3)?,
+                        json(&lane.unit.utr3)?
+                    ));
+                }
+                if channels.clips {
+                    fields.push(format!("clips {} / {}", json(&c.clip5)?, json(&c.clip3)?));
+                }
+                fields.join("; ")
             } else {
                 "Selected transcript incompatible under this hypothesis".into()
             };
+            let mut off_axis = vec![description];
+            if page.view.channels.read_length {
+                off_axis.push(format!("length {}", json(&lane.unit.read_length)?));
+            }
+            if page.view.channels.composition {
+                off_axis.push(format!("A/T {}", lane.composition.reason));
+            }
+            if page.view.channels.tail {
+                off_axis.push(if lane.tails.is_empty() {
+                    "tail unavailable: no_imported_tail_evidence".into()
+                } else {
+                    format!("tail {}", json(&lane.tails)?)
+                });
+            }
             rows.push(Row {
                 label: format!(
                     "{} / {} / H{}",
                     lane.sample_id, lane.unit.unit.unit_id, h.projection.hypothesis_index
                 ),
                 details: json(lane)?,
-                off_axis: format!(
-                    "{description}; unit 5' {} / 3' {}; A/T {}; tail {}",
-                    json(&lane.unit.utr5)?,
-                    json(&lane.unit.utr3)?,
-                    lane.composition.reason,
-                    json(&lane.tails)?
-                ),
+                off_axis: off_axis.join("; "),
                 bands,
             });
         }
@@ -642,7 +690,12 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
     }
     Ok(Scene {
         contig: report.model.contig.clone(),
-        start: report.model.genomic_exons_0based_half_open[0].0 as u64,
+        start: report
+            .model
+            .genomic_exons_0based_half_open
+            .first()
+            .ok_or_else(|| fail("pileup_model"))?
+            .0 as u64,
         end: report
             .model
             .genomic_exons_0based_half_open
@@ -677,6 +730,11 @@ pub fn tsv(page: &Page) -> Result<String, EngineError> {
         ));
     }
     for sample in &page.coverage.samples {
+        out.push_str(&format!(
+            "denominators\t{}\tnull\t{}\n",
+            json(&sample.sample_id)?,
+            json(sample)?
+        ));
         for unit in &sample.excluded_units {
             out.push_str(&format!(
                 "excluded\t{}\t{}\t{}\n",

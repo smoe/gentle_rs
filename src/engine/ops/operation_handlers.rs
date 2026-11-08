@@ -40647,6 +40647,7 @@ impl GentleEngine {
             primer_payload_junctions: None,
             observed_transcript_structures: None,
             observed_sam_structures: None,
+            rna_read_ends: None,
             observed_sam_inspection: None,
             observed_transcript_structures_inspection: None,
             observed_transcript_annotation: None,
@@ -52427,20 +52428,39 @@ impl GentleEngine {
                 }
                 Operation::SummarizeObservedTranscriptStructuresFromSam { request } => {
                     result.observed_sam_structures = Some(Box::new(
-                        self.summarize_observed_transcript_structures_from_sam(*request, on_progress)?,
+                        self.summarize_observed_transcript_structures_from_sam(
+                            *request,
+                            on_progress,
+                        )?,
                     ));
                 }
+                Operation::RnaReadEnds { command } => {
+                    result.rna_read_ends =
+                        Some(crate::rna_read_ends::execute(self, *command, on_progress)?);
+                }
                 Operation::InspectObservedTranscriptStructuresFromSam {
-                    path, expected_result, table, rows, verify_artifacts,
+                    path,
+                    expected_result,
+                    table,
+                    rows,
+                    verify_artifacts,
                 } => {
                     result.observed_sam_inspection = Some(Box::new(
                         Self::inspect_observed_transcript_structures_from_sam(
-                            &path, expected_result.as_deref(), &table, rows, verify_artifacts,
+                            &path,
+                            expected_result.as_deref(),
+                            &table,
+                            rows,
+                            verify_artifacts,
                         )?,
                     ));
                 }
                 Operation::CancelObservedTranscriptStructuresFromSam { request } => {
-                    result.messages.push(Self::cancel_observed_transcript_structures_from_sam(&request)?);
+                    result
+                        .messages
+                        .push(Self::cancel_observed_transcript_structures_from_sam(
+                            &request,
+                        )?);
                 }
                 Operation::PrepareObservedTranscriptAnnotation { request } => {
                     result.observed_transcript_annotation = Some(Box::new(

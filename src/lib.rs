@@ -197,6 +197,8 @@ pub mod resource_status;
 pub mod resource_sync;
 /// Restriction-enzyme site model and cut geometry utilities.
 pub mod restriction_enzyme;
+/// Authenticated saved read-end services and bounded local selection commands.
+pub mod rna_read_ends;
 /// RNA structure wrappers and tool integration glue.
 pub mod rna_structure;
 /// Checkout and packaged-desktop lookup for shipped assets.

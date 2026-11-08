@@ -20120,9 +20120,37 @@ fn observed_transcript_descriptor(id: &str) -> Value {
     descriptor
 }
 
+fn read_end_descriptor(id: &str) -> Value {
+    let mut descriptor = observed_sam_descriptor("SummarizeObservedTranscriptStructuresFromSam");
+    descriptor["id"] = json!(id);
+    descriptor["description"] = json!(
+        "Experimental saved read-end coverage and per-declared-unit pileup. Explicit source/gene/transcript/sample selection; authenticated saved S2.3 inputs; independent unavailable composition and configured tail imports. Configured local indexed samtools only when explicitly requested. No inferred isoform, molecule or polyadenylation-site identity."
+    );
+    descriptor["args"] = json!([{"name":"REQUEST_JSON_OR_@FILE","required":true,"detail":"Typed build, inspect, export, select_locus or request-bound cancel action. Writes require confirmation before I/O; inspect does not."}]);
+    descriptor["request_template"] = json!({"action":"inspect","report":{"path":"REPLACE_CANONICAL_REPORT_PATH","sha256":"REPLACE_RAW_REPORT_SHA256","bytes":0},"view":{"schema":"gentle.rna_read_end_pileup_view.v1","sort":"unit_key","descending":false,"filters":[],"offset":0,"count":100,"max_sublanes":1000,"width":1400,"scale":"genomic","channels":{"utr5":true,"utr3":true,"read_length":true,"clips":true,"composition":true,"tail":true}}});
+    descriptor["operation_template"] =
+        json!({"RnaReadEnds":{"command":descriptor["request_template"].clone()}});
+    descriptor["template_contract"] = json!(
+        "Report bytes/hash and explicit view must be supplied. Build additionally requires each saved S2.3 binding, authenticated V2 model/annotation, composition policy and budgets. No default gene/transcript/sample, read filter, biological threshold or implicit tool discovery. Zero placeholders cannot execute."
+    );
+    descriptor["result_contract"] = json!(
+        "gentle.rna_read_end_pileup.v1 plus immutable report-last completion. Inspect/export verify all saved artifact hashes; filters never alter original denominators. Markers request cancellation, not confirmed termination. Saved units are per SAM, not deduplicated across analyses. Real A/T scanning is unavailable without a separately authorized basecall binding."
+    );
+    descriptor["registry"] = json!(registry_metadata_for_introspection(id));
+    descriptor
+}
+
 fn observed_sam_descriptor(id: &str) -> Value {
-    let inspect = matches!(id, "InspectObservedTranscriptStructuresFromSam" | "rna-reads transcript-structures-from-sam-show");
-    let cancel = matches!(id, "CancelObservedTranscriptStructuresFromSam" | "rna-reads transcript-structures-from-sam-cancel");
+    let inspect = matches!(
+        id,
+        "InspectObservedTranscriptStructuresFromSam"
+            | "rna-reads transcript-structures-from-sam-show"
+    );
+    let cancel = matches!(
+        id,
+        "CancelObservedTranscriptStructuresFromSam"
+            | "rna-reads transcript-structures-from-sam-cancel"
+    );
     let mut descriptor = observed_transcript_descriptor("SummarizeObservedTranscriptStructures");
     let bound = json!({"path":"REPLACE_EXACT_FILE","sha256":"","bytes":0});
     let request = json!({
@@ -22344,6 +22372,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         primer_payload_descriptor("PreparePrimerPayloadAlignmentQueries"),
         observed_transcript_descriptor("SummarizeObservedTranscriptStructures"),
         observed_sam_descriptor("SummarizeObservedTranscriptStructuresFromSam"),
+        read_end_descriptor("RnaReadEnds"),
+        read_end_descriptor("rna-reads read-ends"),
         observed_sam_descriptor("InspectObservedTranscriptStructuresFromSam"),
         observed_sam_descriptor("CancelObservedTranscriptStructuresFromSam"),
         observed_sam_descriptor("rna-reads transcript-structures-from-sam"),
@@ -67155,6 +67185,7 @@ fn execute_op_command(
             | Operation::SummarizePrimerPayloadAlignments { .. }
             | Operation::SummarizeObservedTranscriptStructures { .. }
             | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+            | Operation::RnaReadEnds { .. }
             | Operation::AssessObservedSpliceJunctions { .. }
             | Operation::PrepareObservedTranscriptAnnotation { .. }
             | Operation::BuildRnaReadPanel { .. }
@@ -67192,6 +67223,7 @@ fn execute_op_command(
                 | Operation::SummarizePrimerPayloadAlignments { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
                 | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+                | Operation::RnaReadEnds { .. }
                 | Operation::AssessObservedSpliceJunctions { .. }
                 | Operation::PrepareObservedTranscriptAnnotation { .. }
                 | Operation::ScreenRnaReadPanel { .. }

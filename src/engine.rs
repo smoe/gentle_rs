@@ -3351,6 +3351,9 @@ pub enum Operation {
     SummarizeObservedTranscriptStructuresFromSam {
         request: Box<SummarizeObservedTranscriptStructuresFromSamRequest>,
     },
+    RnaReadEnds {
+        command: Box<crate::rna_read_ends::Command>,
+    },
     InspectObservedTranscriptStructuresFromSam {
         path: String,
         #[serde(default)]
@@ -10454,6 +10457,7 @@ impl GentleEngine {
                 | Operation::CancelObservedSpliceJunctions { .. }
                 | Operation::SummarizeObservedTranscriptStructures { .. }
                 | Operation::SummarizeObservedTranscriptStructuresFromSam { .. }
+                | Operation::RnaReadEnds { .. }
                 | Operation::InspectObservedTranscriptStructuresFromSam { .. }
                 | Operation::CancelObservedTranscriptStructuresFromSam { .. }
                 | Operation::InspectObservedTranscriptStructures { .. }

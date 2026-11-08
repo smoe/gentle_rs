@@ -1,5 +1,29 @@
 # RNA Read Interpretation
 
+## Saved Read-End Pileup And Coverage
+
+`rna-reads read-ends REQUEST_JSON_OR_@FILE` uses the shared `RnaReadEnds`
+operation. The typed command has an explicit `action`: `build`, `inspect`,
+`export`, `select_locus` or `cancel`. See the
+[synthetic 07.01 rehearsal](../tutorial/07-01_rna_read_batch_gene_support_cli.md)
+and [request/measurement reference](../rna_read_end_metrics.md).
+
+Build selects source, gene, transcript and an ordered list of named samples;
+each sample supplies an exact completed S2.3 binding and hash-bound V2 model/
+normalized annotation. No transcript is chosen implicitly. Inspect authenticates
+the saved completion and every artifact without reopening original alignments.
+Explicit view sorting/filtering/paging never changes either denominator.
+
+Build/export/selection and cancel-marker writes require confirmation in agent
+and MCP routes, before I/O. Inspect is read-only. Generic `op`, JS/Lua shell
+execution and the Python CLI wrapper use the same service and guardrails.
+`select_locus` requires an absolute configured local samtools path, index,
+dictionary, explicit interval/filters/budgets and an S2.3 analysis template;
+its separate outer cancel marker must not be supplied as the inner template's
+`cancel_path`. No tool discovery, indexing, alignment or remote reference fetch.
+Cancellation requests are not terminal receipts. Existing files are never
+overwritten; published artifacts are not rolled back by a later host cancellation.
+
 ## Cohort Read-End Metric Comparison
 
 The standalone checkout utility below is adapted from Glen / `smoe-bot`

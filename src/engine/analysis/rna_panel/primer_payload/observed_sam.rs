@@ -365,6 +365,22 @@ impl GentleEngine {
         r: Request,
         progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<ObservedSamReport, EngineError> {
+        if matches!(
+            &r.conversion,
+            kernel::ObservedSamConversion::ExecutedIndexedSelection { .. }
+        ) {
+            return Err(bad(
+                "observed_sam_executed_selection_requires_local_execution",
+            ));
+        }
+        self.summarize_observed_sam_internal(r, progress)
+    }
+
+    pub(crate) fn summarize_observed_sam_internal(
+        &self,
+        r: Request,
+        progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<ObservedSamReport, EngineError> {
         admit(&r)?;
         let out = paths(&r)?;
         if out.parent().is_none_or(|p| !p.is_dir()) {

@@ -12567,6 +12567,7 @@ Error: `{err}`"
                 primer_payload_junctions: None,
                 observed_transcript_structures: None,
                 observed_sam_structures: None,
+                rna_read_ends: None,
                 observed_sam_inspection: None,
                 observed_transcript_structures_inspection: None,
                 observed_transcript_annotation: None,

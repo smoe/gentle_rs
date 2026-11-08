@@ -1,6 +1,13 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["RnaReadEnds"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads read-ends",
+         "summary": "Build, inspect or export authenticated saved read-end coverage/pileups, select a bounded locus with explicitly configured local samtools, or request exact-command cancellation. No implicit transcript/sample or basecall/tail inference. Writes require approval; inspect is read-only.",
+         "usage": "rna-reads read-ends REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["SummarizeObservedTranscriptStructuresFromSam"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads transcript-structures-from-sam",

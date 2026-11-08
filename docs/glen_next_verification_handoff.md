@@ -16,6 +16,41 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Shared Read-End Services And Export, 2026-11-08
+
+Step 5 implements the shared operation/parser, file authentication, no-clobber
+exports, indexed-selection S2.3 seam and managed artifact-only publication.
+Six service and two managed-policy tests are authored, Rust-unrun locally.
+
+First generate **only** the canonical projection on the integrated source:
+
+```sh
+scripts/regenerate_parity_matrix.sh
+python3 scripts/generate_capability_maturity.py --check
+cargo test --locked --lib -j1 rna_read_ends::tests -- --test-threads=1
+cargo test --locked --lib -j1 read_end_policy_tests -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+cargo test --locked --test capability_registry_parity --test parity_matrix_freshness -j1
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+GENTLE_READ_END_BIN_DIR=/absolute/same-source/bin python3 -m unittest tests.test_read_end_rehearsal -v
+```
+
+Return the canonical generated matrix diff for integration; no local Rust
+generator could run under the owner restriction, and no projection was invented
+by hand. Maturity sidecars were generated via their Python generator. All Rust,
+VM, MCP runtime and native behavior remain unverified at this source. Require
+nonzero counts and actual CLI execution, not the intentional missing-binary skip.
+The rehearsal helper creates only synthetic files and command drafts, no tool
+launches. Check model/annotation raw hashes, saved-only inspection, explicit
+sample/transcript selection, unchanged state/history, approval before I/O,
+request-bound markers and late-completion retention, exports/view hashes and
+Windows close/rename/no-clobber behavior. PNG/PDF must derive from the shared SVG;
+test dimensions/derivation, not cross-platform raster equality. Keep unsupported
+composition/tail evidence unavailable and incomplete region search explicit.
+Exercise generic JS/Lua/Python and MCP routes on same-source binaries; do not
+repeat prior unrelated campaigns or private-data/real-barcode analysis.
+
 ## Bounded Configured Alignment Selection, 2026-11-08
 
 Step 4 implements the shared direct-child supervisor and owned private SAM/

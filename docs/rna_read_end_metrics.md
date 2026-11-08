@@ -11,6 +11,47 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 
 ## Shared Rust Core: Step 1
 
+### Integrated Saved-Service Contract
+
+`rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
+`src/rna_read_ends.rs`. They are experimental and Rust/runtime-unverified locally.
+The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
+transcript and ordered sample bindings are mandatory. One analysis per sample/
+gene is admitted. Saved report status, result binding and artifact hashes are
+verified before the pure core is called; the supplied normalized annotation is
+authenticated against the original S2.3 annotation binding, then checked against
+V2 model geometry. Do not substitute the GTF hash for the normalized file hash.
+
+Output completion `gentle.rna_read_end_completion.v1` binds `pileup.json` and
+`coverage.json`. Inspection takes the completion's **raw file hash and size**
+as `report`, plus a `gentle.rna_read_end_pileup_view.v1` spec. Export uses the
+same page and accepts explicit `json`, `tsv`, `svg`, `png`, `pdf` formats and
+a fresh output directory. It writes artifacts with closed/synced handles and
+publishes completion last through the existing owned S2.3 publication helper.
+JSON/TSV/SVG are deterministic for identical saved input and view; PNG/PDF use
+the same SVG with the established converters, not a cross-platform pixel promise.
+Raster/vector conversion has an explicit 32-million-pixel page ceiling.
+
+Coverage reports declared/assessed, gene-assigned and selected-transcript-compatible
+counts, exclusions, exact-only quantiles and **both** censoring fractions.
+Filters/page ranges do not recompute denominators. A/T remains unavailable
+(`no_bound_basecalls`); composition parameters/provenance remain explicit.
+Separate tail input binds an imported file and raw-signal manifest plus supported
+caller/version/model/kit/basecaller/configuration. Unsupported/QC-failing rows
+never acquire accepted values. These channels never change UTR censoring.
+
+Indexed ingress binds configured executable/version, local alignment/index,
+dictionary, interval and declared filters. Full alignment SHA verification is
+optional and explicitly labelled; index pairing is a producer declaration plus
+hash/size/mtime and tool-warning checks, not an exhaustive index proof. CRAM
+requires a bound uncompressed FASTA and adjacent FAI, matching dictionary and
+private REF_PATH/REF_CACHE. Alternate header UR locations are refused before
+decode, conservatively including otherwise valid external-reference CRAMs.
+See [samtools view](https://www.htslib.org/doc/samtools-view.html) and the
+[HTSlib reference search order](https://www.htslib.org/doc/reference_seqs.html).
+This is a trusted direct-child supervisor, not a process-tree security sandbox
+or an operating-system guarantee against stalled filesystem calls.
+
 `observed_transcript_structures::read_ends::project_read_ends` now provides the
 same V2 UTR semantics as a pure Rust-level building block. It consumes a strict
 V2 `ModelDocument`, existing typed `ObservedSamAnalysis` and the parsed normalized

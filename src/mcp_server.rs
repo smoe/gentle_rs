@@ -1418,6 +1418,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_plan" => &["agents plan"],
         "agent_execute_plan" => &["agents execute-plan"],
         "op" => &[
+            "rna-reads read-ends",
             "rna-reads primer-panel-validate",
             "rna-reads primer-trace",
             "rna-reads primer-payload-prepare",
@@ -5535,6 +5536,7 @@ mod tests {
         let path = td.path().join("not a real project.json");
         // Confirmation is checked before payload parsing, files or scientific admission.
         for name in [
+            "RnaReadEnds",
             "PreparePrimerPayloadAlignmentQueries",
             "PrepareObservedTranscriptAnnotation",
             "CancelObservedTranscriptAnnotation",

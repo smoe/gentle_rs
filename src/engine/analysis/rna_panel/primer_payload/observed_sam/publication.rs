@@ -170,6 +170,31 @@ pub(super) fn publish(
     {
         return Err(bad("observed_sam_output_budget"));
     }
+    publish_bundle(
+        stage,
+        Path::new(&report.resolved_output_dir),
+        &raw,
+        &report.artifacts,
+        report.request.budgets.max_output_bytes,
+        hook,
+    )
+}
+
+fn publish_bundle(
+    stage: tempfile::TempDir,
+    out: &Path,
+    raw: &[u8],
+    artifacts: &[RnaReadPanelArtifact],
+    max_output_bytes: u64,
+    hook: &mut dyn FnMut(Phase) -> Result<(), EngineError>,
+) -> Result<(), EngineError> {
+    let total = artifacts
+        .iter()
+        .try_fold(raw.len() as u64, |n, a| n.checked_add(a.bytes))
+        .ok_or_else(|| bad("observed_sam_output_budget"))?;
+    if total > max_output_bytes {
+        return Err(bad("observed_sam_output_budget"));
+    }
     let parent = stage
         .path()
         .parent()
@@ -188,7 +213,6 @@ pub(super) fn publish(
         file.sync_all().map_err(|e| bad(e.to_string()))?;
     }
     hook(Phase::BeforeReserve)?;
-    let out = Path::new(&report.resolved_output_dir);
     fs::create_dir(out).map_err(|e| bad(e.to_string()))?;
     let owner = same_file::Handle::from_path(out).map_err(|e| {
         bad(format!(
@@ -207,8 +231,7 @@ pub(super) fn publish(
         let _ = stage.keep();
         let directory =
             same_file::Handle::from_path(out.join("artifacts")).map_err(|e| bad(e.to_string()))?;
-        let files = report
-            .artifacts
+        let files = artifacts
             .iter()
             .map(|a| {
                 Ok((
@@ -236,11 +259,9 @@ pub(super) fn publish(
                 return Err(bad("observed_sam_artifact_identity"));
             }
         }
-        for artifact in &report.artifacts {
-            let mut reader = VerifiedReader::open(
-                &artifact_file(&root, artifact)?,
-                report.request.budgets.max_output_bytes,
-            )?;
+        for artifact in artifacts {
+            let mut reader =
+                VerifiedReader::open(&artifact_file(&root, artifact)?, max_output_bytes)?;
             std::io::copy(&mut reader, &mut std::io::sink()).map_err(|e| bad(e.to_string()))?;
             reader.finish()?;
         }
@@ -285,6 +306,17 @@ pub(super) fn publish(
 }
 
 impl GentleEngine {
+    /// Reuse the same owned-artifact/report-last transaction for the read-end service.
+    pub(crate) fn publish_read_end_bundle(
+        stage: tempfile::TempDir,
+        out: &Path,
+        raw: &[u8],
+        artifacts: &[RnaReadPanelArtifact],
+        cap: u64,
+        check: &mut dyn FnMut() -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        publish_bundle(stage, out, raw, artifacts, cap, &mut |_| check())
+    }
     /// Inspect only saved report/artifact bytes; SAM, GTF and preparation sources may be offline.
     pub fn inspect_observed_transcript_structures_from_sam(
         path: &str,

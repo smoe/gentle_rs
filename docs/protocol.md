@@ -1,5 +1,22 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Shared Saved Read Ends
+
+`RnaReadEnds { command }` / `rna-reads read-ends REQUEST_JSON_OR_@FILE` dispatch
+the same typed `build`, `inspect`, `export`, `select_locus`, `cancel` actions.
+The operation preserves project contents; all but inspection require explicit
+artifact-write confirmation before I/O. Generic MCP op, JS/Lua and Python use
+this contract rather than implement geometry in their adapters. Discovery
+templates are placeholders, not executable biological defaults.
+
+Inputs bind completed observed-SAM reports, V2 models and normalized annotations;
+outputs are `gentle.rna_read_end_{coverage,pileup,pileup_view,completion}.v1`.
+Both gene-assigned and selected-transcript-compatible denominators are retained
+through filtering/paging. Separate composition/tail schemas do not change UTR
+statuses. See [measurement/request reference](rna_read_end_metrics.md).
+Canonical parity generation and Rust/platform acceptance remain external gates
+under the no-local-Rust restriction; source authoring is not a passing receipt.
+
 ## Observed Splice-Junction Assessment (J1)
 
 `AssessObservedSpliceJunctions`, `InspectObservedSpliceJunctions` and

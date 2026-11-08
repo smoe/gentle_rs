@@ -1809,6 +1809,11 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 }
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
+    if path == "rna-reads read-ends" {
+        return Some(
+            r#"rna-reads read-ends '{"action":"inspect","report":{"path":"synthetic-report.json","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","bytes":0},"view":{"schema":"gentle.rna_read_end_pileup_view.v1","sort":"unit_key","descending":false,"filters":[],"offset":0,"count":1,"max_sublanes":10,"width":1400,"scale":"genomic","channels":{"utr5":true,"utr3":true,"read_length":true,"clips":true,"composition":true,"tail":true}}}'"#,
+        );
+    }
     match path {
         "rna-reads panel-demo" => Some("rna-reads panel-demo synthetic-demo"),
         "rna-reads panel-show" => Some("rna-reads panel-show synthetic-report.json --rows 4"),

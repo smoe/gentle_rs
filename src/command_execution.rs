@@ -71,6 +71,7 @@ enum Publication {
     PrimerPayload(crate::engine::PrimerPayloadResultBinding),
     ObservedStructures(crate::engine::ObservedTranscriptStructuresResultBinding),
     ObservedSam(crate::engine::ObservedSamResultBinding),
+    ReadEnds(crate::rna_read_ends::Completion),
     ObservedJunctions(crate::engine::ObservedSpliceJunctionResultBinding),
     ObservedAnnotation(crate::engine::ObservedTranscriptAnnotationResultBinding),
     Observation,
@@ -113,6 +114,8 @@ fn bounded_output(value: &serde_json::Value) -> Result<Vec<u8>, serde_json::Erro
 /// biological acceptance verdict. Approval remains the shell's responsibility.
 #[derive(Debug, Clone, Serialize)]
 pub struct CommandReceipt {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_end_result: Option<crate::rna_read_ends::Completion>,
     pub schema: &'static str,
     pub job_id: u64,
     /// Optional admission context; independent work never requires a project lock/identity.
@@ -276,6 +279,7 @@ fn execute_command(
     caller_cancel: Arc<AtomicBool>,
 ) -> Result<WorkResult, String> {
     let policy = rna_artifacts::freeze(&mut command)?;
+    let read_end_cancel = caller_cancel.clone();
     let caller_callback = options.progress_callback.clone();
     let options = ShellExecutionOptions {
         progress_callback: Some(Arc::new(Mutex::new(Box::new(move |event| {
@@ -297,7 +301,12 @@ fn execute_command(
         })))),
         ..options
     };
-    let run = execute_shell_command_with_options(engine, &command, &options)?;
+    let run = execute_shell_command_with_options(engine, &command, &options).map_err(|error| {
+        if matches!(&policy,rna_artifacts::Policy::ReadEnds(_)) && error==crate::engine::EngineError::invalid_input("rna_read_end_service_cancelled").to_string() {
+            read_end_cancel.store(true,Ordering::Release);
+            "Command cancelled during read-end processing; no new completion was published".into()
+        } else {error}
+    })?;
     let publication = rna_artifacts::publication(policy, &run.output)?;
     Ok(WorkResult { run, publication })
 }
@@ -406,6 +415,7 @@ impl CommandExecutionService {
                 cancel: cancel.clone(),
                 published: false,
                 receipt: CommandReceipt {
+                    read_end_result: None,
                     schema: "gentle.command_execution.v1",
                     job_id: id,
                     owner_instance: owner,
@@ -531,6 +541,10 @@ impl CommandExecutionService {
                         run.output=serde_json::json!({"schema":"gentle.command_observed_sam_result.v1","observed_sam_result":binding,"gene_resolutions":resolutions,"full_output_retained_in_report":true});
                         bytes=bounded_output(&run.output);
                     }
+                    if let Publication::ReadEnds(binding)=&publication {
+                        run.output=serde_json::json!({"schema":"gentle.command_read_end_result.v1","read_end_result":binding,"full_output_retained_in_report":true});
+                        bytes=bounded_output(&run.output);
+                    }
                     if let Publication::ObservedJunctions(binding) = &publication {
                         run.output=serde_json::json!({"schema":"gentle.command_observed_junction_result.v1","observed_junctions_result":binding,"full_output_retained_in_report":true});
                         bytes=bounded_output(&run.output);
@@ -588,6 +602,10 @@ impl CommandExecutionService {
                             job.receipt.primer_payload_result = Some(binding);
                         }
                         Publication::Observation => job.receipt.publication = "observation_control",
+                        Publication::ReadEnds(binding)=> {
+                            job.receipt.publication="artifact_only";
+                            job.receipt.read_end_result=Some(binding);
+                        }
                         Publication::ObservedStructures(binding) => {
                             job.receipt.publication="artifact_only";
                             job.receipt.observed_structures_result=Some(binding);

@@ -45,7 +45,7 @@ remaining acceptance, not an inherited pass.
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Pure records/functions implemented; 8 authored Rust tests unrun; no file/service route yet |
 | 3 | Engine-owned pileup/view and deterministic headless renderer | Pure records/view/SVG implemented; 6 root and 1 renderer Rust tests authored, unrun; file/export/native gates pending |
 | 4 | Shared supervised process and bounded configured samtools ingress | Implemented private selection/intake seam and consolidated supervisors; Rust/native/tool checks unrun |
-| 5 | Authenticated shared commands, immutable exports and discovery | Pending |
+| 5 | Authenticated shared commands, immutable exports and discovery | Implemented shared operation/parser/service and managed file-only policy; canonical Rust parity generation and all Rust/process acceptance pending externally |
 | 6 | Thin virtualized GUI and migrated synthetic tutorial | Pending |
 
 ## Open Owner Decisions
