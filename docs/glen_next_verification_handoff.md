@@ -9,7 +9,7 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Read-End Integration Plan, 2026-11-08
 
-**Active retry scope:** use the [Linux return and bounded repair checklist](#glen-linux-read-end-return-and-bounded-repairs-2026-11-08).
+**Active retry scope:** use the [Linux acceptance and renderer-test follow-up](#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
 The earlier compile-failure/retry instructions below are historical; the
 generator and listed downstream scopes have since executed at `7c5214ec`.
 
@@ -20,7 +20,61 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Glen Linux Return At 1c4a4a5a And Renderer-Test Follow-Up, 2026-11-08
+
+Tested source: `1c4a4a5aa4ac9c1515f683bb0c6fd0d91409b06d`; final fetch unchanged.
+Debian Linux x86_64, Rust/Cargo 1.97.1, Python 3.14.10, locked default features
+unless noted, isolated target, one job, incremental disabled. Archive SHA-256:
+`660783235a9475e06b1657d1805878ebd8621577e96db0f1c1dedcd7053b5c9a`.
+All 81 manifest entries independently verify. CLI SHA-256:
+`b58ec855930185b53ccb55af0839f5013771c8b46308e7f8320acfae070116d1`;
+lockfile SHA-256 remains `718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+
+**Passed at that source:** default test-target/headless-lib compilation;
+`indexed_locus::tests` 9/9 with real `/usr/bin/samtools` 1.24, no skips;
+separate synthetic CRAM/FAI/fallback 1/1 and actual BAM-to-CRAM 1/1. The exact
+reruns overlap the nine-test group, not additional independent coverage.
+Non-UTF-8 diagnostic preservation and strict malformed-SAM refusal pass.
+The retained raw version stdout confirms byte `0xab` at offset 338 in compiler
+flags (`-ffile-prefix-map=\xabBUILDPATH\xbb=.`), not alignment bytes. Raw stdout
+SHA-256: `276ca13ee035861d0514bd32afb0b916c8fafd051e2c0fbf9168e32b521cd20c`.
+
+The actual source-matched CLI/export process check passes 1/1. Fresh 1400x384
+SVG has 16 text nodes within bounds; Glen visually checked its PNG and rendered
+one-page PDF for complete, wrapped, non-overlapping text. JSON/TSV and the three
+visual exports are retained; no-clobber refuses and no project state is created.
+This is exported-page acceptance on Linux, not native GUI/scrolling or Windows.
+
+**Still red:** renderer filter 2/3 at the tested SHA. The new long-label
+regression panics in its test helper: searching `y="` finds the suffix of
+`font-family="monospace"` and parses `monospace` as a float. The existing local
+test-only repair requires a leading attribute separator; explicit `data-x`/
+`data-y` collision controls are now added. Original layout, bounds, Unicode,
+complete-text and determinism assertions remain intact. No production renderer,
+selection, schema or export behavior changes in this follow-up.
+
+After the next owner push, record the actual repaired SHA and use a run-owned
+target. Repeat **only** the renderer filter (three tests, no skips):
+
+```sh
+cargo test --locked -p gentle-render -j1 read_end -- --test-threads=1
+```
+
+No new CLI binary or BAM/CRAM campaign is needed for this test-only repair.
+Retain the prior macOS result with its uncommitted parser/fixture modifications
+as attributed evidence, not a Linux pass for the next source. Native GUI lane
+heights/scrolling/cancellation and Windows remain `not_run`; normal CI and
+scientific acceptance remain separate. Do not repeat completed parity, 47-test,
+VM/MCP, glossary, supervisor, Reader/BLAST, containment or barcode campaigns.
+Codex performs no local Rust build/test, push or dispatch for this return.
+An independent Python reproduction confirms the old parser failure and checks
+the separator-based lookup against XML-parsed attributes/bounds on the 16
+retained text nodes plus both collision controls. This is not Rust execution.
+
 ## Glen Linux Read-End Return And Bounded Repairs, 2026-11-08
+
+Historical `7c5214ec` return; its retry commands are superseded by the active
+`1c4a4a5a` follow-up above.
 
 Glen tested `7c5214ec4aa0a28564edf4b7234a1f8386393f90` on Debian Linux x86_64,
 Rust/Cargo 1.97.1, Python 3.14.10, locked default features unless noted, one job,
@@ -93,6 +147,29 @@ native lane heights/readability/cancellation where a display is available.
 Windows path/handle and full normal CI remain separate. Do not repeat the
 completed 47-test/VM/MCP/glossary/supervisor/biological campaigns merely because
 this return records them. No private data, live model, package or publication.
+
+### Local macOS Check At 1c4a4a5a, 2026-11-08
+
+Claude ran `1c4a4a5a` on macOS arm64 (rustc 1.101.0-nightly, `--locked`, the
+same lockfile hash as above, incremental off). `cargo check --locked --tests`
+and the headless `gentle_cli`/`gentle_mcp` check pass. Two failures were test
+defects, fixed in uncommitted test-only edits:
+
+- `read_end_long_labels_wrap_without_loss_or_crossing_page_or_lane_bounds`
+  panicked with `ParseFloatError`: its attribute helper searched `y="`, which
+  first matches the tail of `font-family="monospace"`. The pattern now requires
+  a leading space. The layout assertions themselves are unchanged and pass.
+- `supervised_process_caps_refuse_or_truncate_without_unbounded_capture` failed
+  once and passed on three reruns. The changed `stub.rs` is a new binary whose
+  first launch can exceed the fixture's 5 s default; `limits()` now uses 30 s.
+  The timeout test keeps its explicit 50 ms limit.
+
+After the fixes: renderer `read_end` 3/3, `supervised_process::tests` 4/4,
+`indexed_locus::tests` 9/9 (the real-samtools test returned early without
+`GENTLE_TEST_SAMTOOLS`), `read_end` 47/47, script-interfaces `read_end_` 29/29,
+registry 29/29, freshness 1/1, and the actual-CLI rehearsal 6/6 with the new SVG
+bounds assertion against a same-source `target/debug/gentle_cli`. Real BAM/CRAM,
+fresh PNG/PDF review and native lane heights remain for Glen/native review.
 
 ## Read-End Compile-Gate Return And Retry, 2026-11-08
 

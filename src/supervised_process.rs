@@ -227,7 +227,9 @@ mod tests {
 
     fn limits() -> Limits {
         Limits {
-            timeout: Duration::from_secs(5),
+            // First launch of a freshly compiled stub can exceed 5 s under macOS/Windows scanning;
+            // the timeout test sets its own explicit 50 ms limit.
+            timeout: Duration::from_secs(30),
             stdout_bytes: 64,
             stderr_bytes: 64,
             refuse_overflow: true,

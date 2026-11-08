@@ -43,10 +43,10 @@ remaining acceptance, not an inherited pass.
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
 | 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented; included in Glen's scoped Linux read-end pass at `7c5214ec`; no biological/platform-wide acceptance |
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Implemented and service-connected; included in the scoped Linux pass; no inferred basecalls or real-signal acceptance |
-| 3 | Engine-owned pileup/view and deterministic headless renderer | Linux read-end/renderer passes before wrapping; new layout regression and fresh exports pending |
-| 4 | Shared supervised process and bounded configured samtools ingress | Supervisor passes; selection/real-tool failures retained; fixture/version repairs and new regressions await external execution |
-| 5 | Authenticated shared commands, immutable exports and discovery | Generator, generated-tree parity, VM/MCP and actual CLI rehearsal pass at `7c5214ec`; affected later-source export checks pending |
-| 6 | Thin virtualized GUI and migrated synthetic tutorial | Source/helper/rehearsal evidence retained; cached wrapped lane heights need fresh tests/native review; native acceptance pending |
+| 3 | Engine-owned pileup/view and deterministic headless renderer | Linux CLI exports/bounds and Glen's PNG/PDF review pass at `1c4a4a5a`; renderer filter 2/3 due to test parser; repaired filter rerun pending |
+| 4 | Shared supervised process and bounded configured samtools ingress | Linux real-samtools group 9/9 plus overlapping exact CRAM/FAI and BAM/CRAM reruns pass at `1c4a4a5a`; Windows separate |
+| 5 | Authenticated shared commands, immutable exports and discovery | Retain `7c5214ec` generator/parity/VM/MCP passes; affected actual CLI/export check 1/1 passes at `1c4a4a5a` |
+| 6 | Thin virtualized GUI and migrated synthetic tutorial | Wrapped exported-page evidence passes on Linux; cached native lane heights/scrolling and Windows remain unrun |
 
 ### External Compile-Gate Return, 2026-11-08
 
@@ -75,6 +75,13 @@ first launch of a freshly compiled stub) and a 1 KiB hash cap that refused the
 [handoff](glen_next_verification_handoff.md#local-macos-execution-2026-11-08).
 This is one platform, not CI, Windows, real-samtools or native acceptance.
 
+At `1c4a4a5a` the same macOS host compiled all targets and passed the new
+selection (9/9) and renderer layout regressions after two further test-only
+fixes: the renderer test's attribute parser matched `y="` inside
+`font-family="` and the supervisor fixture's 5 s default timeout was shorter
+than the first launch of the changed stub. Counts are in the
+[handoff](glen_next_verification_handoff.md#local-macos-check-at-1c4a4a5a-2026-11-08).
+
 ### Glen Linux Return And Remaining Repairs, 2026-11-08
 
 At `7c5214ec`, Glen's canonical generation and generated-tree registry/freshness,
@@ -91,6 +98,21 @@ validation. Step 6/export presentation also needs fresh acceptance after shared
 text wrapping and cached virtual-lane height changes. These bounded repairs
 have new regressions but no Codex Rust/native execution. Windows, native GUI,
 real BAM/CRAM, normal CI and scientific acceptance are not closed by the passes.
+
+### Glen Linux Follow-Up At 1c4a4a5a, 2026-11-08
+
+The follow-up closes Linux real BAM/CRAM selection, including the 9/9 configured
+samtools group and overlapping exact CRAM/FAI/fallback and BAM-to-CRAM reruns.
+Actual CLI export passes 1/1 with fresh JSON/TSV/SVG/PNG/PDF, bounds/no-clobber
+and no project state. Glen's visual review is limited to those exported pages.
+
+The renderer group is still 2/3: its test parser matches `y="` inside
+`font-family="` and attempts to parse `monospace`. Preserve the existing
+attribute-separator fix, add explicit attribute-suffix controls, and rerun only
+the three renderer tests externally. This is test-only; no new BAM/CRAM or CLI
+campaign is required. Archive hashes, exact counts and remaining native/Windows
+boundaries are in the [active handoff](glen_next_verification_handoff.md#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
+Codex ran no local Rust or native verification. Scientific acceptance stays open.
 
 ## Open Owner Decisions
 

@@ -16,7 +16,7 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 `rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
 `src/rna_read_ends.rs`. They are experimental; scoped Linux/macOS returns and
 the remaining selection/layout/native gates are recorded in the
-[active handoff](glen_next_verification_handoff.md#glen-linux-read-end-return-and-bounded-repairs-2026-11-08).
+[active handoff](glen_next_verification_handoff.md#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
 The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
 transcript and ordered sample bindings are mandatory. One analysis per sample/
 gene is admitted. Saved report status, result binding and artifact hashes are

@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-11-08 - Record Linux Selection/Export Passes And Guard The Layout Test Parser
+
+- Verify Glen's `1c4a4a5a` archive hash and all 81 manifest entries. Retain the
+  real-samtools 9/9 selection pass, overlapping exact BAM/CRAM/FAI controls and
+  actual CLI/export 1/1 with complete bounded SVG/PNG/PDF, no-clobber and no
+  project state. The raw version bytes confirm non-UTF-8 compiler flags.
+- Keep the renderer's 2/3 result red at that source: `y="` matched inside
+  `font-family="` in the numeric test helper. Preserve the existing test-only
+  separator repair and add explicit `data-x`/`data-y` negative controls without
+  weakening any layout assertion or changing product rendering/selection.
+- Narrow Glen's retry to the three renderer tests only. Native GUI/scrolling,
+  Windows, normal CI and scientific acceptance stay separate. Existing owner/
+  Claude supervisor-test edits are preserved; Codex ran no local Rust or push.
+
+## 2026-11-08 - Run Wrapped Pileup And Selection Repairs On macOS
+
+- Compile `1c4a4a5a` on macOS arm64 and run the changed renderer, selection and
+  supervisor scopes plus the actual-CLI rehearsal; see the
+  [handoff counts](glen_next_verification_handoff.md#local-macos-check-at-1c4a4a5a-2026-11-08).
+- Fix two test-only defects: the renderer layout test's attribute parser matched
+  `y="` inside `font-family="`, and the supervisor fixture's 5 s default timeout
+  was shorter than the changed stub's first launch. No production code changed.
+  Real BAM/CRAM, raster review and native lane heights remain open.
+
 ## 2026-11-08 - Retain Glen's Read-End Passes And Repair Diagnostic/Text Boundaries
 
 - Verify Glen's `7c5214ec` archive, its 100-entry manifest and 38-entry tutorial

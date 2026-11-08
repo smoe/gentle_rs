@@ -303,7 +303,8 @@ mod tests {
                 render_model(&scene).unwrap(),
             ] {
                 let numeric = |tag: &str, name: &str| -> f64 {
-                    let pattern = format!("{name}=\"");
+                    // Leading space: `y="` must not match the tail of `font-family="`.
+                    let pattern = format!(" {name}=\"");
                     tag.split(pattern.as_str())
                         .nth(1)
                         .unwrap()
@@ -313,6 +314,9 @@ mod tests {
                         .parse()
                         .unwrap()
                 };
+                let probe = r#"<text data-x="not-a-number" data-y="not-a-number" font-family="monospace" x="10" y="17"/>"#;
+                assert_eq!(numeric(probe, "x"), 10.0);
+                assert_eq!(numeric(probe, "y"), 17.0);
                 let root = svg.split('>').next().unwrap();
                 let height = numeric(root, "height");
                 for text in svg.split("<text ").skip(1) {
