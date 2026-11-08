@@ -16,6 +16,8 @@ mod comparison;
 mod core;
 pub(crate) mod dag;
 pub(crate) mod geometry;
+/// Explicitly configured bounded local indexed-alignment selection.
+pub mod indexed_locus;
 mod kernel;
 /// Pure, model-bound UTR reach projection over existing saved SAM assessments.
 pub mod read_ends;

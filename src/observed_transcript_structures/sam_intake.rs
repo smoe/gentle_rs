@@ -33,6 +33,10 @@ pub enum Conversion {
         arguments: Vec<String>,
         selection_scope: String,
     },
+    /// GENtle-executed indexed selection, distinct from a producer's declaration.
+    ExecutedIndexedSelection {
+        receipt: Box<super::indexed_locus::Receipt>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,6 +397,7 @@ pub(super) fn prepare(
             arguments,
             selection_scope,
         } => sha(bam_sha256) && provenance(producer, version, arguments, selection_scope),
+        Conversion::ExecutedIndexedSelection { receipt } => receipt.validate(&request.sam).is_ok(),
     };
     if !valid_provenance {
         return Err(fail("conversion_provenance"));

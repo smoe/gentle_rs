@@ -1,0 +1,27 @@
+# Native Supervised-Process Stub
+
+`stub.rs` is hand-crafted synthetic Rust, using only the standard library.
+It emits fixed bytes, bounded or unlimited streams, or a sleeping partial
+stream. There are no real sequences, external tools, network calls or shell
+commands. It is unrelated to actual samtools/reference acceptance.
+
+The Rust `supervised_process::tests` compile this source with the test runner's
+`RUSTC` (or `rustc`) into a run-owned temporary directory. The temporary native
+executable works on Windows and Unix without shell scripts or Python. Tests
+exercise cap, timeout, cancellation, closed staging handles and spaced/apostrophe
+paths. Recreate through `cargo test --locked --lib supervised_process::tests`.
+No executable is committed. Codex authors these tests without running a local
+Rust build; Glen/CI supplies the actual runtime receipt. The compiler is a test
+fixture prerequisite, not implicit product executable discovery.
+# Indexed Locus Stub
+
+The same native stub also emulates `samtools --version`, header and indexed-view
+commands. Test inputs with BAM/CRAM suffixes are explicitly **SAM text for the
+stub**, not valid binary format fixtures. It refuses an unsanitized reference
+environment and emits deterministic wrong-index, timeout and capped-output
+controls. No real sequencing data, decoder, network or reference lookup exists.
+`indexed_locus::tests` creates all inputs with synthetic `ctg_a`/`ctg_b` names.
+The optional real-tool test converts this same synthetic SAM into actual BAM and
+CRAM with the configured `GENTLE_TEST_SAMTOOLS` executable, creates indexes and
+a deterministic synthetic FASTA; no downloaded binary fixtures are claimed.
+

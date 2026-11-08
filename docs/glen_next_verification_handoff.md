@@ -16,6 +16,33 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Bounded Configured Alignment Selection, 2026-11-08
+
+Step 4 implements the shared direct-child supervisor and owned private SAM/
+manifest selection seam. No tool, Rust build or private input was run locally.
+Authoring includes four supervisor tests, six portable selection tests (one
+optional real-tool test) and one Unix symlink control:
+
+```sh
+cargo test --locked --lib -j1 supervised_process::tests -- --test-threads=1
+cargo test --locked --lib -j1 indexed_locus::tests -- --test-threads=1
+cargo test --locked --lib -j1 async_blast_probe_cancellation -- --test-threads=1
+```
+
+Use an explicit run-owned target. The stub is a synthetic native executable,
+not binary BAM/CRAM evidence. On a compatible host set `GENTLE_TEST_SAMTOOLS` to
+an absolute configured executable and rerun the optional test; it constructs
+real synthetic BAM/CRAM/FAI/indexes locally. Without that variable its early
+return is **not real-tool acceptance**. Verify declared versus verified input
+hashes, incomplete unit manifests, cancellation/caps/timeout and closed handles,
+missing/wrong/stale index refusal, CRAM reference/hash/FAI requirements and the
+header-UR/environment fallback controls. Return actual counts/tool versions and
+Windows handle/path results separately. Reuse existing narrow DuckDB process
+tests if available; do not repeat completed biological or full BLAST campaigns.
+The supervisor owns/reaps the direct configured child, not hostile descendants.
+Index pairing is explicitly declared; a regional pass cannot prove every index
+offset or verify an unrequested whole BAM/CRAM digest.
+
 ## Read-End Saved Pileup, 2026-11-08
 
 Step 3 adds the pure engine report/view and headless SVG, not yet a file/GUI

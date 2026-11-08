@@ -12360,70 +12360,20 @@ fn bounded_command_output_with_cancel(
     timeout: Duration,
     should_cancel: &mut dyn FnMut() -> bool,
 ) -> Result<Output, String> {
-    if should_cancel() {
-        return Err(format!("{label} cancelled before spawn"));
-    }
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("Could not start {label}: {error}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| format!("Could not capture {label} stdout"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| format!("Could not capture {label} stderr"))?;
-    let stdout_reader = thread::spawn(move || {
-        let mut bytes = vec![];
-        let _ = BufReader::new(stdout).read_to_end(&mut bytes);
-        bytes
-    });
-    let stderr_reader = thread::spawn(move || {
-        let mut bytes = vec![];
-        let _ = BufReader::new(stderr).read_to_end(&mut bytes);
-        bytes
-    });
-    let started = Instant::now();
-    loop {
-        if should_cancel() {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_reader.join();
-            let _ = stderr_reader.join();
-            return Err(format!("{label} cancelled during probe"));
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                return Ok(Output {
-                    status,
-                    stdout: stdout_reader.join().unwrap_or_default(),
-                    stderr: stderr_reader.join().unwrap_or_default(),
-                });
-            }
-            Ok(None) if started.elapsed() < timeout => {
-                thread::sleep(Duration::from_millis(50));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(format!(
-                    "{label} exceeded the {} second timeout",
-                    timeout.as_secs()
-                ));
-            }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(format!("Could not poll {label}: {error}"));
-            }
-        }
-    }
+    // These calls capture version and accession/length metadata, not sequences.
+    crate::supervised_process::run(
+        command,
+        label,
+        crate::supervised_process::Limits {
+            timeout,
+            stdout_bytes: 512 * 1024 * 1024,
+            stderr_bytes: 8 * 1024 * 1024,
+            refuse_overflow: true,
+        },
+        None,
+        should_cancel,
+    )
+    .map(|captured| captured.output)
 }
 
 fn blastdbcmd_accession_lengths(prefix: &Path) -> Result<BTreeMap<String, u64>, String> {
@@ -12924,6 +12874,16 @@ where
         return Err(prepare_cancelled_error("FASTA indexing completion"));
     }
     Ok(())
+}
+
+/// Length-only view of the existing FAI parser for explicitly bound local consumers.
+pub(crate) fn fasta_index_lengths(path: &Path) -> Result<BTreeMap<String, u64>, String> {
+    load_fasta_index(path).map(|index| {
+        index
+            .into_iter()
+            .map(|(name, entry)| (name, entry.length))
+            .collect()
+    })
 }
 
 fn load_fasta_index(path: &Path) -> Result<HashMap<String, FastaIndexEntry>, String> {

@@ -222,6 +222,8 @@ pub mod sequence_rows_restriction_enzymes;
 pub mod service_readiness;
 /// Generated/derived shell-help documentation helpers.
 pub mod shell_docs;
+/// Shared capped/cancellable subprocess capture and staged-file streaming.
+pub(crate) mod supervised_process;
 /// Deterministic SVG-to-PDF conversion helpers for headless adapters.
 pub mod svg_pdf;
 /// Deterministic SVG-to-PNG rasterization helpers for headless adapters.

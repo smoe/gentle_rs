@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-11-08 - Bound Explicit Local Indexed Alignment Selection
+
+- Consolidate the metadata-probe and DuckDB subprocess loops into one direct-child
+  supervisor with capped capture/staged stdout, timeout, cancellation, reaping
+  and closed/synced output handles. Metadata stdout now has an explicit 512 MiB
+  cap; DuckDB retains its capped/truncation semantics. This is not a hostile
+  process-tree sandbox or a guarantee against stalled kernel/filesystem calls.
+- Add explicitly configured local samtools region selection through BED/indexed
+  iteration and the existing strict SAM decoder. Bind executable/version/argv,
+  index/dictionary and emitted header/output; whole alignment SHA verification
+  requires an explicit full pass. Index pairing remains a producer declaration,
+  plus size/mtime/hash and tool-warning refusal, not a full index correctness proof.
+- CRAM requires bound FASTA/FAI, dictionary agreement and private local-only
+  REF_PATH/REF_CACHE. Reject alternate header UR locations before slice decoding;
+  no default remote reference lookup, implicit executable discovery or read filter.
+  Region QNAME+RG groups retain incomplete search/views and per-SAM identity.
+  The new executed-selection receipt does not reinterpret declared BamConversion.
+- Authored four supervisor and six portable/one Unix selection tests, including
+  an opt-in real samtools BAM/CRAM test. None compiled/run locally. No private
+  data, BLAST/reference preparation or existing-reader campaign was repeated.
+
 ## 2026-11-08 - Add Saved Read-End Pileup And Explicit Views
 
 - Added per-declared-unit lane groups with stacked optimal hypotheses, saved

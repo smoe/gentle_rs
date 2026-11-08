@@ -20,10 +20,9 @@ use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
-    io::{BufReader, Read},
+    io::Read,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
-    thread,
+    process::{Command, Output},
     time::{Duration, Instant},
 };
 
@@ -351,80 +350,28 @@ fn sql_string_list<'a>(values: impl IntoIterator<Item = &'a str>) -> String {
     )
 }
 
-fn read_capped<R: Read>(reader: R, cap: usize) -> (Vec<u8>, bool) {
-    let mut reader = BufReader::new(reader);
-    let mut kept = Vec::with_capacity(cap.min(64 * 1024));
-    let mut buffer = [0u8; 16 * 1024];
-    let mut truncated = false;
-    loop {
-        match reader.read(&mut buffer) {
-            Ok(0) | Err(_) => break,
-            Ok(count) => {
-                let remaining = cap.saturating_sub(kept.len());
-                let take = remaining.min(count);
-                kept.extend_from_slice(&buffer[..take]);
-                truncated |= take < count;
-            }
-        }
-    }
-    (kept, truncated)
-}
-
 fn bounded_command_output(
     command: &mut Command,
     timeout: Duration,
     max_output_bytes: usize,
 ) -> Result<BoundedOutput, String> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("could not start DuckDB: {error}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "could not capture DuckDB stdout".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "could not capture DuckDB stderr".to_string())?;
-    let stdout_reader = thread::spawn(move || read_capped(stdout, max_output_bytes));
-    let stderr_reader = thread::spawn(move || read_capped(stderr, max_output_bytes));
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let (stdout, stdout_truncated) = stdout_reader.join().unwrap_or_default();
-                let (stderr, stderr_truncated) = stderr_reader.join().unwrap_or_default();
-                return Ok(BoundedOutput {
-                    output: Output {
-                        status,
-                        stdout,
-                        stderr,
-                    },
-                    stdout_truncated,
-                    stderr_truncated,
-                });
-            }
-            Ok(None) if started.elapsed() < timeout => thread::sleep(Duration::from_millis(25)),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(format!(
-                    "DuckDB query exceeded the {} second timeout",
-                    timeout.as_secs()
-                ));
-            }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(format!("could not poll DuckDB: {error}"));
-            }
-        }
-    }
+    let captured = crate::supervised_process::run(
+        command,
+        "DuckDB query",
+        crate::supervised_process::Limits {
+            timeout,
+            stdout_bytes: max_output_bytes,
+            stderr_bytes: max_output_bytes,
+            refuse_overflow: false,
+        },
+        None,
+        &mut || false,
+    )?;
+    Ok(BoundedOutput {
+        output: captured.output,
+        stdout_truncated: captured.stdout_truncated,
+        stderr_truncated: captured.stderr_truncated,
+    })
 }
 
 fn run_duckdb(
