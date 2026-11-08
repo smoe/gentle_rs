@@ -35,7 +35,7 @@ edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.104"
-bio = "=4.*"
+bio = "4.2.2"
 egui = "=0.37.0"
 image = "0.25.10"
 itertools = "0.15.0"

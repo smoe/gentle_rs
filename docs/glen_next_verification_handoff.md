@@ -20,6 +20,30 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Compatible Bio Update Policy, 2026-11-08
+
+Owner-authorized exception to the historical eight-pin repair: root
+`workspace.dependencies.bio = "4.2.2"` permits deliberate compatible 4.x updates.
+The seven other flagged pins, workspace inheritance and all other requirements
+are unchanged. No Cargo update/resolution or local Rust execution occurred.
+`Cargo.lock` remains byte-identical with SHA-256
+`718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+
+The offline guard now verifies bio's stable bare/caret floor against a compatible
+locked release and retains the other exact-pin checks. Regression controls cover
+future patch/minor versions, old/next-major/prerelease/absent locked versions,
+wildcards, exact pins and unbounded ranges, including LF/CRLF manifest/lock text.
+Run the five `DependencyPinTests` and normal release-policy CI. There is no new
+dependency version to reaccept and no reason to repeat completed RNA/BAM/CRAM/
+CLI campaigns for this manifest-only policy change. Normal `--locked` CI still
+must pass; a future deliberate lockfile update requires its own affected tests.
+See [the decision](decisions.md#compatible-bio-updates). Keep the separately open
+renderer/native/Windows boundaries separate; do not waive the existing guards.
+Local verification: all five dependency-policy tests and the full 54-test
+offline release-policy suite pass. Structured TOML/raw-byte comparisons confirm
+only bio's requirement changed and the lockfile stayed identical. These checks
+are not Cargo resolution, compiler or platform acceptance.
+
 ## Glen Linux Return At 1c4a4a5a And Renderer-Test Follow-Up, 2026-11-08
 
 Tested source: `1c4a4a5aa4ac9c1515f683bb0c6fd0d91409b06d`; final fetch unchanged.
@@ -1296,6 +1320,10 @@ normal CI. Repeat only the affected JS/transport scopes after a real JS repair;
 retain the already passing Lua/MCP/shell and core scientific evidence separately.
 
 ## Flagged Dependency Pins, 2026-11-03
+
+Historical exact-pin repair. For bio only, the 2026-11-08
+[compatible-update policy](#compatible-bio-update-policy-2026-11-08) supersedes
+this section's exact requirement; other flagged pins remain unchanged.
 
 The owner authorized a separate manifest-only follow-up for Glen's eight
 flagged constraints. Pin the versions already present in the lock:

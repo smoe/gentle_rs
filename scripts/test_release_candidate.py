@@ -104,6 +104,24 @@ class DependencyPinTests(unittest.TestCase):
             and requirement[1:] in versions
         )
 
+    @staticmethod
+    def compatible_locked_requirement(requirement, versions):
+        # Only full stable, nonzero-major caret requirements are authorized for bio.
+        # This is a narrow policy check, not a replacement for Cargo's resolver.
+        def stable_version(value):
+            match = re.fullmatch(
+                r"([1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value
+            ) if isinstance(value, str) else None
+            return tuple(map(int, match.groups())) if match else None
+
+        minimum = stable_version(requirement.removeprefix("^")) if isinstance(requirement, str) else None
+        return minimum is not None and any(
+            (version := stable_version(locked)) is not None
+            and version[0] == minimum[0]
+            and version >= minimum
+            for locked in versions
+        )
+
     def test_flagged_dependencies_have_exact_locked_requirements(self) -> None:
         root = Path(__file__).resolve().parents[1]
         manifest_text = (root / "Cargo.toml").read_bytes().decode("utf-8")
@@ -113,7 +131,7 @@ class DependencyPinTests(unittest.TestCase):
             manifest = tomllib.loads(manifest_text.replace("\r\n", "\n").replace("\n", newline))
             lock = tomllib.loads(lock_text.replace("\r\n", "\n").replace("\n", newline))
             for section, names in (
-                (manifest["workspace"]["dependencies"], ("bio", "egui", "mlua", "rustyline")),
+                (manifest["workspace"]["dependencies"], ("egui", "mlua", "rustyline")),
                 (manifest["dependencies"], ("eframe", "egui_extras", "lopdf", "scraper")),
             ):
                 for name in names:
@@ -134,6 +152,41 @@ class DependencyPinTests(unittest.TestCase):
             with self.subTest(requirement=requirement):
                 self.assertFalse(self.exact_locked_requirement(requirement, {"0.37.0"}))
         self.assertTrue(self.exact_locked_requirement("=0.37.0", {"0.37.0"}))
+
+    def test_bio_has_a_compatible_locked_requirement_in_both_newlines(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        manifest_text = (root / "Cargo.toml").read_bytes().decode("utf-8")
+        lock_text = (root / "Cargo.lock").read_bytes().decode("utf-8")
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                manifest = tomllib.loads(manifest_text.replace("\r\n", "\n").replace("\n", newline))
+                lock = tomllib.loads(lock_text.replace("\r\n", "\n").replace("\n", newline))
+                spec = manifest["workspace"]["dependencies"]["bio"]
+                requirement = spec["version"] if isinstance(spec, dict) else spec
+                versions = {package["version"] for package in lock["package"]
+                            if package["name"] == "bio"}
+                self.assertTrue(
+                    self.compatible_locked_requirement(requirement, versions),
+                    f"bio: {requirement!r} must allow compatible updates and match a locked release {versions}",
+                )
+
+    def test_bio_allows_newer_compatible_locked_releases(self) -> None:
+        for requirement in ("4.2.2", "^4.2.2"):
+            for version in ("4.2.2", "4.2.3", "4.3.0", "4.12.0"):
+                with self.subTest(requirement=requirement, version=version):
+                    self.assertTrue(self.compatible_locked_requirement(requirement, {version}))
+        self.assertTrue(self.compatible_locked_requirement("4.2.2", {"3.0.0", "4.3.0"}))
+
+    def test_bio_refuses_unbounded_exact_prerelease_or_incompatible_requirements(self) -> None:
+        for requirement in ("*", "=4.*", "4.*", "4.2.*", "4", "4.2", "=4.2.2",
+                            ">=4.2.2", "~4.2.2", "^^4.2.2", "4.2.2, <6",
+                            "4.2.2-rc.1", "04.2.2", "4.02.2", "0.2.2", None):
+            with self.subTest(requirement=requirement):
+                self.assertFalse(self.compatible_locked_requirement(requirement, {"4.2.2"}))
+        for versions in (set(), {"4.2.1"}, {"4.1.99"}, {"5.0.0"},
+                         {"4.3.0-rc.1"}, {"not-a-version"}):
+            with self.subTest(versions=versions):
+                self.assertFalse(self.compatible_locked_requirement("4.2.2", versions))
 
 
 class NativeBuildSettingsTests(unittest.TestCase):

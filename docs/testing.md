@@ -144,6 +144,15 @@ scope/ledger or `.13` acceptance change is made by this test-only slice.
 
 ### Platform-Specific Coverage
 
+The offline `scripts.test_release_candidate.DependencyPinTests` retain exact
+pins for seven flagged dependencies. Bio alone uses the owner-approved
+[compatible-update policy](decisions.md#compatible-bio-updates): a full stable
+bare/caret requirement and at least one compatible locked release, not an exact
+manifest pin. Run `python3 -m unittest scripts.test_release_candidate.DependencyPinTests -v`.
+Positive patch/minor, incompatible/unlocked/wildcard controls and LF/CRLF TOML
+checks do not execute Cargo. Keep `Cargo.lock` committed and builds `--locked`;
+an intentional bio lockfile update still needs affected Rust/normal CI evidence.
+
 Native CI runs the real `app::tests::agent_gui_context_` discovery tests before
 the long tutorial runtime suites. Tutorial 08.13's seven query contracts are
 separate tests, so one failure cannot hide the remaining queries; ranking

@@ -623,6 +623,23 @@ that broader declaration also needs matching workspace/dependency, feature and
 target verification. Selecting a number and adding those jobs are deferred;
 no new blanket publication gate for other members follows from this finding.
 
+### Compatible Bio Updates
+
+Owner decision, 2026-11-08: the root `workspace.dependencies.bio` uses the
+ordinary stable Cargo requirement `4.2.2`, not an exact pin. Equivalent explicit
+caret notation is allowed by the policy guard. Compatible releases at or above
+that full version and below the next major may be selected by a deliberate
+`cargo update -p bio`; a new major requires an explicit manifest change/review.
+Do not use wildcards, unbounded ranges or prerelease requirements for this rule.
+
+The committed `Cargo.lock` still records exact resolved versions. Normal CI and
+release checks use `--locked`; changing the manifest requirement alone neither
+updates the lockfile nor establishes new dependency/runtime acceptance. The
+offline guard checks stable compatible-range/lock agreement, including LF/CRLF,
+not Cargo resolution or compilation. Future updates require their own affected
+tests and normal CI. All seven other flagged exact-pin requirements remain
+unchanged; this exception does not relax their guards or select a Rust minimum.
+
 ## Explicit Variant Allele Selection
 
 Status: active

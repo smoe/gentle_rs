@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-08 - Permit Compatible Bio Updates Without Changing The Locked Graph
+
+- Change only `workspace.dependencies.bio` from `=4.*` to `4.2.2`, allowing
+  compatible stable 4.x updates when explicitly updating the lockfile. Preserve
+  every other manifest setting/pin and the exact current `Cargo.lock` bytes.
+- Give only bio a narrow bare/caret stable-release policy guard with a compatible
+  locked release. Retain the other seven exact-pin guards. Add positive future
+  patch/minor controls, lower/next-major/prerelease/unlocked and wildcard/exact/
+  open-range refusals, and actual-manifest LF/CRLF checks.
+- Record root ownership, deliberate `cargo update -p bio` and `--locked` CI in
+  decisions/testing and the Glen handoff. This changes no dependency resolution,
+  Rust minimum or scientific/runtime verdict. No local Cargo build/update,
+  push, dispatch or publication.
+- Verification: five dependency-policy tests and all 54 offline release-policy
+  tests pass (the five are included). Structured TOML comparison confirms the
+  single bio change; raw lockfile comparison and SHA-256 confirm unchanged bytes.
+
 ## 2026-11-08 - Record Linux Selection/Export Passes And Guard The Layout Test Parser
 
 - Verify Glen's `1c4a4a5a` archive hash and all 81 manifest entries. Retain the
