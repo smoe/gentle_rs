@@ -247,7 +247,7 @@ fn curves(
     events.insert(0, (0, 0));
     events.insert(length, (0, 0));
     for unit in units {
-        let mut lower = None;
+        let mut lower: Option<Vec<Interval>> = None;
         let mut upper = vec![];
         for h in &unit.hypotheses {
             meter.charge(1)?;

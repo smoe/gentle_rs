@@ -1,6 +1,7 @@
 //! Thin reviewed requests and virtualized shared-renderer lanes; no file I/O or biological projection.
 
 use super::*;
+use crate::engine_shell::quote_shell_arg;
 use crate::observed_transcript_structures::read_ends::pileup::{
     self, Channels, Filter, SortKey, Status, View,
 };

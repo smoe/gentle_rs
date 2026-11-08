@@ -642,7 +642,7 @@ pub fn execute(
             ];
             let receipt = publish(
                 &request.output_dir,
-                identity,
+                identity.clone(),
                 contents,
                 request.max_output_bytes,
                 &mut check,
@@ -719,7 +719,7 @@ pub fn execute(
             }
             let receipt = publish(
                 &output_dir,
-                identity,
+                identity.clone(),
                 contents,
                 max_output_bytes,
                 &mut check,

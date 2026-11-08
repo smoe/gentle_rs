@@ -58,7 +58,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tempfile::NamedTempFile;
 
 #[path = "genomes/prepared_sequence_reader.rs"]
