@@ -71,6 +71,14 @@
       "genomic_stop_codon_0based_half_open": [[108,110],[120,121]]
     }
   },
+  "clip_cases": [
+    {"case":"clipped_three", "soft":[0,5], "hard":[0,0], "end3":{"unaligned_query_bases":5,"kind":"soft"}, "utr3":[5,"right_censored","clipped_transcript_end"]},
+    {"case":"clipped_three", "soft":[0,0], "hard":[0,5], "end3":{"unaligned_query_bases":5,"kind":"hard"}, "utr3":[5,"right_censored","clipped_transcript_end"]},
+    {"case":"clipped_three", "soft":[0,2], "hard":[0,3], "end3":{"unaligned_query_bases":5,"kind":"mixed"}, "utr3":[5,"right_censored","clipped_transcript_end"]},
+    {"case":"clipped_three", "soft":null, "hard":null, "end3":{"unaligned_query_bases":5,"kind":"unknown"}, "utr3":[5,"right_censored","clipped_transcript_end"]},
+    {"case":"opposite_query_clipped_three", "soft":[0,10], "hard":[0,0], "end3":{"unaligned_query_bases":10,"kind":"soft"}, "utr3":[5,"right_censored","clipped_transcript_end"]},
+    {"case":"minus", "axis":35, "soft":[5,0], "hard":[0,0], "end3":{"unaligned_query_bases":5,"kind":"soft"}, "utr3":[5,"right_censored","clipped_transcript_end"]}
+  ],
   "cases": [
     {"name":"plus", "models":["plus"], "axis":25,
      "observations":[{"id":"o1","strand":"+","axis":25,"blocks":[[0,10,100,110],[10,25,120,135]],"candidates":["tx_plus"]}], "hypotheses":[["o1"]],

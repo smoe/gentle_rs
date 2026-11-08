@@ -68,6 +68,24 @@ class SharedUtrCoreContractTests(unittest.TestCase):
         for forbidden in ("std::fs", "std::process", "GENES =", "barcode15", "barcode16"):
             self.assertNotIn(forbidden, core)
 
+    def test_clip_descriptors_do_not_change_python_censoring_under_either_encoding(self):
+        raw = CORPUS.read_bytes()
+        for newline in (b"\n", b"\r\n"):
+            corpus = json.loads(raw.replace(b"\r\n", b"\n").replace(b"\n", newline))
+            self.assertEqual(len(corpus["clip_cases"]), 6)
+            for entry in corpus["clip_cases"]:
+                with self.subTest(case=entry, newline=newline):
+                    case = copy.deepcopy(next(c for c in corpus["cases"] if c["name"] == entry["case"]))
+                    if "axis" in entry:
+                        case["axis"] = entry["axis"]
+                        for row in case["observations"]:
+                            row["axis"] = entry["axis"]
+                    document, analysis, observations = inputs(corpus, case)
+                    observations["o1"]["clipping"] = None if entry["soft"] is None else {"soft": entry["soft"], "hard": entry["hard"]}
+                    source, models = MODULE.read_models(document, analysis)
+                    values, _reason, _ids = MODULE.project_unit({"hypotheses": case["hypotheses"]}, observations, source, models)
+                    self.assertEqual(list(values[1]), entry["utr3"])
+
 
 if __name__ == "__main__":
     unittest.main()

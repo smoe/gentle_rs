@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-08 - Refine The Shared Read-End Core For Pileups
+
+- Require parsed normalized annotation in the pure core and compare used model
+  contig, strand, exons and gene membership, not only copied digest strings.
+  The service still owns raw artifact authentication; no old SAM wire changes.
+- Retain every optimal hypothesis/candidate projection, saved relations,
+  transcript intervals and both end metrics. Derive collapsed unit results
+  from these records; separate annotation genes from complete-model genes.
+- Add additive clip lengths/kinds without reinterpreting censoring, and one
+  shared eligibility constant. Keep unknown/missing models and all alternatives.
+- Author 20 Rust tests (unrun), retaining 31 shared literal geometry cases and
+  adding six soft/hard/mixed/unknown/reverse/minus clip controls. Python checks
+  exercise the unchanged projector under LF/CRLF; Rust acceptance stays external.
+  No adapter, coverage, private-data processing, push or local Rust build.
+
 ## 2026-11-08 - Reconcile The Read-End Pileup Integration Plan
 
 - Fold the owner-supplied Claude review into the [seven-step ledger](rna_read_end_integration_plan.md): annotation geometry, uncollapsed projections, additive clips, required pileup and explicitly configured bounded ingress.

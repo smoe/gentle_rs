@@ -41,7 +41,7 @@ remaining acceptance, not an inherited pass.
 | Step | Deliverable | Implementation / Acceptance |
 |---|---|---|
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
-| 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Prior core at `1df2db13`; refinements pending, Rust unrun |
+| 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented over `1df2db13`; 20 authored Rust tests unrun, 31+6 shared cases checked by Python in LF/CRLF |
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Pending |
 | 3 | Engine-owned pileup/view and deterministic headless renderer | Pending |
 | 4 | Shared supervised process and bounded configured samtools ingress | Pending |

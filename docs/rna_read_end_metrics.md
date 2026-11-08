@@ -13,8 +13,9 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 
 `observed_transcript_structures::read_ends::project_read_ends` now provides the
 same V2 UTR semantics as a pure Rust-level building block. It consumes a strict
-V2 `ModelDocument` and existing typed `ObservedSamAnalysis`, verifies reference/
-annotation binding equality and returns per-declared-unit length and 5-prime/
+V2 `ModelDocument`, existing typed `ObservedSamAnalysis` and the parsed normalized
+annotation authenticated by the caller. It verifies reference/binding equality
+and each used model's exact contig/strand/exons/gene agreement, then returns length and 5-prime/
 3-prime reach. It reuses the shared genomic-to-query block transform for the
 exon-to-transcript coordinates. It never reruns alignment or chooses a model.
 
@@ -23,6 +24,16 @@ only a reason. Derived boundaries expose complete/included/separate/overlapping
 or partial/unknown stop evidence without editing original CDS. Missing candidates
 remain visible and withhold a complete gene assignment. Results do not promote
 SAM query-unit identity into verified original reads or independent molecules.
+
+Each optimal hypothesis retains its observation IDs and every compatible
+candidate's saved relations, transcript intervals, metrics and additive clips.
+The collapsed unit metrics derive from these records, not another calculation.
+`annotation_gene_ids` retain saved match identities even without a CDS model;
+`model_gene_ids` match Python's conservative complete-model assignment. Clip
+lengths are unaligned query extents, with soft/hard/mixed/none/unknown kinds
+from the terminal saved observation where determinable. They never change a
+censored value into an observed end. A model/annotation mismatch refuses with
+`rna_read_end_model_annotation_geometry`.
 
 This is **not a new CLI/MCP command, file importer or frozen report schema**.
 Callers must first authenticate saved artifacts; in-memory hash equality does

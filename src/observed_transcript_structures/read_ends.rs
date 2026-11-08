@@ -6,11 +6,20 @@
 
 use super::*;
 
+mod projection;
+
 #[cfg(test)]
 mod tests;
 
 /// Existing standalone model wire admitted by this first Rust boundary.
 pub const MODEL_SCHEMA: &str = "gentle.rna_read_end_transcript_models.v2";
+
+/// One shared eligibility rule for UTR, coverage and pileup consumers.
+pub const ACCEPTED_RELATIONS: [ModelRelation; 3] = [
+    ModelRelation::ExactFullChain,
+    ModelRelation::ExactPartialChain,
+    ModelRelation::WithinExon,
+];
 
 /// The existing standalone V2 model, not a new annotation or reference authority.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +96,8 @@ pub enum Reason {
 }
 
 /// Missing has no number; a censored lower bound cannot masquerade as an observation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Metric {
     Observed { value_bp: usize },
     RightCensored { lower_bound_bp: usize },
@@ -95,7 +105,8 @@ pub enum Metric {
 }
 
 /// How explicit stop intervals meet the terminal CDS in transcript coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StopEvidence {
     Unknown,
     Partial,
@@ -105,7 +116,8 @@ pub enum StopEvidence {
 }
 
 /// Derived transcript coordinates only; no raw CDS extension or stop inference.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelBoundary {
     pub transcript_id: String,
     pub transcript_length: usize,
@@ -115,18 +127,78 @@ pub struct ModelBoundary {
 }
 
 /// Identity remains a declared SAM query unit, not a verified original read/molecule.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UnitProjection {
     pub unit: ObservedSamQueryUnitKey,
     pub read_length: Metric,
     pub utr5: Metric,
     pub utr3: Metric,
     pub candidate_transcript_ids: Vec<String>,
+    /// Complete-model identities, empty if any retained candidate lacks a model.
+    pub model_gene_ids: Vec<String>,
+    /// Saved annotation identities, including candidates without a CDS model.
+    pub annotation_gene_ids: Vec<String>,
+    pub hypotheses: Vec<HypothesisProjection>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipKind {
+    None,
+    Soft,
+    Hard,
+    Mixed,
+    Unknown,
+}
+
+/// Additive evidence only; neither length nor kind reinterprets censoring.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EndClip {
+    pub unaligned_query_bases: Option<usize>,
+    pub kind: ClipKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateRelation {
+    pub observation_id: String,
+    pub relation: ModelRelation,
     pub gene_ids: Vec<String>,
+    pub model_strand: char,
+}
+
+/// One retained hypothesis x candidate. No consumer needs to redo its geometry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateProjection {
+    pub transcript_id: String,
+    pub annotation_gene_ids: Vec<String>,
+    pub model_gene_ids: Vec<String>,
+    pub relations: Vec<CandidateRelation>,
+    pub transcript_intervals: Vec<Interval>,
+    pub utr5: Metric,
+    pub utr3: Metric,
+    pub clip5: EndClip,
+    pub clip3: EndClip,
+    pub sense_to_annotation: Option<bool>,
+    pub model_available: bool,
+    pub projection_available: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HypothesisProjection {
+    pub hypothesis_index: usize,
+    pub observation_ids: Vec<String>,
+    pub candidates: Vec<CandidateProjection>,
+    pub unavailable: Option<Reason>,
 }
 
 /// Rust-level result, not a registered operation or frozen report wire.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Projection {
     pub source_id: String,
     pub models: Vec<ModelBoundary>,
@@ -347,38 +419,31 @@ fn reach(ranges: &[Interval], boundary: Option<usize>, five: bool, clipped: bool
     }
 }
 
+struct OnePath {
+    intervals: Vec<Interval>,
+    metrics: [Metric; 2],
+    clips: [EndClip; 2],
+    sense: bool,
+    available: bool,
+}
+
 fn one_path(
     path: &[&ObservedSamObservation],
     model: &Prepared<'_>,
     meter: &mut Meter,
-) -> Result<Option<[Metric; 2]>, EngineError> {
+) -> Result<Option<OnePath>, EngineError> {
+    let Some((ends, same)) = projection::query_ends(path, model.model.strand, meter)? else {
+        return Ok(None);
+    };
     let mut ranges = Vec::new();
-    let mut query_start = usize::MAX;
-    let mut query_end = 0usize;
-    let mut axis_orientation = None;
     for observation in path {
         meter.charge(1)?;
-        if observation.contig != model.model.contig
-            || observation.blocks.is_empty()
-            || observation.query_axis_length == 0
-            || !matches!(observation.query_to_reference_strand, '+' | '-')
-        {
+        if observation.contig != model.model.contig {
             return Ok(None);
         }
-        let current = (
-            observation.query_axis_length,
-            observation.query_to_reference_strand == model.model.strand,
-        );
-        if axis_orientation.is_some_and(|previous| previous != current) {
-            return Ok(None);
-        }
-        axis_orientation = Some(current);
         for block in &observation.blocks {
             meter.charge(1)?;
-            if block.query.0 >= block.query.1
-                || block.target.0 >= block.target.1
-                || block.query.1 > current.0
-            {
+            if block.target.0 >= block.target.1 {
                 return Err(fail("observation_geometry"));
             }
             if block.query.1 - block.query.0 != block.target.1 - block.target.0 {
@@ -388,38 +453,39 @@ fn one_path(
                 return Err(fail("interval_budget"));
             }
             ranges.push(block.target);
-            query_start = query_start.min(block.query.0);
-            query_end = query_end.max(block.query.1);
         }
     }
-    let Some((axis, same)) = axis_orientation else {
-        return Ok(None);
+    let projected = model.project(&ranges, meter)?;
+    let available = projected.is_some();
+    let projected = projected.unwrap_or_default();
+    let metrics = if available {
+        [
+            reach(
+                &projected,
+                Some(model.boundary.cds.0),
+                true,
+                ends[0].unaligned_query_bases.is_some_and(|n| n > 0),
+            ),
+            reach(
+                &projected,
+                model.boundary.utr3_start,
+                false,
+                ends[1].unaligned_query_bases.is_some_and(|n| n > 0),
+            ),
+        ]
+    } else {
+        [
+            missing(Reason::ModelProjectionIncompatible),
+            missing(Reason::ModelProjectionIncompatible),
+        ]
     };
-    let Some(projected) = model.project(&ranges, meter)? else {
-        return Ok(None);
-    };
-    Ok(Some([
-        reach(
-            &projected,
-            Some(model.boundary.cds.0),
-            true,
-            if same {
-                query_start > 0
-            } else {
-                query_end < axis
-            },
-        ),
-        reach(
-            &projected,
-            model.boundary.utr3_start,
-            false,
-            if same {
-                query_end < axis
-            } else {
-                query_start > 0
-            },
-        ),
-    ]))
+    Ok(Some(OnePath {
+        intervals: projected,
+        metrics,
+        clips: ends,
+        sense: same,
+        available,
+    }))
 }
 
 fn candidates<'a>(
@@ -451,12 +517,7 @@ fn candidates<'a>(
     let mut ids = BTreeSet::new();
     for model in &comparison.models {
         meter.charge(1)?;
-        if matches!(
-            model.relation,
-            ModelRelation::ExactFullChain
-                | ModelRelation::ExactPartialChain
-                | ModelRelation::WithinExon
-        ) {
+        if ACCEPTED_RELATIONS.contains(&model.relation) {
             if !identity(&model.transcript_id) {
                 return Err(fail("candidate_identity"));
             }
@@ -464,121 +525,6 @@ fn candidates<'a>(
         }
     }
     Ok(ids)
-}
-
-fn unit_projection(
-    unit: &ObservedSamUnitAssessment,
-    observations: &BTreeMap<&str, &ObservedSamObservation>,
-    models: &BTreeMap<&str, Prepared<'_>>,
-    source_id: &str,
-    meter: &mut Meter,
-) -> Result<UnitProjection, EngineError> {
-    let read_length = match unit.unclipped_axis_length {
-        Some(0) => return Err(fail("unit_axis")),
-        Some(value_bp) => Metric::Observed { value_bp },
-        None => missing(Reason::AxisLengthUnavailable),
-    };
-    let mut out = UnitProjection {
-        unit: unit.unit.clone(),
-        read_length,
-        utr5: missing(Reason::NoOptimalHypothesis),
-        utr3: missing(Reason::NoOptimalHypothesis),
-        candidate_transcript_ids: Vec::new(),
-        gene_ids: Vec::new(),
-    };
-    let mut paths = Vec::new();
-    let mut all_candidates = BTreeSet::new();
-    let mut unavailable = None;
-    for hypothesis in &unit.hypotheses {
-        meter.charge(1)?;
-        if hypothesis.is_empty() {
-            unavailable = Some(Reason::InvalidOptimalHypothesis);
-            break;
-        }
-        let mut path = Vec::new();
-        let mut path_ids = BTreeSet::new();
-        let mut common: Option<BTreeSet<&str>> = None;
-        for id in hypothesis {
-            meter.charge(1)?;
-            if !path_ids.insert(id) {
-                return Err(fail("hypothesis_identity"));
-            }
-            let Some(&observation) = observations.get(id.as_str()) else {
-                unavailable = Some(Reason::UnboundOptimalHypothesis);
-                break;
-            };
-            if observation.unit != unit.unit
-                || !observation.on_optimal_path
-                || unit
-                    .unclipped_axis_length
-                    .is_some_and(|axis| axis != observation.query_axis_length)
-            {
-                return Err(fail("unit_binding"));
-            }
-            let current = candidates(observation, source_id, meter)?;
-            common = Some(match common {
-                None => current,
-                Some(previous) => {
-                    meter.charge(previous.len())?;
-                    previous.intersection(&current).copied().collect()
-                }
-            });
-            path.push(observation);
-        }
-        if unavailable.is_some() {
-            break;
-        }
-        let common = common.unwrap_or_default();
-        if common.is_empty() {
-            unavailable = Some(Reason::NoCompatibleCdsModel);
-            break;
-        }
-        meter.charge(common.len())?;
-        all_candidates.extend(common.iter().copied());
-        paths.push((path, common));
-    }
-    if let Some(reason) = unavailable {
-        out.utr5 = missing(reason);
-        out.utr3 = missing(reason);
-        return Ok(out);
-    }
-    out.candidate_transcript_ids = all_candidates.iter().map(|id| (*id).to_owned()).collect();
-    meter.charge(all_candidates.len())?;
-    if all_candidates.iter().any(|id| !models.contains_key(id)) {
-        out.utr5 = missing(Reason::CandidateModelUnavailable);
-        out.utr3 = missing(Reason::CandidateModelUnavailable);
-        return Ok(out);
-    }
-    out.gene_ids = all_candidates
-        .iter()
-        .map(|id| models[id].model.gene_id.clone())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let mut consensus: Option<[Metric; 2]> = None;
-    for (path, ids) in paths {
-        for id in ids {
-            let Some(value) = one_path(&path, &models[id], meter)? else {
-                out.utr5 = missing(Reason::ModelProjectionIncompatible);
-                out.utr3 = missing(Reason::ModelProjectionIncompatible);
-                return Ok(out);
-            };
-            if let Some(previous) = &mut consensus {
-                for index in 0..2 {
-                    if previous[index] != value[index] {
-                        previous[index] = missing(Reason::AmbiguousTranscriptEndGeometry);
-                    }
-                }
-            } else {
-                consensus = Some(value);
-            }
-        }
-    }
-    if let Some([five, three]) = consensus {
-        out.utr5 = five;
-        out.utr3 = three;
-    }
-    Ok(out)
 }
 
 /// Bind a V2 model to admitted SAM analysis and project every declared unit.
@@ -590,6 +536,7 @@ fn unit_projection(
 pub fn project_read_ends(
     document: &ModelDocument,
     analysis: &ObservedSamAnalysis,
+    annotation: &crate::engine::PrimerPayloadAnnotation,
     limits: Limits,
 ) -> Result<Projection, EngineError> {
     if limits.max_models == 0
@@ -636,6 +583,12 @@ pub fn project_read_ends(
     if bindings.len() != 1 || bindings[0].annotation_sha256 != document.annotation_sha256 {
         return Err(fail("annotation_binding"));
     }
+    if annotation.reference_id != bindings[0].reference_id
+        || annotation.assembly != bindings[0].assembly
+        || annotation.reference_fasta_sha256 != bindings[0].reference_fasta_sha256
+    {
+        return Err(fail("model_annotation_binding"));
+    }
     let mut models = BTreeMap::new();
     let mut interval_count = 0usize;
     for model in &document.transcripts {
@@ -657,6 +610,7 @@ pub fn project_read_ends(
             return Err(fail("duplicate_model"));
         }
     }
+    let normalized = projection::annotation_index(document, annotation, &mut meter)?;
     let mut observations = BTreeMap::new();
     for observation in &analysis.observations {
         meter.charge(1)?;
@@ -678,10 +632,11 @@ pub fn project_read_ends(
         {
             return Err(fail("unit_identity"));
         }
-        units.push(unit_projection(
+        units.push(projection::unit(
             unit,
             &observations,
             &models,
+            &normalized,
             &document.source_id,
             &mut meter,
         )?);

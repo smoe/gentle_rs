@@ -16,7 +16,34 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Read-End Core Refinements, 2026-11-08
+
+This is the active step-1 filter after the [integration-plan reconciliation](rna_read_end_integration_plan.md).
+The original `1df2db13` receipt below is historical. The core now requires the
+parsed normalized annotation; the caller must authenticate its exact file hash
+against the saved binding. Confirm geometry/gene mismatch refusal, uncollapsed
+hypothesis/candidate records, both gene-ID fields and additive clip descriptors.
+There are 20 authored Rust tests, including the original 31-case geometry corpus
+and six clip cases; no Rust compilation/execution occurred locally.
+
+```sh
+cargo test --locked --lib -j1 read_ends::tests -- --test-threads=1
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+python3 -m unittest discover -s tests -p 'test_*rna_read_end*.py' -v
+```
+
+Require 20 nonzero Rust tests; compare the unmodified collapsed literals as well
+as new metadata, including minus/reverse clip sides and missing-CDS gene identity.
+The original normalized-annotation hashing seam was inspected in both S2.3
+branches before implementation. No completed BLAST/reader/private analysis or
+containment campaign needs repetition. Return exact source/toolchain/features,
+counts/skips/failures and logs; no new native or biological acceptance follows.
+
 ## Shared UTR Core Step 1, 2026-11-08
+
+Historical authoring receipt at `1df2db13`: the active refined API/checklist is
+above. Its 17-test count and authoring baseline below do not describe later code.
 
 Verify the integrated revision containing this first Rust core after the owner's
 normal push; do not create an interim freeze/bundle or repeat completed data

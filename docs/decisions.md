@@ -78,6 +78,12 @@ projections, coverage, pileup/view records and thin adapters under
 there remain binding until separately decided. No clip reinterpretation, basecall
 join, representative isoform, cross-analysis identity inference or ranking port.
 
+Models used for metrics must match the authenticated normalized annotation's
+contig, strand, exons and gene membership. Preserve per-hypothesis/candidate
+records as the sole source of collapsed metrics and later lanes/coverage.
+Saved annotation gene identities remain distinct from complete-model gene
+identities; additive clip kind/length never changes censoring.
+
 The owner also authorizes an explicitly configured, GENtle-executed local
 samtools selection adapter. Implicit tools, aligners and remote inputs remain
 unauthorized. Region-selected units retain incomplete search/views, and source

@@ -24,3 +24,8 @@ Glen/CI runs the Rust half with
 `cargo test --locked --lib -j1 read_ends::tests -- --test-threads=1`.
 Neither passing Python alone nor source inspection proves that Rust compiles or
 matches it. No native, file-publication or biological acceptance is implied.
+
+The six `clip_cases` are also hand-crafted: they attach explicit soft/hard clip
+descriptors to existing geometry cases, including reverse query and minus-model
+ends. Expected clip kinds/lengths and unchanged metric triples are literal.
+Python checks the unchanged metrics; Rust additionally checks the new metadata.

@@ -8,6 +8,71 @@ const CORPUS: &str = include_str!(concat!(
     "/test_files/rna_read_end_core/cases.json"
 ));
 
+fn normalized(
+    document: &ModelDocument,
+    analysis: &ObservedSamAnalysis,
+) -> crate::engine::PrimerPayloadAnnotation {
+    use crate::engine::{
+        PRIMER_PAYLOAD_ANNOTATION_SCHEMA, PrimerPayloadAnnotation, PrimerPayloadTranscript,
+    };
+    let mut transcripts = BTreeMap::new();
+    for model in &document.transcripts {
+        transcripts
+            .entry(model.transcript_id.clone())
+            .or_insert(PrimerPayloadTranscript {
+                transcript_id: model.transcript_id.clone(),
+                gene_ids: vec![model.gene_id.clone()],
+                target_name: model.contig.clone(),
+                target_length: usize::MAX,
+                genomic_contig: Some(model.contig.clone()),
+                genomic_strand: Some(model.strand),
+                genomic_exons: model.genomic_exons_0based_half_open.clone(),
+            });
+    }
+    for observation in &analysis.observations {
+        for source in &observation.comparisons {
+            for model in source.comparison.iter().flat_map(|c| &c.models) {
+                let fallback = document
+                    .transcripts
+                    .first()
+                    .map(|m| m.genomic_exons_0based_half_open.clone())
+                    .unwrap_or_default();
+                let value = transcripts.entry(model.transcript_id.clone()).or_insert(
+                    PrimerPayloadTranscript {
+                        transcript_id: model.transcript_id.clone(),
+                        gene_ids: model.gene_ids.clone(),
+                        target_name: observation.contig.clone(),
+                        target_length: usize::MAX,
+                        genomic_contig: Some(observation.contig.clone()),
+                        genomic_strand: Some(model.model_strand),
+                        genomic_exons: fallback,
+                    },
+                );
+                value.gene_ids.extend(model.gene_ids.clone());
+                value.gene_ids.sort();
+                value.gene_ids.dedup();
+            }
+        }
+    }
+    PrimerPayloadAnnotation {
+        schema: PRIMER_PAYLOAD_ANNOTATION_SCHEMA.into(),
+        reference_id: "synthetic_reference".into(),
+        assembly: document.assembly.clone(),
+        release: "synthetic_snapshot".into(),
+        reference_fasta_sha256: document.reference_fasta_sha256.clone(),
+        coordinate_convention: document.coordinate_convention.clone(),
+        transcripts: transcripts.into_values().collect(),
+    }
+}
+
+fn project_read_ends(
+    document: &ModelDocument,
+    analysis: &ObservedSamAnalysis,
+    limits: Limits,
+) -> Result<Projection, EngineError> {
+    super::project_read_ends(document, analysis, &normalized(document, analysis), limits)
+}
+
 fn inputs(corpus: &Value, case: &Value) -> (ModelDocument, ObservedSamAnalysis) {
     let mut document = corpus["binding"].clone();
     document["transcripts"] = Value::Array(
@@ -126,7 +191,7 @@ fn triple(metric: &Metric) -> Value {
 fn semantic(unit: &UnitProjection) -> Value {
     json!({
         "five": triple(&unit.utr5), "three": triple(&unit.utr3),
-        "ids": unit.candidate_transcript_ids, "genes": unit.gene_ids
+        "ids": unit.candidate_transcript_ids, "genes": unit.model_gene_ids
     })
 }
 
@@ -423,12 +488,15 @@ fn utr_core_names_are_data_not_current_panel_defaults() {
         out.units[0].candidate_transcript_ids,
         ["another_transcript"]
     );
-    assert_eq!(out.units[0].gene_ids, ["another_gene"]);
+    assert_eq!(out.units[0].model_gene_ids, ["another_gene"]);
     assert_eq!(out.units[0].utr3, Metric::Observed { value_bp: 5 });
     let (mut document, analysis) = fixture("agreeing_candidates");
     document.transcripts[1].gene_id = "OTHER_SYN_GENE".into();
     let out = project_read_ends(&document, &analysis, Limits::default()).unwrap();
-    assert_eq!(out.units[0].gene_ids, ["GENE_SYN_A", "OTHER_SYN_GENE"]);
+    assert_eq!(
+        out.units[0].model_gene_ids,
+        ["GENE_SYN_A", "OTHER_SYN_GENE"]
+    );
     assert_eq!(out.units[0].candidate_transcript_ids.len(), 2);
 }
 
@@ -479,12 +547,10 @@ fn utr_core_alternative_paths_do_not_choose_the_first_end() {
         missing(Reason::AmbiguousTranscriptEndGeometry)
     );
     analysis.units[0].hypotheses.reverse();
-    assert_eq!(
-        project_read_ends(&document, &analysis, Limits::default())
-            .unwrap()
-            .units,
-        before.units
-    );
+    let after = project_read_ends(&document, &analysis, Limits::default()).unwrap();
+    assert_eq!(semantic(&after.units[0]), semantic(&before.units[0]));
+    assert_eq!(after.units[0].hypotheses.len(), 2);
+    assert_eq!(after.units[0].hypotheses[0].observation_ids, ["other"]);
 }
 
 #[test]
@@ -502,7 +568,7 @@ fn utr_core_unavailable_or_unresolved_comparison_does_not_assign_a_model() {
         let out = project_read_ends(&document, &changed, Limits::default()).unwrap();
         assert_eq!(out.units[0].utr3, missing(Reason::NoCompatibleCdsModel));
         assert!(out.units[0].candidate_transcript_ids.is_empty());
-        assert!(out.units[0].gene_ids.is_empty());
+        assert!(out.units[0].model_gene_ids.is_empty());
     }
 }
 
@@ -525,4 +591,80 @@ fn utr_core_large_genomic_coordinates_do_not_wrap_transcript_offsets() {
     assert_eq!(out.models[0].transcript_length, 100);
     assert_eq!(out.units[0].utr5, Metric::Observed { value_bp: 10 });
     assert_eq!(out.units[0].utr3, Metric::Observed { value_bp: 20 });
+}
+
+#[test]
+fn utr_core_model_must_match_actual_normalized_annotation_geometry() {
+    let (document, analysis) = fixture("plus");
+    let annotation = normalized(&document, &analysis);
+    for change in 0..4 {
+        let mut changed = annotation.clone();
+        let model = &mut changed.transcripts[0];
+        match change {
+            0 => model.genomic_contig = Some("other_contig".into()),
+            1 => model.genomic_strand = Some('-'),
+            2 => model.genomic_exons[0].0 += 1,
+            _ => model.gene_ids = vec!["unrelated_gene".into()],
+        }
+        assert_eq!(
+            super::project_read_ends(&document, &analysis, &changed, Limits::default())
+                .unwrap_err()
+                .message,
+            "rna_read_end_model_annotation_geometry"
+        );
+    }
+}
+
+#[test]
+fn utr_core_records_are_uncollapsed_and_retain_noncoding_annotation_genes() {
+    let (document, analysis) = fixture("missing_candidate_model");
+    let out = project_read_ends(&document, &analysis, Limits::default()).unwrap();
+    let unit = &out.units[0];
+    assert_eq!(unit.annotation_gene_ids, ["GENE_SYN_A"]);
+    assert!(unit.model_gene_ids.is_empty());
+    assert_eq!(unit.hypotheses[0].candidates.len(), 2);
+    let known = unit.hypotheses[0]
+        .candidates
+        .iter()
+        .find(|c| c.transcript_id == "tx_plus")
+        .unwrap();
+    assert_eq!(known.utr3, Metric::Observed { value_bp: 5 });
+    assert_eq!(known.transcript_intervals, [(0, 25)]);
+    assert_eq!(unit.utr3, missing(Reason::CandidateModelUnavailable));
+    assert_eq!(known.relations[0].observation_id, "o1");
+}
+
+#[test]
+fn utr_core_clip_kinds_are_additive_without_reinterpreting_censoring() {
+    let corpus: Value = serde_json::from_str(CORPUS).unwrap();
+    let cases = corpus["clip_cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 6);
+    for entry in cases {
+        let (document, mut analysis) = fixture(entry["case"].as_str().unwrap());
+        if let Some(axis) = entry.get("axis").and_then(Value::as_u64) {
+            analysis.units[0].unclipped_axis_length = Some(axis as usize);
+            for observation in &mut analysis.observations {
+                observation.query_axis_length = axis as usize;
+            }
+        }
+        analysis.observations[0].clipping = if entry["soft"].is_null() {
+            None
+        } else {
+            Some(ObservedSamClipping {
+                soft: serde_json::from_value(entry["soft"].clone()).unwrap(),
+                hard: serde_json::from_value(entry["hard"].clone()).unwrap(),
+                padding_operations: 0,
+            })
+        };
+        let out = project_read_ends(&document, &analysis, Limits::default()).unwrap();
+        let candidate = &out.units[0].hypotheses[0].candidates[0];
+        assert_eq!(
+            serde_json::to_value(&candidate.clip3).unwrap(),
+            entry["end3"],
+            "{entry}"
+        );
+        assert_eq!(triple(&candidate.utr3), entry["utr3"]);
+        assert_eq!(triple(&out.units[0].utr3), entry["utr3"]);
+        assert_eq!(candidate.clip5.kind, ClipKind::None);
+    }
 }
