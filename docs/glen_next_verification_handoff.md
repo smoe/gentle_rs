@@ -7,6 +7,15 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Read-End Integration Plan, 2026-11-08
+
+The [reconciled plan](rna_read_end_integration_plan.md) supersedes only the earlier
+five-step organization. OD1-OD6 retain their documented defaults. Do not execute
+future-step commands merely because a plan authorizes development: each step's
+implementation receipt/filter and runtime status will be recorded separately.
+The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
+containment pass. No repeated BLAST/reader or private-data campaign is requested.
+
 ## Shared UTR Core Step 1, 2026-11-08
 
 Verify the integrated revision containing this first Rust core after the owner's

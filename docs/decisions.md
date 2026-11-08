@@ -66,6 +66,26 @@ Rust boundary accepts strict V2 only; unchanged Python legacy-v1 reading remains
 conservative. Coverage, basecalls, Poly(A), indexed ingress and publication need
 their later separately tested boundaries; the core does not add them implicitly.
 
+## Shared Read-End Evidence And Explicit Indexed Ingress
+
+Status: active
+
+Owner-authorized 2026-11-08 via the supplied Claude integration prompt: supersede
+only the standalone-only access restriction above, not its geometry, uncertainty,
+CDS/stop, censoring or nonclaim rules. Implement shared engine-owned per-unit
+projections, coverage, pileup/view records and thin adapters under
+[the integration ledger](rna_read_end_integration_plan.md). The OD1-OD6 defaults
+there remain binding until separately decided. No clip reinterpretation, basecall
+join, representative isoform, cross-analysis identity inference or ranking port.
+
+The owner also authorizes an explicitly configured, GENtle-executed local
+samtools selection adapter. Implicit tools, aligners and remote inputs remain
+unauthorized. Region-selected units retain incomplete search/views, and source
+identity declarations must not masquerade as full-file verification. Existing
+SAM v1 and declared conversion/Phase 2/S1/Python bytes remain unchanged; executed
+selection provenance is separate. No biological or runtime acceptance follows
+from this architectural authorization or source-only implementation checks.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active

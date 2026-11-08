@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-11-08 - Reconcile The Read-End Pileup Integration Plan
+
+- Fold the owner-supplied Claude review into the [seven-step ledger](rna_read_end_integration_plan.md): annotation geometry, uncollapsed projections, additive clips, required pileup and explicitly configured bounded ingress.
+- Confirm that SAM annotation binding hashes identify normalized annotation bytes.
+  Record OD1-OD6 defaults and later owner decisions without changing censoring,
+  old wires, Python behavior or private evidence. Implementation/acceptance stays
+  separately tracked per step; no local Rust build, push, dispatch or tag.
+
 ## 2026-11-08 - Add The Pure Shared V2 UTR Core
 
 - Implement only step 1 of the general UTR/coverage/Poly(A) plan: pure bounded
