@@ -10,6 +10,8 @@ use super::*;
 pub mod coverage;
 /// Separate unavailable basecall channel and explicitly configured tail imports.
 pub mod evidence;
+/// Saved per-unit evidence, explicit view selection and renderer projection.
+pub mod pileup;
 mod projection;
 
 #[cfg(test)]
@@ -62,7 +64,8 @@ pub struct TranscriptModel {
 }
 
 /// Bounds apply to this projection, not the upstream parser or allocator RSS.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Limits {
     pub max_models: usize,
     pub max_intervals: usize,

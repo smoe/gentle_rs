@@ -15,6 +15,8 @@ pub mod labware;
 pub mod pool_gel;
 pub mod protein_gel;
 pub mod protocol_cartoon;
+/// Read-end pileup drawing from engine-selected lanes, without interpretation.
+pub mod read_end_pileup;
 mod region_homology;
 mod regulatory_partners;
 /// One source-coherent geometry projection used in locus and detailed TSS pages.

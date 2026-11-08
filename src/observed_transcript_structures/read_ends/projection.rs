@@ -133,7 +133,7 @@ pub(super) fn annotation_index<'a>(
     Ok(out)
 }
 
-fn checked_annotation<'a>(
+pub(super) fn checked_annotation<'a>(
     id: &str,
     model: Option<&Prepared<'_>>,
     annotation: &'a BTreeMap<&str, &PrimerPayloadTranscript>,

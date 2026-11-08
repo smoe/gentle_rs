@@ -20,6 +20,16 @@ pub struct Frame {
     pub label_left: f64,
 }
 impl Frame {
+    /// Map a zero-based half-open interval with this same transcript-direction frame.
+    pub fn half_open(self, start: u64, end: u64) -> Option<(f64, f64)> {
+        if start >= end {
+            return None;
+        }
+        self.interval(TranscriptInterval {
+            start_1based: start.checked_add(1)?,
+            end_1based: end,
+        })
+    }
     fn x(self, g: u64) -> f64 {
         let offset = if self.strand == -1 {
             self.end.saturating_sub(g)

@@ -16,6 +16,24 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Read-End Saved Pileup, 2026-11-08
+
+Step 3 adds the pure engine report/view and headless SVG, not yet a file/GUI
+route. Six root and one renderer tests are authored, Rust-unrun locally:
+
+```sh
+cargo test --locked --lib -j1 read_ends::pileup::tests -- --test-threads=1
+cargo test --locked -p gentle-render -j1 read_end_pileup -- --test-threads=1
+```
+
+Check stacked hypotheses within one unit, both unchanged denominators, explicit
+filter/paging budgets, stable ties, annotation-checked selected geometry and
+distinct N/deletion/segment connectors. Inspect both transcript directions,
+off-axis clip descriptors and unavailable composition, retained candidate/row
+provenance and deterministic SVG/TSV. No source SAM/BAM is reread. PNG/PDF,
+authenticated services and native acceptance remain later gates. No existing
+data campaign or prior unrelated acceptance needs repeating.
+
 ## Read-End Coverage And Separate Evidence, 2026-11-08
 
 Step 2 adds pure saved-projection coverage/denominators and separate composition/

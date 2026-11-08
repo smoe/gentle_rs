@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-08 - Add Saved Read-End Pileup And Explicit Views
+
+- Added per-declared-unit lane groups with stacked optimal hypotheses, saved
+  rows/candidate provenance, separate N/other-gap/segment connectors and
+  off-axis clip/composition/tail evidence. Selected model geometry is checked
+  against normalized annotation even when no read nominates that transcript.
+- Explicit enumerated sorts/filters and whole-unit paging retain both original
+  denominators; sublane budgets refuse with required counts, never sample.
+  Headless SVG uses the shared transcript-direction frame. JSON/TSV retain
+  identical lane evidence; optional intron compression is not implemented.
+- Six root and one renderer Rust regressions are authored but unrun. Local
+  rustfmt parsing and Python/document checks are not Rust/runtime acceptance.
+  Authenticated service, exports and native GUI are later integration steps.
+
 ## 2026-11-08 - Add Saved Read-End Coverage And Separate Evidence Contracts
 
 - Add pure `gentle.rna_read_end_coverage.v1` composition with explicit source,
