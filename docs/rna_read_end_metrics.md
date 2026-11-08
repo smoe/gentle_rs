@@ -52,6 +52,16 @@ analysis, hard-wired gene/barcode selection or biological acceptance is added.
 
 ## 1. Freeze the transcript model
 
+The integration's step 2 also defines pure coverage/evidence building blocks;
+see [the plan and authorized defaults](rna_read_end_integration_plan.md).
+Gene-assigned and transcript-compatible denominators are distinct. Coverage
+is conditional on the selected model, with min/max bounds over hypotheses,
+not an isoform allocation. Exact-only quantiles retain both censoring fractions
+alongside missing reasons. These records have no file/service route yet.
+Terminal composition is explicitly unavailable (`no_bound_basecalls`) until OD2;
+configured tail-import rows preserve their own QC/provenance and cannot change
+UTR metrics. No physical tail estimate is inferred from A/T or clips.
+
 `scripts/project_rna_read_end_metrics.py` requires a CDS-aware model document
 with schema `gentle.rna_read_end_transcript_models.v2`. Coordinates are genomic,
 zero-based and half-open. Each transcript has stable transcript and gene IDs,

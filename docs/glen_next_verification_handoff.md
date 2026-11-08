@@ -16,6 +16,34 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Read-End Coverage And Separate Evidence, 2026-11-08
+
+Step 2 adds pure saved-projection coverage/denominators and separate composition/
+tail-import records. It is not yet a file importer or command route. There are
+five authored coverage tests and three evidence tests, all Rust-unrun locally:
+
+```sh
+cargo test --locked --lib -j1 read_ends::coverage::tests -- --test-threads=1
+cargo test --locked --lib -j1 read_ends::evidence::tests -- --test-threads=1
+```
+
+Check gene-assigned versus selected-transcript denominators, all four exclusion
+buckets, unique/shared/hypothesis-dependent membership, exact-only quantiles,
+the two censoring fractions and conditional min/max coverage without duplicate
+hypothesis counting. Empty denominators remain unavailable fractions, not zero
+measurements. Refuse repeated sample/gene analyses and bad source bindings.
+
+The A/T schema intentionally reports `no_bound_basecalls` under OD2, retaining
+explicit orientation/trimming and required parameters; it never scans or claims
+a tail. Tail imports require the exact configured caller/version/model/kit/
+basecaller/parameter hash and manifest declaration, per-unit source and saved
+QNAME witnesses. Unknown configurations and failed QC produce no accepted tail
+value. Invalid unit/read/source/parameter bindings refuse. Pure functions do
+not authenticate files or POD5/FAST5; that remains the later service boundary.
+No UTR status changes, conversions between callers, BAM tag reads or private
+analysis. Preserve OD1-OD6 and prior receipts; return actual tested source and
+nonzero counts, not a claim that Python checks executed these Rust functions.
+
 ## Read-End Core Refinements, 2026-11-08
 
 This is the active step-1 filter after the [integration-plan reconciliation](rna_read_end_integration_plan.md).

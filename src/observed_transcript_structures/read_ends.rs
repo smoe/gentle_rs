@@ -6,6 +6,10 @@
 
 use super::*;
 
+/// Saved-projection denominators and conditional coverage, without source rereads.
+pub mod coverage;
+/// Separate unavailable basecall channel and explicitly configured tail imports.
+pub mod evidence;
 mod projection;
 
 #[cfg(test)]
@@ -80,7 +84,7 @@ impl Default for Limits {
 }
 
 /// Reasons have the same meanings as the standalone projector's detailed table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
     AxisLengthUnavailable,

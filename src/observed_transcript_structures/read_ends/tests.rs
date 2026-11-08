@@ -8,7 +8,7 @@ const CORPUS: &str = include_str!(concat!(
     "/test_files/rna_read_end_core/cases.json"
 ));
 
-fn normalized(
+pub(super) fn normalized(
     document: &ModelDocument,
     analysis: &ObservedSamAnalysis,
 ) -> crate::engine::PrimerPayloadAnnotation {
@@ -65,7 +65,7 @@ fn normalized(
     }
 }
 
-fn project_read_ends(
+pub(super) fn project_read_ends(
     document: &ModelDocument,
     analysis: &ObservedSamAnalysis,
     limits: Limits,
@@ -167,7 +167,7 @@ fn inputs(corpus: &Value, case: &Value) -> (ModelDocument, ObservedSamAnalysis) 
     )
 }
 
-fn fixture(name: &str) -> (ModelDocument, ObservedSamAnalysis) {
+pub(super) fn fixture(name: &str) -> (ModelDocument, ObservedSamAnalysis) {
     let corpus: Value = serde_json::from_str(CORPUS).unwrap();
     let case = corpus["cases"]
         .as_array()

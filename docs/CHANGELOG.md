@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-08 - Add Saved Read-End Coverage And Separate Evidence Contracts
+
+- Add pure `gentle.rna_read_end_coverage.v1` composition with explicit source,
+  sample/gene bindings, per-analysis deduplication, denominators/exclusions,
+  compatibility classes, missing reasons and exact-only quantiles. Conditional
+  min/max interval coverage retains hypotheses without fractional assignment.
+- Add the separate composition schema with explicit unavailable/no-bound-basecall
+  result (OD2), and configured raw-signal tail import validation (OD3). Retain QC,
+  caller/kit/basecaller/parameter/manifest provenance; never substitute basecalls
+  for physical estimates or change UTR statuses.
+- Author eight Rust regressions, uncompiled/unrun locally. No file authentication,
+  commands, GUI, new dependency, implicit thresholds or private-data replay.
+
 ## 2026-11-08 - Refine The Shared Read-End Core For Pileups
 
 - Require parsed normalized annotation in the pure core and compare used model
