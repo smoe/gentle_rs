@@ -14,6 +14,25 @@
   separate; the new indexed RNA/UTR/Poly(A) work is not implemented by this pass.
   No production source, original evidence, local Rust, push or dispatch changes.
 
+## 2026-11-07 - Inspect The Safe-Lock Pilot With Native OpenSCAD
+
+- Fast-forward the workbranch to local main, finally `1cf7e120`, and inspect
+  the fixed 4x6 rack plus independent 1.5 ml reference tube with installed
+  OpenSCAD 2026.04.04 / Manifold on macOS arm64. Reuse the CLI at embedded
+  source `89df315a`, with unchanged exporter/profile sources; no Rust build
+  or new-main test pass is claimed. No installation or exporter change.
+- Native meshes, three rendered views and seven mesh sections confirm outer
+  bounds, 24 bore centers/diameters, the 2 mm floor and retained D1 orientation.
+  Repeated real-CLI exports match bytes and preserve the synthetic project.
+- Record two existing discrepancies, without changing legacy geometry:
+  `corner_radius=2` is unused and corners are square; declared label depth
+  `6` is unused while the pocket spans `8.4` mm. Native rendering passes,
+  not full scalar/solid conformance. Carry resolution as a separate scope.
+- Link the original pre-commit pilot receipt to delivery commit `88cf72b6`
+  without relabelling the historical execution as a later rerun. Retain local
+  temporary evidence and explicit native-platform/physical/scientific limits
+  in the [inspection receipt](robotic_wetlab_simulation_plan.md#native-openscad-inspection-2026-11-07).
+
 ## 2026-11-07 - Preserve Containment Conflicts And Selected-Gene Relation Scope
 
 - Correct shared observed-structure reconciliation: a shorter skip chain is not

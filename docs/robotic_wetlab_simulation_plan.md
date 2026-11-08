@@ -250,6 +250,8 @@ Status: implemented as one test-only emitter regression, with the scoped
 geometric validation or completion of a simulation milestone. The original
 [read-only Claude review prompt](robotic_wetlab_plan_review_prompt_20261104.md)
 covers the source-review follow-up and remaining decision gates.
+The separately authorized [native inspection](#native-openscad-inspection-2026-11-07)
+records successful rendering and two unresolved parameter/geometry discrepancies.
 
 ### Fixed Working Set
 
@@ -440,6 +442,8 @@ render-labware tests all pass without skips. The separately run tube and new
 rack tests overlap those groups, not additional unique coverage. Headless
 Cargo check, scoped formatting, documentation and whitespace checks pass.
 Existing headless dead-code and linker compact-unwind warnings remain.
+The implementation was delivered in `88cf72b6`; the source description above
+records its pre-commit execution, not a later committed/merged-source rerun.
 
 The tube tests, production helpers/exporters, equipment v1, schema/projection
 constants, dependency manifests and lockfile are unchanged. No native CAD
@@ -448,6 +452,84 @@ manufacturing claim follows. Native Windows, default-feature/GUI and full
 workspace execution were not run. D2 and all later simulation/physical gates
 remain separate. The original implementation ledgers below are historical;
 their results are not relabelled as this pilot's verification.
+
+### Native OpenSCAD Inspection, 2026-11-07
+
+The owner authorized a fast-forward to local main and independent OpenSCAD
+inspection, without installing tooling or changing the exporters. The branch
+advanced to `6c1edcf3`, then to `1cf7e120` when main advanced during inspection;
+the latter changes unrelated observed-structure code, not these labware paths.
+
+Execution: macOS 27.2 arm64, installed
+`/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD`, version `2026.04.04`,
+explicit `Manifold` backend and `--hardwarnings`. Sandboxed Qt probes abort
+with a NEON error while `sysctl` is denied; the same binary works outside the
+sandbox. This is not evidence of an absent installation or unsupported CPU.
+
+No Rust build was run. The existing `target/debug/gentle_cli` embeds source
+`89df315a80e0d3ae02e5685efd7a94e3895fbaa7` and has SHA-256
+`f2eb91da15d57acdcea70e396f836786b3c9d77ecaeb1b5edf6bef8f400a0332`.
+Byte comparison confirms that `src/engine/state/lineage_containers.rs`,
+`crates/gentle-render/src/labware.rs` and
+`crates/gentle-protocol/src/labware.rs` are unchanged from that source; the
+`data/labware` sources are also unchanged. This is an existing-binary CAD
+inspection, not a compilation or test receipt for current main.
+
+The real CLI `ExportRackOpenScad` and `ExportTubeOpenScad` operations generated
+the fixed unblocked, unoccupied 4x6 floor-seated rack above and the independent
+1.5 ml reference tube. The synthetic state starts from CLI `export-state`,
+with only that rack added; no experimental project is loaded. Repeated exports
+are byte-identical and leave the parsed synthetic project unchanged. SCAD hashes:
+
+- Rack: `cb4d463c9b9b90eecabfabd855641d07a691fd163c2776a22355c0c96765d81c`.
+- Tube: `3733d578bd4eb438e5a33ab51bafa3b641cd42e3f1c66dd37500f47359e5bc60`.
+
+Native mesh generation, three rendered PNG views and seven mesh-derived SVG
+sections complete without OpenSCAD warnings/errors. Representative commands,
+from the owned inspection directory, are:
+
+```sh
+SCAD=/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD
+"$SCAD" --hardwarnings --backend Manifold -o rack.off rack.scad
+"$SCAD" --hardwarnings --backend Manifold -o tube.off tube.scad
+"$SCAD" --hardwarnings --backend Manifold --render --projection=o --imgsize=1400,1000 --camera=0,0,0,55,0,35,300 --autocenter --viewall -o rack.png rack.scad
+"$SCAD" --hardwarnings --backend Manifold -o rack-section-bores.svg rack-section-bores.scad
+```
+
+Each section wrapper uses `projection(cut=true) translate([0,0,-Z])
+import("rack.off");`: the actual exported mesh, not a duplicate rack model.
+Independent inspection finds:
+
+- Rack bounds `120 x 85.225 x 24` mm; tube bounds `10.8 x 10.8` mm with
+  top at `38.9` mm and faceted tip at `0.000722726` mm. Each mesh is finite,
+  one connected surface, with every edge incident to two faces.
+- All 24 bores have diameter `10.45` mm and the literal Cartesian-product
+  centers above. A section at `z=1.999` has only the outer contour; at
+  `z=2.001` it has that contour plus 24 holes, bracketing the 2 mm floor.
+- The label pocket begins between `z=23.199` and `23.201`, consistent with
+  its 0.8 mm recess. Its bounds are `x=2.388..117.613`, `y=0.8..9.2`.
+  Row A is adjacent to that low-Y strip, preserving D1. The isometric/top
+  rack PNGs and separate tube PNG were visually inspected; SCAD emits no
+  embossed row/column labels and no tube/rack assembly.
+
+**Two existing discrepancies remain open.** `corner_radius=2.000` is declared
+but unused: mesh sections have square outer corners. Likewise,
+`front_label_strip_depth=6.000` is declared but unused: the actual pocket is
+`8.4` mm deep in Y (`0.8..9.2`), derived from `front_top_clearance - 1.6`.
+Thus native parsing/rendering and the listed geometry checks pass, but full
+agreement between the declared scalars and the solid is not established.
+Do not change legacy geometry/bytes or the pinned test to conceal this;
+resolve the intended semantics in a separate owner-reviewed geometry change.
+
+Local evidence is temporary, not a committed fixture or a runtime report:
+`/private/tmp/gentle-openscad-20261107.XZiKSW/` contains SCAD/OFF/PNG/SVG,
+`inspect_models.py`, per-command arguments/stdout/stderr and `inspection.json`
+with bindings/hashes. The first local mesh reader incorrectly assumed OFF
+counts occupied a separate line; it was corrected for valid same-line OFF
+headers before the successful checks. No GENtle code was changed.
+No new fixture publication, installation, screenshot capture, GUI interaction,
+native Windows/Linux, physics, manufacturing, physical-fit or scientific
+acceptance is claimed; D2 remains open. Existing Rust receipts stay separate.
 
 ## First Implementation Slice
 
