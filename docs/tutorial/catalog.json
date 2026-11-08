@@ -372,7 +372,7 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, exporting one target-gene cohort sample sheet, and continuing into transcript-bound 5′/3′-UTR reach projection. SK-MEL-28 maps to barcodes 13/15/17 and WM793 to 14/16/18; the six-barcode teaching contrast keeps barcode16/15 as the primary regular-cDNA pair and 14/13 plus 18/17 as separately prepared directional counterchecks. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, direct-transition evidence and later synthetic read-end teaching assets.",
+      "notes": "Start with the general saved-input UTR/coverage/pileup synthetic rehearsal via the shared read-ends command and explicit source/gene/transcript/ordered samples. Rust/runtime/native acceptance for this extension remains pending; the following older evidence does not certify it. Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, exporting one target-gene cohort sample sheet, and continuing into transcript-bound 5′/3′-UTR reach projection. SK-MEL-28 maps to barcodes 13/15/17 and WM793 to 14/16/18; the six-barcode teaching contrast keeps barcode16/15 as the primary regular-cDNA pair and 14/13 plus 18/17 as separately prepared directional counterchecks. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, direct-transition evidence and later synthetic read-end teaching assets.",
       "interfaces": [
         "native GUI",
         "CLI / shared shell",

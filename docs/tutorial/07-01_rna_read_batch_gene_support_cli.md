@@ -6,7 +6,83 @@
 > shared `rna-reads ...` command family and the engine-owned sample-sheet /
 > gene-support export contracts.
 
-This tutorial shows a practical batch workflow for the current RNA-read
+## Start With Saved Read Ends: A Synthetic Rehearsal
+
+Start here for the new **shared engine** UTR/coverage/pileup route. No private
+file, reference download, aligner, gene/barcode default or model provider is
+needed. The original batch-mapping walkthrough below remains a separate route;
+its historical captures do not certify the new viewer. Use source-matched
+prebuilt `gentle_cli` (do not build locally under the current owner restriction).
+
+Choose a new directory in an existing, writable, canonical parent; do not reuse
+an earlier run. On macOS use `/private/tmp`, not its `/tmp` symlink spelling.
+
+```sh
+RUN=/private/tmp/gentle-read-end-rehearsal
+STATE="$RUN/not-created-project.json"
+python3 scripts/prepare_read_end_rehearsal.py prepare "$RUN"
+gentle_cli --state "$STATE" rna-reads transcript-structures-from-sam "@$RUN/sam-request.json"
+python3 scripts/prepare_read_end_rehearsal.py bind-analysis "$RUN"
+gentle_cli --state "$STATE" rna-reads read-ends "@$RUN/build-command.json"
+python3 scripts/prepare_read_end_rehearsal.py bind-pileup "$RUN"
+gentle_cli --state "$STATE" rna-reads read-ends "@$RUN/inspect-command.json"
+gentle_cli --state "$STATE" rna-reads read-ends "@$RUN/export-command.json"
+```
+
+On Linux choose a canonical local path under your run directory. In PowerShell,
+use `$Run = Join-Path $env:TEMP 'gentle-read-end-rehearsal'` and pass each `@file`
+as a quoted string, for example `"@$Run/build-command.json"`; use the same
+explicit `--state` path. Native Windows path/handle acceptance remains pending.
+The helper creates only invented SAM units, annotation/model JSON and exact
+command drafts. It never runs GENtle or contacts any service. If a command is
+refused, inspect the error and choose a fresh path; do not remove hash checks or
+overwrite an earlier result to force the exercise through.
+
+**Read the result before comparing samples.** The two synthetic units share two
+compatible transcripts with identical geometry. Selecting `SYN_TX_A` does not
+resolve that ambiguity. Both are gene-assigned and selected-transcript-compatible
+(shared), so the two denominators are both two in this particular fixture.
+In real saved data they need not agree. The unclipped synthetic unit has 20 bp
+of 5-prime and 27 bp of 3-prime UTR reach. The clipped unit has the same lower
+bounds, but they are **right censored**, not exact observations. Hard/soft clip
+descriptors are evidence about missing query sequence; they do not establish a
+poly(A) tail or change the censoring rule. A valid observed zero is not missing.
+
+`coverage.json` reports the gate fraction `censored/(observed+censored)` and the
+separate `censored/all` fraction, with each denominator named. Quantiles use exact
+observations only, never censored lower bounds or imputed missing values.
+The saved pileup shows every optimal hypothesis in a stacked sublane. Solid N
+connectors, dashed other gaps/deletions and dotted segment links are distinct;
+no intron is invented between supplementary alignments. Excluded units have
+reason buckets, not silent disappearance. Query orientation relative to the
+annotation is not verified RNA strand or molecule identity.
+
+Open **Genome > RNA Read Panel... > Read ends / pileup** for the native viewer.
+Paste `build-command.json`, review the explicit source/gene/transcript and sample
+order, then approve that exact write request. For an existing result, paste the
+`report` object from `inspect-command.json` and choose **Apply view**. Sorts,
+filters and paging call the shared engine; both original denominators stay
+visible. Separate UTR5/UTR3/length/clip/A-T/signal toggles do not create a combined
+score. Hover retains saved row/QNAME/RG/flag/candidate/hypothesis provenance.
+Prepare an export and review it before running. JSON, TSV and SVG share the same
+view hash and membership; PNG/PDF derive from those SVG bytes. Native usability,
+large-lane responsiveness and platform file handles still require external checks.
+
+The current SAM v1 artifacts retain no bound terminal basecalls, so A/T honestly
+says `no_bound_basecalls`. A separately supplied caller/configuration-bound tail
+estimate is independent evidence, not a UTR correction. Do not infer tail length
+from a soft clip, substitute a FASTQ/QNAME join or import unspecified BAM tags.
+
+In **GUI Shell**, CLI, MCP generic `op`, JS/Lua and the Python wrapper, use the
+same `rna-reads read-ends`/`RnaReadEnds` contract. Ask the inner agent to discover
+it, explain the exact bindings and request approval before build/export, local
+tool selection or a cancel-marker write. Inspection is read-only. A cancellation
+request alone is not a terminal outcome; await the matching worker receipt.
+No live-agent, native or biological acceptance is implied by this lesson.
+
+## Existing Batch Mapping And Cohort Sheet
+
+The remainder shows a practical batch workflow for the current RNA-read
 mapping/export path when you have many cDNA read files and want one combined
 table for downstream comparison.
 
@@ -397,7 +473,14 @@ Interpretation:
 - `exact`
   - `100%` template coverage only
 
-## Follow-up: Compare 3′-UTR Reach Without Confusing It with Read Length
+## Historical Python Oracle And Separate Gene Ranking
+
+The shared saved-input route above is now the primary UTR/coverage/pileup path.
+The unchanged Python geometry below remains an independent test oracle and
+historical reproduction path. Gene ranking/contrasts remain separate Python
+utilities: no biological thresholds, fixed panel or six-barcode defaults were
+ported into the shared engine. These old teaching assets are not acceptance of
+the new native viewer, basecall composition or indexed ingress.
 
 The sample sheet above answers gene-support questions, but it does not yet say
 how far each alignment reaches beyond the coding sequence. For that question,

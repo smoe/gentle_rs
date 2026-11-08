@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-11-08 - Add Reviewed Native Read-End Pileup And Synthetic 07.01 Route
+
+- Add an initially unbound Read ends / pileup tab to the existing RNA panel.
+  Reviewed typed source/gene/transcript/sample bindings, separate view channels,
+  explicit engine sort/filter/paging, persistent original denominators and
+  virtualized shared-renderer sublanes keep interpretation outside the GUI.
+  Use existing managed admission/cancellation/receipts; retain the original
+  pileup binding after export and key previews by both report and view hashes.
+- Add cooperative pure-work hooks and preserve cancellation/control diagnostics
+  through the configured reader. Bound JSON serialization and aggregate parsed
+  input admission; PNG/PDF calls remain bounded but are not preempted internally.
+  Root service returns the exact published completion's raw file binding.
+- Migrate tutorial 07.01 to begin with the general synthetic saved-input route;
+  retain older batch mapping and explicitly historical Python-oracle/ranking
+  material, without relabelling captures or changing Python biology.
+  Regenerate catalog with the existing canonical generator at `2d2b8b42`, whose
+  generator sources are unchanged. Catalog/manifest checks: 70 entries/30 chapters.
+  This does not execute or certify the new Rust registry/core.
+- Author three GUI, one virtualized-renderer, one cooperative-core and three
+  actual JS/Lua/MCP boundary regressions; all Rust/VM/native checks remain unrun
+  locally. Five Python rehearsal/source checks pass; actual CLI replay is skipped
+  without an explicitly provided binary. Canonical Rust parity regeneration is
+  still external; no full green integration or biological verdict is claimed.
+
 ## 2026-11-08 - Connect Authenticated Read-End Services And Exports
 
 - Add one shared typed `RnaReadEnds` operation and `rna-reads read-ends` route

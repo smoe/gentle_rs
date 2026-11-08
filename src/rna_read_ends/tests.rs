@@ -3,7 +3,7 @@
 use super::*;
 use crate::engine::{ObservedSamAnnotationBinding, Operation};
 
-fn fixture() -> (tempfile::TempDir, Build) {
+pub(super) fn fixture() -> (tempfile::TempDir, Build) {
     let (root, mut r) = GentleEngine::observed_sam_test_fixture();
     let path = root.path().canonicalize().unwrap();
     r.output_dir = path
@@ -93,7 +93,7 @@ fn fixture() -> (tempfile::TempDir, Build) {
     };
     (root, build)
 }
-fn view() -> pileup::View {
+pub(super) fn view() -> pileup::View {
     pileup::View {
         schema: pileup::VIEW_SCHEMA.into(),
         sort: pileup::SortKey::UnitKey,
@@ -114,7 +114,7 @@ fn view() -> pileup::View {
         },
     }
 }
-fn run(request: Build) -> PrimerPayloadFile {
+pub(super) fn run(request: Build) -> PrimerPayloadFile {
     let out = Path::new(&request.output_dir).join("report.json");
     execute(
         &GentleEngine::new(),

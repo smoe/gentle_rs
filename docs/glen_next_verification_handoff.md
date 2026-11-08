@@ -16,6 +16,56 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Native Read-End Viewer And Migrated 07.01, 2026-11-08
+
+Steps 1-6 are source-implemented, not runtime/native accepted. Preserve OD1-OD6.
+No local Rust build/check/test, live model, private data or screenshot capture
+was run. The GUI is a thin reviewed-request/virtualized shared-renderer tab;
+the technical file/config bindings remain explicit in the JSON draft. It starts
+without a selected transcript, sample or report. Channel toggles are in the
+hashed view, never a combined score. Both denominators remain outside scrolling.
+Local checks at this authoring boundary: 51 existing RNA Python tests, five new
+rehearsal/source tests and 87 checkout tests pass (143 total); the one actual-CLI
+test is explicitly skipped without a supplied binary. Manual/status/maturity
+checks and scoped Rust parsing/formatting pass. These are not Rust execution.
+
+The existing docs binary reports `2d2b8b42`; its generator sources are unchanged
+against this integration. It generated/checked the current 70-entry catalog and
+checked the unchanged 30-chapter manifest. **It cannot generate the newer embedded
+registry/parity projection.** Run the canonical source-matched generation in the
+Step 5 section first and return that minimal matrix diff. This pending gate is
+intentional and must not be represented as CI-green or repaired by hand.
+
+Then run only the new read-end scope, with an explicit temporary target:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 read_end -- --test-threads=1
+cargo test --locked -p gentle-render -j1 read_end -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_ -- --test-threads=1
+GENTLE_READ_END_BIN_DIR=/absolute/same-source/bin python3 -m unittest tests.test_read_end_rehearsal -v
+```
+
+The active core filter now includes the new cooperative hook regression (21,
+not the historical 20-test count below). New actual VM/MCP filters are
+`read_end_js_runtime_`, `read_end_lua_runtime_`, `read_end_mcp_discovery_`;
+new GUI helpers use `read_end_gui_`. Require actual execution/nonzero counts,
+not compile-only evidence or the one missing-binary process skip. Check the
+unchanged generic MCP confirmation gate even for inspect, request-aware shell
+approval, file-only managed work, exact page equality, no project/file mutation,
+and explicit cancellation versus terminal result. No live model is required.
+
+Replay 07.01 with synthetic inputs first. Native acceptance must separately
+observe explicit selections, stacked hypotheses, both unchanged denominators,
+all separate channels, paging/large-lane responsiveness and usable cancellation.
+Verify report/view cache identity, export after filtering, exported report not
+replacing the source pileup, save/reopen and native Windows closed handles/
+spaced/apostrophe/Unicode paths. Renderers/converters are not preempted inside
+their bounded calls. Keep actual configured-samtools controls, full normal CI,
+packages, private-data accuracy and scientific acceptance separately attributed.
+Do not repeat completed reader/BLAST/containment or real 15/16 campaigns.
+
 ## Shared Read-End Services And Export, 2026-11-08
 
 Step 5 implements the shared operation/parser, file authentication, no-clobber

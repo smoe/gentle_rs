@@ -1,7 +1,8 @@
 //! Pure V2 transcript-model validation and UTR reach over admitted SAM hypotheses.
 //!
-//! No file access, hash authentication, alignment search, sample selection, coverage
-//! or poly(A) inference. Callers must authenticate saved artifacts before using this
+//! No file access, hash authentication, alignment search or poly(A) inference.
+//! Child modules own explicit saved-input coverage, evidence and pileup views.
+//! Callers must authenticate saved artifacts before using this
 //! experimental Rust API. Existing SAM records and standalone Python wires do not change.
 
 use super::*;
@@ -237,18 +238,25 @@ fn identity(value: &str) -> bool {
     !value.is_empty() && value.len() <= 4096 && !value.chars().any(char::is_control)
 }
 
-struct Meter {
+struct Meter<'a> {
     limits: Limits,
     work: usize,
+    control: Option<&'a mut dyn FnMut() -> Result<(), EngineError>>,
 }
 
-impl Meter {
+impl Meter<'_> {
     fn charge(&mut self, n: usize) -> Result<(), EngineError> {
+        let previous = self.work;
         self.work = self
             .work
             .checked_add(n)
             .filter(|n| *n <= self.limits.max_work)
             .ok_or_else(|| fail("work_budget"))?;
+        if (previous == 0 || previous / 1024 != self.work / 1024)
+            && let Some(check) = &mut self.control
+        {
+            check()?;
+        }
         Ok(())
     }
 
@@ -546,6 +554,18 @@ pub fn project_read_ends(
     annotation: &crate::engine::PrimerPayloadAnnotation,
     limits: Limits,
 ) -> Result<Projection, EngineError> {
+    project_read_ends_with_control(document, analysis, annotation, limits, &mut || Ok(()))
+}
+
+/// Same pure calculation with a caller-owned cooperative observation hook.
+pub fn project_read_ends_with_control(
+    document: &ModelDocument,
+    analysis: &ObservedSamAnalysis,
+    annotation: &crate::engine::PrimerPayloadAnnotation,
+    limits: Limits,
+    control: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Projection, EngineError> {
+    control()?;
     if limits.max_models == 0
         || limits.max_intervals == 0
         || limits.max_units == 0
@@ -579,7 +599,11 @@ pub fn project_read_ends(
     {
         return Err(fail("reference_binding"));
     }
-    let mut meter = Meter { limits, work: 0 };
+    let mut meter = Meter {
+        limits,
+        work: 0,
+        control: Some(control),
+    };
     let mut bindings = Vec::new();
     for binding in &analysis.annotation_bindings {
         meter.charge(1)?;

@@ -23,6 +23,8 @@ its separate outer cancel marker must not be supplied as the inner template's
 `cancel_path`. No tool discovery, indexing, alignment or remote reference fetch.
 Cancellation requests are not terminal receipts. Existing files are never
 overwritten; published artifacts are not rolled back by a later host cancellation.
+The generic MCP `op` tool keeps its own additive `confirm=true` gate even for
+read-only inspection; request-aware shell classification does not remove it.
 
 ## Cohort Read-End Metric Comparison
 

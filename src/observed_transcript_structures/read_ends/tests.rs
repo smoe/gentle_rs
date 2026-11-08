@@ -178,6 +178,32 @@ pub(super) fn fixture(name: &str) -> (ModelDocument, ObservedSamAnalysis) {
     inputs(&corpus, case)
 }
 
+#[test]
+fn read_end_core_cooperative_control_refuses_without_mutating_saved_inputs() {
+    let (document, analysis) = fixture("plus");
+    let annotation = normalized(&document, &analysis);
+    let before = serde_json::to_vec(&analysis).unwrap();
+    let mut calls = 0;
+    let error = super::project_read_ends_with_control(
+        &document,
+        &analysis,
+        &annotation,
+        Limits::default(),
+        &mut || {
+            calls += 1;
+            if calls >= 2 {
+                Err(EngineError::invalid_input("synthetic cancellation"))
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.message, "synthetic cancellation");
+    assert_eq!(calls, 2);
+    assert_eq!(serde_json::to_vec(&analysis).unwrap(), before);
+}
+
 fn triple(metric: &Metric) -> Value {
     match metric {
         Metric::Observed { value_bp } => json!([value_bp, "observed", "resolved"]),

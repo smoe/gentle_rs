@@ -75,6 +75,8 @@ pub struct Report {
     pub transcript_id: String,
     pub model: TranscriptModel,
     pub boundary: ModelBoundary,
+    /// Stable bounds include every gene-assigned saved block, not just the visible page.
+    pub display_interval: Interval,
     pub coverage: CoverageReport,
     pub lanes: Vec<Lane>,
     pub nonclaims: Vec<String>,
@@ -131,6 +133,27 @@ pub fn build(
     inputs: &[Input<'_>],
     limits: Limits,
 ) -> Result<Report, EngineError> {
+    build_with_control(
+        source,
+        gene,
+        transcript,
+        probabilities,
+        inputs,
+        limits,
+        &mut || Ok(()),
+    )
+}
+
+pub fn build_with_control(
+    source: &str,
+    gene: &str,
+    transcript: &str,
+    probabilities: &[f64],
+    inputs: &[Input<'_>],
+    limits: Limits,
+    control: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Report, EngineError> {
+    control()?;
     if !token(transcript) || inputs.is_empty() {
         return Err(fail("pileup_scope"));
     }
@@ -144,15 +167,20 @@ pub fn build(
             projection: i.sample.projection,
         })
         .collect();
-    let coverage = coverage::summarize(
+    let coverage = coverage::summarize_with_control(
         source,
         gene,
         Some(transcript),
         probabilities,
         &coverage_inputs,
         limits,
+        control,
     )?;
-    let mut meter = Meter { limits, work: 0 };
+    let mut meter = Meter {
+        limits,
+        work: 0,
+        control: Some(control),
+    };
     let (mut chosen_model, mut boundary, mut lanes) = (None, None, vec![]);
     let mut total_rows = 0usize;
     for input in inputs {
@@ -285,8 +313,26 @@ pub fn build(
             });
         }
     }
+    let model = chosen_model.ok_or_else(|| fail("pileup_model"))?;
+    let mut display_interval = (
+        model.genomic_exons_0based_half_open[0].0,
+        model
+            .genomic_exons_0based_half_open
+            .last()
+            .ok_or_else(|| fail("pileup_model"))?
+            .1,
+    );
+    for block in lanes
+        .iter()
+        .flat_map(|l| &l.hypotheses)
+        .flat_map(|h| &h.observations)
+        .flat_map(|o| &o.blocks)
+    {
+        display_interval.0 = display_interval.0.min(block.target.0);
+        display_interval.1 = display_interval.1.max(block.target.1);
+    }
     Ok(Report {schema: SCHEMA.into(), identity_scope: "sam_declared_query_unit".into(), source_id: source.into(), gene_id: gene.into(),
-        transcript_id: transcript.into(), model: chosen_model.ok_or_else(|| fail("pileup_model"))?, boundary: boundary.ok_or_else(|| fail("pileup_model"))?, coverage, lanes,
+        transcript_id: transcript.into(), model, display_interval, boundary: boundary.ok_or_else(|| fail("pileup_model"))?, coverage, lanes,
         nonclaims: vec!["Incomplete aligner/region views are not an exhaustive locus search.".into(),
             "Conditional coverage is compatibility support, not resolved isoforms or molecule counts.".into(),
             "Clip descriptors do not reinterpret censored ends; composition and signal estimates are separate evidence.".into()]})
@@ -379,6 +425,7 @@ pub struct Page {
     pub view_sha256: String,
     pub report_sha256: String,
     pub total_gene_assigned: usize,
+    pub total_selected_transcript_compatible: usize,
     pub total_matching: usize,
     pub shown_start: usize,
     pub shown_end: usize,
@@ -535,6 +582,14 @@ pub fn page(report: &Report, view: &View) -> Result<Page, EngineError> {
         view_sha256: hash(view)?,
         report_sha256: hash(report)?,
         total_gene_assigned: report.lanes.len(),
+        total_selected_transcript_compatible: report
+            .coverage
+            .samples
+            .iter()
+            .try_fold(0usize, |n, s| {
+                n.checked_add(s.selected_transcript_compatible_units)
+            })
+            .ok_or_else(|| fail("pileup_count_overflow"))?,
         total_matching: lanes.len(),
         shown_start: view.offset,
         shown_end: end,
@@ -690,18 +745,8 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
     }
     Ok(Scene {
         contig: report.model.contig.clone(),
-        start: report
-            .model
-            .genomic_exons_0based_half_open
-            .first()
-            .ok_or_else(|| fail("pileup_model"))?
-            .0 as u64,
-        end: report
-            .model
-            .genomic_exons_0based_half_open
-            .last()
-            .ok_or_else(|| fail("pileup_model"))?
-            .1 as u64,
+        start: report.display_interval.0 as u64,
+        end: report.display_interval.1 as u64,
         strand: if report.model.strand == '+' { 1 } else { -1 },
         width: page.view.width,
         header,
@@ -713,10 +758,11 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
 /// JSON-encoded cells prevent tabs/newlines in declared names or provenance from changing TSV structure.
 pub fn tsv(page: &Page) -> Result<String, EngineError> {
     let mut out = format!(
-        "# view={} report={} total={} matching={} shown={}..{}\nrecord_type\tsample_json\tunit_json\tevidence_json\n",
+        "# view={} report={} gene_assigned={} selected_transcript_compatible={} matching={} shown={}..{}\nrecord_type\tsample_json\tunit_json\tevidence_json\n",
         page.view_sha256,
         page.report_sha256,
         page.total_gene_assigned,
+        page.total_selected_transcript_compatible,
         page.total_matching,
         page.shown_start,
         page.shown_end

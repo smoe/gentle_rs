@@ -23,6 +23,14 @@ const MEMORY: usize = 512 * 1024 * 1024;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) fn saved_read_end_test_fixture() -> (tempfile::TempDir, PrimerPayloadFile, pileup::View)
+{
+    let (root, build) = tests::fixture();
+    let report = tests::run(build);
+    (root, report, tests::view())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TailInput {
@@ -129,6 +137,21 @@ pub struct Completion {
     pub artifacts: Vec<RnaReadPanelArtifact>,
 }
 
+impl Completion {
+    /// Raw binding of the exact compact JSON written by the shared completion publisher.
+    pub fn file_binding(&self) -> Result<PrimerPayloadFile, EngineError> {
+        let bytes = json_bytes(self)?;
+        Ok(PrimerPayloadFile {
+            path: Path::new(&self.output_dir)
+                .join("report.json")
+                .to_string_lossy()
+                .into_owned(),
+            bytes: bytes.len() as u64,
+            sha256: crate::digest_utils::sha256_prefixed_bytes(&bytes),
+        })
+    }
+}
+
 /// Pure executed-request/completion binding for managed late-cancellation retention.
 pub(crate) fn completion_binding(
     command: &Command,
@@ -156,7 +179,22 @@ fn fail(reason: impl std::fmt::Display) -> EngineError {
     EngineError::invalid_input(format!("rna_read_end_service_{reason}"))
 }
 fn json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, EngineError> {
-    serde_json::to_vec(value).map_err(fail)
+    struct Limited(Vec<u8>);
+    impl Write for Limited {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() as u64 > CAP.saturating_sub(self.0.len() as u64) {
+                return Err(std::io::Error::other("read_end_serialized_byte_budget"));
+            }
+            self.0.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut out = Limited(vec![]);
+    serde_json::to_writer(&mut out, value).map_err(fail)?;
+    Ok(out.0)
 }
 
 fn directory(raw: &str) -> Result<PathBuf, EngineError> {
@@ -296,6 +334,7 @@ fn load(
     sample: &Sample,
     source: &str,
     limits: core::Limits,
+    remaining: &mut usize,
     check: &mut dyn FnMut() -> Result<(), EngineError>,
 ) -> Result<Loaded, EngineError> {
     check()?;
@@ -326,6 +365,23 @@ fn load(
         bytes: artifact.bytes,
         sha256: artifact.sha256.clone(),
     };
+    let charged = [
+        file.bytes,
+        sample.model.bytes,
+        sample.normalized_annotation.bytes,
+        fs::metadata(&sample.analysis.report_path)
+            .map_err(fail)?
+            .len(),
+    ]
+    .into_iter()
+    .try_fold(0u64, |n, b| n.checked_add(b))
+    .and_then(|n| n.checked_mul(64))
+    .and_then(|n| n.checked_add(65536))
+    .and_then(|n| usize::try_from(n).ok())
+    .ok_or_else(|| fail("input_memory_budget"))?;
+    *remaining = remaining
+        .checked_sub(charged)
+        .ok_or_else(|| fail("input_memory_budget"))?;
     let data: ObservedSamData = bound_json(&file, check)?;
     let analysis = data.analysis.ok_or_else(|| fail("analysis_unavailable"))?;
     let model: core::ModelDocument = bound_json(&sample.model, check)?;
@@ -341,7 +397,8 @@ fn load(
     {
         return Err(fail("annotation_file_binding"));
     }
-    let projection = core::project_read_ends(&model, &analysis, &annotation, limits)?;
+    let projection =
+        core::project_read_ends_with_control(&model, &analysis, &annotation, limits, check)?;
     check()?;
     let composition = evidence::unavailable_composition(sample.composition.clone())?;
     let tails = if let Some(tail) = &sample.tail {
@@ -538,10 +595,19 @@ pub fn execute(
             {
                 return Err(fail("input_memory_budget"));
             }
+            let mut remaining = MEMORY;
             let loaded = request
                 .samples
                 .iter()
-                .map(|s| load(s, &request.source_id, request.limits, &mut check))
+                .map(|s| {
+                    load(
+                        s,
+                        &request.source_id,
+                        request.limits,
+                        &mut remaining,
+                        &mut check,
+                    )
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let inputs: Vec<_> = loaded
                 .iter()
@@ -560,13 +626,14 @@ pub fn execute(
                     tail_file_sha256: l.tail_file_sha256.as_deref(),
                 })
                 .collect();
-            let report = pileup::build(
+            let report = pileup::build_with_control(
                 &request.source_id,
                 &request.gene_id,
                 &request.transcript_id,
                 &request.exact_quantile_probabilities,
                 &inputs,
                 request.limits,
+                &mut check,
             )?;
             check()?;
             let contents = vec![
@@ -580,7 +647,9 @@ pub fn execute(
                 request.max_output_bytes,
                 &mut check,
             )?;
-            Ok(json!({"completion":receipt,"coverage":report.coverage}))
+            Ok(
+                json!({"report":receipt.file_binding()?,"completion":receipt,"coverage":report.coverage}),
+            )
         }
         Command::Inspect { report, view } => {
             let report = completed(&report, &mut check)?;
@@ -655,7 +724,9 @@ pub fn execute(
                 max_output_bytes,
                 &mut check,
             )?;
-            Ok(json!({"completion":receipt,"view_sha256":page.view_sha256}))
+            Ok(
+                json!({"report":receipt.file_binding()?,"completion":receipt,"view_sha256":page.view_sha256}),
+            )
         }
         Command::SelectLocus {
             request,
@@ -671,7 +742,15 @@ pub fn execute(
             {
                 return Err(fail("selection_analysis_binding"));
             }
-            let selected = ingress::select(&request, &mut check)?;
+            let mut control_failure = None;
+            let selection = ingress::select(&request, &mut || {
+                check().map_err(|error| {
+                    control_failure = Some(error.message.clone());
+                    error
+                })
+            });
+            let selected = selection
+                .map_err(|error| control_failure.map_or(error, EngineError::invalid_input))?;
             analysis.sam = selected.sam.clone();
             analysis.manifest = selected.manifest.clone();
             analysis.conversion = kernel::ObservedSamConversion::ExecutedIndexedSelection {

@@ -46,7 +46,7 @@ remaining acceptance, not an inherited pass.
 | 3 | Engine-owned pileup/view and deterministic headless renderer | Pure records/view/SVG implemented; 6 root and 1 renderer Rust tests authored, unrun; file/export/native gates pending |
 | 4 | Shared supervised process and bounded configured samtools ingress | Implemented private selection/intake seam and consolidated supervisors; Rust/native/tool checks unrun |
 | 5 | Authenticated shared commands, immutable exports and discovery | Implemented shared operation/parser/service and managed file-only policy; canonical Rust parity generation and all Rust/process acceptance pending externally |
-| 6 | Thin virtualized GUI and migrated synthetic tutorial | Pending |
+| 6 | Thin virtualized GUI and migrated synthetic tutorial | Implemented reviewed native tab and migrated 07.01; 3 GUI/1 renderer/1 cooperative Rust controls authored, unrun; source/catalog checks pass, native acceptance pending |
 
 ## Open Owner Decisions
 
@@ -99,6 +99,16 @@ Confirmation, nested-agent guards, stale/cancel handling and project separation
 remain mandatory. Canonical projections must be generated, never hand-edited;
 if a source-matched generator cannot run under the build restriction, record
 that gate as pending rather than inventing freshness.
+
+The tutorial catalog was regenerated with the existing canonical docs binary
+reporting source `2d2b8b42`; `src/workflow_examples.rs`, its child sources and
+`src/bin/gentle_examples_docs.rs` are byte-identical between that source and the
+integration. Catalog/manifest checks pass (70 entries / 30 executable chapters).
+That narrowly permits metadata generation, **not** acceptance of the newer core
+or registry. The parity generator embeds registry/operation/glossary code, so
+its source-matched regeneration remains an external prerequisite. No matrix was
+hand-edited. All Steps 1-6 now have source implementations; runtime/VM/native,
+actual-tool and scientific acceptance remain open, not satisfied by that ledger.
 
 ## Verification
 

@@ -13,6 +13,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 #[path = "rna_panel_ui/processing.rs"]
 mod processing;
+#[path = "rna_panel_ui/read_ends.rs"]
+mod read_ends;
 
 #[derive(Default, PartialEq, Eq, Clone, Copy)]
 enum Page {
@@ -22,6 +24,7 @@ enum Page {
     Runs,
     Inspect,
     Export,
+    ReadEnds,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +71,7 @@ pub(super) struct RnaPanelUiState {
     pub(super) open: bool,
     page: Page,
     processing: processing::Processing,
+    read_ends: read_ends::UiState,
     choices: Vec<RnaReadPanelSourceChoice>,
     gene_sets: Vec<RnaReadPanelGeneSetChoice>,
     gene_set: Option<RnaReadPanelGeneSetBinding>,
@@ -532,6 +536,7 @@ impl GENtleApp {
 
     pub(super) fn poll_rna_panel_action(&mut self) {
         self.poll_rna_processing_jobs();
+        self.poll_read_end_jobs();
         let Some(pending) = &self.rna_panel_ui.pending else {
             return;
         };
@@ -626,11 +631,20 @@ impl GENtleApp {
                 (Page::Runs, "Runs", "rna_panel.tab.runs"),
                 (Page::Inspect, "Inspect", "rna_panel.tab.inspect"),
                 (Page::Export, "Export", "rna_panel.tab.export"),
+                (
+                    Page::ReadEnds,
+                    "Read ends / pileup",
+                    "rna_panel.tab.read_ends",
+                ),
             ] {
                 let response = ui.selectable_value(&mut self.rna_panel_ui.page, page, label);
                 capture_selection(&response, id, self.rna_panel_ui.page == page);
             }
         });
+        if self.rna_panel_ui.page == Page::ReadEnds {
+            self.render_read_end_pileup(ui);
+            return;
+        }
         self.render_rna_rehearsal_controls(ui);
         if self.rna_panel_ui.page != Page::Prepare {
             self.render_rna_processing(ui);

@@ -5598,6 +5598,33 @@ mod tests {
     }
 
     #[test]
+    fn read_end_mcp_discovery_inspection_and_additive_confirmation_keep_project_absent() {
+        let (root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
+        let state = root.path().join("not-created MCP project.json");
+        let command = crate::rna_read_ends::Command::Inspect { report, view };
+        let expected =
+            crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+                .unwrap();
+        let operation = Operation::RnaReadEnds {
+            command: Box::new(command),
+        };
+        let denied = op_tool_result(state.to_str().unwrap(), &json!({"operation":operation}));
+        assert_eq!(denied["isError"], true);
+        assert!(!state.exists());
+        let allowed = op_tool_result(
+            state.to_str().unwrap(),
+            &json!({"confirm":true,"operation":operation}),
+        );
+        assert_ne!(allowed["isError"], true, "{allowed}");
+        assert_eq!(
+            allowed["structuredContent"]["result"]["rna_read_ends"],
+            expected
+        );
+        assert!(!state.exists());
+        assert!(tool_command_paths("op").contains(&"rna-reads read-ends"));
+    }
+
+    #[test]
     fn observed_transcripts_mcp_uses_bound_source_and_preserves_project_bytes() {
         let td = tempfile::tempdir().unwrap();
         let (_, request) = GentleEngine::observed_transcripts_test_fixture(td.path());

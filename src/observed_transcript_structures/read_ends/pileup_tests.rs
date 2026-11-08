@@ -105,6 +105,14 @@ fn read_end_pileup_filters_keep_coverage_and_use_explicit_ranges() {
     let p = page(&report, &v).unwrap();
     assert!(p.lanes.is_empty());
     assert_eq!(p.total_gene_assigned, 1);
+    let filtered_scene = scene(&report, &p).unwrap();
+    assert_eq!(
+        (filtered_scene.start, filtered_scene.end),
+        (
+            report.display_interval.0 as u64,
+            report.display_interval.1 as u64
+        )
+    );
     assert_eq!(p.coverage.samples[0].gene_assigned_units, 1);
     v.offset = 1;
     assert!(page(&report, &v).is_err());
@@ -210,6 +218,7 @@ fn read_end_pileup_selected_geometry_is_checked_even_without_compatible_reads() 
     let mut meter = Meter {
         limits: Limits::default(),
         work: 0,
+        control: None,
     };
     let index = projection::annotation_index(&document, &annotation, &mut meter).unwrap();
     let mut model = document.transcripts[0].clone();

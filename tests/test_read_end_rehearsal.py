@@ -73,6 +73,25 @@ class ReadEndRehearsalInputs(unittest.TestCase):
         for required in ("inspect_observed_transcript_structures_from_sam", "read_sam_bound_json", "publish_read_end_bundle", "core::project_read_ends", "pileup::build"):
             self.assertIn(required, service)
 
+    def test_native_view_uses_shared_renderer_and_service_without_file_io(self):
+        source = (ROOT / "src/app/rna_panel_ui/read_ends.rs").read_text()
+        production = source.split("#[cfg(test)]", 1)[0]
+        for required in ("show_rows", "render_lane", "submit_parsed", "Command::Inspect", "Command::Export", "cancel_requested", "selected_transcript_compatible_units", "gene_assigned_units"):
+            self.assertIn(required, production)
+        for forbidden in ("std::fs", "File::open", "project_read_ends", "geometry::", "Command::new", "std::thread"):
+            self.assertNotIn(forbidden, production)
+        self.assertIn("state.active_sets_report", production)
+        self.assertIn("page.report_sha256", production)
+
+    def test_tutorial_teaches_shared_synthetic_route_and_keeps_old_evidence_historical(self):
+        text = (ROOT / "docs/tutorial/07-01_rna_read_batch_gene_support_cli.md").read_text()
+        for required in ("Start With Saved Read Ends", "prepare_read_end_rehearsal.py", "rna-reads read-ends", "two denominators", "right censored", "no_bound_basecalls", "Historical Python Oracle", "historical captures do not certify"):
+            self.assertIn(required, text)
+        source = json.loads((ROOT / "docs/tutorial/sources/07-01_rna_read_batch_gene_support_cli.json").read_bytes())
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
+        entry, = [row for row in catalog["entries"] if row["id"] == source["id"]]
+        self.assertEqual(entry["notes"], source["catalog"]["notes"])
+
 
 @unittest.skipUnless(BIN, "Set GENTLE_READ_END_BIN_DIR for source-matched real CLI acceptance")
 class ReadEndRehearsalProcess(unittest.TestCase):

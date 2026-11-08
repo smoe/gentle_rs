@@ -34,11 +34,16 @@ Raster/vector conversion has an explicit 32-million-pixel page ceiling.
 
 Coverage reports declared/assessed, gene-assigned and selected-transcript-compatible
 counts, exclusions, exact-only quantiles and **both** censoring fractions.
-Filters/page ranges do not recompute denominators. A/T remains unavailable
+Filters/page ranges do not recompute denominators. The genomic frame stays
+bound to the selected model plus all gene-assigned
+saved blocks, independent of the visible page/filter. A/T remains unavailable
 (`no_bound_basecalls`); composition parameters/provenance remain explicit.
 Separate tail input binds an imported file and raw-signal manifest plus supported
 caller/version/model/kit/basecaller/configuration. Unsupported/QC-failing rows
 never acquire accepted values. These channels never change UTR censoring.
+Status/value sorts and filters use conservative unit-level collapsed metrics.
+Selected-transcript metrics under each hypothesis remain visible separately;
+the viewer does not pick one hypothesis to manufacture a sortable value.
 
 Indexed ingress binds configured executable/version, local alignment/index,
 dictionary, interval and declared filters. Full alignment SHA verification is

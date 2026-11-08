@@ -2739,6 +2739,38 @@ mod tests {
     }
 
     #[test]
+    fn read_end_lua_runtime_inspection_preserves_state_and_matches_saved_engine_page() {
+        let (_root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
+        let command = crate::rna_read_ends::Command::Inspect { report, view };
+        let expected =
+            crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+                .unwrap();
+        let operation = Operation::RnaReadEnds {
+            command: Box::new(command),
+        };
+        let state = ProjectState::default();
+        let before = serde_json::to_value(&state).unwrap();
+        let lua = LuaInterface::new();
+        lua.register_rust_functions().unwrap();
+        lua.lua()
+            .globals()
+            .set("state_in", lua.lua().to_value(&state).unwrap())
+            .unwrap();
+        lua.lua()
+            .globals()
+            .set("operation", serde_json::to_string(&operation).unwrap())
+            .unwrap();
+        lua.lua()
+            .load("result = apply_operation(state_in,operation)")
+            .exec()
+            .unwrap();
+        let value: Value = lua.lua().globals().get("result").unwrap();
+        let result: serde_json::Value = lua.lua().from_value(value).unwrap();
+        assert_eq!(result["state"], before);
+        assert_eq!(result["result"]["rna_read_ends"], expected);
+    }
+
+    #[test]
     fn lua_apply_operation_runs_full_transcript_assay_panel_contract() {
         let (state, operation) = transcript_assay_panel_adapter_fixture();
         let lua = LuaInterface::new();

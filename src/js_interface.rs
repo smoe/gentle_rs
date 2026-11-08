@@ -1969,6 +1969,38 @@ mod tests {
     }
 
     #[test]
+    fn read_end_js_runtime_inspection_preserves_state_and_matches_saved_engine_page() {
+        let (root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
+        let project = root.path().join("read-end VM's project.json");
+        ProjectState::default()
+            .save_to_path(project.to_str().unwrap())
+            .unwrap();
+        let before = fs::read(&project).unwrap();
+        let command = crate::rna_read_ends::Command::Inspect { report, view };
+        let expected =
+            crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+                .unwrap();
+        let operation = Operation::RnaReadEnds {
+            command: Box::new(command),
+        };
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(
+            r#"{oracle}
+            const input=load_project({project});
+            const out=apply_operation(input,{operation});
+            if (!eq(out.state,input)) throw Error('read-end inspection changed project');
+            if (!eq(out.result.rna_read_ends,{expected})) throw Error('read-end VM result differs');
+        "#,
+            oracle = LIFECYCLE_STATE_ORACLE,
+            project = serde_json::to_string(&project.to_string_lossy()).unwrap(),
+            operation = serde_json::to_string(&operation).unwrap(),
+            expected = serde_json::to_string(&expected).unwrap()
+        ))
+        .unwrap();
+        assert_eq!(fs::read(&project).unwrap(), before);
+    }
+
+    #[test]
     fn js_apply_operation_runs_full_transcript_assay_panel_contract() {
         let (state, operation) = transcript_assay_panel_adapter_fixture();
         let response = apply_operation_impl(

@@ -1,5 +1,34 @@
 ## RNA Read Panel
 
+### Saved Read Ends And Pileup
+
+The **Read ends / pileup** tab is the experimental saved-evidence viewer for
+the shared `RnaReadEnds` operation. It starts with no transcript, sample or
+report selected. Use the [synthetic 07.01 rehearsal](../tutorial/07-01_rna_read_batch_gene_support_cli.md)
+first. Paste an explicit typed command draft, review source/gene/transcript and
+ordered sample/file bindings, then approve the exact request before any write
+or configured-tool execution. Draft parsing reads no files on the UI thread.
+Changing a reviewed selection invalidates approval. The remaining file/config
+bindings are edited in the JSON draft; no model is inferred from the active DNA.
+
+Inspection takes the completed report's raw file binding. Apply sort/filter/page
+choices through the shared engine and retain both original denominators above
+the virtualized rows. Every optimal hypothesis remains a stacked sublane;
+hover gives saved row/QNAME/RG/flag/candidate provenance. Separate UTR5, UTR3,
+length, clip, A/T and signal-estimate toggles are display choices in the hashed
+view spec, not a biological score or a change in censoring. Advanced enumerated
+filters can be supplied in an explicit inspect command; Clear all filters
+removes them deliberately. Exports reuse the same engine page and SVG renderer.
+
+Jobs use the existing managed service without a live-project commit. A stop
+request is cooperative, not confirmed termination; await the job receipt. Pure
+projection/coverage/pileup work has periodic cancellation hooks; rendering/font
+conversion is checked before/after its bounded call, not preempted inside the
+converter. Successful external reports survive a late host cancel, while an
+export receipt does not replace the inspected pileup binding. Native Linux/
+macOS/Windows usability, save/reopen, large-lane responsiveness and handle closure
+remain unverified at this source. No screenshots or biological approval are implied.
+
 <!-- manual-counterparts:start -->
 Related CLI reference: [RNA Read Panel](../cli/rna-read-panel.md).
 These topic links do not imply identical feature coverage across interfaces.

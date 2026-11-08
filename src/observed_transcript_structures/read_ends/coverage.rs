@@ -326,6 +326,27 @@ pub fn summarize(
     inputs: &[SampleInput<'_>],
     limits: Limits,
 ) -> Result<CoverageReport, EngineError> {
+    summarize_with_control(
+        source_id,
+        gene_id,
+        selected,
+        probabilities,
+        inputs,
+        limits,
+        &mut || Ok(()),
+    )
+}
+
+pub fn summarize_with_control(
+    source_id: &str,
+    gene_id: &str,
+    selected: Option<&str>,
+    probabilities: &[f64],
+    inputs: &[SampleInput<'_>],
+    limits: Limits,
+    control: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<CoverageReport, EngineError> {
+    control()?;
     if !token(source_id)
         || !token(gene_id)
         || inputs.is_empty()
@@ -337,7 +358,11 @@ pub fn summarize(
     {
         return Err(fail("coverage_parameters"));
     }
-    let mut meter = Meter { limits, work: 0 };
+    let mut meter = Meter {
+        limits,
+        work: 0,
+        control: Some(control),
+    };
     let mut seen = BTreeSet::new();
     let mut samples = vec![];
     for input in inputs {
