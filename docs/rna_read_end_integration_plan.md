@@ -48,6 +48,22 @@ remaining acceptance, not an inherited pass.
 | 5 | Authenticated shared commands, immutable exports and discovery | Implemented shared operation/parser/service and managed file-only policy; canonical Rust parity generation and all Rust/process acceptance pending externally |
 | 6 | Thin virtualized GUI and migrated synthetic tutorial | Implemented reviewed native tab and migrated 07.01; 3 GUI/1 renderer/1 cooperative Rust controls authored, unrun; source/catalog checks pass, native acceptance pending |
 
+### External Compile-Gate Return, 2026-11-08
+
+Glen's first default-feature generator build at
+`1d5eed33bcd58460f93dd45f90d85588e9fb5859` failed with exit 101 on Debian/Rust
+1.97.1. Nine diagnostics reduce to a missing GUI helper import, coverage's
+inferred unsized accumulator and two moves of a still-borrowed publication
+identity. The generator did not run; the empty matrix diff is not a freshness
+pass. All later execution gates remain not_run.
+
+The owner/Claude repair already exists in `6adee466`; source inspection is not
+a successful rebuild. Restart the same default-feature canonical generator on
+the repaired pushed source before the remaining checklist. Archive integrity
+and the exact retry boundary are recorded in the
+[consolidated handoff](glen_next_verification_handoff.md#read-end-compile-gate-return-and-retry-2026-11-08).
+No implementation scope, biological contract or prior acceptance is changed.
+
 ## Open Owner Decisions
 
 Each remains **pending beyond the implemented default**. Sending the supplied

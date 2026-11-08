@@ -16,6 +16,43 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Read-End Compile-Gate Return And Retry, 2026-11-08
+
+Glen tested `1d5eed33bcd58460f93dd45f90d85588e9fb5859` on Debian Linux x86_64
+with Rust/Cargo 1.97.1, Python 3.14.10, one Cargo job, incremental disabled and
+an isolated target. The mandatory generator exited 101 **during compilation**:
+nine diagnostics identify three causes, not nine independent defects. The
+empty retained matrix diff does not establish freshness. All downstream
+parity/read-end/service/VM/MCP/tutorial/native gates remain **not_run**.
+
+The supplied archive's SHA-256 is
+`c8e86e19fe373f647c98797ca11cc18181794d7ed29507bf4bb7cd4c0663e676`;
+all 11 manifest entries were independently verified, and its `REPORT.md` matches
+the separately supplied report byte-for-byte. The tested lockfile SHA-256 is
+`7ad5b2dc9485675a75d272fa945c75342dceb60ef582f2885015f3e14df41e76`.
+
+The owner's newer commit `6adee466` ("Claude fixing build failures") already
+adds the GUI's `quote_shell_arg` import, declares coverage's accumulator as
+`Option<Vec<Interval>>`, and clones the publication identity while cancellation
+still borrows it in Build/Export. It also removes the reported unused import.
+These source corrections have been inspected against the raw diagnostics;
+**no successful compilation or acceptance of the repaired source is recorded**.
+Do not substitute the historical failed SHA or infer a pass from these edits.
+
+After the owner pushes the repaired integrated source, record its actual SHA
+and use a fresh run-owned target. Retry this command **with default features**
+first, so the GUI import is compiled too:
+
+```sh
+cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate
+```
+
+If it fails, retain the primary compiler diagnostics and stop again. If it
+succeeds, return only the actual canonical matrix diff, then run the pending
+parity/freshness and new read-end scope below, including test-target compilation.
+Keep Windows, native GUI and real configured samtools separately reported.
+Do not repeat completed Python/reader/BLAST/containment or real-barcode analyses.
+
 ## Native Read-End Viewer And Migrated 07.01, 2026-11-08
 
 Steps 1-6 are source-implemented, not runtime/native accepted. Preserve OD1-OD6.

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-08 - Record Read-End Generator Compile Failure And Existing Repair
+
+- Verify Glen's `1d5eed33` archive hash and all 11 manifest entries; the separate
+  report is byte-identical. The first canonical generator build exits 101 with
+  nine diagnostics across three causes; its empty matrix diff is not freshness
+  evidence, and all downstream runtime/native gates remain not_run.
+- Record the owner's existing `6adee466` ("Claude fixing build failures"):
+  explicit GUI helper import, typed coverage accumulator, borrowed-identity
+  clones for publication and unused-import removal. No duplicate source repair
+  or local Rust execution; successful compilation remains unverified.
+- Update the integration ledger and Glen retry order: default-feature canonical
+  generation first on the repaired pushed source, then only the still-open
+  parity/read-end checks. Preserve completed unrelated campaigns and separate
+  Windows/native/real-tool acceptance.
+
 ## 2026-11-08 - Add Reviewed Native Read-End Pileup And Synthetic 07.01 Route
 
 - Add an initially unbound Read ends / pileup tab to the existing RNA panel.
