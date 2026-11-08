@@ -95,6 +95,12 @@ decoder chooses none. See the [subset and execution ledger](observed_transcript_
 
 ### S2.3 Bound SAM Interpretation
 
+The separately authorized [shared UTR core, step 1](rna_read_end_metrics.md#shared-rust-core-step-1)
+consumes the existing typed `ObservedSamAnalysis` plus explicit V2 CDS/stop
+models in memory. It adds no SAM field, operation, command or frozen report
+wire and does not authenticate saved files. Existing S0/S1/S2 schemas, source
+identity, search/qualification declarations and byte-preservation rules remain.
+
 `SummarizeObservedTranscriptStructuresFromSam`,
 `InspectObservedTranscriptStructuresFromSam` and
 `CancelObservedTranscriptStructuresFromSam` provide the separate strict

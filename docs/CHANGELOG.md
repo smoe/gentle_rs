@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-11-08 - Add The Pure Shared V2 UTR Core
+
+- Implement only step 1 of the general UTR/coverage/Poly(A) plan: pure bounded
+  `observed_transcript_structures::read_ends` over existing SAM assessments and
+  strict V2 models, with no genes, barcodes or sample defaults. Reuse the shared
+  coordinate transform; retain source/unit bindings and candidate/path ambiguity.
+- Keep original CDS and explicit stop intervals separate, including split minus
+  stops. Typed observed/censored/missing metrics preserve anchors, true zeros and
+  lower bounds. Refuse malformed identities, cross-unit/nonoptimal path links,
+  invalid axes and exhausted budgets without publishing partial output.
+- Add 17 Rust regressions plus a provenance-documented 31-case synthetic corpus
+  shared with the unchanged Python projector, including LF/CRLF checks. Rust
+  compilation/execution remains unverified under the no-local-Rust restriction;
+  the [Glen handoff](glen_next_verification_handoff.md#shared-utr-core-step-1-2026-11-08)
+  requests focused external checks without repeating completed data campaigns.
+- Existing Python outputs/v1 reading and S0/S1/S2 wires are unchanged. The new
+  Rust entry accepts V2 only and is not a file-authentication service, registered
+  operation or frozen result schema. No new adapter, coverage, Poly(A), indexed
+  input, export, dependency, private-data run, push or scientific claim is added.
+- Local verification: 50 Python read-end tests plus 19 documentation/checkout
+  tests pass; scoped formatting, documentation status and whitespace pass.
+  These are authoring-diff checks, not Rust/VM/native or biological acceptance.
+
 ## 2026-11-08 - Record Glen's Focused Linux Containment Verification
 
 - Admit the manifest-sealed return for exact `1cf7e120`: nine new containment

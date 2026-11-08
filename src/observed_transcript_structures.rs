@@ -17,6 +17,8 @@ mod core;
 pub(crate) mod dag;
 pub(crate) mod geometry;
 mod kernel;
+/// Pure, model-bound UTR reach projection over existing saved SAM assessments.
+pub mod read_ends;
 // S2.0b is deliberately private until a separately reviewed ingress contract exists.
 #[allow(dead_code)]
 mod sam;

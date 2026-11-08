@@ -9,6 +9,36 @@ GENtle's read-end utilities separate three questions that must not be collapsed:
 The utilities are deliberately downstream of the existing observed-SAM engine.
 They do not align reads, choose a transcript silently, or infer a poly(A) site.
 
+## Shared Rust Core: Step 1
+
+`observed_transcript_structures::read_ends::project_read_ends` now provides the
+same V2 UTR semantics as a pure Rust-level building block. It consumes a strict
+V2 `ModelDocument` and existing typed `ObservedSamAnalysis`, verifies reference/
+annotation binding equality and returns per-declared-unit length and 5-prime/
+3-prime reach. It reuses the shared genomic-to-query block transform for the
+exon-to-transcript coordinates. It never reruns alignment or chooses a model.
+
+`Metric::Observed` carries a value, `RightCensored` a lower bound and `Missing`
+only a reason. Derived boundaries expose complete/included/separate/overlapping
+or partial/unknown stop evidence without editing original CDS. Missing candidates
+remain visible and withhold a complete gene assignment. Results do not promote
+SAM query-unit identity into verified original reads or independent molecules.
+
+This is **not a new CLI/MCP command, file importer or frozen report schema**.
+Callers must first authenticate saved artifacts; in-memory hash equality does
+not verify actual files, reference bases or exhaustive search. Explicit model,
+interval, observation, unit and work budgets fail without partial output.
+Malformed identity/path/axis links refuse; incompatible geometry remains missing.
+Existing standalone scripts/outputs are unchanged, including their conservative
+legacy-v1 reader; this first Rust boundary accepts V2 only.
+
+The [shared synthetic corpus](../test_files/rna_read_end_core/README.md) checks
+31 literal cases in both implementations. Python's LF/CRLF corpus checks are
+not Rust execution; see the [Glen checklist](glen_next_verification_handoff.md#shared-utr-core-step-1-2026-11-08)
+for pending compilation/tests. Coverage, BAM/CRAM access, basecall terminal A/T,
+raw-signal tail evidence, new exports and GUI remain later steps. No real-data
+analysis, hard-wired gene/barcode selection or biological acceptance is added.
+
 ## 1. Freeze the transcript model
 
 `scripts/project_rna_read_end_metrics.py` requires a CDS-aware model document

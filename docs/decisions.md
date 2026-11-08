@@ -53,6 +53,19 @@ interval evidence rather than guessing a convention from a filename, provider,
 gene, barcode or current experiment. No reference bases or molecular completeness
 are verified by this downstream projection.
 
+Owner-authorized shared-core step 1, 2026-11-08:
+`observed_transcript_structures::read_ends::project_read_ends` is an experimental,
+I/O-free Rust projection of these V2 rules over existing `ObservedSamAnalysis`.
+It reuses the shared block-coordinate projection, retains declared unit identity
+and all eligible candidate/path uncertainty, and uses explicit size/work limits.
+Typed missing/observed/censored results prevent confusing lower bounds with exact
+values. Stored hash equality is binding, not source-byte authentication. Duplicate
+identities, cross-unit/nonoptimal path references and invalid axes are refused.
+No existing S0/S1/S2 wire, Python output, Operation or adapter is changed. The new
+Rust boundary accepts strict V2 only; unchanged Python legacy-v1 reading remains
+conservative. Coverage, basecalls, Poly(A), indexed ingress and publication need
+their later separately tested boundaries; the core does not add them implicitly.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active

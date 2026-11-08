@@ -24,3 +24,9 @@ public ranking writers must refuse malformed rows before creating outputs,
 even when gene assignment is unavailable/ambiguous. Literal controls retain
 observed zero, a zero censored bound and blank missing values; censored bounds
 never enter the median. No external data or persistent fixture is needed.
+
+`test_rna_read_end_core_contract.py` additionally checks the hand-crafted
+31-case corpus in `test_files/rna_read_end_core/cases.json` against the unchanged
+Python projector under LF and CRLF. Its nearby README documents origin and
+recreation. The same literal inputs/outcomes are consumed by the new Rust
+`read_ends::tests`; running the Python half does not execute or accept Rust.

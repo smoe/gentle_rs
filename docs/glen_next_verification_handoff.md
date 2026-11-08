@@ -7,6 +7,58 @@ not install it on Glen's host or establish a Rust pass. Earlier plain-Cargo
 results cannot be resumed as recordings. Keep failed-subset reruns diagnostic,
 finish with a complete intended scope plus doctests, and retain normal CI gates.
 
+## Shared UTR Core Step 1, 2026-11-08
+
+Verify the integrated revision containing this first Rust core after the owner's
+normal push; do not create an interim freeze/bundle or repeat completed data
+campaigns. Authoring baseline is `1b73f9dc` on main. The scoped change adds only
+`observed_transcript_structures::read_ends`, its registration, synthetic tests
+and documentation. No Operation, CLI/MCP/GUI route, Cargo dependency/lock change,
+coverage, BAM/CRAM reader, terminal A/T scanner or physical-tail caller is added.
+Registry/parity projections are intentionally unchanged, not hand-regenerated.
+
+The pure core binds strict V2 models to existing admitted SAM assessments and
+reuses the shared block-coordinate transform. All retained compatible candidates
+and hypotheses must agree for each end. Missing CDS models stay visible; lower
+bounds, unknowns and true zeros have distinct typed representations. Stop
+intervals are explicit and raw CDS remains unchanged. V1 is refused by this new
+Rust boundary, not silently interpreted as V2; the standalone Python legacy
+reader and all its outputs remain unchanged. Source-file authentication remains
+the responsibility of the later file/service boundary.
+
+There are **17 authored Rust tests, not compiled or run locally**. One consumes
+all 31 literal shared corpus cases; others cover strict shapes/bindings,
+duplicate/cross-unit/nonoptimal/axis guards, exact/one-under work limits,
+large coordinates, candidate/path ordering and actual existing SAM-kernel
+assessments. The corpus's Python half checks both LF and CRLF against the
+unchanged projector. Python/source checks do not establish Rust equivalence.
+
+Local authoring checks at `1b73f9dc` plus this scoped diff: 50 Python read-end
+tests (including the 31-case corpus in both encodings), 19 documentation/checkout
+tests, documentation status and scoped rustfmt/whitespace checks pass on macOS
+arm64 / Python 3.15.0. No Rust build, check or test was run. Existing owner
+changes to `Cargo.toml`, `paper`, private data and untracked files are excluded.
+
+Using an explicit run-owned target, run or reuse only matching normal-CI builds:
+
+```sh
+cargo test --locked --lib -j1 read_ends::tests -- --test-threads=1
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+python3 -m unittest discover -s tests -p 'test_*rna_read_end*.py' -v
+```
+
+Require nonzero Rust selection (currently 17 tests) and inspect the 31-case corpus
+assertion, not just successful compilation. Confirm inputs remain unchanged,
+missing candidates cannot disappear, both strands/split stops agree, and
+observed zero/censored-zero bounds retain their distinct meanings.
+Return exact tested SHA, platform/toolchain/features/profile, command counts,
+failures/skips and retained logs. Preserve Glen's focused Linux containment pass
+at `1cf7e120` below; it does not accept this new core and need not be repeated as
+a standalone campaign. No BLAST/reader, private 15/16, GUI, package or biological
+rerun is requested. Current-stage semantic mismatches must be reported rather
+than fixed by relaxing the shared literals or existing Python contracts.
+
 ## Observed-Structure Containment Conflict, 2026-11-07
 
 ### Glen Linux Return, Received 2026-11-08
