@@ -282,8 +282,19 @@ fn transcript_assay_panel_multi_destination_rollback_leaves_existing_evidence_al
     fs::write(dir.join("foreign"), b"retained").unwrap();
     assert!(with_fresh_specificity_bundle(dir.to_str().unwrap(), |_| Ok(())).is_err());
     assert_eq!(fs::read(dir.join("foreign")).unwrap(), b"retained");
-    let raw = root.join("child").join("..").join("escape");
-    assert!(with_fresh_specificity_bundle(raw.to_str().unwrap(), |_| Ok(())).is_err());
+    // Joining onto a Windows verbatim path can normalize away the test's `..`.
+    let raw = format!(
+        "{}{separator}child{separator}..{separator}escape",
+        root.to_str().unwrap(),
+        separator = std::path::MAIN_SEPARATOR
+    );
+    assert!(std::path::Path::new(&raw).components().any(|component| {
+        component == std::path::Component::ParentDir || component.as_os_str() == ".."
+    }));
+    let error = with_fresh_specificity_bundle(&raw, |_| Ok(())).unwrap_err();
+    assert_eq!(error.message, "Unsafe multi-reference output path");
+    assert!(!root.join("escape").exists());
+    assert_eq!(fs::read(dir.join("foreign")).unwrap(), b"retained");
 }
 
 #[cfg(unix)]

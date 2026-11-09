@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-11-08 - Preserve Raw Traversal In The Windows Specificity-Bundle Fixture
+
+- Repair the reported Windows full-suite failure at `1c4a4a5a`: chained
+  `PathBuf::join` on a canonical verbatim path can remove `..` before the test
+  calls the destination validator. Construct the raw spelling with the native
+  separator, assert its traversal component survives, and require the exact
+  unsafe-path refusal plus absent output and unchanged foreign evidence.
+- Keep rollback, no-overwrite and production path validation unchanged. This
+  test-only repair still requires the focused Rust rerun on native Windows;
+  no local Rust build/test, push or scientific acceptance is claimed.
+
 ## 2026-11-08 - Permit Compatible Bio Updates Without Changing The Locked Graph
 
 - Change only `workspace.dependencies.bio` from `=4.*` to `4.2.2`, allowing

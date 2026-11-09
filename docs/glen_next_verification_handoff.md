@@ -44,6 +44,29 @@ offline release-policy suite pass. Structured TOML/raw-byte comparisons confirm
 only bio's requirement changed and the lockfile stayed identical. These checks
 are not Cargo resolution, compiler or platform acceptance.
 
+## Windows Specificity-Bundle Raw-Path Fixture, 2026-11-08
+
+The Windows full suite at `1c4a4a5a` failed only
+`transcript_assay_panel_multi_destination_rollback_leaves_existing_evidence_alone`
+in that invocation (4956 passed, 1 failed, 17 ignored). The final traversal
+assertion built its input via `canonicalize().join("child").join("..").join("escape")`.
+Windows verbatim-path joining can remove `..` before validation. The test now
+constructs the native-separator raw string without normalization, asserts the
+component remains present, and requires the exact unsafe-path error, absent
+new output and unchanged foreign evidence. Production validation is unchanged;
+do not remove or platform-skip the refusal assertion.
+
+After the next owner push, run the focused test on native Windows and retain
+the actual SHA/toolchain/count and raw refusal evidence, then normal CI:
+
+```sh
+cargo test --locked --lib -j1 transcript_assay_panel_multi_destination_rollback_leaves_existing_evidence_alone -- --test-threads=1
+```
+
+A Unix pass alone cannot certify the Windows fixture. No local Rust execution
+by Codex. Keep this separate from the renderer-only retry and the offline bio
+guard; no repeated RNA/BAM/CRAM or biological campaign is needed.
+
 ## Glen Linux Return At 1c4a4a5a And Renderer-Test Follow-Up, 2026-11-08
 
 Tested source: `1c4a4a5aa4ac9c1515f683bb0c6fd0d91409b06d`; final fetch unchanged.
