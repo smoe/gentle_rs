@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-11-09 - Enforce Read-End Pixel Limits Against Actual Wrapped Layout
+
+- Verify Glen's `a5496266` focused archive and all seven manifest entries;
+  preserve renderer 3/3 and bio policy 5/5/full 54-test passes at that source.
+  The source scan's separate GitHub query was incomplete, not CI acceptance.
+- Replace the stale 54-pixel row estimate with public dimensions from the same
+  checked layout used for SVG. Include wrapped header/title/legend and lanes;
+  reject height/multiplication overflow and PNG/PDF above 32,000,000 pixels
+  before SVG serialization/conversion/publication. Preserve SVG/JSON/TSV-only
+  output, byte caps, normal-page layout and scientific/report contracts.
+- Add renderer height overflow and dimension-equality controls, service exact
+  boundary/overflow and header/lane underestimation refusals, and actual small
+  PNG-height comparison. No oversized raster is allocated by those regressions.
+  Rust/runtime execution remains with Glen/CI; no local Rust build, push,
+  dependency change, private analysis or scientific approval is claimed.
+
 ## 2026-11-08 - Preserve Raw Traversal In The Windows Specificity-Bundle Fixture
 
 - Repair the reported Windows full-suite failure at `1c4a4a5a`: chained

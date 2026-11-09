@@ -76,10 +76,20 @@ fn block(x: f64, y: f64, lines: &[String]) -> Group {
     group
 }
 
-fn row_height(row: &Row, width: u32) -> u32 {
-    let label = wrapped(&row.label, 185).len() as u32;
-    let status = wrapped(&row.off_axis, width - 230).len() as u32;
-    (31 + (label - 1) * 18).max(54 + (status - 1) * 18)
+fn after_lines(top: u64, lines: usize, padding: u64) -> Result<u64, String> {
+    u64::try_from(lines)
+        .ok()
+        .and_then(|count| count.checked_mul(18))
+        .and_then(|height| top.checked_add(height))
+        .and_then(|height| height.checked_add(padding))
+        .ok_or_else(|| "read_end_pileup_render_height".into())
+}
+
+fn row_height(row: &Row, width: u32) -> Result<u32, String> {
+    let label = wrapped(&row.label, 185).len();
+    let status = wrapped(&row.off_axis, width - 230).len();
+    let height = after_lines(31, label - 1, 0)?.max(after_lines(54, status - 1, 0)?);
+    u32::try_from(height).map_err(|_| "read_end_pileup_render_height".into())
 }
 
 fn validate(scene: &Scene) -> Result<(), String> {
@@ -96,11 +106,11 @@ fn validate(scene: &Scene) -> Result<(), String> {
 /// Cache these page-local heights once to keep native virtualization font-independent.
 pub fn lane_heights(scene: &Scene) -> Result<Vec<u32>, String> {
     validate(scene)?;
-    Ok(scene
+    scene
         .rows
         .iter()
         .map(|row| row_height(row, scene.width))
-        .collect())
+        .collect()
 }
 
 fn row_group(frame: Frame, row: &Row, width: u32, top: f64) -> Group {
@@ -115,8 +125,19 @@ fn row_group(frame: Frame, row: &Row, width: u32, top: f64) -> Group {
     group
 }
 
-/// Deterministic SVG; dimensions depend only on the explicit page, never the host fonts.
-pub fn render(scene: &Scene) -> Result<String, String> {
+struct PageLayout {
+    heights: Vec<u32>,
+    header_lines: Vec<String>,
+    title: Vec<String>,
+    legend: Vec<String>,
+    title_y: u64,
+    model_y: u64,
+    legend_y: u64,
+    rows_y: u64,
+    height: u64,
+}
+
+fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
     let heights = lane_heights(scene)?;
     let header_lines: Vec<_> = scene
         .header
@@ -134,11 +155,38 @@ pub fn render(scene: &Scene) -> Result<String, String> {
         "N = solid; other gap = dashed; segment link = dotted. Clips/evidence below axis, not aligned bases.",
         scene.width - 20,
     );
-    let title_y = 40.0 + header_lines.len() as f64 * 18.0;
-    let model_y = title_y + title.len() as f64 * 18.0 + 8.0;
-    let legend_y = model_y + 32.0;
-    let rows_y = legend_y + legend.len() as f64 * 18.0 + 8.0;
-    let height = rows_y + heights.iter().map(|h| f64::from(*h)).sum::<f64>() + 8.0;
+    let title_y = after_lines(40, header_lines.len(), 0)?;
+    let model_y = after_lines(title_y, title.len(), 8)?;
+    let legend_y = after_lines(model_y, 0, 32)?;
+    let rows_y = after_lines(legend_y, legend.len(), 8)?;
+    let height = heights
+        .iter()
+        .try_fold(after_lines(rows_y, 0, 8)?, |sum, height| {
+            sum.checked_add(u64::from(*height))
+                .ok_or_else(|| "read_end_pileup_render_height".to_owned())
+        })?;
+    Ok(PageLayout {
+        heights,
+        header_lines,
+        title,
+        legend,
+        title_y,
+        model_y,
+        legend_y,
+        rows_y,
+        height,
+    })
+}
+
+/// Exact intrinsic SVG pixel dimensions, using the same checked layout as `render`.
+/// PNG/PDF callers must check their pixel budget before invoking a converter.
+pub fn dimensions(scene: &Scene) -> Result<(u32, u64), String> {
+    Ok((scene.width, page_layout(scene)?.height))
+}
+
+/// Deterministic SVG; dimensions depend only on the explicit page, never the host fonts.
+pub fn render(scene: &Scene) -> Result<String, String> {
+    let layout = page_layout(scene)?;
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -148,21 +196,21 @@ pub fn render(scene: &Scene) -> Result<String, String> {
         label_left: 10.0,
     };
     let mut document = svg::Document::new()
-        .set("viewBox", (0, 0, scene.width, height))
+        .set("viewBox", (0, 0, scene.width, layout.height))
         .set("width", scene.width)
-        .set("height", height)
+        .set("height", layout.height)
         .add(
             Rectangle::new()
                 .set("width", "100%")
                 .set("height", "100%")
                 .set("fill", "#ffffff"),
         );
-    document.append(block(10.0, 22.0, &header_lines));
-    document.append(block(10.0, title_y, &title));
-    draw(&mut document, frame, &scene.model, model_y);
-    document.append(block(10.0, legend_y, &legend));
-    let mut top = rows_y;
-    for (row, row_height) in scene.rows.iter().zip(heights) {
+    document.append(block(10.0, 22.0, &layout.header_lines));
+    document.append(block(10.0, layout.title_y as f64, &layout.title));
+    draw(&mut document, frame, &scene.model, layout.model_y as f64);
+    document.append(block(10.0, layout.legend_y as f64, &layout.legend));
+    let mut top = layout.rows_y as f64;
+    for (row, row_height) in scene.rows.iter().zip(layout.heights) {
         document.append(row_group(frame, row, scene.width, top));
         top += f64::from(row_height);
     }
@@ -248,7 +296,7 @@ pub fn model_height(scene: &Scene) -> Result<u32, String> {
 pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
     validate(scene)?;
     let row = scene.rows.get(index).ok_or("read_end_pileup_lane_range")?;
-    let height = row_height(row, scene.width);
+    let height = row_height(row, scene.width)?;
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -276,6 +324,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn read_end_page_height_arithmetic_refuses_overflow() {
+        assert_eq!(after_lines(40, 2, 8).unwrap(), 84);
+        assert!(after_lines(u64::MAX, 1, 0).is_err());
+        assert!(after_lines(u64::MAX, 0, 1).is_err());
+    }
+
+    #[test]
     fn read_end_long_labels_wrap_without_loss_or_crossing_page_or_lane_bounds() {
         let long = "status observed 0 bp / right_censored / missing / \u{3b1} ".repeat(20);
         for width in [900, 1400, 8000] {
@@ -297,8 +352,13 @@ mod tests {
             assert_eq!(wrapped(&long, width - 230).concat(), long);
             let heights = lane_heights(&scene).unwrap();
             assert!(heights[0] > 54);
+            let (page_width, page_height) = dimensions(&scene).unwrap();
+            let full = render(&scene).unwrap();
+            let root = full.split('>').next().unwrap();
+            assert!(root.contains(&format!(" width=\"{page_width}\"")));
+            assert!(root.contains(&format!(" height=\"{page_height}\"")));
             for svg in [
-                render(&scene).unwrap(),
+                full,
                 render_lane(&scene, 0).unwrap(),
                 render_model(&scene).unwrap(),
             ] {

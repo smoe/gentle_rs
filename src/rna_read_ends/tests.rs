@@ -324,9 +324,80 @@ fn read_end_service_lf_crlf_bind_raw_bytes_but_preserve_model_semantics() {
 }
 
 #[test]
+fn read_end_service_raster_budget_checks_boundary_and_multiplication_overflow() {
+    check_raster_pixel_budget(1000, 32_000).unwrap();
+    for (width, height) in [(1000, 32_001), (8000, u64::MAX)] {
+        assert!(
+            check_raster_pixel_budget(width, height)
+                .unwrap_err()
+                .message
+                .contains("raster_pixel_budget")
+        );
+    }
+}
+
+#[test]
+fn read_end_service_raster_budget_uses_wrapped_headers_and_lanes_before_conversion() {
+    use gentle_render::read_end_pileup::{self, Row, Scene};
+    let long = "synthetic status ".repeat(300);
+    for (long_headers, long_lanes) in [(true, false), (false, true), (true, true)] {
+        let scene = Scene {
+            contig: "synthetic_contig".into(),
+            start: 100,
+            end: 200,
+            strand: 1,
+            width: 8000,
+            header: if long_headers {
+                vec![long.clone(); 64]
+            } else {
+                vec!["synthetic header".into()]
+            },
+            model: vec![],
+            rows: vec![
+                Row {
+                    label: if long_lanes {
+                        "sample-unit-".repeat(16)
+                    } else {
+                        "synthetic unit".into()
+                    },
+                    details: "Hand-crafted layout budget control; not biological evidence".into(),
+                    off_axis: if long_lanes {
+                        long.clone()
+                    } else {
+                        "observed: 0 bp".into()
+                    },
+                    bands: vec![],
+                };
+                if long_lanes { 32 } else { 1 }
+            ],
+        };
+        let (width, height) = read_end_pileup::dimensions(&scene).unwrap();
+        let old_height = 30 + 19 * scene.header.len() + 95 + 54 * scene.rows.len();
+        assert!(u64::from(width) * old_height as u64 <= RASTER_PIXEL_LIMIT);
+        assert!(u64::from(width) * height > RASTER_PIXEL_LIMIT);
+        for format in [Format::Png, Format::Pdf] {
+            assert!(
+                export_svg(&scene, &[Format::Svg, format])
+                    .unwrap_err()
+                    .message
+                    .contains("raster_pixel_budget")
+            );
+        }
+        // Vector/text-only output remains allowed; no raster converter is called by this test.
+        let svg = export_svg(&scene, &[Format::Json, Format::Tsv, Format::Svg]).unwrap();
+        let root = svg.split('>').next().unwrap();
+        assert!(root.contains(&format!(" height=\"{height}\"")));
+    }
+}
+
+#[test]
 fn read_end_service_png_pdf_derive_from_the_same_svg_with_explicit_dimensions() {
     let (root, request) = fixture();
     let report = run(request);
+    let saved = completed(&report, &mut || Ok(())).unwrap();
+    let page = pileup::page(&saved, &view()).unwrap();
+    let scene = pileup::scene(&saved, &page).unwrap();
+    let (width, height) = gentle_render::read_end_pileup::dimensions(&scene).unwrap();
     let output = root.path().canonicalize().unwrap().join("raster vector");
     execute(
         &GentleEngine::new(),
@@ -343,7 +414,18 @@ fn read_end_service_png_pdf_derive_from_the_same_svg_with_explicit_dimensions() 
     .unwrap();
     let png = fs::read(output.join("artifacts/pileup.png")).unwrap();
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
-    assert_eq!(u32::from_be_bytes(png[16..20].try_into().unwrap()), 1400);
+    assert_eq!(u32::from_be_bytes(png[16..20].try_into().unwrap()), width);
+    assert_eq!(
+        u64::from(u32::from_be_bytes(png[20..24].try_into().unwrap())),
+        height
+    );
+    let svg = fs::read_to_string(output.join("artifacts/pileup.svg")).unwrap();
+    assert!(
+        svg.split('>')
+            .next()
+            .unwrap()
+            .contains(&format!(" height=\"{height}\""))
+    );
     assert!(
         fs::read(output.join("artifacts/pileup.pdf"))
             .unwrap()

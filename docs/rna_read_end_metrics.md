@@ -16,7 +16,7 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 `rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
 `src/rna_read_ends.rs`. They are experimental; scoped Linux/macOS returns and
 the remaining selection/layout/native gates are recorded in the
-[active handoff](glen_next_verification_handoff.md#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
+[active handoff](glen_next_verification_handoff.md#read-end-actual-layout-pixel-guard-2026-11-09).
 The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
 transcript and ordered sample bindings are mandatory. One analysis per sample/
 gene is admitted. Saved report status, result binding and artifact hashes are
@@ -33,6 +33,10 @@ publishes completion last through the existing owned S2.3 publication helper.
 JSON/TSV/SVG are deterministic for identical saved input and view; PNG/PDF use
 the same SVG with the established converters, not a cross-platform pixel promise.
 Raster/vector conversion has an explicit 32-million-pixel page ceiling.
+PNG/PDF requests check actual dimensions from the shared SVG layout, including
+wrapped headers and lanes, with overflow-safe multiplication before conversion.
+An oversized mixed-format request refuses before publishing any artifacts;
+JSON/TSV/SVG-only export remains available under its normal output-byte limits.
 Long labels/statuses wrap without dropping text; SVG and virtualized native
 lanes use the renderer's deterministic line heights. Smaller explicit pages may
 be needed when wrapping makes an export exceed the unchanged pixel/output cap.

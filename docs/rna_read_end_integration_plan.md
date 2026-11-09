@@ -43,9 +43,9 @@ remaining acceptance, not an inherited pass.
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
 | 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented; included in Glen's scoped Linux read-end pass at `7c5214ec`; no biological/platform-wide acceptance |
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Implemented and service-connected; included in the scoped Linux pass; no inferred basecalls or real-signal acceptance |
-| 3 | Engine-owned pileup/view and deterministic headless renderer | Linux CLI exports/bounds and Glen's PNG/PDF review pass at `1c4a4a5a`; renderer filter 2/3 due to test parser; repaired filter rerun pending |
+| 3 | Engine-owned pileup/view and deterministic headless renderer | Glen's renderer 3/3 passes at `a5496266`; shared checked dimensions/pixel-guard changes now need focused execution |
 | 4 | Shared supervised process and bounded configured samtools ingress | Linux real-samtools group 9/9 plus overlapping exact CRAM/FAI and BAM/CRAM reruns pass at `1c4a4a5a`; Windows separate |
-| 5 | Authenticated shared commands, immutable exports and discovery | Retain `7c5214ec` generator/parity/VM/MCP passes; affected actual CLI/export check 1/1 passes at `1c4a4a5a` |
+| 5 | Authenticated shared commands, immutable exports and discovery | Retain `7c5214ec` generator/parity/VM/MCP and `1c4a4a5a` actual export passes; oversized-page PNG/PDF refusal regression pending |
 | 6 | Thin virtualized GUI and migrated synthetic tutorial | Wrapped exported-page evidence passes on Linux; cached native lane heights/scrolling and Windows remain unrun |
 
 ### External Compile-Gate Return, 2026-11-08
@@ -113,6 +113,20 @@ the three renderer tests externally. This is test-only; no new BAM/CRAM or CLI
 campaign is required. Archive hashes, exact counts and remaining native/Windows
 boundaries are in the [active handoff](glen_next_verification_handoff.md#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
 Codex ran no local Rust or native verification. Scientific acceptance stays open.
+
+### Actual-Layout Pixel Guard Follow-Up, 2026-11-09
+
+Glen's `a5496266` focused bundle passes the three renderer tests and bio policy
+checks. The broader source scan found a distinct guard drift: the export's fixed
+54-pixel row estimate omitted wrapped header/lane height. The repair exposes
+dimensions from the same checked layout used for SVG, checks actual width times
+height before PNG/PDF conversion and retains the 32-million-pixel threshold.
+Overflow and long-header/multiline-lane refusals plus actual small PNG dimensions
+are authored regressions, not locally executed Rust evidence. SVG/JSON/TSV stay
+outside the pixel cap under their existing output limits. Exact source, archive
+hash and narrowed external commands are in the
+[active handoff](glen_next_verification_handoff.md#read-end-actual-layout-pixel-guard-2026-11-09).
+Earlier passing scopes, native/Windows boundaries and OD1-OD6 remain unchanged.
 
 ## Open Owner Decisions
 

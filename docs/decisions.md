@@ -92,6 +92,13 @@ SAM v1 and declared conversion/Phase 2/S1/Python bytes remain unchanged; execute
 selection provenance is separate. No biological or runtime acceptance follows
 from this architectural authorization or source-only implementation checks.
 
+Read-end PNG/PDF export retains a 32-million-pixel page ceiling. Enforce it
+against checked actual dimensions from the same renderer layout that supplies
+SVG height, including wrapped headers and lanes, before conversion; a fixed
+per-row estimate must not authorize a larger raster. SVG/JSON/TSV retain their
+separate output-byte limits without this pixel cap. No implicit cropping,
+resampling, denominator change or weakened publication guard follows.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active

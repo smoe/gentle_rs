@@ -9,7 +9,7 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Read-End Integration Plan, 2026-11-08
 
-**Active retry scope:** use the [Linux acceptance and renderer-test follow-up](#glen-linux-return-at-1c4a4a5a-and-renderer-test-follow-up-2026-11-08).
+**Active retry scope:** use the [actual-layout PNG/PDF pixel guard follow-up](#read-end-actual-layout-pixel-guard-2026-11-09).
 The earlier compile-failure/retry instructions below are historical; the
 generator and listed downstream scopes have since executed at `7c5214ec`.
 
@@ -19,6 +19,62 @@ future-step commands merely because a plan authorizes development: each step's
 implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
+
+## Read-End Actual-Layout Pixel Guard, 2026-11-09
+
+Glen's small focused bundle verifies `a549626664fe88aeaa1dd5f634f51cc09d4b876d`
+on Debian Linux x86_64, Rust/Cargo 1.97.1 and Python 3.14.10, isolated target,
+one job, incremental off. Archive SHA-256:
+`7b19fb8fc622ad1ed3efc95cff64ab7ddf8a121e538f1febe171b84b43c19dd4`;
+all seven manifest entries independently verify. Its raw logs pass renderer
+3/3, dependency-policy 5/5 and full offline release-policy 54/54 (the five are
+included). The lockfile remains `718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+This closes the historical Linux renderer-parser retry, not native Windows.
+The separate scan's GitHub API query was incomplete (401); no CI pass is inferred.
+
+The scan found a real resource-guard drift: export still estimated 54 pixels
+per row after wrapping introduced variable header/lane heights. Ordinary
+export passes at `1c4a4a5a` do not cover this oversized-page boundary.
+
+The repair gives `gentle_render::read_end_pileup::dimensions` and SVG rendering
+one shared checked layout, including wrapped headers, title/legend and all row
+heights. Row/total height arithmetic refuses overflow. PNG/PDF requests now
+check actual width times height with checked `u64` multiplication against the
+unchanged 32,000,000-pixel ceiling before SVG serialization or conversion.
+The whole mixed-format request refuses before publication. Text/vector-only
+JSON/TSV/SVG requests keep their existing output-byte caps, not the pixel cap.
+No biological values, report schemas, selection, fonts, paging or layout
+constants change for ordinary pages; no dependency or lockfile changes.
+
+New authored controls: one renderer overflow test; dimension/SVG equality added
+to the existing 900/1400/8000-px case; two service regressions for exact-boundary/
+overflow and long headers, wrapped lanes, or both. Each oversized fixture would
+pass the old estimate but must refuse PNG and PDF without invoking converters;
+SVG-only remains allowed. The existing small actual-converter service test now
+compares the renderer's dimensions with both SVG and PNG metadata.
+These Rust changes are **not compiled/run by Codex**.
+Local authoring checks pass five Python source/rehearsal tests, Rust formatting/
+parsing and documentation checks. Independent arithmetic confirms the three
+counterexamples: old estimates 11,160,000 / 14,976,000 / 24,552,000 pixels versus
+actual layout 56,784,000 / 46,000,000 / 101,152,000. This is not Rust execution.
+
+After the next owner push, record the actual integrated SHA and a run-owned
+target. Run only the affected scope, with nonzero counts:
+
+```sh
+cargo test --locked -p gentle-render -j1 read_end -- --test-threads=1
+cargo test --locked --lib -j1 read_end_service_raster_budget_ -- --test-threads=1
+cargo test --locked --lib -j1 read_end_service_png_pdf_derive_from_the_same_svg_with_explicit_dimensions -- --test-threads=1
+cargo check --locked --tests -j1
+```
+
+Expected authored counts are four renderer tests, two budget tests and one
+small PNG/PDF conversion test. Do not deliberately rasterize an over-limit
+fixture; the refusal itself is the regression. Retain actual dimensions,
+results/skips and logs. Reuse the completed bio/parity/47-test/VM/MCP/glossary/
+supervisor/BAM/CRAM/CLI and private-data campaign evidence; do not repeat it.
+Normal CI, native GUI/scrolling and native-Windows raw-path acceptance remain
+separate. No scientific, release or publication approval follows.
 
 ## Compatible Bio Update Policy, 2026-11-08
 
@@ -68,6 +124,9 @@ by Codex. Keep this separate from the renderer-only retry and the offline bio
 guard; no repeated RNA/BAM/CRAM or biological campaign is needed.
 
 ## Glen Linux Return At 1c4a4a5a And Renderer-Test Follow-Up, 2026-11-08
+
+Historical retry: the three renderer tests now pass in Glen's `a5496266` bundle;
+use the active pixel-guard scope above instead of repeating this checklist.
 
 Tested source: `1c4a4a5aa4ac9c1515f683bb0c6fd0d91409b06d`; final fetch unchanged.
 Debian Linux x86_64, Rust/Cargo 1.97.1, Python 3.14.10, locked default features

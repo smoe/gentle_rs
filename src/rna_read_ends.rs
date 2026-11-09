@@ -19,6 +19,7 @@ use std::{
 
 const CAP: u64 = 128 * 1024 * 1024;
 const MEMORY: usize = 512 * 1024 * 1024;
+const RASTER_PIXEL_LIMIT: u64 = 32_000_000;
 
 #[cfg(test)]
 mod tests;
@@ -472,6 +473,30 @@ fn completed(
     data.ok_or_else(|| fail("pileup_artifact_missing"))
 }
 
+fn check_raster_pixel_budget(width: u32, height: u64) -> Result<(), EngineError> {
+    if u64::from(width)
+        .checked_mul(height)
+        .is_none_or(|pixels| pixels > RASTER_PIXEL_LIMIT)
+    {
+        return Err(fail("raster_pixel_budget"));
+    }
+    Ok(())
+}
+
+fn export_svg(
+    scene: &gentle_render::read_end_pileup::Scene,
+    formats: &[Format],
+) -> Result<String, EngineError> {
+    if formats
+        .iter()
+        .any(|format| matches!(format, Format::Png | Format::Pdf))
+    {
+        let (width, height) = gentle_render::read_end_pileup::dimensions(scene).map_err(fail)?;
+        check_raster_pixel_budget(width, height)?;
+    }
+    gentle_render::read_end_pileup::render(scene).map_err(fail)
+}
+
 fn publish(
     output: &str,
     request_sha256: String,
@@ -678,7 +703,7 @@ pub fn execute(
             let report = completed(&report, &mut check)?;
             let page = pileup::page(&report, &view)?;
             let scene = pileup::scene(&report, &page)?;
-            let svg = gentle_render::read_end_pileup::render(&scene).map_err(fail)?;
+            let svg = export_svg(&scene, &formats)?;
             let mut contents = vec![];
             for format in formats {
                 check()?;
@@ -687,14 +712,6 @@ pub fn execute(
                     Format::Tsv => ("lanes.tsv", pileup::tsv(&page)?.into_bytes()),
                     Format::Svg => ("pileup.svg", svg.as_bytes().to_vec()),
                     Format::Png | Format::Pdf => {
-                        // Prevent unbounded raster allocation; exact SVG/JSON pages can be larger.
-                        let height = 30 + 19 * scene.header.len() + 95 + 54 * scene.rows.len();
-                        if (scene.width as usize)
-                            .checked_mul(height)
-                            .is_none_or(|pixels| pixels > 32_000_000)
-                        {
-                            return Err(fail("raster_pixel_budget"));
-                        }
                         let options = crate::svg_png::SvgPngRenderOptions::default();
                         if format == Format::Png {
                             (
