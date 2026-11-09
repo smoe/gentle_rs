@@ -202,6 +202,8 @@ impl GENtleApp {
         let state = &mut self.rna_panel_ui.read_ends;
         ui.heading("Saved read ends and transcript pileup");
         ui.label("Explicit source / gene / transcript / ordered samples. No representative isoform; declared SAM units are not molecules.");
+        ui.label("mRNA 5' to 3': same-direction lanes above the divider, opposite below, unresolved evidence in Alternatives. This is not pore direction.");
+        ui.label("Optional original_bases must explicitly bind original sequencing orientation. Literal A (magenta) / T (turquoise), hollow if not fully aligned; no physical tail-length claim.");
         ui.label("Paste the typed synthetic or independently reviewed command draft. Reviewing a draft performs no file I/O.");
         let settings_height = (ui.available_height() * 0.45).clamp(80.0, 320.0);
         egui::CollapsingHeader::new("Requests, explicit selections, view and export settings").id_salt("read_end_settings").default_open(false).show(ui,|ui| {
@@ -323,7 +325,7 @@ impl GENtleApp {
                 ("3' UTR", &mut c.utr3),
                 ("Read length", &mut c.read_length),
                 ("Clips", &mut c.clips),
-                ("A/T", &mut c.composition),
+                ("Literal A/T runs", &mut c.composition),
                 ("Signal estimate", &mut c.tail),
             ] {
                 view_changed |= ui.checkbox(flag, label).changed();
@@ -447,6 +449,12 @@ impl GENtleApp {
                 "All samples: gene-assigned {} | selected-transcript-compatible {}",
                 page.total_gene_assigned, page.total_selected_transcript_compatible
             ));
+            if let Some(summary) = &page.orientation_summary {
+                ui.label(format!("Unfiltered: same {} / opposite {} / Alternatives {}; bound bases {} (alternatives {}); units with A {} / T {} / unaligned runs {}. A/T counters overlap.",
+                    summary.same_direction_units, summary.opposite_direction_units, summary.alternative_direction_units,
+                    summary.units_with_bound_bases, summary.units_with_basecall_alternatives,
+                    summary.units_with_terminal_a, summary.units_with_terminal_t, summary.units_with_unaligned_runs));
+            }
             egui::ScrollArea::vertical().id_salt("read_end_sample_denominators").max_height(72.0).show(ui,|ui| {
             for sample in &page.coverage.samples {
                 ui.strong(format!("{}: gene-assigned {} | selected-transcript-compatible {} | declared {} | assessed {}",sample.sample_id,sample.gene_assigned_units,sample.selected_transcript_compatible_units,sample.declared_units,sample.assessed_units));

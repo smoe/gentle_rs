@@ -16,6 +16,45 @@ BIN = os.environ.get("GENTLE_READ_END_BIN_DIR")
 
 
 class ReadEndRehearsalInputs(unittest.TestCase):
+    def test_oriented_synthetic_originals_are_independent_of_sam_reverse_complement(self):
+        for strand in ("+", "-"):
+            with self.subTest(strand=strand), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve() / "original read's α"
+                rehearsal.prepare(root, oriented=True, strand=strand)
+                originals = json.loads((root / "original-sequences.json").read_bytes())
+                sam = [line.split("\t") for line in (root / "synthetic.sam").read_text().splitlines() if not line.startswith("@")]
+                self.assertEqual({row[1] for row in sam}, {"0", "16"})
+                for row in sam:
+                    expected = originals[row[0]]
+                    if row[1] == "16":
+                        expected = expected.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+                    self.assertEqual(row[9], expected)
+                    self.assertTrue(originals[row[0]].endswith("T" * 18))
+                model = json.loads((root / "models.json").read_bytes())
+                self.assertTrue(all(m["strand"] == strand for m in model["transcripts"]))
+                request = json.loads((root / "sam-request.json").read_bytes())
+                manifest = json.loads((root / "units.json").read_bytes())
+                self.assertEqual(manifest["sam_sha256"], rehearsal.bound(root / "synthetic.sam")["sha256"])
+                (root / "saved-sam/artifacts").mkdir(parents=True)
+                rehearsal.write(root / "saved-sam/report.json", {"status": "completed", "request_sha256": "synthetic", "content_sha256": "synthetic"})
+                rehearsal.write(root / "saved-sam/artifacts/analysis.json", {"analysis": {
+                    "context_sha256": "sha256:" + "c" * 64,
+                    "units": [{"unit": {"source_sha256": request["sam"]["sha256"], "unit_id": u["unit_id"]},
+                               "unclipped_axis_length": u["unclipped_axis_length"], "rows": u["rows"]} for u in manifest["units"]]}})
+                rehearsal.bind_analysis(root)
+                rehearsal.bind_originals(root)
+                command = json.loads((root / "oriented-build-command.json").read_bytes())
+                bases = command["request"]["samples"][0]["original_bases"]
+                self.assertEqual(bases, rehearsal.bound(root / "original-bases.json"))
+                document = json.loads(Path(bases["path"]).read_bytes())
+                self.assertEqual(document["orientation"], "original_sequencing_5_to_3")
+                self.assertEqual({row["read_id"]: row["sequence"] for row in document["reads"]}, originals)
+                raw = Path(bases["path"]).read_bytes()
+                self.assertEqual(json.loads(raw), json.loads(raw.replace(b"\n", b"\r\n")))
+                self.assertNotEqual(hashlib.sha256(raw).hexdigest(), hashlib.sha256(raw.replace(b"\n", b"\r\n")).hexdigest())
+                with self.assertRaises(FileExistsError):
+                    rehearsal.bind_originals(root)
+
     def test_bound_synthetic_models_annotation_and_manifest_under_both_newlines(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve() / "rehearsal's α"
@@ -96,6 +135,61 @@ class ReadEndRehearsalInputs(unittest.TestCase):
 
 @unittest.skipUnless(BIN, "Set GENTLE_READ_END_BIN_DIR for source-matched real CLI acceptance")
 class ReadEndRehearsalProcess(unittest.TestCase):
+    def test_actual_oriented_cli_both_transcript_strands_literal_runs_and_exports(self):
+        binary = Path(BIN) / ("gentle_cli.exe" if os.name == "nt" else "gentle_cli")
+        self.assertTrue(binary.is_file())
+        for strand in ("+", "-"):
+            with self.subTest(strand=strand), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve() / "oriented read's α"
+                rehearsal.prepare(root, oriented=True, strand=strand)
+                state = root / "not-created-project.json"
+                def run(*args, success=True):
+                    result = subprocess.run([str(binary), "--state", str(state), *args], capture_output=True, timeout=60)
+                    self.assertEqual(result.returncode == 0, success, result.stderr.decode(errors="replace"))
+                    return result
+                run("rna-reads", "transcript-structures-from-sam", "@" + str(root / "sam-request.json"))
+                rehearsal.bind_analysis(root)
+                rehearsal.bind_originals(root)
+                run("rna-reads", "read-ends", "@" + str(root / "oriented-build-command.json"))
+                rehearsal.bind_pileup(root)
+                run("rna-reads", "read-ends", "@" + str(root / "inspect-command.json"))
+                # Inspect the published scientific page, independently of CLI response envelopes.
+                report = json.loads((root / "read-ends/artifacts/pileup.json").read_bytes())
+                self.assertEqual(report["schema"], "gentle.rna_read_end_pileup.v2")
+                self.assertEqual(report["orientation_summary"]["same_direction_units"], 1)
+                self.assertEqual(report["orientation_summary"]["opposite_direction_units"], 1)
+                self.assertEqual(report["orientation_summary"]["units_with_bound_bases"], 2)
+                for lane in report["lanes"]:
+                    for h in lane["hypotheses"]:
+                        runs = h["oriented"]["variants"][0]["runs"]
+                        self.assertEqual([(r["base"], r["length"]) for r in runs], [("A", 12), ("T", 18)])
+                        if lane["unit"]["unit"]["unit_id"] == "synthetic_clipped":
+                            self.assertTrue(any(not r["aligned_to_reference"] for r in runs))
+                run("rna-reads", "read-ends", "@" + str(root / "export-command.json"))
+                artifacts = root / "exports/artifacts"
+                before = {p.name: p.read_bytes() for p in artifacts.iterdir()}
+                self.assertEqual({"page.json", "lanes.tsv", "pileup.svg", "pileup.png", "pileup.pdf"}, set(before))
+                svg = ET.parse(artifacts / "pileup.svg").getroot()
+                labels = list(svg.iter("{http://www.w3.org/2000/svg}text"))
+                text = "".join("".join(label.itertext()) for label in labels)
+                width, height = float(svg.attrib["width"]), float(svg.attrib["height"])
+                for label in labels:
+                    self.assertLessEqual(float(label.attrib["x"]) + float(label.attrib["textLength"]), width - 10)
+                    self.assertLessEqual(float(label.attrib["y"]), height - 8)
+                self.assertIn("12A", text)
+                self.assertIn("18T", text)
+                self.assertIn("Same direction", text)
+                self.assertIn("Opposite", text)
+                again = json.loads((root / "export-command.json").read_bytes())
+                again["output_dir"] = str(root / "exports-again")
+                rehearsal.write(root / "export-again-command.json", again)
+                run("rna-reads", "read-ends", "@" + str(root / "export-again-command.json"))
+                self.assertEqual(before, {p.name: p.read_bytes() for p in (root / "exports-again/artifacts").iterdir()},
+                                 "same-host same-source export artifacts must be deterministic")
+                run("rna-reads", "read-ends", "@" + str(root / "export-command.json"), success=False)
+                self.assertEqual(before, {p.name: p.read_bytes() for p in artifacts.iterdir()})
+                self.assertFalse(state.exists())
+
     def test_actual_cli_prepare_build_inspect_export_and_no_clobber(self):
         binary = Path(BIN) / ("gentle_cli.exe" if os.name == "nt" else "gentle_cli")
         self.assertTrue(binary.is_file())

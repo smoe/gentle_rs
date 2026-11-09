@@ -7,7 +7,7 @@ use crate::engine::{
 };
 use crate::observed_transcript_structures::{
     self as kernel, indexed_locus as ingress,
-    read_ends::{self as core, coverage, evidence, pileup},
+    read_ends::{self as core, coverage, evidence, oriented, pileup},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -27,7 +27,8 @@ mod tests;
 #[cfg(test)]
 pub(crate) fn saved_read_end_test_fixture() -> (tempfile::TempDir, PrimerPayloadFile, pileup::View)
 {
-    let (root, build) = tests::fixture();
+    let (root, mut build) = tests::fixture();
+    tests::attach_original_bases(&root, &mut build, "\n");
     let report = tests::run(build);
     (root, report, tests::view())
 }
@@ -49,6 +50,9 @@ pub struct Sample {
     pub normalized_annotation: PrimerPayloadFile,
     pub composition: evidence::CompositionPolicy,
     pub tail: Option<TailInput>,
+    /// Explicit original-query bases; never inferred from reference bases or clipped SAM.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_bases: Option<PrimerPayloadFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +68,8 @@ pub struct Build {
     pub output_dir: String,
     pub max_output_bytes: u64,
     pub cancel_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_runs: Option<oriented::Policy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +237,7 @@ fn inputs(command: &Command) -> Vec<&PrimerPayloadFile> {
             .flat_map(|s| {
                 std::iter::once(&s.model)
                     .chain(std::iter::once(&s.normalized_annotation))
+                    .chain(s.original_bases.iter())
                     .chain(
                         s.tail
                             .iter()
@@ -329,6 +336,8 @@ struct Loaded {
     composition: evidence::CompositionEvidence,
     tails: Vec<evidence::TailEvidence>,
     tail_file_sha256: Option<String>,
+    original_bases: Option<oriented::Document>,
+    original_bases_sha256: Option<String>,
 }
 
 fn load(
@@ -370,6 +379,7 @@ fn load(
         file.bytes,
         sample.model.bytes,
         sample.normalized_annotation.bytes,
+        sample.original_bases.as_ref().map_or(0, |f| f.bytes),
         fs::metadata(&sample.analysis.report_path)
             .map_err(fail)?
             .len(),
@@ -402,6 +412,11 @@ fn load(
         core::project_read_ends_with_control(&model, &analysis, &annotation, limits, check)?;
     check()?;
     let composition = evidence::unavailable_composition(sample.composition.clone())?;
+    let original_bases = sample
+        .original_bases
+        .as_ref()
+        .map(|f| bound_json(f, check))
+        .transpose()?;
     let tails = if let Some(tail) = &sample.tail {
         ingress::verify(&tail.raw_signal_manifest, CAP, check)?;
         let input: evidence::TailImport = bound_json(&tail.file, check)?;
@@ -431,6 +446,8 @@ fn load(
         composition,
         tails,
         tail_file_sha256: sample.tail.as_ref().map(|t| t.file.sha256.clone()),
+        original_bases,
+        original_bases_sha256: sample.original_bases.as_ref().map(|f| f.sha256.clone()),
     })
 }
 
@@ -649,6 +666,15 @@ pub fn execute(
                     composition: &l.composition,
                     tails: &l.tails,
                     tail_file_sha256: l.tail_file_sha256.as_deref(),
+                    original_bases: l
+                        .original_bases
+                        .as_ref()
+                        .zip(l.original_bases_sha256.as_deref())
+                        .map(|(document, file_sha256)| oriented::Input {
+                            document,
+                            file_sha256,
+                        }),
+                    terminal_policy: request.terminal_runs.unwrap_or_default(),
                 })
                 .collect();
             let report = pileup::build_with_control(

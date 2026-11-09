@@ -34,7 +34,8 @@ Identity remains `sam_declared_query_unit`, not an original read or molecule.
 ## Commit Ledger And Dependencies
 
 Dependency order: 1 -> 2 -> 3 -> 5 -> 6. Step 4 is independent of 1-3;
-step 5 also requires 4. Each implementation commit updates this ledger,
+step 5 also requires 4. Step 7 extends 1/3/5/6 without changing their UTR rules.
+Each implementation commit updates this ledger,
 changelog, roadmap and consolidated Glen checklist with actual checks and
 remaining acceptance, not an inherited pass.
 
@@ -43,10 +44,11 @@ remaining acceptance, not an inherited pass.
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
 | 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented; included in Glen's scoped Linux read-end pass at `7c5214ec`; no biological/platform-wide acceptance |
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Implemented and service-connected; included in the scoped Linux pass; no inferred basecalls or real-signal acceptance |
-| 3 | Engine-owned pileup/view and deterministic headless renderer | Glen's renderer 3/3 passes at `a5496266`; shared checked dimensions/pixel-guard changes now need focused execution |
+| 3 | Engine-owned pileup/view and deterministic headless renderer | Glen's renderer 4/4 and actual-layout budget 2/2 pass on Linux at `01d42b71`; native GUI separate |
 | 4 | Shared supervised process and bounded configured samtools ingress | Linux real-samtools group 9/9 plus overlapping exact CRAM/FAI and BAM/CRAM reruns pass at `1c4a4a5a`; Windows separate |
-| 5 | Authenticated shared commands, immutable exports and discovery | Retain `7c5214ec` generator/parity/VM/MCP and `1c4a4a5a` actual export passes; oversized-page PNG/PDF refusal regression pending |
+| 5 | Authenticated shared commands, immutable exports and discovery | Retain earlier generator/parity/VM/MCP/export receipts; oversized refusal 2/2 and actual small conversion 1/1 pass at `01d42b71` |
 | 6 | Thin virtualized GUI and migrated synthetic tutorial | Wrapped exported-page evidence passes on Linux; cached native lane heights/scrolling and Windows remain unrun |
+| 7 | Original-read orientation and literal A/T runs (owner 2026-11-09) | Source implemented over the same service; 18 new Rust regressions, strengthened VM/MCP/conversion fixtures and oriented CLI replay await external execution |
 
 ### External Compile-Gate Return, 2026-11-08
 
@@ -128,6 +130,40 @@ hash and narrowed external commands are in the
 [active handoff](glen_next_verification_handoff.md#read-end-actual-layout-pixel-guard-2026-11-09).
 Earlier passing scopes, native/Windows boundaries and OD1-OD6 remain unchanged.
 
+### Pixel-Guard Linux Return, 2026-11-09
+
+Glen's verified `01d42b71` package passes renderer 4/4, budget 2/2, small actual
+PNG/PDF conversion 1/1 and default test-target Cargo check, without failures or
+skips. This closes the focused Linux pixel-guard execution gate. Its carried
+PDF visual reference remains attributed to `1c4a4a5a`, not a freshly retained
+`01d42b71` PDF. The existing same-source normal CI additionally passes Windows
+and full Linux, headless and release safety; macOS was skipped. Native GUI and
+release acceptance remain separate. Full evidence identity and the unselected
+point-release inventory are in the
+[current handoff](glen_next_verification_handoff.md#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09).
+No local Rust execution, candidate freeze, dispatch or publication by Codex.
+
+### Oriented Original-Read Extension, 2026-11-09
+
+The owner's forwarded product contract authorizes Step 7 and replaces only
+OD2's unavailable-only default with an explicit hash-bound original-base input.
+No automatic SAM/FASTQ capture/join, clipping reinterpretation, tail caller,
+private analysis or new registry path is added. V2 pileups preserve v1 reading,
+original-query literal A/T identity, all qualifying runs with terminal/internal
+classification, direction alternatives, covered intervals and unfiltered unit
+counters. Shared scenes group mRNA-direction lanes above/below a divider and
+keep conflicts in Alternatives. The same renderer supplies native/export row
+heights, glyphs and actual-layout pixel checks. The
+[measurement contract](rna_read_end_metrics.md#original-bases-and-oriented-single-read-lanes)
+specifies supplied orientation/provenance versus verified byte bindings.
+
+The earlier `01d42b71` pixel/platform receipts remain historical, not acceptance
+of the extended renderer/service. New source, VM/MCP and actual-process gates are
+in the [active handoff](glen_next_verification_handoff.md#oriented-original-read-pileup-2026-11-09).
+Implementation is committed on main at the owner's request. No local Rust/CLI
+execution, push, merge of another branch, candidate selection or scientific
+approval is claimed by source implementation.
+
 ## Open Owner Decisions
 
 Each remains **pending beyond the implemented default**. Sending the supplied
@@ -136,7 +172,7 @@ review authorizes only these defaults, not an implicit expansion later.
 | ID | Options / Recommendation | Authorized Default |
 |---|---|---|
 | OD1 | Keep current clipping; later consider separately justified tail-only clipping policy. Recommend inspecting descriptors first. | No reinterpretation; every current status remains unchanged. |
-| OD2 | New versioned SAM intake retaining bounded terminal bases (recommended), or FASTQ join with a new identity contract. | A/T channel unavailable: `no_bound_basecalls`; no scanner or guessed joins. |
+| OD2 | Owner-authorized original-base document (2026-11-09); automatic SAM/FASTQ joins remain deferred. | Optional file binds exact saved analysis/unit/QNAME/full query axis; unavailable otherwise. Literal 60/10 terminal defaults; no inferred original or tail length. |
 | OD3 | Separate imported file (recommended initially), or future caller BAM tags bound to provenance. | File only, explicit caller/version/model/kit/configuration; no aux-tag reading. |
 | OD4 | Existing per-analysis key, or future BAM-bound identity (recommended for cross-locus aggregation). | Deduplicate within one analysis only; refuse multiple analyses per sample/gene. |
 | OD5 | Freeze Python as reference oracle (recommended), or explicitly migrate/deprecate later. | Python unchanged; ranking/contrasts stay there, no new features ported. |

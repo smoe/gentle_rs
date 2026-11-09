@@ -80,6 +80,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, Build) {
                 maximum_mismatches: 1,
             },
             tail: None,
+            original_bases: None,
         }],
         exact_quantile_probabilities: vec![0.0, 0.5, 1.0],
         limits: core::Limits {
@@ -90,6 +91,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, Build) {
         output_dir: path.join("read-end run's α").to_string_lossy().into_owned(),
         max_output_bytes: 8 * 1024 * 1024,
         cancel_path: Some(path.join("cancel.marker").to_string_lossy().into_owned()),
+        terminal_runs: None,
     };
     (root, build)
 }
@@ -125,6 +127,117 @@ pub(super) fn run(request: Build) -> PrimerPayloadFile {
     )
     .unwrap();
     ingress::fingerprint(&out, CAP, &mut || Ok(())).unwrap()
+}
+
+pub(super) fn attach_original_bases(root: &tempfile::TempDir, request: &mut Build, ending: &str) {
+    let path = Path::new(&request.samples[0].analysis.report_path)
+        .parent()
+        .unwrap()
+        .join("artifacts/analysis.json");
+    let data: ObservedSamData = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    let analysis = data.analysis.unwrap();
+    let bases = oriented::Document {
+        schema: oriented::BASES_SCHEMA.into(),
+        analysis_context_sha256: analysis.context_sha256,
+        orientation: "original_sequencing_5_to_3".into(),
+        provenance: "Synthetic original bases, not SAM reconstruction".into(),
+        reads: analysis
+            .units
+            .iter()
+            .filter_map(|u| {
+                let length = u.unclipped_axis_length?;
+                Some(oriented::OriginalRead {
+                    unit: u.unit.clone(),
+                    read_id: u.rows.first()?.qname.clone(),
+                    sequence: format!("{}{}", "A".repeat(12), "T".repeat(length - 12)),
+                })
+            })
+            .collect(),
+    };
+    let input = root
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("original read's bases α.json");
+    fs::write(
+        &input,
+        serde_json::to_string_pretty(&bases)
+            .unwrap()
+            .replace('\n', ending),
+    )
+    .unwrap();
+    request.samples[0].original_bases =
+        Some(ingress::fingerprint(&input, CAP, &mut || Ok(())).unwrap());
+}
+
+#[test]
+fn read_end_service_original_bases_are_bound_saved_and_no_clobber_under_lf_crlf() {
+    for ending in ["\n", "\r\n"] {
+        let (root, mut request) = fixture();
+        attach_original_bases(&root, &mut request, ending);
+        let input = request.samples[0]
+            .original_bases
+            .as_ref()
+            .unwrap()
+            .path
+            .clone();
+        let command = Command::Build {
+            request: Box::new(request.clone()),
+        };
+        let receipt = run(request);
+        let report = completed(&receipt, &mut || Ok(())).unwrap();
+        let summary = report.orientation_summary.as_ref().unwrap();
+        assert!(summary.units_with_bound_bases > 0);
+        assert!(summary.units_with_terminal_a > 0 && summary.units_with_terminal_t > 0);
+        let page = pileup::page(&report, &view()).unwrap();
+        assert_eq!(page.total_gene_assigned, summary.gene_assigned_units);
+        let before = fs::read(&receipt.path).unwrap();
+        assert!(execute(&GentleEngine::new(), command, &mut |_| true).is_err());
+        assert_eq!(fs::read(&receipt.path).unwrap(), before);
+        fs::remove_file(input).unwrap();
+        let inspected = execute(
+            &GentleEngine::new(),
+            Command::Inspect {
+                report: receipt,
+                view: view(),
+            },
+            &mut |_| true,
+        )
+        .unwrap();
+        assert!(
+            inspected["scene"]["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| !r["runs"].as_array().unwrap().is_empty())
+        );
+    }
+}
+
+#[test]
+fn read_end_service_tampered_original_bases_refuse_before_output() {
+    let (root, mut request) = fixture();
+    let path = root
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("changed bases.json");
+    fs::write(&path, b"{}").unwrap();
+    request.samples[0].original_bases =
+        Some(ingress::fingerprint(&path, CAP, &mut || Ok(())).unwrap());
+    fs::write(&path, b"{\"changed\":true}").unwrap();
+    let out = request.output_dir.clone();
+    assert!(
+        execute(
+            &GentleEngine::new(),
+            Command::Build {
+                request: Box::new(request)
+            },
+            &mut |_| true
+        )
+        .is_err()
+    );
+    assert!(!Path::new(&out).exists());
 }
 
 #[test]
@@ -367,6 +480,8 @@ fn read_end_service_raster_budget_uses_wrapped_headers_and_lanes_before_conversi
                         "observed: 0 bp".into()
                     },
                     bands: vec![],
+                    orientation: None,
+                    runs: vec![],
                 };
                 if long_lanes { 32 } else { 1 }
             ],
@@ -392,7 +507,8 @@ fn read_end_service_raster_budget_uses_wrapped_headers_and_lanes_before_conversi
 
 #[test]
 fn read_end_service_png_pdf_derive_from_the_same_svg_with_explicit_dimensions() {
-    let (root, request) = fixture();
+    let (root, mut request) = fixture();
+    attach_original_bases(&root, &mut request, "\n");
     let report = run(request);
     let saved = completed(&report, &mut || Ok(())).unwrap();
     let page = pileup::page(&saved, &view()).unwrap();
@@ -431,4 +547,74 @@ fn read_end_service_png_pdf_derive_from_the_same_svg_with_explicit_dimensions() 
             .unwrap()
             .starts_with(b"%PDF-")
     );
+}
+
+#[test]
+fn read_end_service_original_input_cannot_be_used_as_cancellation_marker() {
+    let (root, mut request) = fixture();
+    attach_original_bases(&root, &mut request, "\n");
+    let file = request.samples[0].original_bases.as_ref().unwrap();
+    let before = fs::read(&file.path).unwrap();
+    request.cancel_path = Some(file.path.clone());
+    let original_path = file.path.clone();
+    let out = request.output_dir.clone();
+    let command = Command::Cancel {
+        command: Box::new(Command::Build {
+            request: Box::new(request),
+        }),
+    };
+    assert!(
+        execute(&GentleEngine::new(), command, &mut |_| true)
+            .unwrap_err()
+            .message
+            .contains("control_collision")
+    );
+    assert_eq!(fs::read(original_path).unwrap(), before);
+    assert!(!Path::new(&out).exists());
+}
+
+#[test]
+fn read_end_service_oriented_glyph_heights_participate_in_raster_guard() {
+    use gentle_render::read_end_pileup::{self, Orientation, Row, RunGlyph, Scene};
+    let scene = Scene {
+        contig: "synthetic".into(),
+        start: 100,
+        end: 200,
+        strand: 1,
+        width: 8000,
+        header: vec![],
+        model: vec![],
+        rows: vec![
+            Row {
+                label: "synthetic_read".into(),
+                details: "synthetic original reads".into(),
+                off_axis: "Not pore direction or physical tail length".into(),
+                bands: vec![],
+                orientation: Some(Orientation::Same),
+                runs: vec![
+                    RunGlyph {
+                        base: 'T',
+                        length: 18,
+                        reference_anchor: 120,
+                        aligned_to_reference: false,
+                        label: "18T original query [112,130), unaligned, not a tail length".into(),
+                    };
+                    2
+                ],
+            };
+            64
+        ],
+    };
+    assert!(8000 * (30 + 95 + 54 * 64) < RASTER_PIXEL_LIMIT);
+    let (width, height) = read_end_pileup::dimensions(&scene).unwrap();
+    assert!(u64::from(width) * height > RASTER_PIXEL_LIMIT);
+    for format in [Format::Png, Format::Pdf] {
+        assert!(
+            export_svg(&scene, &[format])
+                .unwrap_err()
+                .message
+                .contains("raster_pixel_budget")
+        );
+    }
+    assert!(export_svg(&scene, &[Format::Svg]).unwrap().contains("18T"));
 }

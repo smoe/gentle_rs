@@ -2745,6 +2745,12 @@ mod tests {
         let expected =
             crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
                 .unwrap();
+        assert!(
+            expected["page"]["orientation_summary"]["units_with_terminal_t"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
         let operation = Operation::RnaReadEnds {
             command: Box::new(command),
         };

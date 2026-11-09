@@ -12,6 +12,44 @@
 use super::*;
 
 #[test]
+fn read_end_oriented_discovery_names_bound_originals_and_preserves_typed_inspection() {
+    for id in ["RnaReadEnds", "rna-reads read-ends"] {
+        let descriptor = read_end_descriptor(id);
+        assert_eq!(
+            descriptor["terminal_run_defaults"],
+            json!({"window_bp":60,"minimum_run_bp":10})
+        );
+        assert_eq!(
+            descriptor["original_bases_input"]["schema"],
+            "gentle.rna_read_end_original_bases.v1"
+        );
+        assert_eq!(
+            descriptor["original_bases_input"]["orientation"],
+            "original_sequencing_5_to_3"
+        );
+        assert!(
+            descriptor["result_contract"]
+                .as_str()
+                .unwrap()
+                .contains("gentle.rna_read_end_pileup.v2")
+        );
+        let text = format!(
+            "rna-reads read-ends {}",
+            quote_shell_arg(&descriptor["request_template"].to_string())
+        );
+        let parsed = parse_shell_line(&text).unwrap();
+        assert!(!parsed.is_state_mutating());
+        let ShellCommand::Op { payload } = parsed else {
+            panic!("shared op");
+        };
+        assert_eq!(
+            serde_json::from_str::<Value>(&payload).unwrap(),
+            descriptor["operation_template"]
+        );
+    }
+}
+
+#[test]
 fn primer_payload_discovery_templates_preserve_typed_routes_and_confirmation() {
     for (path, operation) in [
         (

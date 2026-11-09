@@ -13,6 +13,11 @@ each sample supplies an exact completed S2.3 binding and hash-bound V2 model/
 normalized annotation. No transcript is chosen implicitly. Inspect authenticates
 the saved completion and every artifact without reopening original alignments.
 Explicit view sorting/filtering/paging never changes either denominator.
+Optional hash-bound `original_bases` supplies full original-query sequences via
+an explicit unit/context association; `terminal_runs` defaults to 60/10 bases.
+New v2 pileups preserve literal A/T, clipped runs, mRNA-relative orientation and
+unresolved alternatives; v1 reports remain readable without invented bases.
+See [original-base input and synthetic replay](../rna_read_end_metrics.md#original-bases-and-oriented-single-read-lanes).
 
 Build/export/selection and cancel-marker writes require confirmation in agent
 and MCP routes, before I/O. Inspect is read-only. Generic `op`, JS/Lua shell

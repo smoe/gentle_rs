@@ -16,7 +16,7 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 `rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
 `src/rna_read_ends.rs`. They are experimental; scoped Linux/macOS returns and
 the remaining selection/layout/native gates are recorded in the
-[active handoff](glen_next_verification_handoff.md#read-end-actual-layout-pixel-guard-2026-11-09).
+[active handoff](glen_next_verification_handoff.md#oriented-original-read-pileup-2026-11-09).
 The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
 transcript and ordered sample bindings are mandatory. One analysis per sample/
 gene is admitted. Saved report status, result binding and artifact hashes are
@@ -46,8 +46,9 @@ Coverage reports declared/assessed, gene-assigned and selected-transcript-compat
 counts, exclusions, exact-only quantiles and **both** censoring fractions.
 Filters/page ranges do not recompute denominators. The genomic frame stays
 bound to the selected model plus all gene-assigned
-saved blocks, independent of the visible page/filter. A/T remains unavailable
-(`no_bound_basecalls`); composition parameters/provenance remain explicit.
+saved blocks, independent of the visible page/filter. Without the optional
+original-base import below, A/T remains unavailable (`no_bound_basecalls`),
+not an observed zero; legacy composition parameters/provenance remain explicit.
 Separate tail input binds an imported file and raw-signal manifest plus supported
 caller/version/model/kit/basecaller/configuration. Unsupported/QC-failing rows
 never acquire accepted values. These channels never change UTR censoring.
@@ -69,6 +70,79 @@ See [samtools view](https://www.htslib.org/doc/samtools-view.html) and the
 [HTSlib reference search order](https://www.htslib.org/doc/reference_seqs.html).
 This is a trusted direct-child supervisor, not a process-tree security sandbox
 or an operating-system guarantee against stalled filesystem calls.
+
+### Original Bases And Oriented Single-Read Lanes
+
+New builds write `gentle.rna_read_end_pileup.v2`. Existing v1 reports remain
+readable without manufacturing basecalls, new summary counters or changing their
+content hashes. No new operation, shell grammar or registry path is introduced.
+
+Optionally supply each sample's `original_bases` as a raw path/size/SHA-256
+`PrimerPayloadFile`. Its strict JSON document has schema
+`gentle.rna_read_end_original_bases.v1`, `analysis_context_sha256` equal to the
+saved analysis, `orientation: "original_sequencing_5_to_3"`, a nonempty
+`provenance` description, and `reads`. Every read explicitly supplies `unit`
+(`source_sha256`, `unit_id`), `read_id` matching its saved QNAME witnesses, and
+the full original `sequence`, including soft/hard-clipped or unaligned bases.
+Only ASCII DNA/IUPAC letters are admitted; length must equal the saved unclipped
+query axis. Missing originals stay unavailable. Do not fill missing hard clips
+with reference bases or pass reverse-complemented/trimmed SAM SEQ as an original.
+This file is an explicit input/declaration, not an implicit FASTQ join or proof
+of the producer's physical orientation/trimming claim. Authentication checks
+the supplied bytes and saved association, not biological truth.
+
+`terminal_runs`, optionally on the build request, defaults to
+`{"window_bp":60,"minimum_run_bp":10}`. The window must be 1..1,000,000 and
+the minimum 1..window. Preserve each maximal exact A/T run at least that long,
+with its literal base, full length and zero-based half-open **original-query**
+coordinates. A run intersecting the first/last window has `terminal=true`;
+internal runs remain visible with `terminal=false` and do not enter terminal
+counters. Overlapping windows name both read ends on one run, not two copies.
+No mismatches, clipping adjustment or reverse-complement base renaming occurs.
+Legacy `composition` parameters remain retained provenance; their
+`maximum_mismatches` does not alter this separate exact-run scanner.
+
+Every hypothesis retains an `oriented` record: stable `read_key` over sample
+and declared unit, same/opposite/alternatives direction relative to the selected
+mRNA, basecall availability, original-file hash/provenance, policy, and all
+sequence-hash-qualified variants/runs. Distinct original sequences for one unit
+stay `alternatives`; identical duplicates refuse. No more than 64 variants/unit
+or 100,000 run records (also bounded by the request observation budget) are
+admitted. Resource failures refuse, never truncate.
+
+`read_ends` refer to original-query sides. `transcript_ends` project those sides
+only with a known direction; they do **not** establish reaching an annotated
+RNA end. Each run keeps its aligned query/reference intervals and
+`aligned_to_reference`, true only when saved blocks cover the entire run.
+Partial alignments stay false with their covered intervals retained. Off-axis
+glyphs attach to the nearest saved block; they do not extrapolate an alignment
+through clips, insertions or unavailable sequence.
+
+The x-axis is left-to-right mRNA 5'-to-3' on both genomic strands, with genomic
+scale/introns retained. Same-direction lanes are above the divider, opposite
+below. Conflicting hypotheses/sequence variants are shown in **Alternatives**,
+not resolved or chosen. This is not pore travel direction. Literal A is magenta,
+T turquoise, with labels such as `12A` / `18T`; hollow means not fully aligned.
+The native virtualized lane and SVG/PNG/PDF use the same layout, including
+wrapped labels, group dividers and glyph heights in the actual pixel guard.
+
+JSON and TSV keep the same saved evidence, both UTR statuses, model/annotation
+bindings and full unfiltered `orientation_summary`. Counters are per declared
+unit, not per hypothesis/variant. Same/opposite/alternative direction counts
+partition units; original-base alternatives are a separate counter. A/T counts
+can overlap and do not make exclusive read assignments. Unknown bases are not
+zero. Filtering/paging never changes these counters or either original coverage
+denominator. There is no physical poly(A)-tail length, polyadenylation-site,
+complete-transcript or causality verdict.
+
+For executable synthetic input, use the existing preparer's new
+`prepare-oriented-plus` or `prepare-oriented-minus` stage instead of `prepare`.
+Run the saved-SAM command and `bind-analysis` as in tutorial 07.01, then run
+`bind-originals`. This creates `original-bases.json` from independently generated
+synthetic originals and a fresh `oriented-build-command.json`; execute that
+instead of the legacy build command. Continue with `bind-pileup`, inspect and
+export. All stages require fresh paths. The source-matched process companion is
+`tests/test_read_end_rehearsal.py`; skipped process cases are not acceptance.
 
 `observed_transcript_structures::read_ends::project_read_ends` now provides the
 same V2 UTR semantics as a pure Rust-level building block. It consumes a strict
@@ -105,8 +179,8 @@ legacy-v1 reader; this first Rust boundary accepts V2 only.
 The [shared synthetic corpus](../test_files/rna_read_end_core/README.md) checks
 31 literal cases in both implementations. Python's LF/CRLF corpus checks are
 not Rust execution; see the [Glen checklist](glen_next_verification_handoff.md#shared-utr-core-step-1-2026-11-08)
-for pending compilation/tests. Coverage, BAM/CRAM access, basecall terminal A/T,
-raw-signal tail evidence, new exports and GUI remain later steps. No real-data
+for its historical compilation/tests. Later service/coverage/pileup and explicit
+basecall-import boundaries are documented above, not accepted by that checkpoint. No real-data
 analysis, hard-wired gene/barcode selection or biological acceptance is added.
 
 ## 1. Freeze the transcript model
@@ -116,8 +190,8 @@ see [the plan and authorized defaults](rna_read_end_integration_plan.md).
 Gene-assigned and transcript-compatible denominators are distinct. Coverage
 is conditional on the selected model, with min/max bounds over hypotheses,
 not an isoform allocation. Exact-only quantiles retain both censoring fractions
-alongside missing reasons. These records have no file/service route yet.
-Terminal composition is explicitly unavailable (`no_bound_basecalls`) until OD2;
+alongside missing reasons. The shared service is described above.
+Terminal composition stays `no_bound_basecalls` without the explicit original import;
 configured tail-import rows preserve their own QC/provenance and cannot change
 UTR metrics. No physical tail estimate is inferred from A/T or clips.
 

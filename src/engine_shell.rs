@@ -20124,7 +20124,7 @@ fn read_end_descriptor(id: &str) -> Value {
     let mut descriptor = observed_sam_descriptor("SummarizeObservedTranscriptStructuresFromSam");
     descriptor["id"] = json!(id);
     descriptor["description"] = json!(
-        "Experimental saved read-end coverage and per-declared-unit pileup. Explicit source/gene/transcript/sample selection; authenticated saved S2.3 inputs; independent unavailable composition and configured tail imports. Configured local indexed samtools only when explicitly requested. No inferred isoform, molecule or polyadenylation-site identity."
+        "Experimental saved read-end coverage and oriented per-declared-unit pileup. Explicit source/gene/transcript/sample selection; authenticated saved S2.3 inputs; optional original-base document and separate configured tail imports. Configured local indexed samtools only when explicitly requested. No inferred isoform, molecule, pore direction, tail length or polyadenylation-site identity."
     );
     descriptor["args"] = json!([{"name":"REQUEST_JSON_OR_@FILE","required":true,"detail":"Typed build, inspect, export, select_locus or request-bound cancel action. Writes require confirmation before I/O; inspect does not."}]);
     descriptor["request_template"] = json!({"action":"inspect","report":{"path":"REPLACE_CANONICAL_REPORT_PATH","sha256":"REPLACE_RAW_REPORT_SHA256","bytes":0},"view":{"schema":"gentle.rna_read_end_pileup_view.v1","sort":"unit_key","descending":false,"filters":[],"offset":0,"count":100,"max_sublanes":1000,"width":1400,"scale":"genomic","channels":{"utr5":true,"utr3":true,"read_length":true,"clips":true,"composition":true,"tail":true}}});
@@ -20134,8 +20134,17 @@ fn read_end_descriptor(id: &str) -> Value {
         "Report bytes/hash and explicit view must be supplied. Build additionally requires each saved S2.3 binding, authenticated V2 model/annotation, composition policy and budgets. No default gene/transcript/sample, read filter, biological threshold or implicit tool discovery. Zero placeholders cannot execute."
     );
     descriptor["result_contract"] = json!(
-        "gentle.rna_read_end_pileup.v1 plus immutable report-last completion. Inspect/export verify all saved artifact hashes; filters never alter original denominators. Markers request cancellation, not confirmed termination. Saved units are per SAM, not deduplicated across analyses. Real A/T scanning is unavailable without a separately authorized basecall binding."
+        "gentle.rna_read_end_pileup.v2 with conservative v1 reading and immutable report-last completion. Inspect/export verify all saved artifact hashes; filters never alter original denominators or unfiltered unit counters. Literal A/T retain original query coordinates, terminal/internal status, alignment coverage and alternatives; no reverse-complement renaming. Markers request cancellation, not confirmed termination. Saved units are per SAM, not deduplicated across analyses."
     );
+    descriptor["terminal_run_defaults"] = json!(crate::observed_transcript_structures::read_ends::oriented::Policy::default());
+    descriptor["original_bases_input"] = json!({
+        "sample_field":"original_bases", "binding":"raw file path/bytes/sha256",
+        "schema":crate::observed_transcript_structures::read_ends::oriented::BASES_SCHEMA,
+        "orientation":"original_sequencing_5_to_3",
+        "association":"Explicit saved analysis_context_sha256, unit source_sha256/unit_id, read_id/QNAME witnesses and full unclipped query axis. No inferred FASTQ join or SAM reconstruction.",
+        "missing":"no_bound_basecalls", "conflicts":"alternatives",
+        "nonclaim":"Supplied orientation/trimming provenance is a declaration; file hashing does not establish physical tail length or sequencing origin."
+    });
     descriptor["registry"] = json!(registry_metadata_for_introspection(id));
     descriptor
 }

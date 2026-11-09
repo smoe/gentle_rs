@@ -99,6 +99,35 @@ per-row estimate must not authorize a larger raster. SVG/JSON/TSV retain their
 separate output-byte limits without this pixel cap. No implicit cropping,
 resampling, denominator change or weakened publication guard follows.
 
+## Original-Read Orientation And Literal Terminal Runs
+
+Status: active
+
+Owner-forwarded product contract, 2026-11-09: extend the saved read-end service,
+not its UTR/censoring rules. This supersedes only OD2's unavailable-only default
+for an explicitly supplied, raw-hash-bound original-base document. It declares
+original sequencing 5'-to-3' strings and associates them with exact saved
+analysis/unit/QNAME/full-query-axis witnesses. Never reconstruct missing hard
+clips, infer a FASTQ/QNAME join, or reverse-complement SAM SEQ and label it a
+complete original read. File authentication verifies the supplied bytes, not
+the producer's declaration of physical sequencing/trimming provenance.
+
+Plot the genomic frame in biological mRNA direction, including on minus-strand
+models. Same-direction units are above the divider, opposite below; conflicting
+hypotheses or original-base variants stay in Alternatives. Pore direction is
+not inferred. A literal T remains T: only coordinates/side labels are projected.
+Retain maximal exact A/T runs of at least 10 bases by default. A run intersecting
+the first/last 60 original-query bases is terminal; preserve internal runs but
+do not count them as terminal. Overlapping end windows do not duplicate a run.
+
+Save original query coordinates, complete run length, read/transcript side,
+alignment coverage and explicit alternatives. Off-axis hollow glyphs attach to
+saved blocks without inventing alignments for soft/hard clips or insertions.
+Neither filters nor duplicated hypothesis sublanes change unit denominators.
+Literal sequence composition is not physical poly(A) length, a polyadenylation
+site, transcript completeness or causality. Use one service/scene across all
+adapters and exports, preserving actual-layout pixel, byte and no-clobber guards.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active

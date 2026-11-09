@@ -19,6 +19,17 @@ length, clip, A/T and signal-estimate toggles are display choices in the hashed
 view spec, not a biological score or a change in censoring. Advanced enumerated
 filters can be supplied in an explicit inspect command; Clear all filters
 removes them deliberately. Exports reuse the same engine page and SVG renderer.
+The genomic axis always runs biologically from mRNA 5' on the left to 3' on the
+right, also for minus-strand transcripts. Same-direction lanes are above the
+divider, opposite below; conflicting hypotheses or original sequences remain
+in **Alternatives**. This is not pore direction. Supply optional hash-bound
+`original_bases` in the reviewed build draft to enable literal A/T evidence;
+missing bases stay unavailable. A is magenta, T turquoise (`12A`, `18T`); hollow
+means not fully aligned. Original-query coordinates and partial alignment remain
+in the saved evidence. Internal runs are marked nonterminal. Unfiltered per-unit
+counters above the lanes remain unchanged by filters or page size. See the
+[input/interpretation contract](../rna_read_end_metrics.md#original-bases-and-oriented-single-read-lanes).
+No physical tail length or complete-transcript claim follows from these marks.
 Long labels/statuses wrap onto additional lines. Virtual lanes use cached
 renderer heights rather than squeezing the text into a fixed-height image;
 export page-height/pixel caps still apply, so reduce the explicit page size if

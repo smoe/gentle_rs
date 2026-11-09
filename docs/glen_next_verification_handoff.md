@@ -9,18 +9,135 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Read-End Integration Plan, 2026-11-08
 
-**Active retry scope:** use the [actual-layout PNG/PDF pixel guard follow-up](#read-end-actual-layout-pixel-guard-2026-11-09).
+**Active scope:** the [oriented original-read extension](#oriented-original-read-pileup-2026-11-09).
+The [pixel-guard Linux return](#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09)
+closes its earlier focused retry at `01d42b71`, not this later renderer/service.
+Release-candidate selection/execution still requires the owner.
 The earlier compile-failure/retry instructions below are historical; the
 generator and listed downstream scopes have since executed at `7c5214ec`.
 
 The [reconciled plan](rna_read_end_integration_plan.md) supersedes only the earlier
-five-step organization. OD1-OD6 retain their documented defaults. Do not execute
+five-step organization. OD2 now permits only the separately authorized explicit
+original-base input; other OD defaults remain. Do not execute
 future-step commands merely because a plan authorizes development: each step's
 implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Oriented Original-Read Pileup, 2026-11-09
+
+Verify the owner's next pushed integrated source containing this extension;
+do not freeze development or substitute historical `01d42b71` acceptance.
+No new operation/discovery rows exist, so do not hand-edit/regenerate the parity
+matrix speculatively or reopen completed registry campaigns.
+
+Changed boundaries: new pure `read_ends::oriented` module; optional authenticated
+`Sample.original_bases` and `Build.terminal_runs`; v2 pileup/conservative v1
+reading; shared renderer, thin GUI, strengthened JS/Lua/MCP fixtures; synthetic
+rehearsal stages/tests and the linked request/manual/decision/plan documentation.
+Original strings are explicitly supplied in sequencing 5'-to-3' orientation,
+not reconstructed from SAM or implicitly joined by name. Binding checks do not
+independently prove physical sequencing/trimming provenance. No actual molecule
+identity, complete transcript, tail length, polyadenylation site or causality.
+Local checks: nine targeted Python fixture/source tests passed, two real-CLI
+cases explicitly skipped without a source-matched binary; documentation/manual
+checks, scoped rustfmt parsing and whitespace passed. Session-close: four OK,
+two expected warnings (intentional dirty worktree and manual plan-fidelity
+review), zero failures. `paper`, private/untracked data/output and prompt files
+remain untouched. Implementation is committed on main at the owner's request;
+no Rust compilation/execution, push or model call is claimed.
+
+Use one isolated checkout and explicit run-owned target, one Cargo job, locked
+dependencies; retain the actually tested SHA/toolchain/features/platform:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked -p gentle-render -j1 read_end_ -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_ -- --test-threads=1
+GENTLE_READ_END_BIN_DIR=/absolute/source-matched/bin python3 -m unittest discover -s tests -p test_read_end_rehearsal.py -v
+```
+
+Build/provide that source-matched CLI explicitly on the authorized external
+runner. Both real-process cases must execute with nonzero counts, not skip.
+The new oriented case covers plus/minus models, both read orientations, original
+12A/18T versus independently reverse-complemented synthetic SAM, softclips,
+JSON/TSV/SVG/PNG/PDF, repeat-export determinism, no-clobber and no project file.
+The legacy process case remains a directly affected schema-compatibility control.
+JS/Lua tests execute real VMs; MCP checks its additive confirmation boundary.
+
+Require the 18 new Rust regressions plus affected existing controls: discovery
+names the bound original input and defaults without bypassing typed inspection; terminal
+60/10 defaults and internal/nonterminal runs; overlapping end windows; missing
+versus bound-zero composition; original query coordinates unchanged by strand;
+partial/complete alignment and hard-clipped original-axis refusal; distinct
+sequence/mapping alternatives; stable unit keys and nonadditive A/T counters;
+unchanged coverage/filter denominators; legacy hashes; LF/CRLF input hashes;
+marker/input collisions, tampering, no-clobber, dense wrapping, both shared
+lane/full-page heights, raster-budget refusal and actual converter dimensions.
+
+Native review only with an available GUI: biological 5'-to-3' on both genomic
+strands, same above/opposite below the divider, conflicts in Alternatives,
+magenta A/turquoise T and hollow unaligned symbols, full labels, scrolling,
+responsive cancellation and unchanged project/approval behavior. If unavailable,
+report `not_run`; headless SVG is not native GUI acceptance. Normal Windows CI
+must cover the affected input paths/closed handles/no-clobber; do not ask the
+Linux-only auditor to invent Windows evidence or a GUI environment.
+
+Return per-check pass/fail/not_run, exact source/binary/input hashes, commands,
+counts/skips, features/profile/platform and retained logs/artifact locations.
+No completed BLAST/reader, containment, private-barcode, biological, package or
+release campaigns are requested. No local Rust, real CLI, VM or native acceptance
+is claimed by Codex; Python fixture/source checks and rustfmt are not substitutes.
+
+## Glen Pixel-Guard Linux Return And Release Inventory, 2026-11-09
+
+Tested source: `01d42b71987fdc909d94e7900066f273d49c485d`; final fetch identical.
+Glen used Debian Linux x86_64, Rust/Cargo 1.97.1, default dev/test features/profile,
+an isolated checkout/target, one job and incremental disabled. Lockfile SHA-256:
+`718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+Archive SHA-256: `74b6340d655364ffe8788055c580ae56d5288da25e7c12f7e492b2efa41eb043`;
+all 17 manifest entries independently verify. The retained handoff is an exact
+prefix, not a full copy; the retained release ledger matches the tested tree.
+
+Raw logs confirm renderer **4/4**, budget **2/2**, actual small PNG/PDF conversion
+**1/1**, and `cargo check --locked --tests -j1`, all exit 0 with no errors/skips.
+The seven tests cover exact/over-limit/overflow refusal, underestimated wrapped
+header/lane cases, shared dimension/SVG agreement and actual PNG dimensions.
+The passing conversion test creates a PDF from the same SVG but does not retain
+its temporary PDF for a fresh visual review. The archive's PDF reading
+reference is byte-identical to the retained `1c4a4a5a` PDF, whose SHA-256 is
+`3e61f5c153de70eeb7e3d0187a4f88a5790bc34bdf1cc07b6bdc13916ccf562d`.
+Keep that carry-forward reference separately attributed, not a new candidate
+artifact, native GUI, package or scientific verdict. No prior campaign repeated.
+
+Codex also read the existing same-source [CI run 42614359386](https://github.com/smoe/gentle_rs/actions/runs/42614359386):
+completed **success**, Windows/full suite, full Linux/full suite, headless,
+release safety and aggregate selected-platform gate all pass; macOS and optional
+GUI/scroll/audit jobs skipped. Windows [job 129150421407](https://github.com/smoe/gentle_rs/actions/runs/42614359386/job/129150421407)
+passes its unfiltered workspace suite, covering the always-on raw-traversal
+fixture. This is CI evidence at `01d42b71`, not a native GUI or Windows real-tool
+acceptance. Do not ask the Linux auditor to repeat already covered Windows CI.
+
+The point-release inventory agrees with the [.13 ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger):
+owner-selected final candidate; same-source Windows/macOS/full Linux CI; three
+native packages/receipts/extracted smokes; headless container/digest/receipt and
+no-network CLI/MCP smokes; remaining version/tutorial/parity/SCAD/native rack
+gates; Glen readiness and explicit owner tag/publication approval. The report's
+blanket missing Windows/full-Linux statement is narrowed by the existing CI
+above; macOS is still not covered there. Keep all release rows Pending until
+the candidate and its matching receipts are accepted under the existing owner
+procedure. No candidate is selected or frozen by this evidence-recording change.
+
+Biological UTR/Poly(A) verdicts, a raw-signal tail caller and improvements outside
+the authorized .13 scope remain deferred/non-blocking, not silently accepted.
+No new Rust/CLI campaign, dispatch, package/container build, model call, push,
+tag, publication or scientific approval was performed or authorized by this
+return. Continue independent development unless the owner starts release prep.
+
 ## Read-End Actual-Layout Pixel Guard, 2026-11-09
+
+Historical authoring/retry checklist, completed by the `01d42b71` return above.
 
 Glen's small focused bundle verifies `a549626664fe88aeaa1dd5f634f51cc09d4b876d`
 on Debian Linux x86_64, Rust/Cargo 1.97.1 and Python 3.14.10, isolated target,
@@ -101,6 +218,10 @@ only bio's requirement changed and the lockfile stayed identical. These checks
 are not Cargo resolution, compiler or platform acceptance.
 
 ## Windows Specificity-Bundle Raw-Path Fixture, 2026-11-08
+
+The existing Windows full-suite CI pass at `01d42b71` now covers this always-on
+fixture; see the [current receipt](#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09).
+The instructions below describe the historical retry, not another Linux task.
 
 The Windows full suite at `1c4a4a5a` failed only
 `transcript_assay_panel_multi_destination_rollback_leaves_existing_evidence_alone`

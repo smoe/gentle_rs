@@ -3,9 +3,10 @@
 use super::*;
 use coverage::{Compatibility, CoverageReport, InputBindings, SampleInput};
 use evidence::{CompositionEvidence, TailEvidence};
-use gentle_render::read_end_pileup::{Band, Row, Scene};
+use gentle_render::read_end_pileup::{Band, Orientation, Row, RunGlyph, Scene};
 
-pub const SCHEMA: &str = "gentle.rna_read_end_pileup.v1";
+pub const SCHEMA: &str = "gentle.rna_read_end_pileup.v2";
+pub const LEGACY_SCHEMA: &str = "gentle.rna_read_end_pileup.v1";
 pub const VIEW_SCHEMA: &str = "gentle.rna_read_end_pileup_view.v1";
 
 pub struct Input<'a> {
@@ -15,6 +16,8 @@ pub struct Input<'a> {
     pub composition: &'a CompositionEvidence,
     pub tails: &'a [TailEvidence],
     pub tail_file_sha256: Option<&'a str>,
+    pub original_bases: Option<oriented::Input<'a>>,
+    pub terminal_policy: oriented::Policy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +51,8 @@ pub struct Hypothesis {
     pub projection: HypothesisProjection,
     pub observations: Vec<Observation>,
     pub segment_links: Vec<Connector>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oriented: Option<oriented::Evidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +85,8 @@ pub struct Report {
     pub coverage: CoverageReport,
     pub lanes: Vec<Lane>,
     pub nonclaims: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation_summary: Option<oriented::Summary>,
 }
 
 fn bands(observation: &ObservedSamObservation) -> Vec<Connector> {
@@ -183,7 +190,14 @@ pub fn build_with_control(
     };
     let (mut chosen_model, mut boundary, mut lanes) = (None, None, vec![]);
     let mut total_rows = 0usize;
+    let mut total_runs = 0usize;
     for input in inputs {
+        let original_bases = oriented::prepare(
+            input.original_bases,
+            input.sample.analysis,
+            input.terminal_policy,
+            &mut meter,
+        )?;
         let models: Vec<_> = input
             .model
             .transcripts
@@ -288,10 +302,31 @@ pub fn build_with_control(
                         })
                     })
                     .collect();
+                let variants: &[oriented::Variant] =
+                    original_bases.get(&unit.unit).map_or(&[], Vec::as_slice);
+                let count = variants
+                    .iter()
+                    .try_fold(0usize, |n, v| n.checked_add(v.runs.len()))
+                    .ok_or_else(|| fail("terminal_run_record_budget"))?;
+                total_runs = total_runs
+                    .checked_add(count)
+                    .filter(|n| *n <= limits.max_observations.min(oriented::MAX_RUN_RECORDS))
+                    .ok_or_else(|| fail("terminal_run_record_budget"))?;
+                let evidence = oriented::project(
+                    input.sample.sample_id,
+                    &unit.unit,
+                    model.strand,
+                    &rows,
+                    variants,
+                    input.original_bases,
+                    input.terminal_policy,
+                    &mut meter,
+                )?;
                 hypotheses.push(Hypothesis {
                     projection: hypothesis.clone(),
                     observations: rows,
                     segment_links: links,
+                    oriented: Some(evidence),
                 });
             }
             lanes.push(Lane {
@@ -331,11 +366,14 @@ pub fn build_with_control(
         display_interval.0 = display_interval.0.min(block.target.0);
         display_interval.1 = display_interval.1.max(block.target.1);
     }
+    let orientation_summary = Some(oriented::summarize(&lanes));
     Ok(Report {schema: SCHEMA.into(), identity_scope: "sam_declared_query_unit".into(), source_id: source.into(), gene_id: gene.into(),
         transcript_id: transcript.into(), model, display_interval, boundary: boundary.ok_or_else(|| fail("pileup_model"))?, coverage, lanes,
+        orientation_summary,
         nonclaims: vec!["Incomplete aligner/region views are not an exhaustive locus search.".into(),
             "Conditional coverage is compatibility support, not resolved isoforms or molecule counts.".into(),
-            "Clip descriptors do not reinterpret censored ends; composition and signal estimates are separate evidence.".into()]})
+            "Clip descriptors do not reinterpret censored ends; composition and signal estimates are separate evidence.".into(),
+            "Original-base orientation is explicitly supplied, not pore direction; literal A/T runs are not physical tail lengths or polyadenylation sites.".into()]})
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -431,6 +469,8 @@ pub struct Page {
     pub shown_end: usize,
     pub coverage: CoverageReport,
     pub lanes: Vec<Lane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation_summary: Option<oriented::Summary>,
 }
 
 fn selected<'a>(lane: &'a Lane, id: &str) -> Vec<&'a CandidateProjection> {
@@ -508,7 +548,10 @@ fn matches(lane: &Lane, transcript: &str, filters: &[Filter]) -> bool {
                 })
         }
         Filter::Composition { available } => {
-            (lane.composition.availability == "available") == *available
+            lane.hypotheses
+                .iter()
+                .any(|h| h.oriented.as_ref().is_some_and(|e| !e.variants.is_empty()))
+                == *available
         }
         Filter::Tail { available } => {
             lane.tails.iter().any(|t| t.accepted_estimate_nt.is_some()) == *available
@@ -524,7 +567,17 @@ pub fn hash<T: Serialize>(record: &T) -> Result<String, EngineError> {
 
 /// Sorting/filtering selects whole units, never one favoured hypothesis. Denominators are copied unchanged.
 pub fn page(report: &Report, view: &View) -> Result<Page, EngineError> {
-    if report.schema != SCHEMA
+    if report.schema == SCHEMA
+        && (report.orientation_summary.is_none()
+            || report
+                .lanes
+                .iter()
+                .flat_map(|l| &l.hypotheses)
+                .any(|h| h.oriented.is_none()))
+    {
+        return Err(fail("pileup_oriented_version_fields"));
+    }
+    if ![SCHEMA, LEGACY_SCHEMA].contains(&report.schema.as_str())
         || view.schema != VIEW_SCHEMA
         || view.scale != "genomic"
         || view.count == 0
@@ -594,6 +647,7 @@ pub fn page(report: &Report, view: &View) -> Result<Page, EngineError> {
         shown_start: view.offset,
         shown_end: end,
         coverage: report.coverage.clone(),
+        orientation_summary: report.orientation_summary.clone(),
         lanes: lanes[view.offset..end]
             .iter()
             .map(|l| (*l).clone())
@@ -635,6 +689,18 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
     }
     let mut rows = vec![];
     for lane in &page.lanes {
+        let directions: BTreeSet<_> = lane
+            .hypotheses
+            .iter()
+            .map(|h| {
+                h.oriented.as_ref().map_or_else(
+                    || oriented::direction(report.model.strand, &h.observations),
+                    |e| e.direction,
+                )
+            })
+            .collect();
+        let conflicting_orientation =
+            directions.len() != 1 || directions.contains(&oriented::Direction::Alternatives);
         for h in &lane.hypotheses {
             let mut bands = vec![];
             for o in &h.observations {
@@ -699,7 +765,13 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
                 off_axis.push(format!("length {}", json(&lane.unit.read_length)?));
             }
             if page.view.channels.composition {
-                off_axis.push(format!("A/T {}", lane.composition.reason));
+                off_axis.push(match &h.oriented {
+                    Some(e) => format!(
+                        "Literal A/T (terminal/internal): {}; original query bases, not tail length",
+                        e.availability
+                    ),
+                    None => format!("A/T {}", lane.composition.reason),
+                });
             }
             if page.view.channels.tail {
                 off_axis.push(if lane.tails.is_empty() {
@@ -707,6 +779,45 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
                 } else {
                     format!("tail {}", json(&lane.tails)?)
                 });
+            }
+            let direction = h.oriented.as_ref().map_or_else(
+                || oriented::direction(report.model.strand, &h.observations),
+                |e| e.direction,
+            );
+            let orientation = if conflicting_orientation
+                || h.oriented.as_ref().is_some_and(|e| e.variants.len() > 1)
+            {
+                Orientation::Alternatives
+            } else {
+                match direction {
+                    oriented::Direction::Same => Orientation::Same,
+                    oriented::Direction::Opposite => Orientation::Opposite,
+                    oriented::Direction::Alternatives => Orientation::Alternatives,
+                }
+            };
+            off_axis.push(format!(
+                "Lane group {:?}: relative to the selected mRNA, not pore direction",
+                orientation
+            ));
+            let mut runs = vec![];
+            if page.view.channels.composition
+                && let Some(evidence) = &h.oriented
+            {
+                for (index, variant) in evidence.variants.iter().enumerate() {
+                    for run in &variant.runs {
+                        if let Some(anchor) = run.reference_anchor {
+                            runs.push(RunGlyph {
+                                base: run.base, length: run.length, reference_anchor: anchor as u64,
+                                aligned_to_reference: run.aligned_to_reference,
+                                label: format!("{}{} V{}; original query [{},{}); terminal={}; read ends {:?}; transcript ends {:?}; aligned_to_reference={}; off-axis attachment, not an alignment extension",
+                                    run.length, run.base, index + 1, run.query_interval.0, run.query_interval.1,
+                                    run.terminal, run.read_ends, run.transcript_ends, run.aligned_to_reference),
+                            });
+                        } else {
+                            off_axis.push(format!("Unplaced literal run: {}", json(run)?));
+                        }
+                    }
+                }
             }
             rows.push(Row {
                 label: format!(
@@ -716,12 +827,15 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
                 details: json(lane)?,
                 off_axis: off_axis.join("; "),
                 bands,
+                orientation: Some(orientation),
+                runs,
             });
         }
     }
+    rows.sort_by_key(|row| row.orientation);
     let mut header = vec![
         format!(
-            "{} / {} / {}: genomic scale, declared SAM units",
+            "{} / {} / {}: mRNA 5' -> 3' direction, genomic scale including introns; declared SAM units, not pore direction",
             report.source_id, report.gene_id, report.transcript_id
         ),
         format!(
@@ -733,6 +847,12 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
             page.view_sha256
         ),
     ];
+    if let Some(summary) = &report.orientation_summary {
+        header.push(format!(
+            "Unfiltered per-unit orientation/A/T counters (A/T may overlap): {}",
+            json(summary)?
+        ));
+    }
     for sample in &report.coverage.samples {
         header.push(format!(
             "{}: gene-assigned {} / selected-transcript-compatible {} (declared {}, assessed {})",
@@ -789,6 +909,12 @@ pub fn tsv(page: &Page) -> Result<String, EngineError> {
                 json(unit)?
             ));
         }
+    }
+    if let Some(summary) = &page.orientation_summary {
+        out.push_str(&format!(
+            "orientation_summary\tnull\tnull\t{}\n",
+            json(summary)?
+        ));
     }
     Ok(out)
 }

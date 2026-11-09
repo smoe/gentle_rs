@@ -140,6 +140,15 @@ No candidate has been selected. Every row is **Pending**, even where an older
 source has narrower passing evidence. Record exact source, lockfile, toolchain,
 profile, run URLs, binary/artifact hashes and reviewer in the final receipts.
 
+Development evidence received 2026-11-09: Glen's [scoped pixel-guard return](../glen_next_verification_handoff.md#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09)
+passes seven tests and the locked test-target check at `01d42b71`.
+Existing [CI run 42614359386](https://github.com/smoe/gentle_rs/actions/runs/42614359386)
+passes Windows and full Linux workspace suites, headless, release safety and
+the aggregate at that same source; macOS was skipped. These available receipts
+do not select a candidate, close any table row automatically, certify native
+GUI/packages/container, or authorize a dispatch/tag/publication. Preserve the
+existing candidate procedure and do not repeat unrelated completed campaigns.
+
 | Gate | Status | Required evidence |
 | --- | --- | --- |
 | Windows CI | Pending | Green at the selected candidate, not an earlier worker repair |

@@ -11,6 +11,8 @@ use super::*;
 pub mod coverage;
 /// Separate unavailable basecall channel and explicitly configured tail imports.
 pub mod evidence;
+/// Explicit original-query basecalls and literal terminal runs; no implicit FASTQ join.
+pub mod oriented;
 /// Saved per-unit evidence, explicit view selection and renderer projection.
 pub mod pileup;
 mod projection;

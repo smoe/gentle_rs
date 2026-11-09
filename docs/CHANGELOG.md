@@ -1,5 +1,37 @@
 # GENtle Changelog
 
+## 2026-11-09 - Add Oriented Original-Read Pileups And Literal A/T Evidence
+
+- Extend the existing read-end service with optional hash-bound original bases
+  and explicit saved-analysis/unit/QNAME/full-axis checks. No implicit FASTQ
+  join or reconstruction of missing hard clips from SAM/reference bases.
+- Emit v2 pileups with conservative v1 reading, stable unit keys, original
+  literal A/T/query coordinates, terminal/internal runs (60/10 defaults), covered
+  intervals, retained alternatives and unfiltered nonadditive unit counters.
+  UTR/censoring and coverage denominators remain unchanged.
+- Share mRNA-direction groups/dividers, magenta A/turquoise T, hollow unaligned
+  glyphs and wrapped heights across native lanes and all five exports. Preserve
+  approval, cancellation/input protection, no-clobber and actual pixel guards.
+- Add 18 Rust regressions, update typed discovery and strengthen actual JS/Lua/MCP/conversion fixtures and
+  provide a synthetic plus/minus actual-CLI replay. Nine Python fixture/source
+  checks pass; two real-process cases skip without a source-matched binary. Rust, native,
+  Windows and scientific acceptance remain external. No local Rust or push.
+
+## 2026-11-09 - Record Pixel-Guard Acceptance And Bound The Release Inventory
+
+- Verify Glen's `01d42b71` archive and all 17 manifest entries. Raw logs pass
+  renderer 4/4, budget 2/2, actual small PNG/PDF conversion 1/1 and locked
+  test-target check, with zero failures/skips. Retain the prior PDF visual
+  reference at `1c4a4a5a`; do not relabel it as a newly retained artifact.
+- Read existing same-source CI run `42614359386`: Windows/full suite, full
+  Linux/full suite, headless, release safety and aggregate pass; macOS and
+  optional GUI/scroll/audit jobs skipped. The always-on Windows traversal
+  fixture is covered by that full-suite pass, not a new native GUI verdict.
+- Close only the focused development retry, not the unselected .13 ledger.
+  Record available platform evidence and the remaining candidate, macOS,
+  package/container, functional/readiness and owner-approval requirements.
+  No local Rust, repeated campaign, freeze, push, dispatch, build or publication.
+
 ## 2026-11-09 - Enforce Read-End Pixel Limits Against Actual Wrapped Layout
 
 - Verify Glen's `a5496266` focused archive and all seven manifest entries;

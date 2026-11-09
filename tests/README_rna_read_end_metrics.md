@@ -25,6 +25,20 @@ even when gene assignment is unavailable/ambiguous. Literal controls retain
 observed zero, a zero censored bound and blank missing values; censored bounds
 never enter the median. No external data or persistent fixture is needed.
 
+`test_read_end_rehearsal.py` uses `scripts/prepare_read_end_rehearsal.py` to
+create wholly synthetic original sequences (12 A, C spacer, 18 T), plus/minus
+transcript annotations and forward/reverse SAM representations. The original
+strings are generated independently of SAM reverse complementation. Its fast
+test checks raw hashes, explicit unit bindings and LF/CRLF semantics; two real
+CLI process tests require `GENTLE_READ_END_BIN_DIR` and otherwise skip explicitly.
+The oriented process case covers both transcript strands, softclips, both
+directions, JSON/TSV/SVG/PNG/PDF, no-clobber and absence of a project file.
+Inline Rust fixtures in `read_ends/oriented_tests.rs`, `pileup_tests.rs`, the
+service tests and renderer tests use the same explicitly synthetic boundaries,
+adding internal runs, hard clips, alternatives, counters, pixel caps and dense
+labels. Recreate externally with the `read_end_` Rust filters in Glen's handoff;
+Python/source tests do not execute Rust or certify native GUI/biology.
+
 `test_rna_read_end_core_contract.py` additionally checks the hand-crafted
 31-case corpus in `test_files/rna_read_end_core/cases.json` against the unchanged
 Python projector under LF and CRLF. Its nearby README documents origin and

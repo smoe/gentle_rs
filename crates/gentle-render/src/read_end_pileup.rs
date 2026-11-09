@@ -22,6 +22,28 @@ pub struct Row {
     pub details: String,
     pub off_axis: String,
     pub bands: Vec<Band>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<Orientation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<RunGlyph>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Orientation {
+    Same,
+    Opposite,
+    Alternatives,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunGlyph {
+    pub base: char,
+    pub length: usize,
+    pub reference_anchor: u64,
+    pub aligned_to_reference: bool,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,10 +107,23 @@ fn after_lines(top: u64, lines: usize, padding: u64) -> Result<u64, String> {
         .ok_or_else(|| "read_end_pileup_render_height".into())
 }
 
-fn row_height(row: &Row, width: u32) -> Result<u32, String> {
+fn base_height(row: &Row, width: u32) -> Result<u64, String> {
     let label = wrapped(&row.label, 185).len();
     let status = wrapped(&row.off_axis, width - 230).len();
-    let height = after_lines(31, label - 1, 0)?.max(after_lines(54, status - 1, 0)?);
+    Ok(after_lines(31, label - 1, 0)?.max(after_lines(54, status - 1, 0)?))
+}
+
+fn section(scene: &Scene, index: usize) -> bool {
+    scene.rows[index].orientation.is_some()
+        && (index == 0 || scene.rows[index - 1].orientation != scene.rows[index].orientation)
+}
+
+fn row_height(row: &Row, width: u32, section: bool) -> Result<u32, String> {
+    let mut height = base_height(row, width)?;
+    for run in &row.runs {
+        height = after_lines(height, wrapped(&run.label, width - 230).len(), 34)?;
+    }
+    height = after_lines(height, 0, if section { 26 } else { 0 })?;
     u32::try_from(height).map_err(|_| "read_end_pileup_render_height".into())
 }
 
@@ -100,6 +135,18 @@ fn validate(scene: &Scene) -> Result<(), String> {
     {
         return Err("read_end_pileup_render_limits".into());
     }
+    for row in &scene.rows {
+        if row.runs.len() > 20_000
+            || row.runs.iter().any(|r| {
+                !matches!(r.base, 'A' | 'T')
+                    || r.length == 0
+                    || r.reference_anchor < scene.start
+                    || r.reference_anchor >= scene.end
+            })
+        {
+            return Err("read_end_pileup_run_glyph".into());
+        }
+    }
     Ok(())
 }
 
@@ -109,12 +156,38 @@ pub fn lane_heights(scene: &Scene) -> Result<Vec<u32>, String> {
     scene
         .rows
         .iter()
-        .map(|row| row_height(row, scene.width))
+        .enumerate()
+        .map(|(index, row)| row_height(row, scene.width, section(scene, index)))
         .collect()
 }
 
-fn row_group(frame: Frame, row: &Row, width: u32, top: f64) -> Group {
+fn row_group(
+    frame: Frame,
+    row: &Row,
+    width: u32,
+    top: f64,
+    section: bool,
+) -> Result<Group, String> {
     let mut group = Group::new().add(Title::new(&row.details));
+    let top = if section {
+        let label = match row.orientation {
+            Some(Orientation::Same) => "Same direction as mRNA 5' -> 3' (not pore direction)",
+            Some(Orientation::Opposite) => "Opposite to mRNA 5' -> 3' (not pore direction)",
+            _ => "Alternatives: no unique orientation or original-base sequence selected",
+        };
+        group.append(
+            Line::new()
+                .set("x1", 10)
+                .set("x2", width - 10)
+                .set("y1", top + 2.0)
+                .set("y2", top + 2.0)
+                .set("stroke", "#172b34"),
+        );
+        group.append(text(10.0, top + 19.0, label));
+        top + 26.0
+    } else {
+        top
+    };
     group.append(block(10.0, top + 17.0, &wrapped(&row.label, 185)));
     draw(&mut group, frame, &row.bands, top + 13.0);
     group.append(block(
@@ -122,7 +195,38 @@ fn row_group(frame: Frame, row: &Row, width: u32, top: f64) -> Group {
         top + 40.0,
         &wrapped(&row.off_axis, width - 230),
     ));
-    group
+    let mut run_y = top + base_height(row, width)? as f64;
+    for run in &row.runs {
+        let color = if run.base == 'A' {
+            "#c2188b"
+        } else {
+            "#008c95"
+        };
+        if let Some((x, _)) = frame.half_open(run.reference_anchor, run.reference_anchor + 1) {
+            group.append(
+                Rectangle::new()
+                    .set("x", (x - 5.0).clamp(frame.left, frame.right - 10.0))
+                    .set("y", run_y + 3.0)
+                    .set("width", 10)
+                    .set("height", 10)
+                    .set("stroke", color)
+                    .set("stroke-width", 2)
+                    .set(
+                        "fill",
+                        if run.aligned_to_reference {
+                            color
+                        } else {
+                            "#ffffff"
+                        },
+                    )
+                    .add(Title::new(&run.label)),
+            );
+        }
+        let lines = wrapped(&run.label, width - 230);
+        group.append(block(205.0, run_y + 28.0, &lines));
+        run_y += after_lines(0, lines.len(), 34)? as f64;
+    }
+    Ok(group)
 }
 
 struct PageLayout {
@@ -152,12 +256,12 @@ fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
         scene.width - 20,
     );
     let legend = wrapped(
-        "N = solid; other gap = dashed; segment link = dotted. Clips/evidence below axis, not aligned bases.",
+        "N solid; other gaps dashed; links dotted. Literal A magenta / T turquoise; hollow = not fully aligned. Off-axis symbols attach to saved blocks, not extrapolated alignments.",
         scene.width - 20,
     );
     let title_y = after_lines(40, header_lines.len(), 0)?;
     let model_y = after_lines(title_y, title.len(), 8)?;
-    let legend_y = after_lines(model_y, 0, 32)?;
+    let legend_y = after_lines(model_y, 0, 54)?;
     let rows_y = after_lines(legend_y, legend.len(), 8)?;
     let height = heights
         .iter()
@@ -208,10 +312,22 @@ pub fn render(scene: &Scene) -> Result<String, String> {
     document.append(block(10.0, 22.0, &layout.header_lines));
     document.append(block(10.0, layout.title_y as f64, &layout.title));
     draw(&mut document, frame, &scene.model, layout.model_y as f64);
+    document.append(text(frame.left, layout.model_y as f64 + 30.0, "5' mRNA"));
+    document.append(text(
+        frame.right - 56.0,
+        layout.model_y as f64 + 30.0,
+        "3' mRNA",
+    ));
     document.append(block(10.0, layout.legend_y as f64, &layout.legend));
     let mut top = layout.rows_y as f64;
-    for (row, row_height) in scene.rows.iter().zip(layout.heights) {
-        document.append(row_group(frame, row, scene.width, top));
+    for (index, (row, row_height)) in scene.rows.iter().zip(layout.heights).enumerate() {
+        document.append(row_group(
+            frame,
+            row,
+            scene.width,
+            top,
+            section(scene, index),
+        )?);
         top += f64::from(row_height);
     }
     Ok(document.to_string())
@@ -274,10 +390,12 @@ fn model_scene(scene: &Scene) -> Scene {
             label: "Selected transcript".into(),
             details: scene.header.join("\n"),
             off_axis: format!(
-                "Genomic {}:{}..{}; transcript direction {:+}. N solid; other gaps dashed; segment links dotted.",
+                "Left=5' mRNA; right=3' mRNA; genomic {}:{}..{}; transcript direction {:+}, not pore direction. N solid; other gaps dashed; segment links dotted.",
                 scene.contig, scene.start, scene.end, scene.strand
             ),
             bands: scene.model.clone(),
+            orientation: None,
+            runs: vec![],
         }],
     }
 }
@@ -296,7 +414,7 @@ pub fn model_height(scene: &Scene) -> Result<u32, String> {
 pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
     validate(scene)?;
     let row = scene.rows.get(index).ok_or("read_end_pileup_lane_range")?;
-    let height = row_height(row, scene.width)?;
+    let height = row_height(row, scene.width, section(scene, index))?;
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -315,13 +433,128 @@ pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
                 .set("height", "100%")
                 .set("fill", "#ffffff"),
         );
-    document.append(row_group(frame, row, scene.width, 0.0));
+    document.append(row_group(
+        frame,
+        row,
+        scene.width,
+        0.0,
+        section(scene, index),
+    )?);
     Ok(document.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_end_oriented_mirrored_genomes_share_biological_frame_and_keep_literal_18t() {
+        let scene = |strand, interval, anchor| Scene {
+            contig: "synthetic".into(),
+            start: 100,
+            end: 200,
+            strand,
+            width: 1400,
+            header: vec![],
+            model: vec![],
+            rows: vec![Row {
+                label: "read".into(),
+                details: "synthetic".into(),
+                off_axis: "original sequencing orientation".into(),
+                bands: vec![Band {
+                    interval,
+                    kind: "aligned".into(),
+                    label: "saved block".into(),
+                }],
+                orientation: Some(Orientation::Same),
+                runs: vec![RunGlyph {
+                    base: 'T',
+                    length: 18,
+                    reference_anchor: anchor,
+                    aligned_to_reference: false,
+                    label: "18T; original query [112,130); unaligned".into(),
+                }],
+            }],
+        };
+        let positions = |svg: &str| -> Vec<f64> {
+            svg.split("<rect ")
+                .skip(1)
+                .filter_map(|r| r.split(" x=\"").nth(1))
+                .map(|r| r.split('"').next().unwrap().parse().unwrap())
+                .collect()
+        };
+        let a = render(&scene(1, (110, 130), 110)).unwrap();
+        let b = render(&scene(-1, (170, 190), 189)).unwrap();
+        let (a_x, b_x) = (positions(&a), positions(&b));
+        assert_eq!(a_x.len(), b_x.len());
+        assert!(a_x.iter().zip(&b_x).all(|(a, b)| (a - b).abs() < 1e-8));
+        for svg in [a, b] {
+            assert!(svg.contains("18T") && !svg.contains("18A"));
+            assert!(svg.contains("stroke=\"#008c95\""));
+            assert!(svg.contains("fill=\"#ffffff\""));
+        }
+    }
+
+    #[test]
+    fn read_end_oriented_dense_labels_and_dividers_use_shared_complete_lane_heights() {
+        let mut scene = Scene {
+            contig: "synthetic".into(),
+            start: 100,
+            end: 200,
+            strand: 1,
+            width: 900,
+            header: vec![],
+            model: vec![],
+            rows: vec![],
+        };
+        for orientation in [
+            Orientation::Same,
+            Orientation::Opposite,
+            Orientation::Alternatives,
+        ] {
+            scene.rows.push(Row {
+                label: "read-with-a-long-id-".repeat(8),
+                details: "synthetic".into(),
+                off_axis: "Full status, not physical tail length. ".repeat(8),
+                bands: vec![],
+                orientation: Some(orientation),
+                runs: vec![
+                    RunGlyph {
+                        base: 'A',
+                        length: 12,
+                        reference_anchor: 120,
+                        aligned_to_reference: true,
+                        label: "12A original query [0,12); ".repeat(12)
+                    };
+                    4
+                ],
+            });
+        }
+        let full = render(&scene).unwrap();
+        assert_eq!(full, render(&scene).unwrap());
+        let heights = lane_heights(&scene).unwrap();
+        for (index, height) in heights.iter().enumerate() {
+            let lane = render_lane(&scene, index).unwrap();
+            assert!(lane.contains(&format!(" height=\"{height}\"")));
+            for text in lane.split("<text ").skip(1) {
+                let numeric = |name: &str| -> f64 {
+                    let pattern = format!(" {name}=\"");
+                    text.split(pattern.as_str())
+                        .nth(1)
+                        .unwrap()
+                        .split('"')
+                        .next()
+                        .unwrap()
+                        .parse()
+                        .unwrap()
+                };
+                assert!(numeric("x") + numeric("textLength") <= 890.0);
+                assert!(numeric("y") <= f64::from(*height) - 8.0);
+            }
+        }
+        assert!(full.find("Same direction").unwrap() < full.find("Opposite to").unwrap());
+        assert!(full.find("Opposite to").unwrap() < full.find("Alternatives:").unwrap());
+    }
 
     #[test]
     fn read_end_page_height_arithmetic_refuses_overflow() {
@@ -347,6 +580,8 @@ mod tests {
                     details: "complete synthetic provenance".into(),
                     off_axis: long.clone(),
                     bands: vec![],
+                    orientation: None,
+                    runs: vec![],
                 }],
             };
             assert_eq!(wrapped(&long, width - 230).concat(), long);
@@ -419,6 +654,8 @@ mod tests {
                 kind: "aligned".into(),
                 label: "saved block".into(),
             }],
+            orientation: None,
+            runs: vec![],
         };
         for strand in [1, -1] {
             let scene = Scene {
@@ -472,6 +709,8 @@ mod tests {
                         label: kind.into(),
                     })
                     .collect(),
+                orientation: None,
+                runs: vec![],
             }],
         };
         let a = render(&scene).unwrap();

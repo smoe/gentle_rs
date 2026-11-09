@@ -10,7 +10,16 @@ this contract rather than implement geometry in their adapters. Discovery
 templates are placeholders, not executable biological defaults.
 
 Inputs bind completed observed-SAM reports, V2 models and normalized annotations;
-outputs are `gentle.rna_read_end_{coverage,pileup,pileup_view,completion}.v1`.
+coverage/view/completion remain v1; new pileups use `gentle.rna_read_end_pileup.v2`
+with conservative v1 reading. Optional per-sample `original_bases` binds a strict
+`gentle.rna_read_end_original_bases.v1` file to the saved analysis/unit/full-query
+axis. It explicitly supplies original-sequencing-orientation strings; no SAM
+reconstruction or implicit FASTQ join. Optional `terminal_runs` defaults to a
+60-base end window and 10-base exact minimum. Runs preserve literal A/T, original
+coordinates, terminal/internal status, aligned coverage and alternatives.
+Same/opposite mRNA-direction lanes and off-axis glyphs share one service/renderer
+across GUI/CLI/JS/Lua/MCP and JSON/TSV/SVG/PNG/PDF. Pore direction and physical
+tail length are not inferred.
 Both gene-assigned and selected-transcript-compatible denominators are retained
 through filtering/paging. Separate composition/tail schemas do not change UTR
 statuses. See [measurement/request reference](rna_read_end_metrics.md).
