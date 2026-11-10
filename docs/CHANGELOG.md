@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-10 - Attribute The Separate Incomplete 7fa6b15a Routine Scan
+
+- Record the two-commit routine scan through `7fa6b15a`: renderer 6/6,
+  formatting/whitespace pass and no concrete regression. Broader Rust execution
+  stopped during compilation for lack of disk space, not a proven code defect.
+- Keep its two skipped CLI cases and ambiguous Python count separate from
+  Glen's earlier completed same-source focused return; no duplicate totals,
+  revoked earlier evidence or inferred acceptance of the newer `244ad139`.
+  Retain run-owned/shared-cache cleanup boundaries and request effective-target/
+  free-space preflight before the next authorized new-source verification.
+  Documentation only; no source fix, build, push or repeated campaign.
+
 ## 2026-11-10 - Repair Source-Reviewed Exon-Locus Boundaries
 
 - Address the owner's attributed source-only Claude review against `7fa6b15a`

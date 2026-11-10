@@ -1,5 +1,42 @@
 # Glen: Next Verification And Return
 
+## Glen Routine Scan At 7fa6b15a, Received 2026-11-10
+
+Separate routine scan, not the earlier completed focused campaign below.
+Forwarded range: `a549626664fe88aeaa1dd5f634f51cc09d4b876d` through
+`7fa6b15adc28d0adfe3e1edce0190a2621b54705`, two commits, clean detached
+worktree; scan boundary recorded as `2026-11-10T04:40:35Z`.
+Diff/whitespace and scoped formatting pass; renderer **6/6** passes. No
+concrete regression or source patch is recommended. The broader focused Rust
+attempt stops during compilation with **No space left on device**: incomplete
+execution/environment limitation, not a passing test gate or a proven code bug.
+No toolchain/profile/raw-stream/archive receipt accompanies this message.
+
+The Python return is worded as "8 passed, 2 skipped". Source at the tested SHA
+has eight test methods total: six fixture/source checks and two optional actual
+CLI cases. Without its raw unittest summary, retain the reported wording as
+unreconciled rather than claiming ten tests or eight successes plus two skips.
+Both actual-process cases are skipped in this routine; none is newly accepted
+by it. A retained summary is sufficient for count reconciliation; do not rerun
+the old campaign merely to repair wording.
+
+The return reports removal of its detached worktree and run-owned Cargo cache
+(4519 files / 1.7 GiB). Its first renderer attempt had resolved to the shared
+`/home/clawbio/GENtle/target`; that cache was correctly left untouched. Before
+the next authorized build, verify the effective run-owned target and available
+space on the actual target, Cargo-home and temporary-filesystem volumes. Abort
+on a shared-target mismatch or insufficient space; do not clean shared caches
+or an active build to make room. No change to Cargo configuration is requested.
+
+This incomplete routine does **not** revoke or replace the separately attributed
+[completed 7fa6b15a focused return](#glen-oriented-pileup-return-2026-11-09),
+which reports 47/47 root/VM/MCP and 8/8 actual rehearsal with zero skips.
+Do not sum the two runs, relabel skipped cases as passes, or infer new-source
+acceptance. The exon-locus extension/Claude repairs are committed locally at
+`244ad13952ac2772177028a6d53eb899932427ef`; this older scan does not contain or
+verify them. After the owner's push, follow only the active repair scope below.
+Native, Windows, release and scientific acceptance remain separately bounded.
+
 ## Exon-Locus Review Repairs, 2026-11-10
 
 Active scope after the owner's next push. This supersedes the unexecuted
