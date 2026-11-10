@@ -39,6 +39,10 @@
   triggers. Neither establishes trans-splicing, editing or genomic copy number
   without artifact review and matched DNA evidence. No analysis result or
   product implementation is claimed by adding the corpus.
+- Add a separate Codex verification prompt for the current exon-locus anchor
+  handoff. It requires exact-source evidence and real nonempty execution while
+  forbidding source changes, private-data runs, pushes, publication and repeats
+  of already closed campaigns; the new cDNA asset does not widen that scope.
 
 ## 2026-11-10 - Align The Vector-PDF Writer Dependency With Svg2pdf
 
