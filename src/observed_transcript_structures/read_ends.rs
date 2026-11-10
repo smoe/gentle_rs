@@ -11,6 +11,8 @@ use super::*;
 pub mod coverage;
 /// Separate unavailable basecall channel and explicitly configured tail imports.
 pub mod evidence;
+/// Independent exon-locus membership, scored alternatives and linked genomic/transcript views.
+pub mod locus;
 /// Explicit original-query basecalls and literal terminal runs; no implicit FASTQ join.
 pub mod oriented;
 /// Saved per-unit evidence, explicit view selection and renderer projection.
@@ -335,6 +337,28 @@ impl Prepared<'_> {
     }
 }
 
+fn exon_map(exons: &[Interval], strand: char) -> Result<Vec<SupportedBlock>, EngineError> {
+    let mut length = 0usize;
+    let mut out = Vec::new();
+    for position in 0..exons.len() {
+        let index = if strand == '+' {
+            position
+        } else {
+            exons.len() - 1 - position
+        };
+        let (start, end) = exons[index];
+        let next = length
+            .checked_add(end - start)
+            .ok_or_else(|| fail("overflow"))?;
+        out.push(SupportedBlock {
+            query: (length, next),
+            target: (start, end),
+        });
+        length = next;
+    }
+    Ok(out)
+}
+
 fn prepare<'a>(model: &'a TranscriptModel, meter: &mut Meter) -> Result<Prepared<'a>, EngineError> {
     if !token(&model.transcript_id)
         || !token(&model.gene_id)
@@ -346,24 +370,8 @@ fn prepare<'a>(model: &'a TranscriptModel, meter: &mut Meter) -> Result<Prepared
     intervals(&model.genomic_exons_0based_half_open, true, meter)?;
     intervals(&model.genomic_cds_0based_half_open, true, meter)?;
     intervals(&model.genomic_stop_codon_0based_half_open, false, meter)?;
-    let mut transcript_length = 0usize;
-    let mut exons = Vec::new();
-    for position in 0..model.genomic_exons_0based_half_open.len() {
-        let index = if model.strand == '+' {
-            position
-        } else {
-            model.genomic_exons_0based_half_open.len() - 1 - position
-        };
-        let (start, end) = model.genomic_exons_0based_half_open[index];
-        let next = transcript_length
-            .checked_add(end - start)
-            .ok_or_else(|| fail("overflow"))?;
-        exons.push(SupportedBlock {
-            query: (transcript_length, next),
-            target: (start, end),
-        });
-        transcript_length = next;
-    }
+    let exons = exon_map(&model.genomic_exons_0based_half_open, model.strand)?;
+    let transcript_length = exons.last().map_or(0, |e| e.query.1);
     let mut value = Prepared {
         model,
         exons,

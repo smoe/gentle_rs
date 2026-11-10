@@ -5600,34 +5600,43 @@ mod tests {
     #[test]
     fn read_end_mcp_discovery_inspection_and_additive_confirmation_keep_project_absent() {
         let (root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
-        let state = root.path().join("not-created MCP project.json");
-        let command = crate::rna_read_ends::Command::Inspect { report, view };
-        let expected =
-            crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
-                .unwrap();
-        assert!(
-            expected["page"]["orientation_summary"]["units_with_terminal_t"]
-                .as_u64()
-                .unwrap()
-                > 0
-        );
-        let operation = Operation::RnaReadEnds {
-            command: Box::new(command),
-        };
-        let denied = op_tool_result(state.to_str().unwrap(), &json!({"operation":operation}));
-        assert_eq!(denied["isError"], true);
-        assert!(!state.exists());
-        let allowed = op_tool_result(
-            state.to_str().unwrap(),
-            &json!({"confirm":true,"operation":operation}),
-        );
-        assert_ne!(allowed["isError"], true, "{allowed}");
-        assert_eq!(
-            allowed["structuredContent"]["result"]["rna_read_ends"],
-            expected
-        );
-        assert!(!state.exists());
-        assert!(tool_command_paths("op").contains(&"rna-reads read-ends"));
+        let legacy = crate::rna_read_ends::Command::Inspect { report, view };
+        for (root, command) in [
+            (root, legacy),
+            crate::rna_read_ends::saved_locus_inspection_fixture(),
+        ] {
+            let state = root.path().join("not-created MCP project.json");
+            let expected =
+                crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+                    .unwrap();
+            if expected["page"]["schema"] == "gentle.rna_read_end_locus_page.v1" {
+                assert!(!expected["page"]["reads"].as_array().unwrap().is_empty());
+            } else {
+                assert!(
+                    expected["page"]["orientation_summary"]["units_with_terminal_t"]
+                        .as_u64()
+                        .unwrap()
+                        > 0
+                );
+            }
+            let operation = Operation::RnaReadEnds {
+                command: Box::new(command),
+            };
+            let denied = op_tool_result(state.to_str().unwrap(), &json!({"operation":operation}));
+            assert_eq!(denied["isError"], true);
+            assert!(!state.exists());
+            let allowed = op_tool_result(
+                state.to_str().unwrap(),
+                &json!({"confirm":true,"operation":operation}),
+            );
+            assert_ne!(allowed["isError"], true, "{allowed}");
+            assert_eq!(
+                allowed["structuredContent"]["result"]["rna_read_ends"],
+                expected
+            );
+            assert!(!state.exists());
+            assert!(tool_command_paths("op").contains(&"rna-reads read-ends"));
+        }
     }
 
     #[test]

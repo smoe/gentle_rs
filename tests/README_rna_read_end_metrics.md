@@ -1,5 +1,35 @@
 # Synthetic RNA Read-End Fixtures
 
+The new `test_rna_read_end_locus.py` uses
+`scripts/prepare_exon_locus_rehearsal.py`: three hand-crafted reads, shared-exon
+sense/antisense models and independently created A12/Cn/T18 originals. No real
+genes, barcodes or sequencing files. Recreate with
+`python3 -m unittest tests.test_rna_read_end_locus -v`; its actual CLI test needs
+`GENTLE_READ_END_BIN_DIR` and otherwise explicitly skips. It binds fresh SAM,
+manifest, annotation, CDS and original-base files before using the shared
+operation, both projections and five export formats.
+The fast checks exercise fixture generation/binding behavior only, not GENtle
+semantics. The actual process test replays both real LF and CRLF input graphs
+through GENtle and also exercises a narrow-window JSON-only export; it stays
+unrun/skipped without the explicit source-matched binary. No source-text grep
+is offered as confirmation/service acceptance.
+Inline Rust locus/service/renderer tests add junction preference, mirrored/RC geometry, novel/unresolved
+cases, missing/changed annotation, chimeras, counters, request-bound cancellation
+and no-clobber. Run externally with the handoff's `read_end_` filters. These are
+synthetic contract checks, not model calibration or real-data biological evidence.
+
+`read_ends/locus/review_tests.rs` adds hand-crafted source-review counterexamples:
+one/three-base and intronic containment, mirrored chains plus an unrelated model,
+deletion-split full junction chains, query-disjoint segment hypotheses, positive
+novel compatibility, differing hypotheses/CDS metrics, unavailable units, named
+budgets, two distinct samples, run-variant unions and membership. Its scale case
+creates 30 models (12 exons, 10 minus strand) and 20 reads (40 deletion-split
+blocks each) and prints consumed work; no original bases are supplied in that
+geometry-scale fixture. It is not a measured real-read capacity benchmark.
+Service tests create declared-absent paths without deleting source fixtures,
+retain wrong-hash refusal and check absent originals and JSON-only export.
+Recreate externally with `cargo test --locked --lib -j1 read_end_locus_ -- --nocapture --test-threads=1`.
+
 Origin: Glen's inline synthetic fixtures and the hand-crafted Codex boundary
 controls in `test_rna_read_end_boundaries.py`. No public/private sequencing
 sample, real GTF or reference FASTA is embedded. Stable names and repeated

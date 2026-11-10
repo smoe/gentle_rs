@@ -466,6 +466,9 @@ fn read_end_service_raster_budget_uses_wrapped_headers_and_lanes_before_conversi
                 vec!["synthetic header".into()]
             },
             model: vec![],
+            top_tracks: vec![],
+            bottom_tracks: vec![],
+            axis_kind: None,
             rows: vec![
                 Row {
                     label: if long_lanes {
@@ -481,6 +484,7 @@ fn read_end_service_raster_budget_uses_wrapped_headers_and_lanes_before_conversi
                     },
                     bands: vec![],
                     orientation: None,
+                    sublanes: vec![],
                     runs: vec![],
                 };
                 if long_lanes { 32 } else { 1 }
@@ -584,6 +588,9 @@ fn read_end_service_oriented_glyph_heights_participate_in_raster_guard() {
         width: 8000,
         header: vec![],
         model: vec![],
+        top_tracks: vec![],
+        bottom_tracks: vec![],
+        axis_kind: None,
         rows: vec![
             Row {
                 label: "synthetic_read".into(),
@@ -591,6 +598,7 @@ fn read_end_service_oriented_glyph_heights_participate_in_raster_guard() {
                 off_axis: "Not pore direction or physical tail length".into(),
                 bands: vec![],
                 orientation: Some(Orientation::Same),
+                sublanes: vec![],
                 runs: vec![
                     RunGlyph {
                         base: 'T',

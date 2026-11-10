@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::engine_shell::quote_shell_arg;
+use crate::observed_transcript_structures::read_ends::locus;
 use crate::observed_transcript_structures::read_ends::pileup::{
     self, Channels, Filter, SortKey, Status, View,
 };
@@ -22,6 +23,10 @@ pub(super) struct UiState {
     status: String,
     error: Option<String>,
     page: Option<pileup::Page>,
+    locus_page: Option<locus::Page>,
+    locus_view: locus::View,
+    locus_mode: bool,
+    model_key: String,
     scene: Option<gentle_render::read_end_pileup::Scene>,
     lane_heights: Vec<u32>,
     max_lane_height: f32,
@@ -63,6 +68,10 @@ impl Default for UiState {
             status: String::new(),
             error: None,
             page: None,
+            locus_page: None,
+            locus_view: locus::View::default(),
+            locus_mode: false,
+            model_key: String::new(),
             scene: None,
             lane_heights: vec![],
             max_lane_height: 54.0,
@@ -80,14 +89,35 @@ fn parse_draft(text: &str) -> Result<Command, String> {
 }
 
 fn matches_draft(state: &UiState, view_sha256: &str) -> bool {
-    pileup::hash(&state.view).ok().as_deref() == Some(view_sha256)
+    (if state.locus_mode {
+        pileup::hash(&state.locus_view)
+    } else {
+        pileup::hash(&state.view)
+    })
+    .ok()
+    .as_deref()
+        == Some(view_sha256)
         && serde_json::from_str::<serde_json::Value>(&state.report_json).ok()
             == state.active_inspection_binding
 }
 
 impl GENtleApp {
     fn submit_read_end(&mut self, command: Command) -> Result<(), String> {
-        let sets_report = matches!(&command, Command::Build { .. });
+        let sets_report = command.sets_report();
+        let locus_inspection = if let Command::Locus { command } = &command {
+            if let crate::rna_read_ends::locus::Command::Inspect { report, view } = command.as_ref()
+            {
+                Some((
+                    serde_json::to_value(report).map_err(|e| e.to_string())?,
+                    view.clone(),
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let is_locus = matches!(&command, Command::Locus { .. });
         let inspection = if let Command::Inspect { report, view } = &command {
             Some((
                 serde_json::to_value(report).map_err(|e| e.to_string())?,
@@ -111,6 +141,21 @@ impl GENtleApp {
         state.active = Some(id);
         state.active_sets_report = sets_report;
         state.active_inspection_binding = inspection.as_ref().map(|(binding, _)| binding.clone());
+        if let Some((binding, view)) = locus_inspection {
+            state.report_json = serde_json::to_string(&binding).map_err(|e| e.to_string())?;
+            state.active_inspection_binding = Some(binding);
+            state.model_key = match &view.projection {
+                locus::ViewProjection::Genome => String::new(),
+                locus::ViewProjection::Transcript { model_key } => model_key.clone(),
+            };
+            state.view.offset = view.offset;
+            state.view.count = view.count;
+            state.view.max_sublanes = view.max_sublanes;
+            state.view.width = view.width;
+            state.locus_view = view;
+            state.view_dirty = true;
+        }
+        state.locus_mode = is_locus;
         if let Some((binding, view)) = inspection {
             state.report_json = serde_json::to_string(&binding).map_err(|e| e.to_string())?;
             state.view = view;
@@ -145,23 +190,39 @@ impl GENtleApp {
                 let value = &run.output["result"]["rna_read_ends"];
                 if let Some(page) = value.get("page") {
                     let loaded = (|| {
-                        let page: pileup::Page =
-                            serde_json::from_value(page.clone()).map_err(|e| e.to_string())?;
+                        let (legacy, locus_page, view_hash) =
+                            if page["schema"] == "gentle.rna_read_end_locus_page.v1" {
+                                let p: locus::Page = serde_json::from_value(page.clone())
+                                    .map_err(|e| e.to_string())?;
+                                (None, Some(p.clone()), p.view_sha256)
+                            } else {
+                                let p: pileup::Page = serde_json::from_value(page.clone())
+                                    .map_err(|e| e.to_string())?;
+                                (Some(p.clone()), None, p.view_sha256)
+                            };
                         let scene: gentle_render::read_end_pileup::Scene =
                             serde_json::from_value(value["scene"].clone())
                                 .map_err(|e| e.to_string())?;
                         let heights = gentle_render::read_end_pileup::lane_heights(&scene)?;
                         let model_height = gentle_render::read_end_pileup::model_height(&scene)?;
-                        Ok::<_, String>((page, scene, heights, model_height))
+                        Ok::<_, String>((
+                            legacy,
+                            locus_page,
+                            view_hash,
+                            scene,
+                            heights,
+                            model_height,
+                        ))
                     })();
                     match loaded {
-                        Ok((page, scene, heights, model_height)) => {
-                            state.view_dirty = !matches_draft(state, &page.view_sha256);
+                        Ok((page, locus_page, view_hash, scene, heights, model_height)) => {
+                            state.view_dirty = !matches_draft(state, &view_hash);
                             state.max_lane_height =
                                 heights.iter().copied().max().unwrap_or(54) as f32;
                             state.lane_heights = heights;
                             state.model_height = model_height as f32;
-                            state.page = Some(page);
+                            state.page = page;
+                            state.locus_page = locus_page;
                             state.scene = Some(scene);
                         }
                         Err(error) => state.error = Some(error),
@@ -172,6 +233,7 @@ impl GENtleApp {
                 {
                     state.report_json = serde_json::to_string(report).unwrap_or_default();
                     state.page = None;
+                    state.locus_page = None;
                     state.scene = None;
                     state.view_dirty = true;
                 }
@@ -185,6 +247,7 @@ impl GENtleApp {
                         Ok(binding) => {
                             state.report_json = binding;
                             state.page = None;
+                            state.locus_page = None;
                             state.scene = None;
                             state.view_dirty = true;
                         }
@@ -274,7 +337,14 @@ impl GENtleApp {
             state.view_dirty=true;
         }
         let mut view_changed = false;
+        view_changed|=ui.checkbox(&mut state.locus_mode,"Exon-locus report (all overlapping models, not gene-assigned membership)").changed();
+        if state.locus_mode {
+            ui.label("Fixed genomic view by default. Paste an explicit model key from the saved models to project the same reads onto mature mRNA 5' to 3'. BAM direction is not RNA origin.");
+            view_changed|=ui.text_edit_singleline(&mut state.model_key).changed();
+            state.locus_view.projection=if state.model_key.is_empty(){locus::ViewProjection::Genome}else{locus::ViewProjection::Transcript {model_key:state.model_key.clone()}};
+        }
         ui.horizontal_wrapped(|ui| {
+            if !state.locus_mode {
             ui.label("Sort");
             egui::ComboBox::from_id_salt("read_end_sort")
                 .selected_text(format!("{:?}", state.view.sort))
@@ -301,6 +371,7 @@ impl GENtleApp {
             view_changed |= ui
                 .checkbox(&mut state.view.descending, "Descending")
                 .changed();
+            }
             ui.label("First lane (0-based)");
             view_changed |= ui
                 .add(egui::DragValue::new(&mut state.view.offset).range(0..=100_000))
@@ -318,6 +389,7 @@ impl GENtleApp {
                 .add(egui::DragValue::new(&mut state.view.width).range(900..=8000))
                 .changed();
         });
+        if !state.locus_mode {
         ui.horizontal_wrapped(|ui| {
             let c = &mut state.view.channels;
             for (label, flag) in [
@@ -365,7 +437,20 @@ impl GENtleApp {
             state.status_filter = 0;
             view_changed = true;
         }
+        }else{
+            egui::ComboBox::from_id_salt("locus_class_filter").selected_text(format!("Assignment filter {:?}",state.locus_view.class)).show_ui(ui,|ui|{
+                view_changed|=ui.selectable_value(&mut state.locus_view.class,None,"All assignment classes").changed();
+                for class in [locus::Class::ExactTranscriptMatch,locus::Class::CompatibleTranscripts,locus::Class::NovelIsoformCompatible,locus::Class::AntisenseCompatible,locus::Class::UninformativeOverlap,locus::Class::Chimeric,locus::Class::Unresolved] {
+                    view_changed|=ui.selectable_value(&mut state.locus_view.class,Some(class),format!("{class:?}")).changed();
+                }
+            });
+            ui.label(format!("Applied draft sample IDs {:?}; edit a typed inspect draft to select explicit samples. Stable unit ordering; all evidence channels retained.",state.locus_view.sample_ids));
+        }
         if view_changed {
+            state.locus_view.offset=state.view.offset;
+            state.locus_view.count=state.view.count;
+            state.locus_view.max_sublanes=state.view.max_sublanes;
+            state.locus_view.width=state.view.width;
             state.view_dirty = true;
             state.approved = false;
         }
@@ -381,10 +466,10 @@ impl GENtleApp {
         {
             match serde_json::from_str(&state.report_json) {
                 Ok(report) => {
-                    action = Some(Command::Inspect {
+                    action = Some(if state.locus_mode {Command::Locus {command:Box::new(crate::rna_read_ends::locus::Command::Inspect {report,view:state.locus_view.clone()})}}else{Command::Inspect {
                         report,
                         view: state.view.clone(),
-                    })
+                    }})
                 }
                 Err(error) => state.error = Some(error.to_string()),
             }
@@ -403,7 +488,10 @@ impl GENtleApp {
             {
                 match serde_json::from_str(&state.report_json) {
                     Ok(report) => {
-                        let command = Command::Export {
+                        let command = if state.locus_mode {Command::Locus {command:Box::new(crate::rna_read_ends::locus::Command::Export {
+                            report,view:state.locus_view.clone(),formats:vec![Format::Json,Format::Tsv,Format::Svg,Format::Png,Format::Pdf],
+                            output_dir:state.export_dir.clone(),max_output_bytes:128*1024*1024,cancel_path:None,
+                        })}}else{Command::Export {
                             report,
                             view: state.view.clone(),
                             formats: vec![
@@ -416,7 +504,7 @@ impl GENtleApp {
                             output_dir: state.export_dir.clone(),
                             max_output_bytes: 128 * 1024 * 1024,
                             cancel_path: None,
-                        };
+                        }};
                         state.draft = serde_json::to_string_pretty(&command).unwrap_or_default();
                         state.reviewed = Some(command);
                         state.approved = false;
@@ -437,14 +525,29 @@ impl GENtleApp {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
-        if state.view_dirty && state.page.is_some() {
+        if state.view_dirty && (state.page.is_some() || state.locus_page.is_some()) {
             ui.label("Retained page belongs to its displayed report/view hashes; apply the current draft to refresh.");
         }
         ui.label(&state.status).on_hover_text(&state.request_text);
         if let Some(error) = &state.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
-        if let (Some(page), Some(scene)) = (&state.page, &state.scene) {
+        if let Some(page) = &state.locus_page {
+            ui.strong(format!("Exon locus: {} declared / {} in locus / {} matching / {} visible; same stable reads across projections",page.total_input_units,page.total_locus_units,page.total_matching,page.reads.len()));
+            ui.label("All assignments remain alternatives unless structural evidence discriminates; scores are not probabilities.");
+            egui::ScrollArea::vertical()
+                .id_salt("locus_counters")
+                .max_height(90.0)
+                .show(ui, |ui| {
+                    for summary in &page.summaries {
+                        ui.label(serde_json::to_string(summary).unwrap_or_default());
+                    }
+                    for source in &page.source_samples {
+                        ui.label(format!("{}: {:?}", source.sample_id, source.diagnostics));
+                    }
+                });
+        }
+        if let Some(page) = &state.page {
             ui.strong(format!(
                 "All samples: gene-assigned {} | selected-transcript-compatible {}",
                 page.total_gene_assigned, page.total_selected_transcript_compatible
@@ -468,6 +571,15 @@ impl GENtleApp {
                 page.total_gene_assigned,
                 page.view_sha256
             ));
+        }
+        if let Some(scene) = &state.scene {
+            let (report_hash, view_hash) = if let Some(page) = &state.page {
+                (&page.report_sha256, &page.view_sha256)
+            } else if let Some(page) = &state.locus_page {
+                (&page.report_sha256, &page.view_sha256)
+            } else {
+                return;
+            };
             if let Some(scope) = scene.header.first() {
                 ui.label(scope);
             }
@@ -476,39 +588,58 @@ impl GENtleApp {
                 .show(ui, |ui| {
                     ui.set_min_width(scene.width as f32);
                     if let Ok(svg) = gentle_render::read_end_pileup::render_model(scene) {
-                        let id = format!(
-                            "bytes://read-end-header-{}-{}.svg",
-                            page.report_sha256, page.view_sha256
-                        );
+                        let id =
+                            format!("bytes://read-end-header-{}-{}.svg", report_hash, view_hash);
                         ui.add(
                             egui::Image::from_bytes(id, svg.into_bytes()).fit_to_exact_size(
                                 egui::vec2(scene.width as f32, state.model_height),
                             ),
                         );
                     }
+                    // Tracks and individual read rows share the same frame and virtual scroll.
+                    let top = scene.top_tracks.len();
+                    let all = top + scene.rows.len() + scene.bottom_tracks.len();
+                    let mut virtual_height = state.max_lane_height;
+                    if let Ok(heights) = gentle_render::read_end_pileup::track_heights(scene) {
+                        for height in heights {
+                            virtual_height = virtual_height.max(height as f32);
+                        }
+                    }
                     egui::ScrollArea::vertical()
                         .id_salt("read_end_virtual_lanes")
                         .max_height(ui.available_height().max(1.0))
-                        .show_rows(ui, state.max_lane_height, scene.rows.len(), |ui, range| {
+                        .show_rows(ui, virtual_height, all, |ui, range| {
                             ui.set_min_width(scene.width as f32);
                             for index in range {
-                                if let Ok(svg) =
-                                    gentle_render::read_end_pileup::render_lane(scene, index)
-                                {
+                                let rendered = if index < top {
+                                    gentle_render::read_end_pileup::render_track(
+                                        scene, index, false,
+                                    )
+                                } else if index >= top + scene.rows.len() {
+                                    gentle_render::read_end_pileup::render_track(
+                                        scene,
+                                        index - top - scene.rows.len(),
+                                        true,
+                                    )
+                                } else {
+                                    let i = index - top;
+                                    gentle_render::read_end_pileup::render_lane(scene, i)
+                                        .map(|svg| (svg, state.lane_heights[i]))
+                                };
+                                if let Ok((svg, height)) = rendered {
                                     let id = format!(
                                         "bytes://read-end-{}-{}-{index}.svg",
-                                        page.report_sha256, page.view_sha256
+                                        report_hash, view_hash
                                     );
                                     ui.vertical(|ui| {
-                                        ui.set_min_height(state.max_lane_height);
+                                        ui.set_min_height(virtual_height);
                                         ui.add(
                                             egui::Image::from_bytes(id, svg.into_bytes())
                                                 .fit_to_exact_size(egui::vec2(
                                                     scene.width as f32,
-                                                    state.lane_heights[index] as f32,
+                                                    height as f32,
                                                 )),
-                                        )
-                                        .on_hover_text(&scene.rows[index].details);
+                                        );
                                     });
                                 }
                             }
@@ -526,6 +657,23 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn read_end_locus_gui_stale_view_guard_tracks_explicit_model_and_report_without_io() {
+        let mut state = UiState::default();
+        state.locus_mode = true;
+        let binding = serde_json::json!({"path":"synthetic locus","sha256":"hash","bytes":1});
+        state.report_json = binding.to_string();
+        state.active_inspection_binding = Some(binding);
+        let hash = pileup::hash(&state.locus_view).unwrap();
+        assert!(matches_draft(&state, &hash));
+        state.locus_view.projection = locus::ViewProjection::Transcript {
+            model_key: "explicit-model".into(),
+        };
+        assert!(!matches_draft(&state, &hash));
+        state.locus_view.projection = locus::ViewProjection::Genome;
+        state.report_json = "{}".into();
+        assert!(!matches_draft(&state, &hash));
+    }
     #[test]
     fn read_end_gui_starts_without_transcript_or_sample_selection_and_does_not_read_files() {
         let state = UiState::default();

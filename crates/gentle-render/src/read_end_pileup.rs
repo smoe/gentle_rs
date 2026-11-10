@@ -15,7 +15,7 @@ pub struct Band {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Row {
     pub label: String,
@@ -26,6 +26,8 @@ pub struct Row {
     pub orientation: Option<Orientation>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<RunGlyph>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sublanes: Vec<Vec<Band>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -46,7 +48,7 @@ pub struct RunGlyph {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scene {
     pub contig: String,
@@ -57,6 +59,12 @@ pub struct Scene {
     pub header: Vec<String>,
     pub model: Vec<Band>,
     pub rows: Vec<Row>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub top_tracks: Vec<Row>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bottom_tracks: Vec<Row>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axis_kind: Option<String>,
 }
 
 fn text(x: f64, y: f64, value: &str) -> Text {
@@ -110,7 +118,13 @@ fn after_lines(top: u64, lines: usize, padding: u64) -> Result<u64, String> {
 fn base_height(row: &Row, width: u32) -> Result<u64, String> {
     let label = wrapped(&row.label, 185).len();
     let status = wrapped(&row.off_axis, width - 230).len();
-    Ok(after_lines(31, label - 1, 0)?.max(after_lines(54, status - 1, 0)?))
+    Ok(after_lines(31, label - 1, 0)?.max(after_lines(54, status - 1, plot_offset(row)?)?))
+}
+fn plot_offset(row: &Row) -> Result<u64, String> {
+    u64::try_from(row.sublanes.len().saturating_sub(1))
+        .ok()
+        .and_then(|n| n.checked_mul(20))
+        .ok_or_else(|| "read_end_pileup_render_height".into())
 }
 
 fn section(scene: &Scene, index: usize) -> bool {
@@ -131,12 +145,27 @@ fn validate(scene: &Scene) -> Result<(), String> {
     if scene.start >= scene.end
         || !matches!(scene.strand, -1 | 1)
         || !(900..=8000).contains(&scene.width)
-        || scene.rows.len() > 20_000
+        || scene
+            .rows
+            .len()
+            .saturating_add(scene.top_tracks.len())
+            .saturating_add(scene.bottom_tracks.len())
+            > 20_000
+        || scene
+            .axis_kind
+            .as_deref()
+            .is_some_and(|k| !matches!(k, "genomic" | "transcript"))
     {
         return Err("read_end_pileup_render_limits".into());
     }
-    for row in &scene.rows {
+    for row in scene
+        .rows
+        .iter()
+        .chain(&scene.top_tracks)
+        .chain(&scene.bottom_tracks)
+    {
         if row.runs.len() > 20_000
+            || row.sublanes.len() > 20_000
             || row.runs.iter().any(|r| {
                 !matches!(r.base, 'A' | 'T')
                     || r.length == 0
@@ -190,9 +219,12 @@ fn row_group(
     };
     group.append(block(10.0, top + 17.0, &wrapped(&row.label, 185)));
     draw(&mut group, frame, &row.bands, top + 13.0);
+    for (index, bands) in row.sublanes.iter().enumerate() {
+        draw(&mut group, frame, bands, top + 13.0 + index as f64 * 20.0);
+    }
     group.append(block(
         205.0,
-        top + 40.0,
+        top + 40.0 + plot_offset(row)? as f64,
         &wrapped(&row.off_axis, width - 230),
     ));
     let mut run_y = top + base_height(row, width)? as f64;
@@ -239,6 +271,9 @@ struct PageLayout {
     legend_y: u64,
     rows_y: u64,
     height: u64,
+    top_heights: Vec<u32>,
+    bottom_heights: Vec<u32>,
+    tracks_y: u64,
 }
 
 fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
@@ -250,8 +285,16 @@ fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
         .collect();
     let title = wrapped(
         &format!(
-            "{} {}..{} ({:+} transcript direction)",
-            scene.contig, scene.start, scene.end, scene.strand
+            "{} {}..{} ({:+} {} direction)",
+            scene.contig,
+            scene.start,
+            scene.end,
+            scene.strand,
+            if scene.axis_kind.as_deref() == Some("genomic") {
+                "fixed genomic"
+            } else {
+                "transcript"
+            }
         ),
         scene.width - 20,
     );
@@ -262,13 +305,31 @@ fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
     let title_y = after_lines(40, header_lines.len(), 0)?;
     let model_y = after_lines(title_y, title.len(), 8)?;
     let legend_y = after_lines(model_y, 0, 54)?;
-    let rows_y = after_lines(legend_y, legend.len(), 8)?;
+    let tracks_y = after_lines(legend_y, legend.len(), 8)?;
+    let top_heights = scene
+        .top_tracks
+        .iter()
+        .map(|r| row_height(r, scene.width, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    let bottom_heights = scene
+        .bottom_tracks
+        .iter()
+        .map(|r| row_height(r, scene.width, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    let rows_y = top_heights.iter().try_fold(tracks_y, |n, h| {
+        n.checked_add(u64::from(*h))
+            .ok_or_else(|| "read_end_pileup_render_height".to_string())
+    })?;
     let height = heights
         .iter()
         .try_fold(after_lines(rows_y, 0, 8)?, |sum, height| {
             sum.checked_add(u64::from(*height))
                 .ok_or_else(|| "read_end_pileup_render_height".to_owned())
         })?;
+    let height = bottom_heights.iter().try_fold(height, |n, h| {
+        n.checked_add(u64::from(*h))
+            .ok_or_else(|| "read_end_pileup_render_height".to_string())
+    })?;
     Ok(PageLayout {
         heights,
         header_lines,
@@ -279,6 +340,9 @@ fn page_layout(scene: &Scene) -> Result<PageLayout, String> {
         legend_y,
         rows_y,
         height,
+        top_heights,
+        bottom_heights,
+        tracks_y,
     })
 }
 
@@ -312,13 +376,23 @@ pub fn render(scene: &Scene) -> Result<String, String> {
     document.append(block(10.0, 22.0, &layout.header_lines));
     document.append(block(10.0, layout.title_y as f64, &layout.title));
     draw(&mut document, frame, &scene.model, layout.model_y as f64);
-    document.append(text(frame.left, layout.model_y as f64 + 30.0, "5' mRNA"));
+    let genomic = scene.axis_kind.as_deref() == Some("genomic");
     document.append(text(
-        frame.right - 56.0,
+        frame.left,
         layout.model_y as f64 + 30.0,
-        "3' mRNA",
+        if genomic { "genomic low" } else { "5' mRNA" },
+    ));
+    document.append(text(
+        frame.right - if genomic { 96.0 } else { 56.0 },
+        layout.model_y as f64 + 30.0,
+        if genomic { "genomic high" } else { "3' mRNA" },
     ));
     document.append(block(10.0, layout.legend_y as f64, &layout.legend));
+    let mut track_y = layout.tracks_y as f64;
+    for (row, height) in scene.top_tracks.iter().zip(&layout.top_heights) {
+        document.append(row_group(frame, row, scene.width, track_y, false)?);
+        track_y += f64::from(*height);
+    }
     let mut top = layout.rows_y as f64;
     for (index, (row, row_height)) in scene.rows.iter().zip(layout.heights).enumerate() {
         document.append(row_group(
@@ -330,6 +404,10 @@ pub fn render(scene: &Scene) -> Result<String, String> {
         )?);
         top += f64::from(row_height);
     }
+    for (row, height) in scene.bottom_tracks.iter().zip(layout.bottom_heights) {
+        document.append(row_group(frame, row, scene.width, top, false)?);
+        top += f64::from(height);
+    }
     Ok(document.to_string())
 }
 
@@ -337,6 +415,19 @@ fn draw(doc: &mut impl Node, frame: Frame, bands: &[Band], y: f64) {
     for band in bands {
         if let Some((x, width)) = frame.half_open(band.interval.0, band.interval.1) {
             match band.kind.as_str() {
+                "unassessed" => {
+                    doc.append(
+                        Rectangle::new()
+                            .set("x", x)
+                            .set("y", y - 5.0)
+                            .set("width", width.max(1.0))
+                            .set("height", 10)
+                            .set("fill", "#ffffff")
+                            .set("stroke", "#6b7680")
+                            .set("stroke-dasharray", "4,4")
+                            .add(Title::new(&band.label)),
+                    );
+                }
                 "splice_n" | "deletion_or_gap" | "segment_link" => {
                     let dash = match band.kind.as_str() {
                         "splice_n" => "none",
@@ -386,15 +477,31 @@ fn model_scene(scene: &Scene) -> Scene {
         width: scene.width,
         header: vec![],
         model: vec![],
+        top_tracks: vec![],
+        bottom_tracks: vec![],
+        axis_kind: scene.axis_kind.clone(),
         rows: vec![Row {
-            label: "Selected transcript".into(),
+            label: if scene.axis_kind.as_deref() == Some("genomic") {
+                "Fixed genomic locus"
+            } else {
+                "Selected transcript"
+            }
+            .into(),
             details: scene.header.join("\n"),
-            off_axis: format!(
-                "Left=5' mRNA; right=3' mRNA; genomic {}:{}..{}; transcript direction {:+}, not pore direction. N solid; other gaps dashed; segment links dotted.",
-                scene.contig, scene.start, scene.end, scene.strand
-            ),
+            off_axis: if scene.axis_kind.as_deref() == Some("genomic") {
+                format!(
+                    "Fixed genomic low to high: {}:{}..{}. Annotation strands are separate; BAM direction is not RNA origin. N solid; segment links dotted.",
+                    scene.contig, scene.start, scene.end
+                )
+            } else {
+                format!(
+                    "Left=5' mRNA; right=3' mRNA; genomic {}:{}..{}; transcript direction {:+}, not pore direction. N solid; other gaps dashed; segment links dotted.",
+                    scene.contig, scene.start, scene.end, scene.strand
+                )
+            },
             bands: scene.model.clone(),
             orientation: None,
+            sublanes: vec![],
             runs: vec![],
         }],
     }
@@ -414,7 +521,34 @@ pub fn model_height(scene: &Scene) -> Result<u32, String> {
 pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
     validate(scene)?;
     let row = scene.rows.get(index).ok_or("read_end_pileup_lane_range")?;
-    let height = row_height(row, scene.width, section(scene, index))?;
+    render_one_row(scene, row, section(scene, index))
+}
+/// Native annotation tracks use the same frame and checked row layout as full-page exports.
+pub fn render_track(scene: &Scene, index: usize, bottom: bool) -> Result<(String, u32), String> {
+    validate(scene)?;
+    let tracks = if bottom {
+        &scene.bottom_tracks
+    } else {
+        &scene.top_tracks
+    };
+    let row = tracks.get(index).ok_or("read_end_pileup_track_range")?;
+    Ok((
+        render_one_row(scene, row, false)?,
+        row_height(row, scene.width, false)?,
+    ))
+}
+/// Checked track row heights without rendering SVG, for virtualized native views.
+pub fn track_heights(scene: &Scene) -> Result<Vec<u32>, String> {
+    validate(scene)?;
+    scene
+        .top_tracks
+        .iter()
+        .chain(&scene.bottom_tracks)
+        .map(|row| row_height(row, scene.width, false))
+        .collect()
+}
+fn render_one_row(scene: &Scene, row: &Row, section: bool) -> Result<String, String> {
+    let height = row_height(row, scene.width, section)?;
     let frame = Frame {
         start: scene.start + 1,
         end: scene.end,
@@ -433,19 +567,69 @@ pub fn render_lane(scene: &Scene, index: usize) -> Result<String, String> {
                 .set("height", "100%")
                 .set("fill", "#ffffff"),
         );
-    document.append(row_group(
-        frame,
-        row,
-        scene.width,
-        0.0,
-        section(scene, index),
-    )?);
+    document.append(row_group(frame, row, scene.width, 0.0, section)?);
     Ok(document.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_end_locus_tracks_sublanes_and_wrapped_labels_share_exact_dimensions() {
+        let row = Row {
+            label: "stable synthetic read".into(),
+            off_axis: "retained assignments and conflicts ".repeat(12),
+            sublanes: vec![
+                vec![Band {
+                    interval: (100, 200),
+                    kind: "aligned".into(),
+                    label: "hypothesis block".into()
+                }];
+                4
+            ],
+            ..Row::default()
+        };
+        let scene = Scene {
+            contig: "synthetic".into(),
+            start: 50,
+            end: 600,
+            strand: 1,
+            width: 1400,
+            axis_kind: Some("genomic".into()),
+            top_tracks: vec![Row {
+                label: "-> synthetic sense".into(),
+                ..row.clone()
+            }],
+            bottom_tracks: vec![Row {
+                label: "<- synthetic opposite".into(),
+                ..row.clone()
+            }],
+            rows: vec![row],
+            ..Scene::default()
+        };
+        let plain = Scene {
+            top_tracks: vec![],
+            bottom_tracks: vec![],
+            ..scene.clone()
+        };
+        let tracks = track_heights(&scene).unwrap();
+        let (width, height) = dimensions(&scene).unwrap();
+        assert_eq!(
+            height,
+            dimensions(&plain).unwrap().1 + tracks.iter().map(|h| u64::from(*h)).sum::<u64>()
+        );
+        assert_eq!(width, 1400);
+        let svg = render(&scene).unwrap();
+        assert!(svg.contains("genomic low") && svg.contains("genomic high"));
+        assert_eq!(render_track(&scene, 0, false).unwrap().1, tracks[0]);
+        assert!(
+            render_model(&scene)
+                .unwrap()
+                .contains("BAM direction is not RNA origin")
+        );
+        assert!(render_lane(&scene, 0).unwrap().contains("hypothesis block"));
+    }
 
     #[test]
     fn read_end_oriented_mirrored_genomes_share_biological_frame_and_keep_literal_18t() {
@@ -457,6 +641,9 @@ mod tests {
             width: 1400,
             header: vec![],
             model: vec![],
+            top_tracks: vec![],
+            bottom_tracks: vec![],
+            axis_kind: None,
             rows: vec![Row {
                 label: "read".into(),
                 details: "synthetic".into(),
@@ -467,6 +654,7 @@ mod tests {
                     label: "saved block".into(),
                 }],
                 orientation: Some(Orientation::Same),
+                sublanes: vec![],
                 runs: vec![RunGlyph {
                     base: 'T',
                     length: 18,
@@ -505,6 +693,9 @@ mod tests {
             width: 900,
             header: vec![],
             model: vec![],
+            top_tracks: vec![],
+            bottom_tracks: vec![],
+            axis_kind: None,
             rows: vec![],
         };
         for orientation in [
@@ -518,6 +709,7 @@ mod tests {
                 off_axis: "Full status, not physical tail length. ".repeat(8),
                 bands: vec![],
                 orientation: Some(orientation),
+                sublanes: vec![],
                 runs: vec![
                     RunGlyph {
                         base: 'A',
@@ -575,12 +767,16 @@ mod tests {
                 width,
                 header: vec![long.clone()],
                 model: vec![],
+                top_tracks: vec![],
+                bottom_tracks: vec![],
+                axis_kind: None,
                 rows: vec![Row {
                     label: long.clone(),
                     details: "complete synthetic provenance".into(),
                     off_axis: long.clone(),
                     bands: vec![],
                     orientation: None,
+                    sublanes: vec![],
                     runs: vec![],
                 }],
             };
@@ -655,6 +851,7 @@ mod tests {
                 label: "saved block".into(),
             }],
             orientation: None,
+            sublanes: vec![],
             runs: vec![],
         };
         for strand in [1, -1] {
@@ -666,6 +863,9 @@ mod tests {
                 width: 1000,
                 header: vec![],
                 model: vec![],
+                top_tracks: vec![],
+                bottom_tracks: vec![],
+                axis_kind: None,
                 rows: vec![row.clone()],
             };
             let full = render(&scene).unwrap();
@@ -697,6 +897,9 @@ mod tests {
             width: 1000,
             header: vec!["0 observed is not missing".into()],
             model: vec![],
+            top_tracks: vec![],
+            bottom_tracks: vec![],
+            axis_kind: None,
             rows: vec![Row {
                 label: "synthetic_unit".into(),
                 details: "no_bound_basecalls".into(),
@@ -710,6 +913,7 @@ mod tests {
                     })
                     .collect(),
                 orientation: None,
+                sublanes: vec![],
                 runs: vec![],
             }],
         };

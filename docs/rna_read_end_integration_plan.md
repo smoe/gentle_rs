@@ -44,11 +44,11 @@ remaining acceptance, not an inherited pass.
 | 0 | Decisions, reconciliation, OD1-OD6 | Implemented; 19 documentation/checkout tests, status and whitespace pass; session-close 4 OK / 2 expected warnings |
 | 1 | Annotation-checked core, uncollapsed projections, clip descriptors | Implemented; included in Glen's scoped Linux read-end pass at `7c5214ec`; no biological/platform-wide acceptance |
 | 2 | Coverage/denominators, unavailable A/T, imported raw-signal evidence | Implemented and service-connected; included in the scoped Linux pass; no inferred basecalls or real-signal acceptance |
-| 3 | Engine-owned pileup/view and deterministic headless renderer | Glen's renderer 4/4 and actual-layout budget 2/2 pass on Linux at `01d42b71`; native GUI separate |
+| 3 | Engine-owned pileup/view and deterministic headless renderer | Glen reports renderer 6/6 at `7fa6b15a`; retain the earlier `01d42b71` budget receipt; native GUI separate |
 | 4 | Shared supervised process and bounded configured samtools ingress | Linux real-samtools group 9/9 plus overlapping exact CRAM/FAI and BAM/CRAM reruns pass at `1c4a4a5a`; Windows separate |
 | 5 | Authenticated shared commands, immutable exports and discovery | Retain earlier generator/parity/VM/MCP/export receipts; oversized refusal 2/2 and actual small conversion 1/1 pass at `01d42b71` |
-| 6 | Thin virtualized GUI and migrated synthetic tutorial | Wrapped exported-page evidence passes on Linux; cached native lane heights/scrolling and Windows remain unrun |
-| 7 | Original-read orientation and literal A/T runs (owner 2026-11-09) | Source implemented over the same service; 18 new Rust regressions, strengthened VM/MCP/conversion fixtures and oriented CLI replay await external execution |
+| 6 | Thin virtualized GUI and migrated synthetic tutorial | Glen reports all-format actual CLI/export replay at `7fa6b15a`; native GUI/scrolling not_run; Windows CI passes, not a native GUI verdict |
+| 7 | Original-read orientation and literal A/T runs (owner 2026-11-09) | Glen's scoped `7fa6b15a` return passes both checks, renderer 6/6, root/VM/MCP 47/47 and rehearsal 8/8 (both actual-process cases, zero skips); native and overall CI separate |
 
 ### External Compile-Gate Return, 2026-11-08
 
@@ -163,6 +163,148 @@ in the [active handoff](glen_next_verification_handoff.md#oriented-original-read
 Implementation is committed on main at the owner's request. No local Rust/CLI
 execution, push, merge of another branch, candidate selection or scientific
 approval is claimed by source implementation.
+
+### Glen Oriented-Pileup Return, 2026-11-09
+
+Glen reports the complete focused checklist at exactly `7fa6b15a`: both locked
+checks, renderer 6/6, root/real-VM/MCP group 47/47 and rehearsal 8/8 with both
+CLI process cases and no skips. No local product defect was found. The
+[source-bound return](glen_next_verification_handoff.md#glen-oriented-pileup-return-2026-11-09)
+records the reported binary hash, locally confirmed lock hash, available CI
+snapshot and absent raw-receipt details. Native GUI is not_run; Windows,
+headless and release-safety CI pass while macOS is still running and full Linux
+was skipped. This closes the scoped execution request, not release acceptance.
+
+The separate exon-locus/shared-genome-track/scored-Assignments mode is now
+source-authored below, not covered by this historical result. Its prompt/tests
+11-21 remain general, not gene-specific, and do not extend Step 7's acceptance.
+
+### Exon-Locus Extension Draft, 2026-11-09
+
+Status: implemented in source at the owner's request; Rust/runtime/native
+verification pending, not a new accepted slice or release gate.
+Canonical [owner-forwarded Glen prompt](https://gentle.functional.domains/openclaw/canvas/codex-exon-locus-prompt-20261109-d72152e0/report.md),
+SHA-256 `d72152e0197392e2f820312e5a338e860e56cc7a5737f94ef057fa610d79df6d`;
+the Markdown bytes and its manifest entry were checked through normal host
+HTTPS, without bypassing the allowlist. The owner supplied Claude's source-only
+review on 2026-11-10; the resulting bounded repairs are recorded below. No local
+Claude CLI invocation or Rust/runtime acceptance is claimed. The original
+[review prompt](exon_locus_claude_review_prompt.md) remains historical.
+
+The current `coverage::gene_assignment` intentionally excludes multi-gene units.
+Do not weaken it to admit a sense/antisense locus: new locus membership must
+start from authenticated saved genomic observations, before transcript/gene
+assignment. Keep the verified v1/v2 transcript path and its reports unchanged.
+
+1. **Pure locus and assignment records.** Explicit exon interval, contig and
+   bounded flanks; versioned annotation/model bindings; one record per declared
+   unit, factoring the existing sample/unit read-key recipe into one shared
+   helper for both projections. Keep
+   every legal hypothesis and off-locus connection, and distinguish supplementary
+   flags from actual chimeric geometry. Add all seven requested compatibility
+   states plus machine-readable evidence/conflicts and a versioned score tuple.
+   Order lexicographically by splice compatibility, discriminating exonic
+   structure, supported ends, then weak proximity. Lower evidence must never
+   compensate for a structural conflict. Stable-ID ordering is presentation,
+   not a winner; tied or uninformative models remain alternatives. Raw BAM
+   direction and uncalibrated A/T cannot decide RNA origin. Unknown motif
+   evidence remains unknown; do not label a novel junction canonical from
+   annotation proximity. Author the independent fixtures for tests 11-17/19/20.
+2. **One authenticated service and two projections.** Add versioned locus
+   actions under `RnaReadEnds`, reusing original-base intake, bounded loading,
+   cancellation/approval, owned publication and converters. Do not synthesize
+   an old S2 compatible-model claim to reuse the gene-filtered path. Build
+   genomic evidence once; a selected transcript changes only its explicit
+   projection, never read identity, locus geometry, candidates or input counts.
+   Declare each coordinate system. Missing annotation leaves genomic viewing
+   available with unavailable assignments/UTR; failed raw hashes still refuse.
+   Changed annotation gets a new binding/recomputed scores, never a stale cache
+   or silent upgrade of historical reports. Cover tests 18/20/21.
+3. **Shared scene and thin native controls.** Fixed genomic locus, both-strand
+   annotation tracks with arrows and gene/model/version IDs, one displayed
+   read row with separately identifiable hypothesis geometry, and edge markers
+   for connections leaving the locus. Genome and transcript modes consume the
+   same evidence. Preserve all candidates in JSON/TSV and inspectable reasons in
+   the viewer; no coverage-only substitution. Reuse virtualization and checked
+   actual dimensions. Keep full/partial/no reference overlap explicit rather
+   than silently changing the meaning of v2's full-coverage boolean. Native
+   acceptance requires a real GUI environment; tests 8/18/19/21 remain scoped.
+4. **Process/adapter acceptance and documentation.** Source-matched synthetic
+   CLI, real JS/Lua/MCP, both projections and all five formats; deterministic
+   candidate ordering/exports, raw LF/CRLF bindings, quoted/Unicode paths,
+   no-clobber/racing destinations and unchanged source/project state. Extend
+   per-sample declared/locus/visible counters and UTR/alignment/run summaries
+   without counting hypotheses/models twice. Recheck the affected tests 1-10
+   alongside 11-21, not unrelated completed campaigns. Glen/CI owns Rust and
+   native Windows/GUI execution. Update discovery and canonical projections
+   only where their contracts actually change; never hand-edit generated rows.
+
+No numeric biological probability, read-to-molecule conversion, implicit
+representative model, TP73-specific label heuristic, calibrated adapter rule,
+raw-signal tail caller or private-data run is part of this extension. Do not add the
+new mode to `.13` acceptance merely because its prompt is available; candidate
+scope and publication still require the owner.
+
+Implementation follows those four parts: pure `read_ends/locus.rs` and
+`locus/presentation.rs`; nested `rna_read_ends/locus.rs` actions; existing shared
+renderer/native viewer; synthetic Rust and opt-in real-process/VM fixtures.
+The old gene-assignment rule and v1/v2 wires remain unchanged. Preferred flags
+use structural compatibility/discrimination, not weak endpoint proximity;
+the full tuple orders presentation without forcing a unique biological winner.
+Uncalibrated A/T has zero strand-assignment weight. A novel junction is not
+called canonical without motif evidence; incompatible hypotheses remain unresolved.
+Missing explicit annotation/CDS leaves genomic evidence and unavailable facts;
+present-but-mismatched files still fail closed. Scores are freshly computed
+against the supplied annotation binding, never taken from old comparisons.
+Bounded retained geometry, candidates, runs, work and page sublanes refuse
+rather than silently truncate. All saved units are per SAM, not molecule IDs.
+See the [active verification scope](glen_next_verification_handoff.md#exon-locus-and-scored-alternatives-2026-11-09).
+
+### Exon-Locus Review Repair Ledger, 2026-11-10
+
+Source review against `7fa6b15a` plus this thread's uncommitted implementation;
+the named structures/counterexamples were traced before changing them. These
+are source-derived defects, not reproduced Rust/runtime failures. Repairs are
+authored and Rust tests remain **unrun**, with execution assigned to Glen/CI.
+No schema/RULE_VERSION bump for this unreleased v1, new dependency, additional
+calibrated cutoff, mask policy, queue, release gate or legacy gene-only behavior.
+
+1. Outside-window run anchors remain unmodified data/off-axis text, not invalid
+   or clamped glyphs; JSON-only export has a service regression too.
+2. Junction-backed conditional strand support; mirrored identical chains remain
+   competitors. Preferred flags/per-model classes and overhang refusal stay.
+3. Full-chain classification follows complete conflict-free annotated junctions,
+   independent of deletion gaps and endpoints. Unavailable exclusions use serde
+   names; raw-only locus membership is separately marked/counted.
+4. Cache other-model exon unions once per sample/model, adding consumed `work`
+   without tuning caps/charge rules or introducing a sweep algorithm. A
+   30-model/12-exon/20-read/~40-block fixture requests the 100M cap and prints
+   actual consumed work when externally run; no local measurement is invented.
+5. Distinct declared-not-found diagnostics, de-duplicated run counters,
+   alternative UTR statuses/reasons, unique annotation tracks and selected-track
+   placement. Add realistic query-disjoint chimera, novel, CDS, two-sample,
+   cancellation and named-budget regressions. Replace Python source grep with
+   fixture behavior; actual GENtle LF/CRLF evidence remains the opt-in CLI test.
+
+The two withdrawn claims are not acted on: query-overlapping segments are never
+joined by S2's DAG, and admitted units already have known axes. Mask-aware
+counts, terminal tolerance/calibration, run-storage redesign and capacity tuning
+are outside this repair. The baseline diff in `read_ends.rs`, `oriented.rs` and
+`pileup.rs` was reviewed as shared helper extraction/default-empty scene fields,
+with no changed legacy charge, hash recipe or v1/v2 report field. This is a
+source-level preservation check, not a runtime byte-equivalence receipt.
+
+| Decision | Options (Owner Choice Pending) | Implemented Default |
+|---|---|---|
+| OD-L1 | Require junctions for conditional strand support, or later permit independently justified containment-only support; containment-only `AntisenseCompatible` class policy remains pending. | Every preferred assignment needs a matched junction for `model_supported`; otherwise strand unresolved with the containment-only reason. No score/preferred/class change. |
+| OD-L2 | Tolerate declared-but-absent annotation/CDS with diagnostics, or refuse those declarations. | Preserve tolerance with distinct hash-bearing diagnostics; present bad hashes and absent declared originals still refuse. |
+| OD-L3 | Keep terminal overhang as a structural conflict, or separately justify tolerance/calibration. | Unchanged; no new threshold or accepted relation. |
+| OD-L4 | Measure current capacity, or later authorize cap/charge/algorithm changes. | Only cache competitor unions and report work; scale/real work remain externally unmeasured, no limit increase. |
+
+Follow the [narrowed repair checks](glen_next_verification_handoff.md#exon-locus-review-repairs-2026-11-10),
+not unrelated completed reader/BLAST/barcode campaigns. Native, Windows and
+scientific acceptance remain separate. All four owner options remain pending
+beyond these expressly selected defaults.
 
 ## Open Owner Decisions
 

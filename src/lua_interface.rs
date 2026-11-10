@@ -2740,40 +2740,49 @@ mod tests {
 
     #[test]
     fn read_end_lua_runtime_inspection_preserves_state_and_matches_saved_engine_page() {
-        let (_root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
-        let command = crate::rna_read_ends::Command::Inspect { report, view };
-        let expected =
-            crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+        let (root, report, view) = crate::rna_read_ends::saved_read_end_test_fixture();
+        let legacy = crate::rna_read_ends::Command::Inspect { report, view };
+        for (_root, command) in [
+            (root, legacy),
+            crate::rna_read_ends::saved_locus_inspection_fixture(),
+        ] {
+            let expected =
+                crate::rna_read_ends::execute(&GentleEngine::new(), command.clone(), &mut |_| true)
+                    .unwrap();
+            if expected["page"]["schema"] == "gentle.rna_read_end_locus_page.v1" {
+                assert!(!expected["page"]["reads"].as_array().unwrap().is_empty());
+            } else {
+                assert!(
+                    expected["page"]["orientation_summary"]["units_with_terminal_t"]
+                        .as_u64()
+                        .unwrap()
+                        > 0
+                );
+            }
+            let operation = Operation::RnaReadEnds {
+                command: Box::new(command),
+            };
+            let state = ProjectState::default();
+            let before = serde_json::to_value(&state).unwrap();
+            let lua = LuaInterface::new();
+            lua.register_rust_functions().unwrap();
+            lua.lua()
+                .globals()
+                .set("state_in", lua.lua().to_value(&state).unwrap())
                 .unwrap();
-        assert!(
-            expected["page"]["orientation_summary"]["units_with_terminal_t"]
-                .as_u64()
-                .unwrap()
-                > 0
-        );
-        let operation = Operation::RnaReadEnds {
-            command: Box::new(command),
-        };
-        let state = ProjectState::default();
-        let before = serde_json::to_value(&state).unwrap();
-        let lua = LuaInterface::new();
-        lua.register_rust_functions().unwrap();
-        lua.lua()
-            .globals()
-            .set("state_in", lua.lua().to_value(&state).unwrap())
-            .unwrap();
-        lua.lua()
-            .globals()
-            .set("operation", serde_json::to_string(&operation).unwrap())
-            .unwrap();
-        lua.lua()
-            .load("result = apply_operation(state_in,operation)")
-            .exec()
-            .unwrap();
-        let value: Value = lua.lua().globals().get("result").unwrap();
-        let result: serde_json::Value = lua.lua().from_value(value).unwrap();
-        assert_eq!(result["state"], before);
-        assert_eq!(result["result"]["rna_read_ends"], expected);
+            lua.lua()
+                .globals()
+                .set("operation", serde_json::to_string(&operation).unwrap())
+                .unwrap();
+            lua.lua()
+                .load("result = apply_operation(state_in,operation)")
+                .exec()
+                .unwrap();
+            let value: Value = lua.lua().globals().get("result").unwrap();
+            let result: serde_json::Value = lua.lua().from_value(value).unwrap();
+            assert_eq!(result["state"], before);
+            assert_eq!(result["result"]["rna_read_ends"], expected);
+        }
     }
 
     #[test]

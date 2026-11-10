@@ -26,6 +26,24 @@ statuses. See [measurement/request reference](rna_read_end_metrics.md).
 Canonical parity generation and Rust/platform acceptance remain external gates
 under the no-local-Rust restriction; source authoring is not a passing receipt.
 
+The additive `locus` action nests `build`/`inspect`/`export` under that same
+operation, without a new shell/MCP command path. Its v1 build/report/view/page
+schemas separate fixed genomic membership from explicit mature-transcript
+projection. Annotation may be unavailable without discarding genomic evidence;
+present hash mismatches refuse. All assignments, scoring-rule versions, source
+bindings and hypothesis geometry are retained, with separate declared/locus/
+visible counts. The shared approval/cancellation/publisher/converter path is
+unchanged. See [the full locus contract](rna_read_end_metrics.md#exon-locus-and-coupled-transcript-projection).
+
+The unreleased locus v1 records consumed `work`, admitted-versus-raw-only
+membership and a separate raw-only count; unavailable causes use serde names.
+Conditional strand support requires matched junctions in every preferred model,
+not exon containment. Full-chain means the complete conflict-free junction
+chain, not base-exact coverage. Missing declared annotation/CDS is distinguished
+from omission; present bad hashes and absent declared original bases refuse.
+Alternative UTR/alignment states stay explicit; counters do not multiply runs
+by basecall variants. No mask-aware counting or new biological acceptance follows.
+
 ## Observed Splice-Junction Assessment (J1)
 
 `AssessObservedSpliceJunctions`, `InspectObservedSpliceJunctions` and

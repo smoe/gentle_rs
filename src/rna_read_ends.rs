@@ -21,8 +21,38 @@ const CAP: u64 = 128 * 1024 * 1024;
 const MEMORY: usize = 512 * 1024 * 1024;
 const RASTER_PIXEL_LIMIT: u64 = 32_000_000;
 
+/// Versioned exon-locus actions over the same loader, publication and conversion boundary.
+pub mod locus;
+
+#[cfg(test)]
+mod locus_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) fn saved_locus_inspection_fixture() -> (tempfile::TempDir, Command) {
+    let (root, request) = locus_tests::fixture("\n");
+    let result = execute(
+        &GentleEngine::new(),
+        Command::Locus {
+            command: Box::new(locus::Command::Build {
+                request: Box::new(request),
+            }),
+        },
+        &mut |_| true,
+    )
+    .unwrap();
+    let report = serde_json::from_value(result["report"].clone()).unwrap();
+    (
+        root,
+        Command::Locus {
+            command: Box::new(locus::Command::Inspect {
+                report,
+                view: core::locus::View::default(),
+            }),
+        },
+    )
+}
 
 #[cfg(test)]
 pub(crate) fn saved_read_end_test_fixture() -> (tempfile::TempDir, PrimerPayloadFile, pileup::View)
@@ -85,6 +115,9 @@ pub enum Format {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    Locus {
+        command: Box<locus::Command>,
+    },
     Build {
         request: Box<Build>,
     },
@@ -112,10 +145,23 @@ pub enum Command {
 
 impl Command {
     pub fn requires_confirmation(&self) -> bool {
-        !matches!(self, Self::Inspect { .. })
+        !self.is_inspection()
+    }
+    pub fn is_inspection(&self) -> bool {
+        matches!(self, Self::Inspect { .. })
+            || matches!(self,Self::Locus {command} if command.is_inspection())
+    }
+    pub fn sets_report(&self) -> bool {
+        matches!(self, Self::Build { .. })
+            || matches!(self,Self::Locus {command} if command.is_build())
+    }
+    fn completion_expected(&self) -> bool {
+        matches!(self, Self::Build { .. } | Self::Export { .. })
+            || matches!(self,Self::Locus {command} if !command.is_inspection())
     }
     pub fn marker(&self) -> Option<&str> {
         match self {
+            Self::Locus { command } => command.marker(),
             Self::Build { request } => request.cancel_path.as_deref(),
             Self::Export { cancel_path, .. } | Self::SelectLocus { cancel_path, .. } => {
                 cancel_path.as_deref()
@@ -125,6 +171,7 @@ impl Command {
     }
     fn output(&self) -> Option<&str> {
         match self {
+            Self::Locus { command } => command.output(),
             Self::Build { request } => Some(&request.output_dir),
             Self::Export { output_dir, .. } => Some(output_dir),
             Self::SelectLocus { analysis, .. } => Some(&analysis.output_dir),
@@ -164,7 +211,7 @@ pub(crate) fn completion_binding(
     command: &Command,
     value: &Value,
 ) -> Result<Completion, EngineError> {
-    if !matches!(command, Command::Build { .. } | Command::Export { .. }) {
+    if !command.completion_expected() {
         return Err(fail("completion_command"));
     }
     let receipt: Completion = serde_json::from_value(value["completion"].clone()).map_err(fail)?;
@@ -231,6 +278,7 @@ fn directory(raw: &str) -> Result<PathBuf, EngineError> {
 
 fn inputs(command: &Command) -> Vec<&PrimerPayloadFile> {
     match command {
+        Command::Locus { command } => command.inputs(),
         Command::Build { request } => request
             .samples
             .iter()
@@ -289,6 +337,22 @@ fn marker_path(command: &Command) -> Result<Option<PathBuf>, EngineError> {
             }
         }
     }
+    if let Command::Locus {
+        command: locus_command,
+    } = command
+    {
+        for source in locus_command.analysis_reports() {
+            let source = kernel::validate_sam_raw_path(source)?
+                .parent()
+                .ok_or_else(|| fail("report_path"))?;
+            if p.starts_with(source)
+                || ((cfg!(windows) || cfg!(target_os = "macos"))
+                    && Path::new(&fold(p)).starts_with(Path::new(&fold(source))))
+            {
+                return Err(fail("control_collision"));
+            }
+        }
+    }
     Ok(Some(p.into()))
 }
 fn cancelled(marker: Option<&Path>, identity: &str) -> Result<bool, EngineError> {
@@ -340,18 +404,13 @@ struct Loaded {
     original_bases_sha256: Option<String>,
 }
 
-fn load(
-    sample: &Sample,
-    source: &str,
-    limits: core::Limits,
-    remaining: &mut usize,
-    check: &mut dyn FnMut() -> Result<(), EngineError>,
-) -> Result<Loaded, EngineError> {
-    check()?;
-    ingress::local_file(&sample.analysis.report_path)?;
+fn analysis_file(
+    binding: &ObservedSamResultBinding,
+) -> Result<(crate::engine::ObservedSamReport, PrimerPayloadFile), EngineError> {
+    ingress::local_file(&binding.report_path)?;
     let inspection = GentleEngine::inspect_observed_transcript_structures_from_sam(
-        &sample.analysis.report_path,
-        Some(&sample.analysis),
+        &binding.report_path,
+        Some(binding),
         "query_structures.tsv",
         0,
         true,
@@ -366,7 +425,7 @@ fn load(
         .find(|a| a.path == "analysis.json")
         .ok_or_else(|| fail("data_artifact"))?;
     let file = PrimerPayloadFile {
-        path: Path::new(&sample.analysis.report_path)
+        path: Path::new(&binding.report_path)
             .parent()
             .ok_or_else(|| fail("report_path"))?
             .join("artifacts/analysis.json")
@@ -375,6 +434,18 @@ fn load(
         bytes: artifact.bytes,
         sha256: artifact.sha256.clone(),
     };
+    Ok((report, file))
+}
+
+fn load(
+    sample: &Sample,
+    source: &str,
+    limits: core::Limits,
+    remaining: &mut usize,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Loaded, EngineError> {
+    check()?;
+    let (report, file) = analysis_file(&sample.analysis)?;
     let charged = [
         file.bytes,
         sample.model.bytes,
@@ -455,6 +526,12 @@ fn completed(
     report: &PrimerPayloadFile,
     check: &mut dyn FnMut() -> Result<(), EngineError>,
 ) -> Result<pileup::Report, EngineError> {
+    completed_record(report, check)
+}
+fn completed_record<T: DeserializeOwned>(
+    report: &PrimerPayloadFile,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<T, EngineError> {
     let receipt: Completion = bound_json(report, check)?;
     let mut basis = receipt.clone();
     basis.content_sha256.clear();
@@ -512,6 +589,53 @@ fn export_svg(
         check_raster_pixel_budget(width, height)?;
     }
     gentle_render::read_end_pileup::render(scene).map_err(fail)
+}
+
+fn validate_formats(formats: &[Format]) -> Result<(), EngineError> {
+    if formats.is_empty()
+        || formats.len() > 5
+        || formats
+            .iter()
+            .enumerate()
+            .any(|(i, f)| formats[..i].contains(f))
+    {
+        return Err(fail("export_formats"));
+    }
+    Ok(())
+}
+fn export_contents<T: Serialize>(
+    page: &T,
+    mut tsv: impl FnMut() -> Result<String, EngineError>,
+    scene: &gentle_render::read_end_pileup::Scene,
+    formats: Vec<Format>,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Vec<(String, Vec<u8>)>, EngineError> {
+    validate_formats(&formats)?;
+    let svg = export_svg(scene, &formats)?;
+    let mut contents = vec![];
+    for format in formats {
+        check()?;
+        let options = crate::svg_png::SvgPngRenderOptions::default();
+        let (name, bytes) = match format {
+            Format::Json => ("page.json", json_bytes(page)?),
+            Format::Tsv => ("lanes.tsv", tsv()?.into_bytes()),
+            Format::Svg => ("pileup.svg", svg.as_bytes().to_vec()),
+            Format::Png => (
+                "pileup.png",
+                crate::svg_png::render_svg_to_png_bytes(&svg, options)
+                    .map_err(fail)?
+                    .bytes,
+            ),
+            Format::Pdf => (
+                "pileup.pdf",
+                crate::svg_vector_pdf::render_svg_to_vector_pdf_bytes_audited(&svg, options)
+                    .map_err(fail)?
+                    .bytes,
+            ),
+        };
+        contents.push((name.into(), bytes));
+    }
+    Ok(contents)
 }
 
 fn publish(
@@ -579,10 +703,7 @@ pub fn execute(
     progress: &mut dyn FnMut(OperationProgress) -> bool,
 ) -> Result<Value, EngineError> {
     if let Command::Cancel { command: target } = &command {
-        if matches!(
-            target.as_ref(),
-            Command::Cancel { .. } | Command::Inspect { .. }
-        ) {
+        if matches!(target.as_ref(), Command::Cancel { .. }) || target.is_inspection() {
             return Err(fail("cancel_target"));
         }
         let identity = pileup::hash(target)?;
@@ -613,6 +734,7 @@ pub fn execute(
     };
     check()?;
     match command {
+        Command::Locus { command } => locus::execute(*command, identity.clone(), &mut check),
         Command::Build { request } => {
             if request.schema != "gentle.rna_read_end_build.v1"
                 || request.samples.is_empty()
@@ -717,49 +839,12 @@ pub fn execute(
             ..
         } => {
             directory(&output_dir)?;
-            if formats.is_empty()
-                || formats.len() > 5
-                || formats
-                    .iter()
-                    .enumerate()
-                    .any(|(i, f)| formats[..i].contains(f))
-            {
-                return Err(fail("export_formats"));
-            }
+            validate_formats(&formats)?;
             let report = completed(&report, &mut check)?;
             let page = pileup::page(&report, &view)?;
             let scene = pileup::scene(&report, &page)?;
-            let svg = export_svg(&scene, &formats)?;
-            let mut contents = vec![];
-            for format in formats {
-                check()?;
-                let (name, bytes) = match format {
-                    Format::Json => ("page.json", json_bytes(&page)?),
-                    Format::Tsv => ("lanes.tsv", pileup::tsv(&page)?.into_bytes()),
-                    Format::Svg => ("pileup.svg", svg.as_bytes().to_vec()),
-                    Format::Png | Format::Pdf => {
-                        let options = crate::svg_png::SvgPngRenderOptions::default();
-                        if format == Format::Png {
-                            (
-                                "pileup.png",
-                                crate::svg_png::render_svg_to_png_bytes(&svg, options)
-                                    .map_err(fail)?
-                                    .bytes,
-                            )
-                        } else {
-                            (
-                                "pileup.pdf",
-                                crate::svg_vector_pdf::render_svg_to_vector_pdf_bytes_audited(
-                                    &svg, options,
-                                )
-                                .map_err(fail)?
-                                .bytes,
-                            )
-                        }
-                    }
-                };
-                contents.push((name.into(), bytes));
-            }
+            let contents =
+                export_contents(&page, || pileup::tsv(&page), &scene, formats, &mut check)?;
             let receipt = publish(
                 &output_dir,
                 identity.clone(),

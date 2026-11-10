@@ -2,6 +2,22 @@
 
 ### Saved Read Ends And Pileup
 
+The **Exon-locus report** control inspects the new locus report through the same
+service. Leave the model key blank for fixed genomic coordinates, or paste an
+explicit saved model key for mature mRNA 5'-to-3' projection. Both annotation
+strands, individual read/hypothesis geometry and assignment reasons share the
+virtualized viewer. Paging/class filters retain original denominators. These
+controls do not turn alignment direction into RNA origin; shared-exon evidence
+remains ambiguous. Prepare build/export as exact typed drafts and approve writes
+before I/O. Native scrolling/window acceptance remains pending, not implied by
+headless fixtures. [Contract](../rna_read_end_metrics.md#exon-locus-and-coupled-transcript-projection).
+The selected transcript track is above reads on either strand; genome tracks
+merge matching annotation/transcript bindings across samples with all model keys
+retained in details. Outside-window original A/T attachments are off-axis text,
+not clamped symbols. Admitted/raw-only membership and alternative UTR counts are
+explicit. A preferred model without junction support still has unresolved RNA
+strand; a full-chain label is not a complete RNA/end claim.
+
 The **Read ends / pileup** tab is the experimental saved-evidence viewer for
 the shared `RnaReadEnds` operation. It starts with no transcript, sample or
 report selected. Use the [synthetic 07.01 rehearsal](../tutorial/07-01_rna_read_batch_gene_support_cli.md)

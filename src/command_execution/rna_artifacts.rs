@@ -66,7 +66,7 @@ impl Policy {
 fn classify(op: Operation) -> Policy {
     match op {
         Operation::RnaReadEnds {command} => match command.as_ref() {
-            crate::rna_read_ends::Command::Inspect{..}=>Policy::Observe{expensive:true},
+            command if command.is_inspection()=>Policy::Observe{expensive:true},
             crate::rna_read_ends::Command::Cancel{..}=>Policy::Control,
             _=>Policy::ReadEnds(command),
         },

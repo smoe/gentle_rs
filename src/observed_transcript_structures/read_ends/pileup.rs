@@ -828,6 +828,7 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
                 off_axis: off_axis.join("; "),
                 bands,
                 orientation: Some(orientation),
+                sublanes: vec![],
                 runs,
             });
         }
@@ -872,6 +873,7 @@ pub fn scene(report: &Report, page: &Page) -> Result<Scene, EngineError> {
         header,
         model,
         rows,
+        ..Default::default()
     })
 }
 

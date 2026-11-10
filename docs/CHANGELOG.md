@@ -1,5 +1,60 @@
 # GENtle Changelog
 
+## 2026-11-10 - Repair Source-Reviewed Exon-Locus Boundaries
+
+- Address the owner's attributed source-only Claude review against `7fa6b15a`
+  plus this thread's uncommitted extension; no runtime reproduction is claimed.
+  Keep the unreleased v1 schemas/rule version, legacy gene-filtered semantics,
+  dependency/lock state, scoring tuple/preferred flags and configured caps.
+- Keep outside-window A/T attachments in data/off-axis text, require junctions
+  for conditional strand support, preserve opposite-strand identical-chain
+  competitors and classify full junction chains independently of deletion gaps
+  and endpoints. Do not introduce overhang tolerance or a new biological claim.
+- Cache competitor exon unions once per sample/model and report consumed work;
+  distinguish unavailable exclusions, raw-only membership, declared-but-absent
+  annotation/CDS, alternative UTR facts and unioned run counters. Retain bad-hash
+  and absent-original refusal; de-duplicate genome tracks with all model keys.
+- Add 13 core review regressions, three service regressions and stronger
+  existing controls, including a realistic query-disjoint scale/chimera fixture.
+  Replace the Python source grep with fixture behavior and make the actual CLI
+  replay ingest LF/CRLF graphs and export a narrow-window JSON page. Rust/VM/
+  actual-CLI/native execution and capacity measurement remain Glen/CI work;
+  OD-L1 through OD-L4 stay pending beyond their documented defaults.
+
+## 2026-11-09 - Add General Exon-Locus Pileups And Scored Alternatives
+
+- Add versioned nested locus build/inspect/export actions to the existing
+  authenticated read-end service. Keep genomic membership before gene filtering,
+  every read once, both-strand annotation tracks, hypothesis geometry and stable
+  IDs across explicit mature-transcript projections. No fixed gene/barcode logic.
+- Retain all scored assignments/reasons/conflicts and rule/model bindings;
+  splice/exon evidence outranks endpoints, shared overlaps stay ambiguous,
+  BAM direction/uncalibrated A-T do not decide RNA origin. Missing annotation
+  retains genomic evidence; changed bindings recompute, wrong hashes refuse.
+- Reuse original-base, cancellation/approval, no-clobber, shared SVG/PNG/PDF
+  scene and actual-layout pixel guards. Add bounded candidates/geometry/runs,
+  per-sample input/locus/visible counters and synthetic Rust/process/VM controls.
+- Prepare a read-only Claude critique prompt, without invoking Claude. Python
+  source/fixture checks and rustfmt parsing are not Rust/runtime/native passes;
+  those remain with Glen/CI. No push or local Rust build; release scope unchanged.
+
+## 2026-11-09 - Record Glen's Scoped Oriented-Pileup Pass
+
+- Attribute the `7fa6b15a` isolated return: both locked checks, renderer 6/6,
+  root plus real JS/Lua/MCP 47/47, source-matched CLI and rehearsal 8/8 with
+  both actual-process cases and zero skips. Record the reported binary hash;
+  independently confirm only the local lockfile hash, not an absent raw archive.
+- Read existing CI `42648565446`: Windows/headless/release safety pass, macOS
+  still runs, full Linux and optional audit/GUI jobs skip. Native GUI is not_run;
+  no final overall/platform/package/scientific verdict or release approval.
+- Close the fulfilled execution request without repeating completed campaigns.
+  Keep the later exon-locus/common-genome-track/scored-Assignments proposal
+  separate from the completed contract; its expanded prompt/tests 11-21 are
+  now retrieved over normal HTTPS and hash-verified (`d72152e0...d79df6d`).
+  Record a minimal draft plan, not implementation or a new release gate;
+  no TP73-specific code, changed scoring rules or allowlist bypass.
+  Documentation only; no Rust, push, dispatch or new product implementation.
+
 ## 2026-11-09 - Add Oriented Original-Read Pileups And Literal A/T Evidence
 
 - Extend the existing read-end service with optional hash-bound original bases

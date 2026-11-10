@@ -14,9 +14,9 @@ They do not align reads, choose a transcript silently, or infer a poly(A) site.
 ### Integrated Saved-Service Contract
 
 `rna-reads read-ends` / `RnaReadEnds` now share the typed commands in
-`src/rna_read_ends.rs`. They are experimental; scoped Linux/macOS returns and
-the remaining selection/layout/native gates are recorded in the
-[active handoff](glen_next_verification_handoff.md#oriented-original-read-pileup-2026-11-09).
+`src/rna_read_ends.rs`. They are experimental; scoped execution returns and
+the remaining native/platform boundaries are recorded in the
+[current return and remaining checks](glen_next_verification_handoff.md#glen-oriented-pileup-return-2026-11-09).
 The build schema is `gentle.rna_read_end_build.v1`; explicit source/gene/
 transcript and ordered sample bindings are mandatory. One analysis per sample/
 gene is admitted. Saved report status, result binding and artifact hashes are
@@ -143,6 +143,120 @@ synthetic originals and a fresh `oriented-build-command.json`; execute that
 instead of the legacy build command. Continue with `bind-pileup`, inspect and
 export. All stages require fresh paths. The source-matched process companion is
 `tests/test_read_end_rehearsal.py`; skipped process cases are not acceptance.
+
+Glen reports the focused `7fa6b15a` return green: renderer 6/6, root library/
+actual JS/Lua/MCP 47/47 and rehearsal 8/8, including both real CLI cases without
+skips, plus both locked checks. Native GUI is not_run; final platform/release
+acceptance is separate. This is the **transcript-bound** contract. A later
+exon-locus/common-genome-track/scored-Assignments extension below is authored
+separately and is not certified by those results.
+
+### Exon-Locus And Coupled Transcript Projection
+
+The existing operation accepts a new nested command:
+`{"action":"locus","command":{"action":"build","request":{...}}}`.
+Build schema `gentle.rna_read_end_locus_build.v1` supplies `source_id`,
+`region` (contig, contig_length, zero-based half-open exon, flank_left,
+flank_right, optional anchor_transcript_id), ordered `samples`, `terminal_runs`,
+core `limits`, fresh `output_dir`, `max_output_bytes` and optional `cancel_path`.
+The report/page records effective limits, capped at 100,000 models/units,
+1,000,000 intervals/observations and 100,000,000 work units; candidate paths
+and copied run records have additional 100,000 ceilings. Bounds refuse instead
+of truncating scientific output; they are not a claim of an allocator RSS cap.
+Each sample has sample_id, the completed observed-SAM `analysis` binding, and
+explicit optional raw file bindings `annotation`, `model` and `original_bases`.
+No annotation is chosen implicitly. Missing annotation leaves the fixed genome
+view usable; missing CDS gives missing UTR facts, not zero reach. A present file
+with wrong hash/size still refuses. A new annotation binding recomputes scores;
+historical comparisons are neither upgraded nor reused as assignment authority.
+Omitted files retain the existing unavailable diagnostics. An explicitly declared
+but absent file is tolerated separately as
+`annotation_declared_not_found:<sha256>` or
+`cds_model_declared_not_found:<sha256>`. Therefore identical request hashes can
+produce different content when these optional files appear/disappear; retain the
+completion/content hash and actual diagnostics, not just the request hash.
+An explicitly bound `original_bases` file still refuses when absent or changed.
+
+`inspect` and `export` under the same nested command accept the completion
+`report` binding and `gentle.rna_read_end_locus_view.v1` view. Default projection
+is `{"kind":"genome"}`; `{"kind":"transcript","model_key":"EXPLICIT_KEY"}`
+uses one key from saved `models`. Other fields are sample_ids (empty means all),
+optional class, offset, count (1..2000), max_sublanes (1..20000), width (900..8000).
+Genome coordinates stay fixed low-to-high. Transcript coordinates are mature
+mRNA 5'-to-3', with introns omitted; full genomic blocks/junctions remain in the
+same read record. Both-strand model tracks name genes, models, annotation release
+and hashes. Hypothesis sublanes, clipping, outside-window continuation and
+supplementary/chimeric hints stay explicit; each read is counted/displayed once.
+
+The locus report `gentle.rna_read_end_locus.v1` ranks all overlapping models
+using exported `gentle.locus_assignment.lexicographic.v1` rules. Fewer structural
+conflicts precede matched junctions/full chain and discriminating exon bases;
+endpoints/proximity only order weak evidence and cannot break structural ties.
+An overhang remains a structural conflict, with no new tolerance. A unique
+containment-only preferred model is not resolved RNA origin: `model_supported`
+requires at least one matched junction on **every** preferred assignment. Pure
+exon containment stays `unresolved` with
+`exon_containment_only_no_junction_support`; the per-model score, preferred flag
+and `antisense_compatible` class are descriptive and otherwise unchanged.
+Uncalibrated literal A/T has zero strand weight. Shared sense/antisense sequence
+without a discriminator remains `uninformative_overlap`; tied assignments stay
+alternatives. Exact/compatible, novel-compatible, antisense-compatible, chimeric
+and unresolved states retain reasons/conflicts and per-hypothesis scores.
+As in the existing `ExactFullChain` comparison relation, `score.full_chain`
+means the full annotated junction chain with at least one intron and no
+structural conflict. Internal deletion gaps and short endpoints do not break
+that chain; endpoint matches/distances remain separate. `exact_transcript_match`
+uses this full-chain condition (subject to the existing higher-priority
+antisense/ambiguity classes), not base-exact exon coverage or complete RNA ends.
+Unknown splice motifs are not called canonical. Alignment direction, model
+strand and conditional `model_supported` molecule-strand evidence are distinct:
+double-stranded cDNA BAM direction alone does not establish RNA origin.
+Saved search/view completeness declarations remain per read; conditional model
+support does not exclude other loci when the original mapping search was limited.
+
+Input/locus/visible denominators, conditional per-model UTR statuses and
+nonadditive A/T/alignment summaries are separate. Model selection never changes
+genomic evidence, stable read IDs or input counts. Duplicate source units across
+samples refuse. Original-query A/T letters, full/partial/no aligned intervals
+and missing original-base diagnostics keep the existing semantics. No physical
+tail, RNA completeness, APA or causal claim follows.
+`Read.membership` distinguishes `admitted-hypothesis` from
+`non-admitted-observation-only`; the latter remains in locus counts but has a
+separate per-sample `non_admitted_observation_only_units` count. Units without
+overlap retain `no_saved_block_in_locus`, except upstream-unavailable units,
+which use `upstream_unit_unavailable:` plus the upstream serde snake_case reasons.
+Read-level unavailable names use that same vocabulary, not Rust Debug names.
+Runs are counted once per unit/query interval/base, not once per original-base
+variant; differing alignment states remain `alternatives`. Disagreeing
+per-hypothesis UTR metrics also count as `alternatives`, not `missing`.
+When CDS exists but projection conflicts, UTR reason is
+`model_projection_incompatible`, not `candidate_model_unavailable`.
+
+Genome tracks are unique by annotation hash/transcript ID with all sample model
+keys retained in details. A selected transcript track is always above the reads,
+including for a minus-strand model. An original run attaching outside the fixed
+genome window remains unchanged in JSON/TSV and explicit off-axis text; it is
+neither an invalid glyph nor a glyph clamped to an invented edge position.
+Masked query bases are not removed from locus base counts. A supplementary
+alignment overlapping the primary on the query never joins a hypothesis;
+classification uses admitted paths, with non-admitted observations retained.
+
+`Report.work` and `Page.work` record consumed deterministic charge units (as
+`Projection.work`), not wall time, CPU time, reads/second or allocator memory.
+The union of competitor exons is cached once per sample/model, respecting both
+chain and strand; all remaining charge sites and limits are unchanged. The meter
+is shared across samples and original-base scanning still charges per base.
+The synthetic 30-model/12-exon/20-read deletion-split test is authored, not run
+locally; real capacity remains unmeasured. S2 intake still caps one analysis at
+4096 units. No throughput promise or cap increase follows.
+
+JSON/TSV retain all candidates, rule/version bindings and unavailable facts;
+SVG/PNG/PDF share the same checked scene, with annotation tracks separate from
+read rows. Existing 32-Mpixel, fresh-parent/no-clobber and request-bound cancellation
+guards still apply. Requesting oversized raster formats refuses publication;
+request SVG/JSON/TSV separately to retain those non-raster artifacts.
+Use `tests/test_rna_read_end_locus.py` for the general synthetic CLI companion.
+Source authoring/Python checks are not Rust, VM, Windows or native GUI acceptance.
 
 `observed_transcript_structures::read_ends::project_read_ends` now provides the
 same V2 UTR semantics as a pure Rust-level building block. It consumes a strict

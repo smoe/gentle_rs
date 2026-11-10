@@ -20136,7 +20136,19 @@ fn read_end_descriptor(id: &str) -> Value {
     descriptor["result_contract"] = json!(
         "gentle.rna_read_end_pileup.v2 with conservative v1 reading and immutable report-last completion. Inspect/export verify all saved artifact hashes; filters never alter original denominators or unfiltered unit counters. Literal A/T retain original query coordinates, terminal/internal status, alignment coverage and alternatives; no reverse-complement renaming. Markers request cancellation, not confirmed termination. Saved units are per SAM, not deduplicated across analyses."
     );
-    descriptor["terminal_run_defaults"] = json!(crate::observed_transcript_structures::read_ends::oriented::Policy::default());
+    descriptor["terminal_run_defaults"] =
+        json!(crate::observed_transcript_structures::read_ends::oriented::Policy::default());
+    descriptor["exon_locus"] = json!({
+        "command":{"action":"locus","command":{"action":"inspect","report":{"path":"REPLACE_BOUND_LOCUS_REPORT","sha256":"REPLACE_RAW_SHA256","bytes":0},"view":crate::observed_transcript_structures::read_ends::locus::View::default()}},
+        "actions":["build","inspect","export"],"build_schema":crate::rna_read_ends::locus::BUILD_SCHEMA,
+        "report_schema":crate::observed_transcript_structures::read_ends::locus::SCHEMA,
+        "scoring_version":crate::observed_transcript_structures::read_ends::locus::RULE_VERSION,
+        "membership":"All saved read units with an aligned block in an explicit genomic exon/flank window, before gene assignment; distinguish admitted-hypothesis from non-admitted-observation-only and count the latter separately. No fixed genes/barcodes.",
+        "models":"Explicit optional normalized annotation and CDS bindings. Missing annotation retains genomic evidence; changed annotations require fresh scores. Hash mismatch refuses.",
+        "strands":"Alignment direction, annotated strand, and conditional model-supported molecule strand are separate. Model-supported strand requires matched junctions in every preferred assignment; exon containment, BAM direction and uncalibrated A/T do not resolve RNA origin.",
+        "projection":"Genome or explicit transcript model key; all assignments, conflicts, hypothesis alternatives and original-base evidence retained. Denominators do not change with projection.",
+        "cancellation":"Outer request-bound cancel action; same confirmation and no-clobber publication contract."
+    });
     descriptor["original_bases_input"] = json!({
         "sample_field":"original_bases", "binding":"raw file path/bytes/sha256",
         "schema":crate::observed_transcript_structures::read_ends::oriented::BASES_SCHEMA,

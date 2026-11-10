@@ -6,6 +6,11 @@ use super::*;
 pub const BASES_SCHEMA: &str = "gentle.rna_read_end_original_bases.v1";
 pub(super) const MAX_RUN_RECORDS: usize = 100_000;
 
+/// Stable declared-unit identity shared by genomic and transcript projections, not a molecule ID.
+pub fn read_key(sample: &str, unit: &ObservedSamQueryUnitKey) -> Result<String, EngineError> {
+    pileup::hash(&(sample, unit))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
@@ -323,7 +328,7 @@ pub(super) fn project(
         }
     }
     Ok(Evidence {
-        read_key: pileup::hash(&(sample, unit))?,
+        read_key: read_key(sample, unit)?,
         direction,
         availability: match variants.len() {
             0 => "no_bound_basecalls",

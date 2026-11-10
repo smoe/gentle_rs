@@ -2,6 +2,17 @@
 
 ## Saved Read-End Pileup And Coverage
 
+For overlapping sense/antisense models, use the additive typed `locus` action
+under `rna-reads read-ends`, not the older gene-only coverage selection.
+Choose a fixed genomic exon/flank window, then optionally project the same
+stable reads onto an explicit saved model key. All candidates/reasons remain;
+BAM direction alone is not RNA origin. See the
+[request and scoring contract](../rna_read_end_metrics.md#exon-locus-and-coupled-transcript-projection).
+Locus inspection/export now reports consumed `work`, raw-only membership and
+distinct declared-not-found diagnostics. `model_supported` needs junctions;
+containment-only preference is still unresolved strand. Outside-window A/T
+attachments stay in JSON/TSV/off-axis text and do not break JSON-only export.
+
 `rna-reads read-ends REQUEST_JSON_OR_@FILE` uses the shared `RnaReadEnds`
 operation. The typed command has an explicit `action`: `build`, `inspect`,
 `export`, `select_locus` or `cancel`. See the

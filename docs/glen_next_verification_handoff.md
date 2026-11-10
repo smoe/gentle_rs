@@ -1,5 +1,173 @@
 # Glen: Next Verification And Return
 
+## Exon-Locus Review Repairs, 2026-11-10
+
+Active scope after the owner's next push. This supersedes the unexecuted
+2026-11-09 exon-locus checklist below, not Glen's already completed transcript-
+bound `7fa6b15a`, reader/BLAST or barcode campaigns. The owner supplied Claude's
+read-only source review; Codex traced its structures/counterexamples and authored
+the bounded repairs. It is **not** a reproduced Rust failure or passing Rust/VM/
+native result. No local Claude invocation, Rust build/check/test, push or dispatch.
+The unreleased locus v1 schemas and RULE_VERSION remain unchanged.
+
+Local checks on Darwin arm64 / Python 3.15.0, `main@7fa6b15a` plus the working
+tree (not a committed or runtime-certified candidate):
+
+```text
+python3 -m unittest discover -s tests -p 'test_*rna_read_end*.py' -v
+Ran 54 tests; OK (53 passed, 1 actual-GENtle-CLI skip)
+python3 -m unittest scripts.test_tutorial_checkouts -q
+Ran 87 tests; OK
+rustfmt --edition 2024 --check src/observed_transcript_structures/read_ends/locus.rs src/rna_read_ends/locus.rs src/rna_read_ends/locus_tests.rs
+exit 0 (includes child tests/presentation; parsing/formatting only)
+check_documentation_status.py: OK
+manual_docs.py: OK
+git diff --check: exit 0
+```
+
+Session-close: **4 OK, 2 warnings, 0 failures**: intentional dirty worktree and
+manual plan-fidelity reminder. Scope was manually reconciled to repairs 1-9;
+no counterexample remained untraced. The two withdrawn claims were not changed.
+Work/capacity remains unmeasured locally; no Rust, actual VM/CLI, native GUI or
+Windows result can be inferred from these Python/source checks. The explicit
+actual-CLI skip remains open, not a pass. Cargo/dependencies/lockfile unchanged.
+
+Repair files: `read_ends/locus.rs`, `locus/presentation.rs`, existing locus tests
+and new `locus/review_tests.rs`; `rna_read_ends/locus.rs` and `locus_tests.rs`;
+synthetic preparer/`tests/test_rna_read_end_locus.py`, discovery wording and the
+linked decision/measurement/plan/interface/provenance docs. Earlier uncommitted
+GUI/renderer/adapter changes remain part of the overall integration, not a newly
+executed acceptance result. All unrelated `paper`, data, `output/`, untracked
+prompts and recovery stashes remain untouched.
+
+Thirteen newly authored core test functions and three newly authored service
+test functions are **unrun**, alongside strengthened existing controls. Exact
+main filters below select them with the earlier relevant locus tests. Check
+test counts are nonzero; do not treat compile failure, a zero-match or a skipped
+actual process/VM case as acceptance. Use one isolated checkout and explicit
+run-owned target, not a shared target/cache. Keep the actual tested source and
+binary hashes, platform/toolchain/features/profile and raw commands/results.
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 read_end_locus_ -- --test-threads=1 --nocapture
+cargo test --locked -p gentle-render read_end_ -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_js_runtime -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_lua_runtime -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_mcp_discovery -- --test-threads=1
+GENTLE_READ_END_BIN_DIR=/absolute/source-matched/bin python3 -m unittest tests.test_rna_read_end_locus -v
+```
+
+Specific targets under the locus filter: off-window softclip/internal-run plus
+JSON-only service export; one/three-base overhang and intronic containment;
+mirrored identical chains with/without a third model; indel-split full versus
+partial junction chains; unavailable causes; query-disjoint collinear/chimeric
+segments; positive novel compatibility, disagreeing hypotheses and CDS metrics;
+run-variant unions, named budgets, two-sample/track filters, raw-only membership,
+declared-absent annotation/CDS versus wrong hash, missing originals and exact
+cancellation errors. Existing junction-backed support/RC controls must stay green.
+Do not act on the withdrawn overlapping-query chimera or unknown-axis claims.
+
+Retain actual `Report.work`/`Page.work`. The scale target
+`read_end_locus_scale_30_models_12_exons_20_deletion_split_reads_records_work`
+prints its work under `--nocapture`; it has 30 models, 12 exons, 10 minus-strand
+models, 20 reads/~40 deletion-split blocks, no originals and a 100M-work ceiling.
+Record this number and work for any independently authorized real locus run;
+do not start a new private-data campaign merely to measure it. Work is shared
+across samples, original-base scanning still charges per base, S2 still admits
+at most 4096 units per analysis. No cap/charge/sweep tuning or capacity pass is
+claimed without execution. OD-L4 therefore remains pending.
+
+The actual CLI test now executes both LF and CRLF input graphs, explicit model
+projections, all five formats, deterministic output/no-clobber and a narrow-
+window JSON-only export with unchanged off-axis run data. Fast Python fixture
+generation/hash checks are **not** GENtle behavior/line-ending acceptance.
+Native GUI (track position, scrolling, off-axis labels, counters, stale/cancel
+receipts), native Windows paths/handles and real-data/scientific acceptance stay
+separate. Use matching normal CI for Windows, without a new unauthorized dispatch.
+Do not regenerate parity/catalogs speculatively: no new command/registry row;
+retain ordinary freshness gates on the integrated source.
+
+OD-L1..OD-L4 remain owner-pending beyond the selected defaults in the
+[repair ledger](rna_read_end_integration_plan.md#exon-locus-review-repair-ledger-2026-11-10).
+Return per-item pass/fail/not_run/blocked, source/binary/lock/input hashes,
+commands/counts/skips, receipts/artifact paths and residual limits. No package,
+release, provider/model call, publication or biological approval is requested.
+
+## Exon-Locus And Scored Alternatives, 2026-11-09
+
+Historical source-authoring checklist, superseded by the 2026-11-10 repair scope.
+
+Active **new-source** scope after the owner's push; not an interim freeze or a
+request to repeat completed 7fa6b15a/reader/BLAST/barcode campaigns. The canonical
+prompt is bound below to `d72152e0...d79df6d`. Implementation is source-authored,
+not Rust/VM/native accepted. Claude's subsequent review is
+[prepared](exon_locus_claude_review_prompt.md), not performed.
+
+Local authoring checks: normal Python read-end discovery **53 passed / 1 actual
+CLI skip**, older rehearsal **6 passed / 2 actual CLI skips**, and tutorial/manual
+LF/CRLF checkout suite **87/87**. These scopes are disjoint; reruns are not added
+to the totals. The first package-style core/boundary invocation lacked the tests
+import path; rerunning with the supported discovery/PYTHONPATH succeeded.
+Documentation/manual freshness, scoped rustfmt parsing and whitespace pass.
+Session-close: **4 OK, 2 warnings, 0 failures** (intentional dirty worktree and
+manual plan-fidelity review). Unrelated `paper`, private data, `output/`, prompt
+files and stashes are untouched. Dependencies/lockfile are unchanged.
+
+Changed boundaries: pure locus records and scored hypotheses, shared stable
+read keys/exon map, nested `RnaReadEnds::Locus` loader/actions, existing renderer
+annotation tracks/sublanes, thin native controls and strengthened actual
+JS/Lua/MCP fixtures. The gene-filtered v1/v2 path is preserved, not repurposed.
+No new command path/registry row; do not hand-edit canonical projections.
+
+Use one clean isolated checkout, explicit run-owned target and locked single-job
+builds; record the actual tested integrated SHA, toolchain/features/platform.
+Do not inherit/clean the shared target. Suggested focused commands (external,
+not run by this authoring thread):
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 read_end_locus -- --test-threads=1
+cargo test --locked -p gentle-render read_end_ -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_js_runtime -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 read_end_lua_runtime -- --test-threads=1
+cargo test --locked --lib -j1 read_end_mcp_discovery -- --test-threads=1
+GENTLE_READ_END_BIN_DIR=/absolute/source-matched/bin python3 -m unittest tests.test_rna_read_end_locus -v
+```
+
+Require nonzero counts, the actual CLI case (no skip-as-pass), the new GUI helper
+test, actual VM execution and matching normal CI. Reuse existing registry
+freshness evidence unless affected; normal CI still retains its mandatory gate.
+The shared exporter/layout changed: retain PNG/PDF dimensions/pixel limits and
+closed staged/no-clobber behavior, not only Rust source assertions.
+
+Verify prompt tests 11-21: shared exon stays uninformative on both BAM directions;
+sense/antisense-specific junctions outrank endpoints/A-T; RC/mirror invariance;
+identical models remain ordered alternatives; unknown motifs are not fabricated
+as canonical; supplementary flags alone are not chimeras. Model switch keeps
+genomic blocks, read IDs and declared/locus counts unchanged. JSON/TSV export all
+candidate/path scores, evidence/conflicts, rule version and annotation bindings.
+Inspect missing annotation without losing genomic/original-base evidence; changed
+binding recomputes scores, present wrong hash refuses; no stale-score reuse.
+Check duplicate-source refusal, hypothesis/candidate/run/geometry budgets,
+request-bound cancellation and input protection. Partial reference overlap stays
+distinct from the full-coverage boolean; original A/T letters never rename.
+
+Native GUI when available: genome and explicit transcript selection, both-strand
+tracks, unique reads with hypothesis sublanes, off-window links/clips, reasons,
+class/paging counters, long labels/scrolling, stale-view binding and cancellation
+with terminal receipt. Native GUI is not inferred from headless helper tests.
+Windows paths/handles/racing output and normal platform CI remain external;
+Glen is Linux, so use the next owner-triggered matching Windows CI rather than
+requiring a nonexistent Windows device or dispatching extra jobs.
+
+Return per-item pass/fail/not_run/blocked, exact source/binary/lock/input hashes,
+commands/counts/skips, profile/features/platform, artifacts and unresolved limits.
+No private-data run, live model/provider call, release/package/dispatch or
+scientific acceptance is requested. Candidate selection/publication is owner-gated.
+
 Local repair-loop tooling now follows the
 [recorded nextest workflow](testing.md#local-failure-collection-and-recorded-reruns).
 The macOS development host has nextest 0.9.150 and recording enabled; this does
@@ -9,7 +177,9 @@ finish with a complete intended scope plus doctests, and retain normal CI gates.
 
 ## Read-End Integration Plan, 2026-11-08
 
-**Active scope:** the [oriented original-read extension](#oriented-original-read-pileup-2026-11-09).
+**Current status:** Glen reports the [scoped oriented-pileup pass at 7fa6b15a](#glen-oriented-pileup-return-2026-11-09).
+Do not repeat its completed Rust/VM/MCP/CLI campaign without affected source changes.
+Native GUI and the still-running same-source CI remain separate.
 The [pixel-guard Linux return](#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09)
 closes its earlier focused retry at `01d42b71`, not this later renderer/service.
 Release-candidate selection/execution still requires the owner.
@@ -24,7 +194,63 @@ implementation receipt/filter and runtime status will be recorded separately.
 The prior core at `1df2db13` is still Rust-unverified, not accepted by the earlier
 containment pass. No repeated BLAST/reader or private-data campaign is requested.
 
+## Glen Oriented-Pileup Return, 2026-11-09
+
+Glen's forwarded return binds exactly
+`7fa6b15adc28d0adfe3e1edce0190a2621b54705` in an isolated checkout with an
+owned target. Both locked checks pass (default tests and headless library),
+renderer `read_end_` **6/6**, root library plus actual JS/Lua VMs and MCP
+`read_end_` **47/47**, and the source-matched CLI build pass. Python rehearsal
+is **8/8 with zero skips**, including both actual CLI process cases. The VM/MCP
+checks are part of the 47, not additional test totals. No product defect reported.
+
+The return confirms both transcript/read orientations, mRNA-relative groups and
+Alternatives, original 12A/18T and query coordinates, literal 60/10 policy,
+softclips and partial/complete alignment, unchanged denominators, all five
+formats, repeat exports, complete labels, actual-layout pixel limits,
+no-clobber and absence of a project file. Keep this scoped to the tested
+transcript-bound contract, not physical tails or scientific interpretation.
+
+Reported CLI SHA-256:
+`1f6416b56f2f9ac631608f9cb3d6d571207de7bec56a51ef9890a4652b460258`.
+The CLI self-reports the tested revision. Reported unchanged lockfile SHA-256:
+`718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`;
+Codex independently checked that hash against the local lockfile. This message
+does not supply an audit archive/raw logs, toolchain/profile receipt or artifact
+location; preserve those when supplied, without inventing an independent
+manifest/binary verification or reopening completed tests merely for bookkeeping.
+
+Codex read the existing same-source [CI run 42648565446](https://github.com/smoe/gentle_rs/actions/runs/42648565446)
+after the forwarded status: Windows, headless and release safety now pass;
+macOS remains in progress, full Linux and optional GUI/scroll/audit jobs are
+skipped. This is a snapshot, not a final overall-CI verdict, native GUI or
+Windows real-tool/package acceptance. No dispatch/retry was performed.
+
+Remaining current-contract checks are native GUI (`not_run`) and completion of
+the matching platform CI; release packages/container/readiness/owner approval
+remain separately gated. Do not repeat completed reader/BLAST, containment,
+private-barcode, parity or the above scoped execution campaign.
+
+Glen explicitly identifies a **separate proposed extension**: exon-locus mode,
+shared genomic track and scored gene/antisense `Assignments`. It is not in
+`7fa6b15a`, and tests 11-21 are not satisfied by this pass. The expanded prompt
+has now been [received via HTTPS](https://gentle.functional.domains/openclaw/canvas/codex-exon-locus-prompt-20261109-d72152e0/report.md).
+Codex fetched it through the host's normal HTTPS route and verified its exact
+SHA-256 against the owner's value and the `report.md` entry in the
+[manifest](https://gentle.functional.domains/openclaw/canvas/codex-exon-locus-prompt-20261109-d72152e0/bundle-manifest.json):
+`d72152e0197392e2f820312e5a338e860e56cc7a5737f94ef057fa610d79df6d`.
+Only that Markdown entry was checked, not every bundle asset. No allowlist
+bypass or credentials were used during retrieval. Implementation was subsequently
+authorized and source-authored in the active scope above; no local Rust ran.
+The [minimal draft plan](rna_read_end_integration_plan.md#exon-locus-extension-draft-2026-11-09)
+separates this work from Step 7. TP73/TP73-AS may be examples, never hard-wired
+gene choices. Do not relabel the verified transcript-bound feature as
+incomplete merely because this later product scope was proposed.
+
 ## Oriented Original-Read Pileup, 2026-11-09
+
+Historical implementation/verification checklist, fulfilled by Glen's scoped
+`7fa6b15a` return above; native and platform boundaries remain explicit.
 
 Verify the owner's next pushed integrated source containing this extension;
 do not freeze development or substitute historical `01d42b71` acceptance.

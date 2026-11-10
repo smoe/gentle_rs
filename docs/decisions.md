@@ -128,6 +128,55 @@ Literal sequence composition is not physical poly(A) length, a polyadenylation
 site, transcript completeness or causality. Use one service/scene across all
 adapters and exports, preserving actual-layout pixel, byte and no-clobber guards.
 
+## Exon-Locus Assignments Before Gene Filtering
+
+Status: active
+
+Owner-authorized 2026-11-09: add versioned exon-locus actions to `RnaReadEnds`,
+not a second adapter-specific engine. Membership starts from authenticated
+saved genomic observations before the existing gene-only coverage filter;
+do not weaken that older contract. Keep each declared unit and every legal
+hypothesis, with one stable sample/unit key in both projections and distinct
+input/locus/visible counts. Coordinates and annotation/CDS bindings are explicit.
+Missing annotation leaves genomic inspection available; a hash mismatch refuses.
+Changed annotations require new bound scores, never stale comparison reuse.
+
+Export a versioned lexicographic geometry score and all candidate reasons/conflicts.
+Splice incompatibility cannot be outweighed by endpoint proximity or A/T.
+Preferred flags require the strongest structural prefix; endpoint/full-coverage
+presentation ordering alone cannot settle origin. A unique containment-only
+preferred model still cannot establish strand: conditional `model_supported`
+requires matched junctions on every preferred assignment. Otherwise emit
+`exon_containment_only_no_junction_support` for that containment-only case;
+per-model classes/score/preferred remain descriptive. Overhangs remain conflicts
+without a new tolerance. Full chain means a conflict-free complete annotated
+junction chain with at least one intron, not base-exact exon coverage or RNA ends;
+indel gaps and endpoint metrics remain separate. Ties and shared-exon overlaps
+stay alternatives; no inferred canonical motif or numeric biological probability.
+BAM orientation, annotated strand and conditional model support for RNA origin
+are different facts. Uncalibrated original A/T has zero strand-assignment weight;
+supplementary flags alone are not chimeric geometry. No hard-coded genes/barcodes.
+Fixed genomic and explicit mature-transcript scenes share read IDs, retained
+geometry, literal basecalls and no-clobber/pixel guards. Neither establishes
+molecules, physical tails, complete RNA, APA or causality. Runtime/platform
+acceptance and release scope remain separate from this implementation decision.
+
+The unreleased locus v1 identifiers remain unchanged by the 2026-11-10 review
+repairs. Membership names admitted-hypothesis versus non-admitted-observation-only
+overlap with separate counts. Preserve upstream unavailable reasons in their
+serde snake_case vocabulary rather than labelling unavailable units off-locus.
+Omitted annotation/CDS and declared-but-missing files are distinct diagnostics;
+the latter remain tolerated, present bad hashes and missing declared originals
+still refuse. Request identity alone is not content identity in that tolerant path.
+Run counters union per-unit interval/base across variants; disagreeing alignment
+states or per-path UTR facts remain alternatives. Tracks merge only the same
+annotation hash/transcript ID; fixed-window out-of-range run attachments remain
+off-axis text, never clamped coordinates. Record consumed work and cache only
+other-model exon unions (same chain on the other strand is still a competitor);
+do not tune charge rules, caps or further algorithms without another decision.
+Masked bases remain in locus counts. Query-overlapping supplementary segments
+never join a hypothesis; classify by admitted paths, not by merging such segments.
+
 ## Phase 2/S1 Completeness Compatibility
 
 Status: active
