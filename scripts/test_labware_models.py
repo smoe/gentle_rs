@@ -6,6 +6,7 @@ no duplicate model implementation is used. OpenSCAD is optional, not installed
 by this test. Mesh bounds are visualization checks, never physical fit evidence.
 """
 
+import hashlib
 import math
 import json
 import os
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,8 +60,11 @@ def openscad_binary():
 
 
 def carrier_template(source, rows, columns, width, depth, height, opening, edge, front,
-                     pitch=20, outer_wall=None):
+                     pitch=20, outer_wall=None, *, safe_lock=False,
+                     label_depth=6.0, corner_radius=2.0):
     """Exercise actual SCAD format strings, not the unexecuted Rust derivation."""
+    source = source.replace("\r\n", "\n")
+    rounded = re.search(r'const SAFE_LOCK_RACK_BODY_SCAD: &str = r#"(.*?)"#;', source, re.S)
     source = source.split("pub(super) fn export_rack_openscad(", 1)[1].split(
         "pub(super) fn export_rack_simulation_json(", 1)[0]
     # Only the original bore generator; the new storage-box branch is separate.
@@ -72,15 +77,43 @@ def carrier_template(source, rows, columns, width, depth, height, opening, edge,
     end = re.search(r'scad.push_str\(("(?:\\.|[^"\\])*")\)', source)
     if not end:
         raise ValueError("carrier SCAD terminator missing")
+    body = re.search(
+        r'scad.push_str\(if safe_lock \{\s*SAFE_LOCK_RACK_BODY_SCAD\s*\} else \{\s*'
+        r'("(?:\\.|[^"\\])*")\s*\}\);', source)
+    if not body or not rounded:
+        raise ValueError("carrier body selection changed; review the harness")
     result = header.format("synthetic", "unverified", "tube_rack", "reference_only",
-                           width, depth, height, opening, 2.0, front, 6.0, 0.8, 2.0)
+                           width, depth, height, opening, 2.0, front,
+                           label_depth, 0.8, corner_radius)
+    result += rounded.group(1) if safe_lock else json.loads(body.group(1))
     for row in range(rows):
         for column in range(columns):
             result += bore.format(edge + opening / 2 + column * pitch,
                                   front + opening / 2 + row * pitch)
     outer_wall = edge if outer_wall is None else outer_wall
-    result += strip.format(outer_wall / 2, 0.8, width - outer_wall, max(front - 1.6, 0))
+    strip_depth = "front_label_strip_depth" if safe_lock else f"{max(front - 1.6, 0):.3f}"
+    result += strip.format(outer_wall / 2, 0.8, width - outer_wall, strip_depth)
     return result + json.loads(end.group(1))
+
+
+def section_contours(path):
+    """Read only OpenSCAD's polygonal SVG sections; restore millimetre Y direction."""
+    contours = []
+    for element in ET.parse(path).getroot().iter("{http://www.w3.org/2000/svg}path"):
+        for subpath in re.findall(r"M(.*?)z", element.attrib["d"], re.S):
+            numbers = [float(value) for value in
+                       re.findall(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", subpath)]
+            if len(numbers) < 6 or len(numbers) % 2 or not all(map(math.isfinite, numbers)):
+                raise ValueError("invalid OpenSCAD section polygon")
+            points = list(zip(numbers[::2], (-value for value in numbers[1::2])))
+            contours.append(points)
+    if not contours:
+        raise ValueError("OpenSCAD section has no polygon contours")
+    return contours
+
+
+def contour_bounds(points):
+    return [(min(p[axis] for p in points), max(p[axis] for p in points)) for axis in (0, 1)]
 
 
 def storage_box_template(source, rows, columns):
@@ -100,6 +133,141 @@ def storage_box_template(source, rows, columns):
 
 
 class LabwareTemplateTests(unittest.TestCase):
+    def test_safe_lock_source_uses_dimensions_without_moving_holes_in_lf_and_crlf(self):
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text(encoding="utf-8")
+        selection = source.split("let safe_lock = matches!(", 1)[1].split(");", 1)[0]
+        self.assertEqual(set(re.findall(r"RackPhysicalTemplateKind::(\w+)", selection)), {
+            "SafeLockTubeRackCollarSeated", "SafeLockTubeRackFloorSeated",
+        })
+        for rows, columns, pitch in ((4, 6, 20), (1, 1, 20), (3, 8, 14)):
+            for opening, edge, height in ((10.45, 4.775, 24), (10.15, 4.925, 44)):
+                args = (rows, columns, 2 * edge + opening + (columns - 1) * pitch,
+                        10 + edge + opening + (rows - 1) * pitch,
+                        height, opening, edge, 10, pitch)
+                scad = carrier_template(source, *args, safe_lock=True)
+                self.assertEqual(scad, carrier_template(source.replace("\n", "\r\n"),
+                                                       *args, safe_lock=True))
+                self.assertIn("linear_extrude(height=rack_height)", scad)
+                self.assertIn("circle(r=corner_radius)", scad)
+                self.assertIn("outer_width - corner_radius", scad)
+                self.assertIn("outer_depth - corner_radius", scad)
+                self.assertNotIn("cube([outer_width, outer_depth, rack_height]", scad)
+                self.assertIn(", front_label_strip_depth, front_label_strip_recess + 0.05]", scad)
+                holes = [line for line in scad.splitlines() if "cylinder(" in line]
+                self.assertEqual(len(holes), rows * columns)
+                for row in range(rows):
+                    for column in range(columns):
+                        self.assertIn(
+                            f"translate([{10 + column * pitch:.3f}, "
+                            f"{10 + opening / 2 + row * pitch:.3f}, floor_thickness])",
+                            holes[row * columns + column])
+
+    def test_other_carrier_source_bytes_preserve_pre_fix_baselines(self):
+        # Synthetic source-fragment controls from 6adee466, recorded before this fix.
+        # No committed CAD fixture, Rust execution or manufacturing claim.
+        cases = [
+            ((4, 6, 62.8, 44.0, 12.0, 9.2, 1.8, 3.0, 10, 1.2),
+             "0039700249401982d6f0d10ad0c879d833d2a81d35c7d45b07fface8033e9e36"),
+            ((4, 6, 87.2, 60.2, 18.0, 9.2, 4.0, 5.0, 14, 2.4),
+             "a6973a768ce96e0383e9142041a682dbd4fb3734f558695f9645ad9c08076117"),
+            ((8, 12, 115.1, 78.5, 4.0, 6.9, 4.6, 4.0, 9, 1.0),
+             "b7829da79a2ec1fc758d8506e340419ae3fdf48878e37f10b213b341f3b04294"),
+            ((8, 12, 127.76, 85.48, 15.0, 6.6, 11.08, 7.94, 9, 2),
+             "f904d670a805a9e226722ec3d2c65b670d6f60f95ed3f1e94177116306216b9d"),
+        ]
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text(encoding="utf-8")
+        for args, expected in cases:
+            for text in (source, source.replace("\n", "\r\n")):
+                actual = carrier_template(text, *args).encode("utf-8")
+                self.assertEqual(hashlib.sha256(actual).hexdigest(), expected)
+
+    def test_safe_lock_mesh_radius_label_depth_floor_and_d1(self):
+        binary = openscad_binary()
+        if not binary:
+            self.skipTest("OpenSCAD unavailable; new Rust exporter execution remains separate")
+        source = (ROOT / "src/engine/state/lineage_containers.rs").read_text(encoding="utf-8")
+        # Both support modes, a minimal grid, compact spacing, and nondefault
+        # SCAD parameter controls: fixed literals cannot pass the latter case.
+        cases = [
+            (4, 6, 20, 10.45, 4.775, 24, 2, 6),
+            (4, 6, 20, 10.15, 4.925, 44, 2, 6),
+            (1, 1, 20, 10.45, 4.775, 24, 2, 6),
+            (3, 8, 14, 10.45, 4.775, 24, 2, 6),
+            (4, 6, 20, 10.45, 4.775, 24, 1, 4),
+        ]
+        with tempfile.TemporaryDirectory(prefix="gentle Safe-Lock geometry ") as directory:
+            for index, (rows, columns, pitch, opening, edge, height, radius, label) in enumerate(cases):
+                with self.subTest(case=index):
+                    width = 2 * edge + opening + (columns - 1) * pitch
+                    depth = 10 + edge + opening + (rows - 1) * pitch
+                    scad = Path(directory) / f"carrier-{index}.scad"
+                    mesh = scad.with_suffix(".off")
+                    scad.write_text(carrier_template(
+                        source, rows, columns, width, depth, height, opening, edge, 10, pitch,
+                        safe_lock=True, label_depth=label, corner_radius=radius), encoding="utf-8")
+                    self.assertIn("$fn = 56;", scad.read_text(encoding="utf-8"))
+                    result = subprocess.run([binary, "--hardwarnings", "-o", str(mesh), str(scad)],
+                                            capture_output=True, text=True, timeout=120)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("ERROR:", result.stderr)
+                    cuts = {}
+                    for name, z in (("floor", 1.999), ("bores", 2.001),
+                                    ("label", height - 0.4), ("below_label", height - 0.801)):
+                        wrapper = Path(directory) / f"cut-{index}-{name}.scad"
+                        svg = wrapper.with_suffix(".svg")
+                        wrapper.write_text(
+                            f'projection(cut=true) translate([0,0,-{z}]) import("{mesh.name}");\n',
+                            encoding="utf-8")
+                        result = subprocess.run([binary, "--hardwarnings", "-o", str(svg), str(wrapper)],
+                                                capture_output=True, text=True, timeout=120)
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertNotIn("ERROR:", result.stderr)
+                        cuts[name] = section_contours(svg)
+                    self.assertEqual({key: len(value) for key, value in cuts.items()}, {
+                        "floor": 1, "bores": rows * columns + 1,
+                        "label": rows * columns + 2, "below_label": rows * columns + 1,
+                    })
+                    outline = cuts["floor"][0]
+                    for (lo, hi), expected in zip(contour_bounds(outline), (width, depth)):
+                        self.assertAlmostEqual(lo, 0, delta=0.001)
+                        self.assertAlmostEqual(hi, expected, delta=0.001)
+                    for cx, cy in ((radius, radius), (width - radius, radius),
+                                   (radius, depth - radius), (width - radius, depth - radius)):
+                        arc = [(x, y) for x, y in outline
+                               if (x <= radius + 0.001 if cx == radius else x >= width - radius - 0.001)
+                               and (y <= radius + 0.001 if cy == radius else y >= depth - radius - 0.001)]
+                        self.assertGreater(len(arc), 2)
+                        for x, y in arc:
+                            # A mesh-plane intersection may fall anywhere on a
+                            # 56-gon chord. Bound its apothem, not just vertices;
+                            # 0.001 mm separately covers SVG coordinate rounding.
+                            distance = math.hypot(x - cx, y - cy)
+                            self.assertGreaterEqual(distance, radius * math.cos(math.pi / 56) - 0.001)
+                            self.assertLessEqual(distance, radius + 0.001)
+                    hole_bounds = [contour_bounds(points) for points in cuts["bores"]
+                                   if contour_bounds(points)[0][1] - contour_bounds(points)[0][0] < opening + 0.01]
+                    centers = []
+                    for bounds in hole_bounds:
+                        for lo, hi in bounds:
+                            self.assertAlmostEqual(hi - lo, opening, delta=0.001)
+                        centers.append(tuple(sum(bound) / 2 for bound in bounds))
+                    centers.sort(key=lambda p: (round(p[1], 3), round(p[0], 3)))
+                    expected = [(10 + column * pitch, 10 + opening / 2 + row * pitch)
+                                for row in range(rows) for column in range(columns)]
+                    self.assertEqual(len(centers), len(expected))
+                    for actual, target in zip(centers, expected):
+                        for value, wanted in zip(actual, target):
+                            self.assertAlmostEqual(value, wanted, delta=0.001)
+                    pockets = [contour_bounds(points) for points in cuts["label"]
+                               if opening + 0.01 < contour_bounds(points)[0][1] - contour_bounds(points)[0][0] < width - 0.01]
+                    self.assertEqual(len(pockets), 1)
+                    (xlo, xhi), (ylo, yhi) = pockets[0]
+                    self.assertAlmostEqual(xlo, float(f"{edge / 2:.3f}"), delta=0.001)
+                    self.assertAlmostEqual(xhi - xlo, width - edge, delta=0.001)
+                    self.assertAlmostEqual(ylo, 0.8, delta=0.001)
+                    self.assertAlmostEqual(yhi - ylo, label, delta=0.001)
+                    self.assertLess(yhi, centers[0][1] - opening / 2)
+
     def test_storage_box_square_cells_and_shared_template_routes_in_lf_and_crlf(self):
         source = (ROOT / "src/engine/state/lineage_containers.rs").read_text()
         for rows, columns in ((9, 9), (4, 12), (1, 1)):

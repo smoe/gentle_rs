@@ -251,7 +251,9 @@ geometric validation or completion of a simulation milestone. The original
 [read-only Claude review prompt](robotic_wetlab_plan_review_prompt_20261104.md)
 covers the source-review follow-up and remaining decision gates.
 The separately authorized [native inspection](#native-openscad-inspection-2026-11-07)
-records successful rendering and two unresolved parameter/geometry discrepancies.
+records successful rendering and two parameter/geometry discrepancies. The
+owner-authorized [Safe-Lock correction](#safe-lock-geometry-correction-2026-11-08)
+addresses them separately; actual new Rust-exporter execution remains pending.
 
 ### Fixed Working Set
 
@@ -512,7 +514,7 @@ Independent inspection finds:
   rack PNGs and separate tube PNG were visually inspected; SCAD emits no
   embossed row/column labels and no tube/rack assembly.
 
-**Two existing discrepancies remain open.** `corner_radius=2.000` is declared
+**Two discrepancies found in this run.** `corner_radius=2.000` is declared
 but unused: mesh sections have square outer corners. Likewise,
 `front_label_strip_depth=6.000` is declared but unused: the actual pocket is
 `8.4` mm deep in Y (`0.8..9.2`), derived from `front_top_clearance - 1.6`.
@@ -520,6 +522,8 @@ Thus native parsing/rendering and the listed geometry checks pass, but full
 agreement between the declared scalars and the solid is not established.
 Do not change legacy geometry/bytes or the pinned test to conceal this;
 resolve the intended semantics in a separate owner-reviewed geometry change.
+The owner subsequently authorized the correction below; this receipt and its
+artifact hashes remain the pre-fix observations, not corrected-output evidence.
 
 Local evidence is temporary, not a committed fixture or a runtime report:
 `/private/tmp/gentle-openscad-20261107.XZiKSW/` contains SCAD/OFF/PNG/SVG,
@@ -530,6 +534,76 @@ headers before the successful checks. No GENtle code was changed.
 No new fixture publication, installation, screenshot capture, GUI interaction,
 native Windows/Linux, physics, manufacturing, physical-fit or scientific
 acceptance is claimed; D2 remains open. Existing Rust receipts stay separate.
+
+### Safe-Lock Geometry Correction, 2026-11-08
+
+The owner requested fixing both discrepancies as a separate change while
+retaining D1. Starting source is `6adee466` plus this scoped working-tree fix.
+Only `safe_lock_tube_rack_floor_seated` and
+`safe_lock_tube_rack_collar_seated` change SCAD geometry/bytes. Their body is
+an extrusion of the hull of four circles at the declared corner offsets,
+consuming `corner_radius=2`. The pocket consumes `front_label_strip_depth=6`
+instead of the old `front_top_clearance - 1.6` calculation. It stays at
+`y=0.8..6.8`, with the existing X bounds and 0.8 mm vertical recess.
+
+Outer dimensions, bore coordinates/diameters, floor, blocked-coordinate
+behavior, D1 orientation and compact-pitch derivation do not change. The
+original nine-scalar and 24-hole pins remain unchanged. No equipment-v1
+schema/projection/hash pins, profile, source drawing, tube model, legacy
+PCR/plate export or derived storage-box geometry changes. This is a deliberate
+Safe-Lock solid correction, not a blanket change to older templates whose
+label-depth semantics differ.
+
+Two new Rust regressions in the existing equipment module exercise both
+seating modes on 4x6, 1x1 and compact 3x8 grids, the actual export operation,
+parameter usage, first-row orientation and unchanged synthetic project state;
+the second test protects the four other bore-export branches. They are
+authored/formatted, **not compiled or executed locally** under the standing
+Rust restriction. The existing CLI predates this fix and is not used as proof
+of corrected Rust output. Required external verification includes:
+
+```sh
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1
+cargo test -q --locked --offline --no-default-features --lib -- rack_equipment_ labware_ export_rack_ rack_openscad_ --test-threads=1
+cargo check -q --locked --offline --no-default-features
+```
+
+The local Python harness reads the actual Rust SCAD templates/format strings,
+not a separately implemented solid or the unexecuted Rust derivation. New
+LF/CRLF cases check template selection, parameter consumption and every bore
+position. Four pre-fix synthetic source-fragment SHA-256 pins protect other
+templates' complete rendered source; they are not actual Rust-export hashes
+or new committed generated fixtures.
+
+Native OpenSCAD sections cover both support modes, a 1x1 grid, compact spacing
+and a nondefault radius/depth control. They verify all four corner arcs,
+unchanged outer bounds, every bore, floor and recess levels, and a pocket
+of exactly the requested Y depth at the retained low-Y edge. The independent
+arc bound uses the fixed 56-gon's apothem `r*cos(pi/56)` through `r`, with
+0.001 mm for SVG-coordinate rounding. The initial native run found two
+failures in the test's ideal-circle-only assumption; bounding chord points
+analytically corrected the test, not the production geometry or SCAD pins.
+These are numerical representation bounds, not fabrication tolerances.
+
+Executed on macOS arm64 / Python 3.15.0 with the installed OpenSCAD 2026.04.04,
+outside the Qt CPU-probe-restricted sandbox:
+
+```sh
+python3 -m unittest -v scripts.test_labware_models
+rustfmt --edition 2024 --config skip_children=true --check src/engine/state/lineage_containers/equipment/tests.rs
+python3 scripts/manual_docs.py
+python3 scripts/check_documentation_status.py
+git diff --check
+```
+
+The full Python/OpenSCAD suite passes 14/14 with no skips (three new tests,
+eleven unchanged tests). No Rust build, Cargo check, new CLI/MCP replay or CI
+dispatch is claimed. The owner lockfile remains unchanged at SHA-256
+`718c89649f21f2c8c437365fd33b256a40dce41eae7097ef1b4e7bc9a54e1314`.
+Artifacts are owned temporary test outputs only; native Windows/Linux,
+manufacturing, physical fit, safety and scientific acceptance remain unverified.
+No installation, new fixture publication, source-download or D2 decision.
 
 ## First Implementation Slice
 

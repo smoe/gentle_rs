@@ -516,6 +516,13 @@ Both are unverified 1.5/2.0 ml carriers with conservative 20-mm spacing,
 not PCR racks. All new-template exports disclose support mode, drawing basis,
 engineering assumptions and fit/material/temperature nonclaims. The three
 older templates retain their geometry and omit the new metadata keys.
+Safe-Lock OpenSCAD bodies now consume the declared 2-mm corner radius and
+6-mm label-pocket depth. The pocket starts at the same low-Y edge (`y=0.8`
+mm), ends at `y=6.8` mm and keeps its 0.8-mm vertical recess. Row A, bore
+positions, outer bounds and floor stay unchanged, including compact spacing.
+This intentionally changes SCAD/mesh output for the two Safe-Lock seating
+modes only; other templates, tube models and equipment-description JSON keep
+their existing contracts. It is not a physical-fit or manufacturing approval.
 `pcr_tube_96_position_carrier` additionally requires an 8x12 grid and uses
 nominal 127.76 x 85.48 mm / 9-mm pitch with explicit unverified cap/holder/thermal
 nonclaims. It is not a plate or thermocycler block. The PCR reference profile
