@@ -1561,6 +1561,163 @@ Why:
 - simplifies future integrations (including OpenClaw)
 - reduces coupling to Rust internals
 
+### SiLA capability and laboratory-resource boundary
+
+Status: architecture direction, reviewed 2026-11-10; not an implemented SiLA
+client, provider integration, scheduler or physical execution capability.
+This extends the planning/rack ownership rules and the
+[equipment authority boundary](decisions.md#equipment-descriptions-do-not-grant-execution-authority),
+not `gentle.rack_equipment_description.v1`. That record remains source-backed
+geometry, not an institutional inventory or evidence of executable actions.
+
+**Ownership and identity.** GENtle owns experiment/protocol semantics, samples,
+materials, lineage, quantities, timing requirements, typed step requirements,
+candidate assessment, assignment preview/approval and accepted execution
+evidence. A step normally requests a capability such as centrifugation,
+fluorescence measurement or temperature control, not a device ID. A preferred
+device is a separate selection preference, never a substitute for constraints.
+
+[DIYLabBot](https://github.com/smoe/DIYLabBot) is the intended first external
+laboratory-resource provider, not a claimed working GENtle integration. IEGT
+motivates the first real-lab use; requirements and acceptance remain provider-
+and institution-neutral. The provider owns provider-scoped equipment-instance
+identity, private endpoint/SiLA-server bindings, observed feature definitions,
+live reachability, locks/reservations, local operational policy and any later
+room placement.
+GENtle consumes bound evidence rather than duplicating that inventory/geometry.
+Names, vendors/models, CAD shapes, inventory presence and ontology classes
+cannot establish operational capability or current availability.
+
+`ServerUUID` identifies a SiLA server, not by itself a physical instrument or
+an authenticated peer. The provider must declare the device/resource mapping
+and allocation scope. Conflicting bindings are refused; explicitly modeled
+shared-server resources must not be mistaken for independent lock domains.
+UUID/feature discovery must be bound to trusted local endpoint configuration
+and authenticated transport; content hashes alone do not establish authenticity.
+
+**Executable vocabulary and evidence.** Use SiLA 2's Feature Definition Language
+(FDL), not an OWL ontology or a private command vocabulary, as the primary
+operational interface contract. The normative
+`org.silastandard/core/SiLAService/v1` exposes `ServerUUID`,
+`ImplementedFeatures` and `GetFeatureDefinition`. Match required commands,
+properties, types, declared units/ranges and execution errors against the
+retrieved feature definition, not just a matching feature name.
+The fully qualified feature identifier (FQI) includes the major version;
+also bind the full `FeatureVersion`, maturity and exact definition-content
+digest. A cached advertisement is a timestamped snapshot, not live readiness.
+Revalidate its identity/content and required operational evidence before use;
+drift invalidates the old assignment rather than silently rebinding it.
+Optional OBI identifiers may annotate scientific meaning but prove neither
+implementation nor scientific suitability. Missing semantics stay unknown.
+Free-text descriptions cannot silently become executable constraints; needs
+without typed definitions or reviewed bindings remain unresolved.
+
+**Requirements and substitution.** A future typed requirement must express:
+
+- required feature FQIs and accepted full-version policy, with required
+  command/property identifiers where the whole feature is too broad;
+- typed parameter constraints, units/ranges, required capacity and labware
+  compatibility, including any necessary operational context;
+- exclusive-use needs, allocation scope and permitted substitution policy;
+- explicit required/optional/unknown fields and mock/simulator/physical class.
+
+Only candidates satisfying every required constraint may be ranked by
+preference. A free but incompatible device is not a fallback. Units or context
+must not be guessed: RPM alone, for example, does not satisfy an RCF requirement
+without the necessary rotor evidence and an explicit conversion policy.
+Keep no compatible candidate, no reachable compatible candidate and no free
+compatible candidate distinct. Missing, stale or conflicting evidence means
+`unknown` or typed refusal, not `available`. Bind the preview/approval to the
+resolved assignment; fallback outside its approved substitution policy needs
+a fresh preview/approval, not a rewritten abstract protocol requirement.
+
+**Allocation is not scheduling or execution.** The reviewed
+`org.silastandard/core/LockController/v2` definition has `FeatureVersion=2.0`
+and `MaturityLevel=Draft`. Its `LockServer`, `UnlockServer`, `IsLocked`,
+`LockIdentifier` metadata and inactivity timeout support immediate server
+locking for protected calls. This is not a universal normative reservation
+guarantee; verify protection of the required calls and the provider's resource
+scope. Absence of this feature is not evidence of exclusive availability.
+Another reservation mechanism requires its own explicit, reviewed contract.
+Allocation/release and device commands require explicit authority and local
+policy; they must not be hidden side effects of read-only readiness queries.
+
+`IsLocked=false` is only an observation. Discovery followed by acquisition is
+race-prone: allocation exists only after server-confirmed acquisition under
+the required scope, with defined timeout/release handling. Recheck assignment
+freshness before a separately authorized command. Locks do not supply future
+calendar booking, queues or predicted availability; those need a scheduler
+contract. Nor do they establish hardware safety, manual-use exclusion or
+successful protocol execution.
+
+Timeout, cancellation, unlock or transport loss does not prove a physical
+command stopped or never started. Preserve an unknown outcome until reconciled;
+do not automatically retry or switch devices after uncertain command acceptance.
+Future execution needs stable step/attempt identity and explicit duplicate/
+retry policy, not an exactly-once claim derived from a lock. Lock identifiers
+are sensitive runtime tokens: keep them out of project metadata, public
+artifacts, command/error logs and agent transcripts.
+
+**Receipts and privacy.** A future assignment/execution record must bind the
+submitted requirement and digest, protocol step/attempt and approval, provider
+identity and instance ID, observed `ServerUUID`, exact feature FQIs/full versions
+and definition digests, timestamped reachability/allocation observations, submitted
+scientific parameters, command identity and terminal outcome (or explicit
+unknown), execution class, and reassignment reasons/history. Assignment-only
+evidence must not imply that a device was actually used. Accept receipts through
+separate validation; planning, reservation, command completion, biological
+success and receipt acceptance are different states. No discovery or equipment
+description grants physical execution authority or physical rollback.
+
+Full bindings belong in access-controlled local evidence. Public projections
+must omit credentials, lock tokens, private endpoints and sensitive lab/room
+information; use sanitized stable references resolved by a private local overlay.
+Preserve a verifiable link to the restricted receipt without presenting a
+redacted view as the complete original. Do not expose identifying UUIDs or
+sensitive parameters merely because they are useful in private provenance.
+
+Matching and assessment remain engine-owned behind one future shared operation
+reachable from GUI, CLI, JS, Lua, Python and MCP. Frontends must not create
+device-selection loops, implicit discovery or approval bypasses. This direction
+adds no runtime schema, adapter, catalog entry, network probe or default action;
+unconfigured existing projects and rack-equipment v1 bytes remain unchanged.
+
+**Future implementation acceptance, not executed tests:**
+
+1. Of two compatible centrifuges, the preferred one is locked; the second is
+   selected and server-confirmed locked under the approved substitution policy.
+2. A free second device missing required RCF, temperature, capacity or vessel
+   compatibility is refused instead of weakening the requirement.
+3. All compatible devices are locked: the step stays unassigned/waiting;
+   neither execution nor success is fabricated.
+4. An unreachable server, stale definition snapshot or unknown lock state
+   never becomes evidence of availability.
+5. A server lacking `LockController` can be discovered, but is not silently
+   considered exclusively reservable.
+6. Two plans contend for one exclusive scope: only one acquisition succeeds;
+   the loser re-resolves or reports contention without issuing the command.
+7. Timeout, cancellation, explicit release or a lost response cannot create
+   duplicate execution or false success; uncertain outcomes remain unresolved.
+8. FQI, full feature version, definition digest or trusted binding drift
+   invalidates the old assignment before command execution.
+9. Duplicate instance IDs within a provider and conflicting server/device
+   bindings are refused; explicit shared-server mappings retain one declared
+   lock scope.
+10. The receipt names the actually used fallback device and reassignment reason
+    without changing the abstract requirement or losing the first attempt.
+11. Mock, simulator and physical advertisements cannot be silently substituted
+    across trust classes, even when their feature definitions match.
+12. Without a configured provider, existing projects and rack-equipment v1
+    output bytes stay unchanged; no device discovery or execution is triggered.
+
+Sources: [SiLA standard](https://sila-standard.com/),
+[official base definitions](https://gitlab.com/SiLA2/sila_base),
+[core specification Part A, FQI rules](https://sila-standard.com/wp-content/uploads/2022/03/SiLA-2-Part-A-Overview-Concepts-and-Core-Specification-v1.1.pdf#page=87),
+[SiLAService definition](https://gitlab.com/SiLA2/sila_base/-/blob/v1.2/feature_definitions/org/silastandard/core/SiLAService-v1_0.sila.xml)
+and [LockController draft definition](https://gitlab.com/SiLA2/sila_base/-/blob/v1.2/feature_definitions/org/silastandard/core/LockController-v2_0.sila.xml).
+The feature links pin the reviewed `sila_base` v1.2 release; that release tag
+is not the feature version or a promise that the draft will remain unchanged.
+
 ## 7. AI-tooling requirement
 
 GENtle should be usable as a skill/tool by agents.
