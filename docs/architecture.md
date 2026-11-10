@@ -1596,9 +1596,12 @@ must resolve to one reviewed resource identity and coordinated allocation
 domain. Locking one path does not prove exclusion through another; exclusive
 assignment is refused without evidence of authority covering every command
 path. Multiple authenticated endpoints for the same server may be legitimate
-aliases, not duplicate inventory items or independent lock domains. Conflicting
-identity claims are refused; explicitly modeled shared-server resources must
-not be mistaken for independent lock domains.
+aliases only when explicitly declared by the provider, not inferred from a
+shared `ServerUUID`. An undeclared repeated UUID is an unresolved identity
+conflict, neither an alias nor a second device, and blocks exclusive assignment.
+Declared aliases are not duplicate inventory items or independent lock domains.
+Conflicting identity claims are refused; explicitly modeled shared-server
+resources must not be mistaken for independent lock domains.
 UUID/feature discovery must be bound to trusted local endpoint configuration
 and authenticated transport; content hashes alone do not establish authenticity.
 
@@ -1637,8 +1640,10 @@ replace provider evidence.
 
 **Requirements and substitution.** A future typed requirement must express:
 
-- required feature FQIs and accepted full-version policy, with required
-  command/property identifiers where the whole feature is too broad;
+- the abstract capability and identity/version of its reviewed binding, or
+  explicitly required feature FQIs for deliberately interface-specific steps;
+  either route requires an accepted full-version policy and command/property
+  identifiers where the whole feature is too broad;
 - typed parameter constraints, units/ranges, required capacity and labware
   compatibility, including any necessary operational context;
 - exclusive-use needs, allocation scope and permitted substitution policy;
@@ -1661,7 +1666,10 @@ When `org.silastandard/core/SimulationController/v1` is advertised, check its
 universal: otherwise require separately reviewed provider mode evidence or
 retain `unknown`, never infer physical mode from its absence. The provider
 contract must bind mode evidence to acceptance; an earlier unprotected read
-does not close a mode-change race. Mode drift invalidates the affected
+does not close a mode-change race. Acceptance-time evidence does not cover a
+later queued start without a provider guarantee. Check mode-switch commands
+`StartSimulationMode`/`StartRealMode` in the affected-calls list; their lock
+protection is not implicit. Mode drift invalidates the affected
 assignment or leaves the actual execution class unresolved. Simulated success
 cannot prove physical action; a real-mode observation alone proves neither
 physical completion nor biological success. Switching mode requires separate
@@ -1669,7 +1677,9 @@ authority, not an automatic readiness action.
 
 **Allocation is not scheduling or execution.** The reviewed
 `org.silastandard/core/LockController/v2` definition has `FeatureVersion=2.0`
-and `MaturityLevel=Draft`. Its `LockServer`, `UnlockServer`, `IsLocked`,
+and `MaturityLevel=Draft`. `LockController/v1`, also listed at `sila_base` v1.2
+in Claude's source review, is a different FQI and is not covered by this review.
+The v2 definition's `LockServer`, `UnlockServer`, `IsLocked`,
 `LockIdentifier` metadata and inactivity timeout support immediate server
 locking for protected calls. This is not a universal normative reservation
 guarantee; inspect the lock metadata's affected-calls list and verify coverage
@@ -1681,9 +1691,14 @@ policy; they must not be hidden side effects of read-only readiness queries.
 
 `IsLocked=false` is only an observation. Discovery followed by acquisition is
 race-prone: allocation exists only after server-confirmed acquisition under
-the required scope, with defined timeout/release handling. Recheck assignment
-freshness before a separately authorized command. Locks do not supply future
-calendar booking, queues or predicted availability; those need a scheduler
+the required scope, with defined timeout/release handling. `IsLocked=true`
+identifies no holder; neither it, a stored token nor successful acceptance of
+a token-carrying call proves current ownership. The reviewed definition leaves
+token handling while unlocked and lock continuity across server restart/client
+disconnect unspecified. Holder confirmation, continuity and renewal require
+reviewed provider evidence; without it, allocation remains uncertain. Recheck
+assignment freshness before a separately authorized command. Locks do not
+supply future calendar booking, queues or predicted availability; those need a scheduler
 contract. Nor do they establish hardware safety, manual-use exclusion or
 successful protocol execution.
 
@@ -1713,24 +1728,36 @@ retry policy, not an exactly-once claim derived from a lock. Keep sensitive
 lock identifiers out of ordinary project metadata, public artifacts,
 command/error logs and agent transcripts, including during recovery.
 
+Reconciliation of an observable command requires its server-bound Command
+Execution UUID, distinct from the lock token. Retain it as soon as acceptance
+returns in restricted evidence under explicit custody and crash/restart recovery
+rules, with its declared lifetime and updates (or the server lifetime if none
+is declared). Retrieval calls carry no lock metadata; keep this handle private.
+A handle lost/expired before outcome retrieval leaves the outcome unknown, not
+failed. An unobservable command has no such handle: a lost response needs
+separately reviewed provider evidence to resolve its outcome. Acceptance is
+not start; the server may defer execution or issue an error. Retaining a UUID
+does not prove restart survival.
+
 **Receipts and privacy.** A future assignment/execution record must bind the
 submitted requirement and digest, protocol step/attempt and approval, provider
 identity and instance ID, observed `ServerUUID`, exact feature FQIs/full versions
 and definition digests, reviewed mapping/instance qualification and relevant
 configuration, canonical allocation domain and timestamped allocation/renewal/
-loss observations, reachability, submitted scientific parameters, command
-identity and terminal outcome (or explicit unknown), provider-declared class
+loss observations, reachability, submitted scientific parameters, command FQI,
+restricted execution handle and lifetime where applicable, acceptance/start
+evidence and terminal outcome (or explicit unknown), provider-declared class
 and acceptance-bound mode evidence (or unknown), and reassignment reasons/
 history. Assignment-only evidence must not imply that a device was actually
 used. Accept receipts through separate validation; planning, reservation,
-command completion, biological success and receipt acceptance are different
-states. No discovery or equipment description grants physical execution
-authority or physical rollback.
+command acceptance, start, completion, biological success and receipt acceptance
+are different states. No discovery or equipment description grants physical
+execution authority or physical rollback.
 
 Full bindings belong in access-controlled local evidence. Public projections
-must omit credentials, lock tokens, private endpoints and sensitive lab/room
-information; use non-leaking opaque references resolved by a private local
-overlay. Preserve a reviewed, privacy-preserving verifiable link to the
+must omit credentials, lock tokens, execution handles, private endpoints and
+sensitive lab/room information; use non-leaking opaque references resolved by
+a private local overlay. Preserve a reviewed, privacy-preserving verifiable link to the
 restricted receipt without presenting a redacted view as the complete original.
 A bare digest of predictable private identifiers is not anonymization; choose
 any cryptographic linkage under a separate threat model, not an assumed
@@ -1754,7 +1781,8 @@ rack-equipment v1 bytes remain unchanged.
 3. All compatible devices are locked: the step stays unassigned with explicit
    contention/unavailability; no queue, booking, execution or success is inferred.
 4. An unreachable server, stale definition snapshot or unknown lock state
-   never becomes evidence of availability.
+   never becomes evidence of availability; `IsLocked=true` without holder/
+   continuity evidence never proves that GENtle holds the lock.
 5. A server lacking `LockController` can be discovered, but is not silently
    considered exclusively reservable; a feature with incomplete affected-call
    coverage likewise cannot establish the required exclusivity.
@@ -1763,20 +1791,24 @@ rack-equipment v1 bytes remain unchanged.
    A rejected contender reports contention or re-resolves; contradictory
    confirmations make authority uncertain and block further submission until
    reconciled, rather than implying a client-side guarantee of server behavior.
-7. Exercise lost acquisition/command responses, crash/restart, cancellation,
-   explicit release and lock expiry during a long run. GENtle retains unknown
-   acquisition/outcome or lost coverage as applicable, follows reviewed token
+7. Exercise lost acquisition/command responses, client/server restart,
+   cancellation, explicit release and lock expiry during a long run. GENtle
+   retains unknown acquisition/outcome or lost coverage as applicable, follows reviewed token
    recovery/release rules and must not submit a second work command or fallback
    without reconciliation and explicit retry authority. Monitoring alone must
    not falsely establish renewal; an infinite lock needs a reviewed release path.
+   Recover the execution handle with its server binding/lifetime or leave the
+   outcome unknown; queued acceptance alone proves neither start nor start-time
+   mode.
 8. FQI, full feature version, exact-string definition digest, reviewed mapping,
    trusted instance binding or relevant hardware/configuration drift invalidates
    the affected assignment before command execution. Missing qualification
    cannot be repaired by interpreting free text.
 9. Duplicate instance IDs within a provider and conflicting server/device
-   bindings are refused. Consistent authenticated endpoint aliases do not create
-   new devices; direct/gateway paths to one device share a coordinated allocation
-   domain, or exclusive assignment is refused. Explicit shared-server mappings
+   bindings are refused; undeclared repeated server UUIDs remain unresolved,
+   not inferred aliases. Provider-declared authenticated endpoint aliases do not
+   create new devices; direct/gateway paths to one device share a coordinated
+   allocation domain, or exclusive assignment is refused. Explicit shared-server mappings
    retain their declared shared scope.
 10. The receipt names the actually used fallback device and reassignment reason
     without changing the abstract requirement or losing the first attempt.
@@ -1794,12 +1826,13 @@ Sources: [SiLA standard](https://sila-standard.com/),
 [core specification Part A, FQI rules](https://sila-standard.com/wp-content/uploads/2022/03/SiLA-2-Part-A-Overview-Concepts-and-Core-Specification-v1.1.pdf#page=87),
 [SiLAService definition](https://gitlab.com/SiLA2/sila_base/-/blob/v1.2/feature_definitions/org/silastandard/core/SiLAService-v1_0.sila.xml)
 and [LockController draft definition](https://gitlab.com/SiLA2/sila_base/-/blob/v1.2/feature_definitions/org/silastandard/core/LockController-v2_0.sila.xml),
-plus [SimulationController definition](https://gitlab.com/SiLA2/sila_base/-/blob/master/feature_definitions/org/silastandard/core/SimulationController-v1_0.sila.xml).
-The SiLAService/LockController links pin the reviewed `sila_base` v1.2 release;
+plus [SimulationController definition](https://gitlab.com/SiLA2/sila_base/-/blob/v1.2/feature_definitions/org/silastandard/core/SimulationController-v1_0.sila.xml).
+All three feature links pin the reviewed `sila_base` v1.2 release;
 that release tag is not the feature version or a promise that the draft will
-remain unchanged. The SimulationController source was checked on `master`
-2026-11-10 (`FeatureVersion=1.0`, `MaturityLevel=Verified`), not at an immutable
-revision. Future assignments must bind their actually retrieved definitions,
+remain unchanged. The tagged SimulationController check (`FeatureVersion=1.0`,
+`MaturityLevel=Verified`) is attributed to Claude's source review of 2026-11-10;
+Codex could not retrieve that tagged raw file, and no byte comparison is claimed.
+Future assignments must bind their actually retrieved definitions,
 not assume any source link or maturity label establishes live readiness.
 
 ## 7. AI-tooling requirement
