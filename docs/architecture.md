@@ -1754,6 +1754,21 @@ command acceptance, start, completion, biological success and receipt acceptance
 are different states. No discovery or equipment description grants physical
 execution authority or physical rollback.
 
+Qualification runs must bind their actual tested source tree/revision, input
+and definition hashes, commands, exit codes, environment and test/skip counts
+in a sealed evidence manifest. Reading logs is not independent execution or
+hash verification. Add later commit/cleanup metadata as a separately linked
+receipt rather than rewriting the sealed original. Refreshing a source pin
+requires reviewing its semantic change, not just accepting a matching digest.
+
+If a provider persists a source-bound process journal, source drift must not
+silently rebind it, discard pending intents or imply a failed physical action.
+Require a documented read-only inspection/recovery path tied to the original
+trusted profile/revision; any active reconciliation still requires its own
+authority. Verify preservation through the runtime/reconciliation entry points,
+not only with artificial signature strings in a store helper. Byte-preservation
+claims require checking initializer side effects as well as logical records.
+
 Full bindings belong in access-controlled local evidence. Public projections
 must omit credentials, lock tokens, execution handles, private endpoints and
 sensitive lab/room information; use non-leaking opaque references resolved by

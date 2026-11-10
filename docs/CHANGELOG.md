@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-11-10 - Retain The External CF01 Review Boundary
+
+- Record the owner-supplied external CF01/SiLA review without importing its
+  logs, pins, runtime or acceptance claims into GENtle. Its revision/files are
+  absent here; no independent execution/hash verification is claimed.
+- Clarify future qualification receipts, source-pin semantic review and
+  source-bound journal inspection/recovery with pending-intent preservation.
+  External runtime/gallery test gaps remain with that repository. Documentation
+  only; no new SiLA client, device/network action or Rust execution.
+
 ## 2026-11-10 - Correct The Locus Anchor Fixture And Attribute Claude's Return
 
 - Preserve the supplied two-line test correction from 165 to 171, and assert

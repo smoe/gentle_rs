@@ -1,5 +1,25 @@
 # Glen: Next Verification And Return
 
+## External CF01 SiLA Review Boundary, 2026-11-10
+
+Context only, not a new GENtle test campaign. The owner supplied Claude's
+read-only review of an external CF01 worktree at abbreviated revision
+`7378a04`. That object and the named `cf01_sila2_runtime.py`,
+`cf01_sila2_store.py`, gallery scripts and `docs/sila2-network.md` are not
+present in this GENtle checkout. No external repository was fetched or changed;
+the reported logs, hashes and historical-byte comparisons were not independently
+verified here. Its LockController v1 result must not replace GENtle's explicitly
+scoped v2-draft architecture review or count as GENtle/physical acceptance.
+
+Relevant future evidence/journal safeguards are now recorded in the SiLA
+architecture section. The external owner still needs revision-bound sealed
+receipts, an actual old-profile runtime/reconciliation negative control with
+pending-intent preservation, documented old-store inspection/recovery and a
+semantic review of the changed batch source. Gallery near-match/negative checks
+remain external test follow-ups, not GENtle regressions. A local laboratory demo
+does not test the SiLA transport. Do not rerun those external campaigns or claim
+their tests passed on GENtle; no network/device call or implementation is added.
+
 ## Claude Exon-Locus Return At b95aae07, 2026-11-10
 
 Owner-forwarded Claude review/test report, not a new Codex execution or Glen
