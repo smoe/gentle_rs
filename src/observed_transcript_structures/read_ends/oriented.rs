@@ -81,6 +81,8 @@ pub struct Run {
     pub aligned_to_reference: bool,
     pub aligned_query_intervals: Vec<Interval>,
     pub reference_intervals: Vec<Interval>,
+    /// Midpoint of the first reference interval in genomic order, or the nearest
+    /// saved block edge by query distance when no bases align (ties: lower edge).
     /// An attachment point, never an extrapolated alignment for clipped bases.
     pub reference_anchor: Option<usize>,
 }

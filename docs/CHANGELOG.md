@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-10 - Correct The Locus Anchor Fixture And Attribute Claude's Return
+
+- Preserve the supplied two-line test correction from 165 to 171, and assert
+  original-query `[65,77)`, reference `[165,177)` and the off-window relation.
+  Document the existing first-interval midpoint/nearest-block-edge attachment;
+  production anchor, scoring, work caps and wire values are unchanged.
+- Attribute Claude's headless macOS arm64 return at `b95aae07`: renderer 7/7,
+  original locus 31/32 and corrected scratch-overlay 32/32, not a pristine or
+  newer-lock acceptance. Record 5,543,670 synthetic work units; the approximate
+  360-read estimate is extrapolation, not a tested threshold or CPU profile.
+  Keep distinct-isoform capacity, default/VM/actual-CLI/native/Windows checks
+  and OD-L4 open without repeating completed campaigns. No local Rust execution.
+
 ## 2026-11-10 - Align The Vector-PDF Writer Dependency With Svg2pdf
 
 - Restore the direct pdf-writer requirement to the 0.12 API line used by

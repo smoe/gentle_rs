@@ -101,8 +101,11 @@ fn read_end_locus_off_window_softclip_and_aligned_internal_runs_stay_in_json_not
     let (p, s) = render_bound(&report);
     let run = &p.reads[0].genomic_basecalls[0].variants[0].runs[0];
     assert!(!run.terminal && run.aligned_to_reference);
-    assert_eq!(run.reference_anchor, Some(165));
-    assert!(s.rows[0].off_axis.contains("genomic attachment 165"));
+    assert_eq!(run.query_interval, (65, 77));
+    assert_eq!(run.reference_intervals, vec![(165, 177)]);
+    assert_eq!(run.reference_anchor, Some(171));
+    assert!(run.reference_anchor.unwrap() < r.exon.0);
+    assert!(s.rows[0].off_axis.contains("genomic attachment 171"));
     assert!(s.rows[0].runs.is_empty());
 }
 

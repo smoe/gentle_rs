@@ -265,7 +265,10 @@ See the [active verification scope](glen_next_verification_handoff.md#exon-locus
 Source review against `7fa6b15a` plus this thread's uncommitted implementation;
 the named structures/counterexamples were traced before changing them. These
 are source-derived defects, not reproduced Rust/runtime failures. Repairs are
-authored and Rust tests remain **unrun**, with execution assigned to Glen/CI.
+authored with Rust tests **unrun at authoring**. The later
+[attributed macOS return](glen_next_verification_handoff.md#claude-exon-locus-return-at-b95aae07-2026-11-10)
+records scoped execution and a test-only anchor correction, not current-lock,
+default-feature, VM, actual-CLI, Windows or native acceptance.
 No schema/RULE_VERSION bump for this unreleased v1, new dependency, additional
 calibrated cutoff, mask policy, queue, release gate or legacy gene-only behavior.
 
@@ -299,7 +302,7 @@ source-level preservation check, not a runtime byte-equivalence receipt.
 | OD-L1 | Require junctions for conditional strand support, or later permit independently justified containment-only support; containment-only `AntisenseCompatible` class policy remains pending. | Every preferred assignment needs a matched junction for `model_supported`; otherwise strand unresolved with the containment-only reason. No score/preferred/class change. |
 | OD-L2 | Tolerate declared-but-absent annotation/CDS with diagnostics, or refuse those declarations. | Preserve tolerance with distinct hash-bearing diagnostics; present bad hashes and absent declared originals still refuse. |
 | OD-L3 | Keep terminal overhang as a structural conflict, or separately justify tolerance/calibration. | Unchanged; no new threshold or accepted relation. |
-| OD-L4 | Measure current capacity, or later authorize cap/charge/algorithm changes. | Only cache competitor unions and report work; scale/real work remain externally unmeasured, no limit increase. |
+| OD-L4 | Measure current capacity, or later authorize cap/charge/algorithm changes. | Reported synthetic 30-model/20-read work is 5,543,670 at `b95aae07`; distinct-isoform and real capacity remain unmeasured. No limit/charge/algorithm change. |
 
 Follow the [narrowed repair checks](glen_next_verification_handoff.md#exon-locus-review-repairs-2026-11-10),
 not unrelated completed reader/BLAST/barcode campaigns. Native, Windows and

@@ -114,9 +114,15 @@ admitted. Resource failures refuse, never truncate.
 only with a known direction; they do **not** establish reaching an annotated
 RNA end. Each run keeps its aligned query/reference intervals and
 `aligned_to_reference`, true only when saved blocks cover the entire run.
-Partial alignments stay false with their covered intervals retained. Off-axis
-glyphs attach to the nearest saved block; they do not extrapolate an alignment
-through clips, insertions or unavailable sequence.
+Partial alignments stay false with their covered intervals retained.
+`reference_anchor` is a display attachment, not the run start. If any bases
+align, use `start + (end - start) / 2` of the first reference interval in sorted
+genomic order, even for a minus-strand hypothesis. For example, `[165,177)`
+attaches at 171, not 165. With no aligned interval, choose the nearest saved
+block edge by original-query distance; equal distances choose the lower genomic
+coordinate. With no saved block, the anchor is absent. This never extrapolates
+an alignment through clips, insertions or unavailable sequence or changes the
+literal base, original-query interval or UTR facts.
 
 The x-axis is left-to-right mRNA 5'-to-3' on both genomic strands, with genomic
 scale/introns retained. Same-direction lanes are above the divider, opposite
@@ -246,9 +252,17 @@ classification uses admitted paths, with non-admitted observations retained.
 The union of competitor exons is cached once per sample/model, respecting both
 chain and strand; all remaining charge sites and limits are unchanged. The meter
 is shared across samples and original-base scanning still charges per base.
-The synthetic 30-model/12-exon/20-read deletion-split test is authored, not run
-locally; real capacity remains unmeasured. S2 intake still caps one analysis at
-4096 units. No throughput promise or cap increase follows.
+Claude's owner-forwarded macOS arm64 run at `b95aae07` reports **5,543,670**
+work units for the 30-model/12-exon/20-read deletion-split fixture, without
+original bases. All models share one exon chain; this is not distinct-isoform
+or real-locus capacity evidence. Dividing by 20 gives about 277,184 units/read;
+linear extrapolation suggests roughly 360 reads under 100M, but no refusal
+threshold was measured and fixed costs need not scale per read. The proposed
+hot loop is a source-reading hypothesis, not a profile. S2 intake still caps
+one analysis at 4096 units; the shared work ceiling can refuse earlier.
+No throughput promise or cap increase follows. See the
+[attributed test return](glen_next_verification_handoff.md#claude-exon-locus-return-at-b95aae07-2026-11-10)
+for its test-only overlay and missing execution receipts.
 
 JSON/TSV retain all candidates, rule/version bindings and unavailable facts;
 SVG/PNG/PDF share the same checked scene, with annotation tracks separate from

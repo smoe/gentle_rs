@@ -1,5 +1,46 @@
 # Glen: Next Verification And Return
 
+## Claude Exon-Locus Return At b95aae07, 2026-11-10
+
+Owner-forwarded Claude review/test report, not a new Codex execution or Glen
+return. Tested base: `b95aae0774c105efcda808fa07e9e49f0b8bde8c`, macOS arm64,
+headless lib-test build, committed Cargo.lock; the owner's then-uncommitted
+manifest/lock updates were excluded. The scratch checkout/target was removed
+(reported 6 GB freed). All nine repairs/defaults were source-reviewed positively.
+No raw command streams, binary/lock hashes, toolchain version or manifest receipt
+accompany this message; retain its attribution rather than inventing them.
+
+Reported renderer `read_end_`: **7/7 pass**. Original `read_end_locus_`:
+**31/32**, failing only the off-window internal-run test's expected anchor 165.
+The unchanged production rule attaches aligned interval `[165,177)` at its
+midpoint **171**, still below window start 200. A scratch overlay changing the
+two expectations to 171 produced **32/32**. This is an overlay result, not a
+pristine `b95aae07` pass, and an initially masked pipeline exit is not evidence.
+Use the actual Cargo exit or explicit pipeline failure propagation in future
+runs. The supplied two-line correction is retained on main; added
+query/reference-interval and outside-window assertions have not run locally.
+No production anchor/scoring/limit change is needed.
+
+The scale fixture reports **5,543,670 work units**, 30 models/12 exons/20 reads
+with deletion-split blocks and no originals. All models share one exon chain.
+About 277,184 work/read and roughly 360 reads under 100M are arithmetic
+extrapolations, not a measured refusal threshold, profile or throughput claim.
+Opposite-strand comparison cost is suspected from source, not CPU-sampled.
+OD-L4 remains open for distinct-isoform/real capacity and any separately
+authorized optimization; do not raise caps or alter charging now.
+
+The later owner dependency commit `e3b93bf3` changes Cargo.toml/Cargo.lock, not
+these runtime sources; this return does not accept that lock or newer source.
+Remaining scope: current-source locked/default checks, actual JS/Lua/MCP and
+CLI LF/CRLF exports below, native GUI when available and normal Windows CI.
+Keep these separate from the reported scoped passes; do not repeat the completed
+7fa6b15a/reader/BLAST/barcode campaigns. `Membership` keeps its documented
+kebab-case wire values; a cosmetic snake_case migration is a separate choice,
+not part of correcting a test expectation. Codex follow-up checks: Python
+read-end discovery **53 passed / 1 actual-CLI skip**, scoped rustfmt parsing,
+documentation status and whitespace pass. No local Rust build/check/test, push
+or dispatch; the added Rust assertions remain unexecuted here.
+
 ## Vector-PDF Writer Dependency Alignment, 2026-11-10
 
 The owner's dependency update selected direct pdf-writer 0.15 while svg2pdf
@@ -69,7 +110,8 @@ Native, Windows, release and scientific acceptance remain separately bounded.
 
 ## Exon-Locus Review Repairs, 2026-11-10
 
-Active scope after the owner's next push. This supersedes the unexecuted
+Authoring scope, with the later scoped macOS return recorded above. After the
+owner's next push, verify only its remaining or affected boundaries. This supersedes the unexecuted
 2026-11-09 exon-locus checklist below, not Glen's already completed transcript-
 bound `7fa6b15a`, reader/BLAST or barcode campaigns. The owner supplied Claude's
 read-only source review; Codex traced its structures/counterexamples and authored
@@ -107,8 +149,10 @@ GUI/renderer/adapter changes remain part of the overall integration, not a newly
 executed acceptance result. All unrelated `paper`, data, `output/`, untracked
 prompts and recovery stashes remain untouched.
 
-Thirteen newly authored core test functions and three newly authored service
-test functions are **unrun**, alongside strengthened existing controls. Exact
+At authoring, thirteen new core test functions and three new service test
+functions were **unrun**, alongside strengthened existing controls. The later
+reported headless filter/overlay and renderer results are recorded above; the
+following list still identifies the remaining/affected execution paths. Exact
 main filters below select them with the earlier relevant locus tests. Check
 test counts are nonzero; do not treat compile failure, a zero-match or a skipped
 actual process/VM case as acceptance. Use one isolated checkout and explicit
@@ -144,7 +188,8 @@ Record this number and work for any independently authorized real locus run;
 do not start a new private-data campaign merely to measure it. Work is shared
 across samples, original-base scanning still charges per base, S2 still admits
 at most 4096 units per analysis. No cap/charge/sweep tuning or capacity pass is
-claimed without execution. OD-L4 therefore remains pending.
+claimed by source checks. The later reported scale measurement above does not
+establish real capacity; OD-L4 therefore remains pending.
 
 The actual CLI test now executes both LF and CRLF input graphs, explicit model
 projections, all five formats, deterministic output/no-clobber and a narrow-
