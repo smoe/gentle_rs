@@ -201,6 +201,27 @@
   parity/read-end checks. Preserve completed unrelated campaigns and separate
   Windows/native/real-tool acceptance.
 
+## 2026-11-08 - Honor Safe-Lock SCAD Corner Radius And Label Depth
+
+- Correct only the floor-/collar-seated Safe-Lock SCAD bodies to use the
+  declared 2-mm corner radius and 6-mm label-pocket depth. Keep D1's low-Y
+  edge, existing X placement, 0.8-mm recess, bore positions and 2-mm floor.
+  Safe-Lock solid/source bytes intentionally change; other templates, tube
+  models, equipment-v1 records/hash pins and profile derivation do not.
+- Add two Rust export-operation regressions for both support modes, minimal
+  and compact grids, project-state preservation and unrelated legacy branches.
+  They are authored/formatted but not run locally; Cargo check and actual new
+  CLI/MCP output remain external under the standing no-local-Rust restriction.
+- Add source/newline, four pre-fix byte-pin and native mesh-section checks.
+  The latter verify corner arcs, all bores, pocket bounds, floor, D1 and a
+  changed-parameter control without duplicating the Rust solid implementation.
+  Correct the new test's initial ideal-circle assumption using the fixed
+  56-gon apothem bound plus SVG rounding, not an adaptive tolerance.
+- The full local Python/OpenSCAD labware suite passes 14/14 with no skips;
+  retain the previous 2026-11-07 inspection/hashes as historical pre-fix
+  evidence. No Rust build, installation, fixture publication or physical-fit
+  claim. See the [scoped correction ledger](robotic_wetlab_simulation_plan.md#safe-lock-geometry-correction-2026-11-08).
+
 ## 2026-11-08 - Add Reviewed Native Read-End Pileup And Synthetic 07.01 Route
 
 - Add an initially unbound Read ends / pileup tab to the existing RNA panel.

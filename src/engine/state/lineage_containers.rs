@@ -14,6 +14,14 @@ use std::fs;
 #[path = "lineage_containers/equipment.rs"]
 mod equipment;
 
+const SAFE_LOCK_RACK_BODY_SCAD: &str = r#"        linear_extrude(height=rack_height)
+            hull() {
+                for (x = [corner_radius, outer_width - corner_radius])
+                    for (y = [corner_radius, outer_depth - corner_radius])
+                        translate([x, y]) circle(r=corner_radius);
+            }
+"#;
+
 const STORAGE_BOX_SCAD: &str = r#"
 // part=all places the lid beside the box; box/insert/lid isolate parts for inspection.
 part = "all";
@@ -3833,8 +3841,13 @@ impl GentleEngine {
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
+        let safe_lock = matches!(
+            template,
+            RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated
+                | RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated
+        );
         let mut scad = format!(
-            "// GENtle rack OpenSCAD export\n// rack_id={}\n// template={}\n// family={}\n// format={}\n$fn = 56;\n\nouter_width = {:.3};\nouter_depth = {:.3};\nrack_height = {:.3};\nopening_diameter = {:.3};\nfloor_thickness = {:.3};\nfront_top_clearance = {:.3};\nfront_label_strip_depth = {:.3};\nfront_label_strip_recess = {:.3};\ncorner_radius = {:.3};\n\nmodule gentle_rack() {{\n    difference() {{\n        cube([outer_width, outer_depth, rack_height], false);\n",
+            "// GENtle rack OpenSCAD export\n// rack_id={}\n// template={}\n// family={}\n// format={}\n$fn = 56;\n\nouter_width = {:.3};\nouter_depth = {:.3};\nrack_height = {:.3};\nopening_diameter = {:.3};\nfloor_thickness = {:.3};\nfront_top_clearance = {:.3};\nfront_label_strip_depth = {:.3};\nfront_label_strip_recess = {:.3};\ncorner_radius = {:.3};\n\nmodule gentle_rack() {{\n    difference() {{\n",
             rack.rack_id,
             spec.kind.as_str(),
             spec.family.as_str(),
@@ -3849,6 +3862,11 @@ impl GentleEngine {
             spec.front_label_strip_recess_mm,
             spec.corner_radius_mm
         );
+        scad.push_str(if safe_lock {
+            SAFE_LOCK_RACK_BODY_SCAD
+        } else {
+            "        cube([outer_width, outer_depth, rack_height], false);\n"
+        });
         if let Some(mode) = spec.support_mode {
             let mut header = format!(
                 "// support_mode={}\n// geometry_basis={}\n",
@@ -3876,12 +3894,17 @@ impl GentleEngine {
                 ));
             }
         }
+        let label_strip_depth = if safe_lock {
+            "front_label_strip_depth".to_string()
+        } else {
+            format!("{:.3}", (spec.front_top_clearance_mm - 1.6).max(0.0))
+        };
         scad.push_str(&format!(
-            "        translate([{:.3}, {:.3}, rack_height - front_label_strip_recess]) cube([{:.3}, {:.3}, front_label_strip_recess + 0.05], false);\n",
+            "        translate([{:.3}, {:.3}, rack_height - front_label_strip_recess]) cube([{:.3}, {}, front_label_strip_recess + 0.05], false);\n",
             spec.outer_wall_mm * 0.5,
             0.8,
             (spec.overall_width_mm - spec.outer_wall_mm).max(0.0),
-            (spec.front_top_clearance_mm - 1.6).max(0.0)
+            label_strip_depth
         ));
         scad.push_str("    }\n}\n\ngentle_rack();\n");
         fs::write(path, scad).map_err(|e| EngineError {

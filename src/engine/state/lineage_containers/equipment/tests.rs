@@ -20,6 +20,98 @@ fn engine(rows: usize, columns: usize) -> GentleEngine {
 const TEMPLATE: RackPhysicalTemplateKind = RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated;
 
 #[test]
+fn rack_equipment_safe_lock_scad_consumes_corner_radius_and_label_depth() {
+    // Synthetic empty grids, including the smallest grid and a compact variant.
+    // No physical fit or source-backed manufacturing tolerance is asserted.
+    for template in [
+        RackPhysicalTemplateKind::SafeLockTubeRackFloorSeated,
+        RackPhysicalTemplateKind::SafeLockTubeRackCollarSeated,
+    ] {
+        for (rows, columns, pitch_um) in [(4, 6, None), (1, 1, None), (3, 8, Some(14_000))] {
+            let mut engine = engine(rows, columns);
+            engine
+                .state_mut()
+                .container_state
+                .racks
+                .get_mut("rack 'one'")
+                .unwrap()
+                .carrier_pitch_override_um = pitch_um;
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("rounded carrier.scad");
+            engine
+                .apply(Operation::ExportRackOpenScad {
+                    rack_id: "rack 'one'".into(),
+                    template,
+                    path: path.to_str().unwrap().into(),
+                })
+                .unwrap();
+            let source = fs::read_to_string(path).unwrap();
+            assert!(source.contains("corner_radius = 2.000;"));
+            assert!(source.contains("front_label_strip_depth = 6.000;"));
+            assert!(source.contains(
+                "        linear_extrude(height=rack_height)\n            hull() {\n                for (x = [corner_radius, outer_width - corner_radius])\n                    for (y = [corner_radius, outer_depth - corner_radius])\n                        translate([x, y]) circle(r=corner_radius);\n            }\n"
+            ));
+            assert!(!source.contains("cube([outer_width, outer_depth, rack_height], false)"));
+            let label_cut = source
+                .lines()
+                .find(|line| line.contains("rack_height - front_label_strip_recess]) cube("))
+                .unwrap();
+            assert!(label_cut.contains(", 0.800, rack_height - front_label_strip_recess]"));
+            assert!(
+                label_cut.contains(
+                    ", front_label_strip_depth, front_label_strip_recess + 0.05], false);"
+                )
+            );
+            let holes = source
+                .lines()
+                .filter(|line| line.contains("cylinder("))
+                .collect::<Vec<_>>();
+            assert_eq!(holes.len(), rows * columns);
+            let first_y = if template == TEMPLATE {
+                "15.225"
+            } else {
+                "15.075"
+            };
+            assert_eq!(
+                holes[0],
+                format!(
+                    "        translate([10.000, {first_y}, floor_thickness]) cylinder(h=rack_height - floor_thickness + 0.10, d=opening_diameter);"
+                )
+            );
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn rack_equipment_other_scad_templates_keep_legacy_body_and_label_cut() {
+    let mut engine = engine(8, 12);
+    let directory = tempfile::tempdir().unwrap();
+    for (template, depth) in [
+        (RackPhysicalTemplateKind::StoragePcrTubeRack, "1.400"),
+        (RackPhysicalTemplateKind::PipettingPcrTubeRack, "3.400"),
+        (RackPhysicalTemplateKind::CellCulturePlate, "2.400"),
+        (RackPhysicalTemplateKind::PcrTube96PositionCarrier, "6.340"),
+    ] {
+        let path = directory.path().join("legacy.scad");
+        engine
+            .apply(Operation::ExportRackOpenScad {
+                rack_id: "rack 'one'".into(),
+                template,
+                path: path.to_str().unwrap().into(),
+            })
+            .unwrap();
+        let source = fs::read_to_string(path).unwrap();
+        assert!(source.contains("        cube([outer_width, outer_depth, rack_height], false);\n"));
+        assert!(!source.contains("circle(r=corner_radius)"));
+        assert!(source.contains(&format!(
+            ", {depth}, front_label_strip_recess + 0.05], false);"
+        )));
+    }
+}
+
+#[test]
 fn rack_equipment_safe_lock_4x6_scad_emission_matches_spec_and_literals() {
     const RACK_ID: &str = "conformance_safe_lock_floor_4x6";
     const SCAD_EMISSION_ABS_TOL_MM: f64 = 0.000500001;
