@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-11-10 - Align The Vector-PDF Writer Dependency With Svg2pdf
+
+- Restore the direct pdf-writer requirement to the 0.12 API line used by
+  svg2pdf 0.13, whose `to_chunk` exposes concrete `Chunk`/`Ref` types. Resolve
+  one shared writer instead of mixing 0.12 and 0.15 objects; PDF rendering,
+  font auditing and output semantics remain unchanged.
+- Add an offline lock-graph guard with split/missing/ambiguous binding controls
+  and LF/CRLF parsing. It permits future shared versions and unrelated writer
+  versions elsewhere in the graph. Preserve the owner's other dependency
+  updates; locked Rust compile and vector-PDF tests remain external checks.
+
 ## 2026-11-10 - Attribute The Separate Incomplete 7fa6b15a Routine Scan
 
 - Record the two-commit routine scan through `7fa6b15a`: renderer 6/6,

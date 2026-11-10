@@ -165,6 +165,7 @@ egui_extras = { version = "=0.37.0", features = ["all_loaders"], optional = true
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"], optional = true }
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "*"
+# svg2pdf::to_chunk exposes pdf-writer types; use its 0.12 API line here too.
 pdf-writer = "0.12.1"
 lopdf = { version = "=0.46.0", default-features = false }
 zip = { version = "6.0.0", default-features = false, features = ["deflate"] }

@@ -97,6 +97,65 @@ class WorkspaceCompilerPolicyTests(unittest.TestCase):
 
 class DependencyPinTests(unittest.TestCase):
     @staticmethod
+    def vector_pdf_writer_binding_is_shared(lock):
+        # Cargo qualifies locked dependency names when multiple versions coexist.
+        bindings = []
+        for owner in ("GENtle", "svg2pdf"):
+            packages = [package for package in lock["package"] if package["name"] == owner]
+            if len(packages) != 1:
+                return False
+            writers = [dependency for dependency in packages[0].get("dependencies", [])
+                       if dependency.split()[0] == "pdf-writer"]
+            if len(writers) != 1:
+                return False
+            bindings.append(writers[0])
+        return bindings[0] == bindings[1]
+
+    def test_vector_pdf_writer_and_svg2pdf_share_the_same_locked_dependency(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        lock_text = (root / "Cargo.lock").read_bytes().decode("utf-8")
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                lock = tomllib.loads(lock_text.replace("\r\n", "\n").replace("\n", newline))
+                self.assertTrue(
+                    self.vector_pdf_writer_binding_is_shared(lock),
+                    "GENtle and svg2pdf must share pdf-writer: to_chunk returns typed Chunk/Ref values",
+                )
+
+    def test_vector_pdf_writer_guard_accepts_shared_bindings_not_a_global_version_pin(self) -> None:
+        # Synthetic lock graphs: unrelated writer versions may coexist safely.
+        for binding in ("pdf-writer", "pdf-writer 0.12.1", "pdf-writer 0.15.0"):
+            with self.subTest(binding=binding):
+                lock = {"package": [
+                    {"name": "GENtle", "dependencies": [binding]},
+                    {"name": "svg2pdf", "dependencies": [binding]},
+                    {"name": "pdf-writer", "version": "0.12.1"},
+                    {"name": "pdf-writer", "version": "0.15.0"},
+                ]}
+                self.assertTrue(self.vector_pdf_writer_binding_is_shared(lock))
+
+    def test_vector_pdf_writer_guard_rejects_split_missing_or_ambiguous_bindings(self) -> None:
+        for bindings in (("pdf-writer 0.15.0", "pdf-writer 0.12.1"),
+                         ("pdf-writer 0.12.1", "pdf-writer 0.15.0"),
+                         ("pdf-writer", None), (None, "pdf-writer")):
+            with self.subTest(bindings=bindings):
+                lock = {"package": [
+                    {"name": name, "dependencies": [binding] if binding else []}
+                    for name, binding in zip(("GENtle", "svg2pdf"), bindings)
+                ]}
+                self.assertFalse(self.vector_pdf_writer_binding_is_shared(lock))
+        self.assertFalse(self.vector_pdf_writer_binding_is_shared({"package": []}))
+        self.assertFalse(self.vector_pdf_writer_binding_is_shared({"package": [
+            {"name": "GENtle", "dependencies": ["pdf-writer"]},
+            {"name": "svg2pdf", "dependencies": ["pdf-writer"]},
+            {"name": "svg2pdf", "dependencies": ["pdf-writer"]},
+        ]}))
+        self.assertFalse(self.vector_pdf_writer_binding_is_shared({"package": [
+            {"name": "GENtle", "dependencies": ["pdf-writer 0.12.1", "pdf-writer 0.15.0"]},
+            {"name": "svg2pdf", "dependencies": ["pdf-writer 0.12.1"]},
+        ]}))
+
+    @staticmethod
     def exact_locked_requirement(requirement, versions):
         return (
             isinstance(requirement, str)

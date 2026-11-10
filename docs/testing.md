@@ -152,6 +152,10 @@ manifest pin. Run `python3 -m unittest scripts.test_release_candidate.Dependency
 Positive patch/minor, incompatible/unlocked/wildcard controls and LF/CRLF TOML
 checks do not execute Cargo. Keep `Cargo.lock` committed and builds `--locked`;
 an intentional bio lockfile update still needs affected Rust/normal CI evidence.
+The same offline gate checks that GENtle and svg2pdf resolve the identical
+pdf-writer dependency, because `to_chunk` shares typed `Chunk`/`Ref` values.
+Split-version negative controls and LF/CRLF lockfile parsing protect this API
+boundary without pinning future compatible converter/writer pairs globally.
 
 Native CI runs the real `app::tests::agent_gui_context_` discovery tests before
 the long tutorial runtime suites. Tutorial 08.13's seven query contracts are

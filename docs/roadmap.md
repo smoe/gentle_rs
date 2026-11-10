@@ -28,7 +28,7 @@ Retained scientific story, not a selected `.13` aim: source-bound TP73/PATZ1 evi
 Smoke status: headless proofs do not replace graphical acceptance. All three
 Linux chapters (branch/reverse complement, digest, compact Simple PCR) must pass,
 without waiving the ten-minute budget. Glen reports green at `3de4803a`; retain the newer Simple-PCR evidence at `9070cb1d` separately. Recheck at the merged candidate and improve the result capture's clipped lower rows without treating five saved pairs as five visibly complete rows.
-Glen validates Linux and BLAST (missing-tool skips are not acceptance); CI owns Windows/macOS and containers. Recheck the [ported annotation/SAM publication fault tests](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03) on native Windows; retain scoped local results separately from Windows handle and full-suite acceptance.
+Glen validates Linux and BLAST (missing-tool skips are not acceptance); CI owns Windows/macOS and containers. Verify the [vector-PDF writer alignment](glen_next_verification_handoff.md#vector-pdf-writer-dependency-alignment-2026-11-10) with locked compile and existing vector-PDF regressions, preserving other owner dependency updates. Recheck the [ported annotation/SAM publication fault tests](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03) on native Windows; retain scoped local results separately from Windows handle and full-suite acceptance.
 
 Proof path:
 

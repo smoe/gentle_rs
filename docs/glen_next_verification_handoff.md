@@ -1,5 +1,35 @@
 # Glen: Next Verification And Return
 
+## Vector-PDF Writer Dependency Alignment, 2026-11-10
+
+The owner's dependency update selected direct pdf-writer 0.15 while svg2pdf
+0.13 still returns 0.12 `Chunk`/`Ref` values. The reported E0308 errors are a
+typed dependency mismatch, not an `Extend` dispatch problem. Restore the direct
+requirement to `0.12.1` (compatible patches allowed) and resolve the shared
+writer. Preserve the other owner dependency changes and existing PDF semantics.
+The offline `scripts.test_release_candidate.DependencyPinTests` now guards this
+shared lock identity with LF/CRLF, split-version and missing/ambiguous controls;
+it does not prohibit a future coordinated converter/writer upgrade.
+
+Local no-build evidence: offline release-policy suite **57/57**, including the
+eight dependency guards; `cargo tree --locked --offline -i pdf-writer` confirms
+one 0.12.1 writer shared by GENtle and svg2pdf. Documentation and whitespace
+checks pass. These are resolution/source checks, not a Rust compile or PDF run.
+
+After the owner's push, run or reuse matching-source results for:
+
+```sh
+python3 -m unittest scripts.test_release_candidate.DependencyPinTests -v
+cargo check --locked --tests -j1
+cargo test --locked --lib -j1 svg_vector_pdf::tests -- --test-threads=1
+```
+
+Require nonzero counts, including the multipage/order/page-size and invalid
+later-page output-preservation regressions. Return the tested SHA, lock hash,
+toolchain/platform and raw commands/results. No local Rust execution, native,
+package or release pass is claimed. Do not repeat the completed 7fa6b15a,
+reader/BLAST or barcode campaigns; the new exon-locus checklist remains separate.
+
 ## Glen Routine Scan At 7fa6b15a, Received 2026-11-10
 
 Separate routine scan, not the earlier completed focused campaign below.
