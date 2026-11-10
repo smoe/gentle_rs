@@ -1,5 +1,37 @@
 # Glen: Next Verification And Return
 
+## Real-cDNA Fixture Provenance And Checkout Repair, 2026-11-10
+
+Glen's bot commits `a7d16efddae245955dccd4a8c174faeb853665a1` and
+`42e819c9668e5f5d31fd58e50d3bdd6d1d7f6649` are integrated from base
+`249173ee`, with all 18 data hashes preserved. The corpus remains an explicitly
+documented, owner-authorized asset, not an implicit private-data run or evidence
+of phasing/biology. The archived Codex verification prompt does not grant local
+Rust/build, provider, data-run or publication authority.
+
+The new read-only verifier authenticates frozen binding metadata, then checks
+actual size/full streamed SHA-256 of both CRAMs/receipts, reference, full GTF and
+sample sheet before output creation. Header plus per-gene extracts must match
+the frozen combined-GTF hash too. Regeneration writes computed verified facts;
+relocated paths do not authorize new source bytes. Inputs must stay immutable;
+no source lock or independently authenticated auxiliary index is claimed.
+
+Fast regression scope: `scripts.test_tutorial_checkouts.CdnaFixtureSourceTests`
+and `TutorialCheckoutTests.test_cdna_fixture_manifest_preserves_text_and_binary_bytes_in_both_checkouts`.
+Only synthetic source bytes/tool stubs and retained-archive hash checks are used,
+not CRAM analysis or private archival reads. The Bash-wrapper case is POSIX-only;
+verifier and LF/CRLF Git checks are portable, not a claimed native Windows pass.
+Local Darwin arm64 / Python 3.15.2 result:
+`python3 -m unittest scripts.test_tutorial_checkouts -q` **97/97**,
+zero skips (the ten new provenance/checkout tests are included, not additional).
+`bash -n` passes; `shasum -a 256 -c SHA256SUMS` verifies **18/18** data files.
+The data subtree is byte-identical to bot commit `42e819c9`; documentation and
+whitespace checks pass. No Rust build/check/test or actual extractor ran.
+Full regeneration against archival inputs was not run and needs separate owner
+authorization if desired; do not repeat it or the completed earlier campaigns
+as part of the remaining exon-locus/CLI/VM checks below. Return per-item results
+and retain the actual source/lock/binary/input identities for those open checks.
+
 ## External CF01 SiLA Review Boundary, 2026-11-10
 
 Context only, not a new GENtle test campaign. The owner supplied Claude's

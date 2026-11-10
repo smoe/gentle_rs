@@ -3,17 +3,22 @@
 Fixtures are created below from literal bytes, committed only inside temporary
 repositories, and consumed by the checkout/replay tests. The byte-preservation
 regressions also copy the generated capability matrix and existing
-provenance-documented TSS and probe fixtures.
-No network, build, real checkout changes, or platform-specific tools are used.
+provenance-documented TSS, probe and frozen cDNA fixtures without processing reads.
+No network, build, private-source access or source checkout changes are used.
+One POSIX-only Bash-entry test uses synthetic inputs and trap-only tool stubs.
 """
 
 import hashlib
+import importlib.util
 import json
 import copy
 import re
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -363,6 +368,176 @@ class DocumentationStatusTests(unittest.TestCase):
                 self.assertTrue(any("RNA capture" in error for error in doc_status.lifecycle_errors(root)))
 
 
+class CdnaFixtureSourceTests(unittest.TestCase):
+    """Opaque synthetic source bytes only; never read archived sequencing inputs."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="gentle-cdna-source-")
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name) / "source's \u03bc data"
+        self.fixture = self.root / "fixture"
+        self.storage = self.root / "relocated storage"
+        origin = checker.ROOT / "test_files/fixtures/cdna_haplotype_tp53_tp73"
+        self.fixture.mkdir(parents=True)
+        for name in ("verify_sources.py", "generate_fixture.sh"):
+            (self.fixture / name).write_bytes((origin / name).read_bytes())
+        spec = importlib.util.spec_from_file_location("cdna_source_verifier", self.fixture / "verify_sources.py")
+        self.verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.verifier)
+        self.gtfs = [self.root / f"synthetic-{gene}.gtf" for gene in ("TP53", "TP73")]
+        for path in self.gtfs:
+            path.write_bytes(f"# hand-crafted {path.stem}\n".encode())
+        names = [
+            (role, f"analysis/gene_counts_v1/results/cohort_v1_1/{barcode}/{name}")
+            for barcode in ("barcode15", "barcode16")
+            for role, name in (("source_cram", f"{barcode}.sorted.cram"), ("cohort_receipt", "receipt.json"))
+        ] + [
+            ("reference_fasta", "reference/ensembl-116-grch38/Homo_sapiens.GRCh38.dna.primary_assembly.fa"),
+            ("annotation_gtf", "reference/ensembl-116-grch38/Homo_sapiens.GRCh38.116.gtf"),
+            ("sample_sheet", "metadata/samples.tsv"),
+        ]
+        self.rows, self.sources = [], []
+        for index, (role, relative) in enumerate(names):
+            path = self.storage / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = f"synthetic opaque {role} {index}\n".encode()
+            path.write_bytes(payload)
+            self.sources.append(path)
+            self.rows.append([role, f"/frozen/nanopore/{relative}", str(len(payload)),
+                              hashlib.sha256(payload).hexdigest(), "explicitly synthetic test bytes"])
+        data = self.fixture / "data"
+        (data / "annotation").mkdir(parents=True)
+        (data / self.verifier.ANNOTATION).write_bytes(
+            self.verifier.GTF_PREFIX + b"".join(path.read_bytes() for path in self.gtfs))
+        self.bindings = data / "source_bindings.tsv"
+        self.bindings.write_bytes(("\t".join(self.verifier.FIELDS) + "\n" +
+                                  "".join("\t".join(row) + "\n" for row in self.rows)).encode())
+        self.seal()
+
+    def seal(self):
+        data = self.fixture / "data"
+        (data / "SHA256SUMS").write_bytes("".join(
+            f"{hashlib.sha256((data / name).read_bytes()).hexdigest()}  ./{name}\n"
+            for name in ("source_bindings.tsv", self.verifier.ANNOTATION)).encode())
+
+    def verify(self):
+        return self.verifier.verify_sources(self.fixture, self.storage, *self.gtfs)
+
+    def snapshot(self):
+        return {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+
+    def test_verified_bindings_use_actual_relocated_paths_and_preserve_input_bytes(self):
+        before = self.snapshot()
+        lines = self.verify().splitlines()
+        self.assertEqual(lines[0], "\t".join(self.verifier.FIELDS))
+        expected = [list(row) for row in self.rows]
+        for row, path in zip(expected, self.sources):
+            row[1] = str(path)
+        self.assertEqual(lines[1:], ["\t".join(row) for row in expected])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_verifier_cli_emits_only_completed_verified_bindings(self):
+        before = self.snapshot()
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        result = subprocess.run([sys.executable, str(self.fixture / "verify_sources.py"),
+                                 str(self.storage), *(str(path) for path in self.gtfs)],
+                                capture_output=True, encoding="utf-8", env=env, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, self.verify())
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_each_frozen_source_refuses_same_size_content_drift(self):
+        for path in self.sources:
+            payload = path.read_bytes()
+            with self.subTest(source=path.name):
+                path.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+                try:
+                    with self.assertRaisesRegex(ValueError, "source_hash_mismatch"):
+                        self.verify()
+                finally:
+                    path.write_bytes(payload)
+
+    def test_missing_and_different_size_sources_are_not_relabelled(self):
+        path = self.sources[0]
+        payload = path.read_bytes()
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, "source_missing_or_nonregular"):
+            self.verify()
+        path.write_bytes(payload + b"extra")
+        with self.assertRaisesRegex(ValueError, "source_size_mismatch"):
+            self.verify()
+
+    def test_changed_bindings_cannot_redefine_the_frozen_source_hash(self):
+        self.bindings.write_bytes(self.bindings.read_bytes().replace(self.rows[0][3].encode(), b"0" * 64))
+        with self.assertRaisesRegex(ValueError, "fixture_bindings_hash_mismatch"):
+            self.verify()
+
+    def test_both_gene_extracts_and_their_order_are_hash_bound(self):
+        for path in self.gtfs:
+            payload = path.read_bytes()
+            with self.subTest(source=path.name):
+                path.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+                try:
+                    with self.assertRaisesRegex(ValueError, "gene_gtf_combination_hash_mismatch"):
+                        self.verify()
+                finally:
+                    path.write_bytes(payload)
+        with self.assertRaisesRegex(ValueError, "gene_gtf_combination_hash_mismatch"):
+            self.verifier.verify_sources(self.fixture, self.storage, *reversed(self.gtfs))
+
+    def test_raw_parent_traversal_in_a_source_binding_is_refused(self):
+        self.bindings.write_bytes(self.bindings.read_bytes().replace(
+            b"/frozen/nanopore/analysis/", b"/frozen/nanopore/../analysis/", 1))
+        self.seal()
+        with self.assertRaisesRegex(ValueError, "fixture_source_path_invalid"):
+            self.verify()
+
+    def test_verifier_cli_returns_a_real_nonzero_exit_without_partial_bindings(self):
+        path = self.sources[0]
+        path.write_bytes(b"x" * path.stat().st_size)
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        result = subprocess.run([sys.executable, str(self.fixture / "verify_sources.py"),
+                                 str(self.storage), *(str(path) for path in self.gtfs)],
+                                capture_output=True, encoding="utf-8", env=env, timeout=30)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("source_hash_mismatch", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    @unittest.skipIf(os.name == "nt", "Bash extraction wrapper is POSIX-only; verifier/checkout tests are portable")
+    def test_generator_refuses_drift_before_any_output_or_extraction_tool(self):
+        # Actual Bash entry point, with synthetic inputs and trap-only tool stubs.
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash, "POSIX fixture-wrapper regression requires Bash")
+        tool_dir = self.root / "tools"
+        tool_dir.mkdir()
+        marker = self.root / "unexpected extraction"
+        for tool in ("samtools", "gzip", "sha256sum", "awk", "sort"):
+            path = tool_dir / tool
+            path.write_text(f"#!/bin/sh\nprintf called > {shlex.quote(str(marker))}\nexit 91\n")
+            path.chmod(0o700)
+        python = tool_dir / "python3"
+        python.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
+        python.chmod(0o700)
+        reference = self.sources[4]
+        Path(str(reference) + ".fai").write_bytes(b"synthetic index, never consumed\n")
+        path = self.sources[0]
+        path.write_bytes(b"x" * path.stat().st_size)
+        before = self.snapshot()
+        output = self.root / "fresh output's"
+        env = dict(os.environ, PATH=str(tool_dir) + os.pathsep + os.environ["PATH"],
+                   GENTLE_CDNA_STORAGE_ROOT=str(self.storage),
+                   GENTLE_TP53_GTF=str(self.gtfs[0]), GENTLE_TP73_GTF=str(self.gtfs[1]),
+                   PYTHONIOENCODING="utf-8")
+        result = subprocess.run([bash, str(self.fixture / "generate_fixture.sh"), str(output)],
+                                capture_output=True, encoding="utf-8", env=env, timeout=30)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("source_hash_mismatch", result.stderr)
+        self.assertFalse(output.exists())
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.snapshot(), before)
+
+
 class TutorialCheckoutTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="gentle-checkout-test-")
@@ -669,6 +844,47 @@ class TutorialCheckoutTests(unittest.TestCase):
         broken = Path(self.tmp.name) / "gel-unprotected"
         prepare_unprotected_checkout(self.root, broken, unprotected)
         self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
+
+    def test_cdna_fixture_manifest_preserves_text_and_binary_bytes_in_both_checkouts(self):
+        relative = Path("test_files/fixtures/cdna_haplotype_tp53_tp73/data")
+        manifest = (checker.ROOT / relative / "SHA256SUMS").read_bytes()
+        entries = [line.split("  ", 1) for line in manifest.decode().splitlines()]
+        self.assertEqual(len(entries), 18)
+        payloads = {relative / "SHA256SUMS": manifest}
+        for digest, name in entries:
+            payload = (checker.ROOT / relative / name).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+            payloads[relative / name] = payload
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for path, payload in payloads.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "frozen cDNA fixture")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"cdna-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                for path, payload in payloads.items():
+                    self.assertEqual((target / path).read_bytes(), payload, path)
+                for digest, name in entries:
+                    self.assertEqual(hashlib.sha256((target / relative / name).read_bytes()).hexdigest(), digest)
+                binary = checker.git(target, "check-attr", "text", "--", str(relative / "reads/barcode15.TP53.primary.bam"))
+                self.assertIn(b"text: unset", binary)
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not (line.startswith(b"test_files/fixtures/cdna_haplotype_tp53_tp73/data/")
+                    and line.endswith(b"text eol=lf")))
+        broken = Path(self.tmp.name) / "cdna-unprotected"
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        for name in ("annotation/ensembl116.tp53_tp73.gtf", "reference/ensembl116.tp53_tp73.genomic_regions.fa",
+                     "read_manifest.tsv", "source_bindings.tsv", "SHA256SUMS"):
+            self.assertNotEqual((broken / relative / name).read_bytes(), payloads[relative / name], name)
+        for _, name in entries:
+            if name.startswith("./reads/"):
+                self.assertEqual((broken / relative / name).read_bytes(), payloads[relative / name])
 
     def test_public_tapestation_inputs_preserve_pdf_png_and_coordinate_hashes(self):
         relative = Path("test_files/fixtures/gel_images/tapestation_26r266")

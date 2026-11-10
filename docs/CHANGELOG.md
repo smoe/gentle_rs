@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-10 - Authenticate The Real-cDNA Fixture Regenerator And Checkouts
+
+- Integrate Glen's bot commits `a7d16efd`/`42e819c9`, preserving attribution,
+  all 18 retained data hashes and the separate verification-prompt boundary.
+- Verify actual source sizes/full streamed SHA-256 before output creation,
+  including cohort receipts and the combined per-gene GTF bytes. Write only
+  computed, verified bindings; preserve immutable-source and fresh-output rules.
+- Add synthetic drift/CLI/Bash-entry controls and fast real LF/CRLF checkout
+  checks for the text, BAM/BAI/gzip and manifest, with missing-rule negatives.
+  No private-source regeneration, Rust build, new biological analysis, push or
+  publication is performed; runtime/VM/native acceptance remains separate.
+
 ## 2026-11-10 - Retain The External CF01 Review Boundary
 
 - Record the owner-supplied external CF01/SiLA review without importing its
@@ -22,6 +34,27 @@
   360-read estimate is extrapolation, not a tested threshold or CPU profile.
   Keep distinct-isoform capacity, default/VM/actual-CLI/native/Windows checks
   and OD-L4 open without repeating completed campaigns. No local Rust execution.
+
+## 2026-11-10 - Add Bounded Real TP53/TP73 cDNA Development Reads
+
+- Add an owner-authorized 5.1 MB integration fixture from the frozen native
+  ONT-cDNA cohort: SK-MEL-28/barcode15 and WM793/barcode16 TP53/TP73 locus
+  reads, each retained as primary-alignment BAM plus original-base/quality
+  FASTQ. Keep low-MAPQ locus evidence visible so later code can distinguish
+  support, ambiguity, missing coverage and uncallable positions itself.
+- Bind the reads to Ensembl 116 / GRCh38 locus annotation and genomic-region
+  FASTA, confirmed sample metadata, cohort receipts, deterministic extraction,
+  readwise geometry/quality metadata and generated checksums. Reuse the
+  existing transcript FASTA fixtures rather than duplicating them.
+- State the scientific boundary explicitly: same-read allele/splice evidence
+  may nominate apparent switches; extra RNA haplotype clusters remain review
+  triggers. Neither establishes trans-splicing, editing or genomic copy number
+  without artifact review and matched DNA evidence. No analysis result or
+  product implementation is claimed by adding the corpus.
+- Add a separate Codex verification prompt for the current exon-locus anchor
+  handoff. It requires exact-source evidence and real nonempty execution while
+  forbidding source changes, private-data runs, pushes, publication and repeats
+  of already closed campaigns; the new cDNA asset does not widen that scope.
 
 ## 2026-11-10 - Align The Vector-PDF Writer Dependency With Svg2pdf
 

@@ -1,0 +1,3 @@
+# The repository ignores compressed archives by default. These four bounded,
+# provenance-bound FASTQ fixtures are intentional source assets.
+!data/reads/*.fastq.gz

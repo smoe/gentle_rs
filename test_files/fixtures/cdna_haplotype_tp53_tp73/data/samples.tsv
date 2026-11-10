@@ -1,0 +1,3 @@
+barcode	sample_id	cell_line	library_content	description	cell_line_status
+barcode15	sample1	SK-MEL-28	cDNA_regular	cDNA regular; no TP53/TP73 target primer	confirmed
+barcode16	sample2	WM793	cDNA_regular	cDNA regular; no TP53/TP73 target primer	confirmed

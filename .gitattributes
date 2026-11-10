@@ -1,6 +1,14 @@
 # Use Unix line endings for text on every platform, including Windows Git
 # installations with core.autocrlf=true. Keep binary/verbatim overrides below.
 * text=auto eol=lf
+# Frozen real-cDNA fixture hashes bind text bytes; alignments/reads stay binary.
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/*.tsv text eol=lf
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/SHA256SUMS text eol=lf
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/annotation/*.gtf text eol=lf
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/reference/*.fa text eol=lf
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/reads/*.bam binary
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/reads/*.bai binary
+test_files/fixtures/cdna_haplotype_tp53_tp73/data/reads/*.fastq.gz binary
 # Manual navigation projections and authoritative topic inputs are LF-bound.
 docs/manuals.json text eol=lf
 docs/gui.md text eol=lf
