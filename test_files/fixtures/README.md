@@ -30,6 +30,11 @@ checks.
   - `ensembl_mouse_trp73_all.fasta`
 - `sequencing_confirmation/`
   - `README.md`
+- `cdna_haplotype_tp53_tp73/`
+  - owner-authorized bounded real ONT cDNA reads for SK-MEL-28/barcode15 and
+    WM793/barcode16 at the TP53 and TP73 loci
+  - Ensembl 116 / GRCh38 locus annotation and reference slices
+  - deterministic regeneration script, source bindings and checksums
 - `microarray_tracks/`
   - `README.md`
   - `clariomd.synthetic.manifest.json`
@@ -52,6 +57,25 @@ checks.
   - `clariom_d_human_na36_hg38_gene_panel.transcripts.tsv`
 
 ## Provenance and usage
+
+### `cdna_haplotype_tp53_tp73/*`
+
+- Origin: owner-authorized real Oxford Nanopore regular-cDNA reads from
+  SK-MEL-28 (`barcode15`) and WM793 (`barcode16`), extracted from the frozen
+  Ensembl-116/GRCh38 cohort CRAMs.
+- Deterministic recreation and exact local source bindings are documented in
+  the fixture-local `README.md`, `PROVENANCE.md`, and `generate_fixture.sh`.
+- Primary usage:
+  - integration/development corpus for cDNA SNP callability, local haplotypes,
+    and same-read allele/splice association;
+  - sample contrast with original bases and qualities retained;
+  - fail-closed review of sparse coverage, disconnected phase blocks,
+    apparent allele switches, and extra RNA haplotype clusters.
+- Runtime/parser role:
+  - bounded real-data complement to the synthetic `allele_hash_screen`
+    fixtures;
+  - not evidence by itself for genomic copy number, RNA editing,
+    trans-splicing, cross-allelic splicing, or complete transcript identity.
 
 ### `genomes/AB011549.2.fa` + `genomes/AB011549.2.gb`
 
