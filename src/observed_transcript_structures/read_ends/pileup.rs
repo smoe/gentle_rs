@@ -4,6 +4,7 @@ use super::*;
 use coverage::{Compatibility, CoverageReport, InputBindings, SampleInput};
 use evidence::{CompositionEvidence, TailEvidence};
 use gentle_render::read_end_pileup::{Band, Orientation, Row, RunGlyph, Scene};
+use std::cmp::Ordering;
 
 pub const SCHEMA: &str = "gentle.rna_read_end_pileup.v2";
 pub const LEGACY_SCHEMA: &str = "gentle.rna_read_end_pileup.v1";
@@ -408,12 +409,19 @@ fn status(metric: &Metric) -> Status {
         Metric::Missing { .. } => Status::Missing,
     }
 }
-fn value(metric: &Metric) -> Option<usize> {
-    match metric {
-        Metric::Observed { value_bp } => Some(*value_bp),
-        Metric::RightCensored { lower_bound_bp } => Some(*lower_bound_bp),
-        _ => None,
-    }
+fn compare_metrics(a: &Metric, b: &Metric, descending: bool) -> Ordering {
+    use Metric::{Missing, Observed, RightCensored};
+    let order = match (a, b) {
+        // Evidence class is not a magnitude: exact values precede bounds in either direction.
+        (Observed { .. }, RightCensored { .. }) => return Ordering::Less,
+        (RightCensored { .. }, Observed { .. }) => return Ordering::Greater,
+        (Observed { value_bp: x }, Observed { value_bp: y })
+        | (RightCensored { lower_bound_bp: x }, RightCensored { lower_bound_bp: y }) => x.cmp(y),
+        (Missing { .. }, Missing { .. }) => Ordering::Equal,
+        (Missing { .. }, _) => Ordering::Less,
+        (_, Missing { .. }) => Ordering::Greater,
+    };
+    if descending { order.reverse() } else { order }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -505,9 +513,6 @@ fn clip(lane: &Lane, id: &str, five: bool) -> Option<usize> {
 }
 fn sort_value(lane: &Lane, id: &str, key: SortKey) -> Option<usize> {
     match key {
-        SortKey::Value5 => value(&lane.unit.utr5),
-        SortKey::Value3 => value(&lane.unit.utr3),
-        SortKey::ReadLength => value(&lane.unit.read_length),
         SortKey::Clip5 => clip(lane, id, true),
         SortKey::Clip3 => clip(lane, id, false),
         SortKey::Status5 => Some(status(&lane.unit.utr5) as usize),
@@ -595,19 +600,20 @@ pub fn page(report: &Report, view: &View) -> Result<Page, EngineError> {
         .filter(|l| matches(l, &report.transcript_id, &view.filters))
         .collect();
     lanes.sort_by(|a, b| {
+        let (first, second) = if view.descending { (b, a) } else { (a, b) };
         let primary = match view.sort {
-            SortKey::Sample => a.sample_id.cmp(&b.sample_id),
-            SortKey::UnitKey => a.unit.unit.cmp(&b.unit.unit),
-            key => sort_value(a, &report.transcript_id, key).cmp(&sort_value(
-                b,
+            SortKey::Value5 => compare_metrics(&a.unit.utr5, &b.unit.utr5, view.descending),
+            SortKey::Value3 => compare_metrics(&a.unit.utr3, &b.unit.utr3, view.descending),
+            SortKey::ReadLength => {
+                compare_metrics(&a.unit.read_length, &b.unit.read_length, view.descending)
+            }
+            SortKey::Sample => first.sample_id.cmp(&second.sample_id),
+            SortKey::UnitKey => first.unit.unit.cmp(&second.unit.unit),
+            key => sort_value(first, &report.transcript_id, key).cmp(&sort_value(
+                second,
                 &report.transcript_id,
                 key,
             )),
-        };
-        let primary = if view.descending {
-            primary.reverse()
-        } else {
-            primary
         };
         primary.then_with(|| (&a.sample_id, &a.unit.unit).cmp(&(&b.sample_id, &b.unit.unit)))
     });

@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-11-11 - Distinguish Exact Values From Bounds In Pileup Sorting
+
+- Sort observed values and right-censored lower bounds in separate groups for
+  both UTR ends and read length. Keep missing-value placement and sample/unit
+  tie-breaks unchanged. Only the view order changes, not the measurements,
+  coverage or report schema. Add a regression for ascending and descending pages.
+
 ## 2026-11-11 - Isolate Indexed-Locus samtools Calls
 
 - Clear the parent environment before the version probe, header read and region

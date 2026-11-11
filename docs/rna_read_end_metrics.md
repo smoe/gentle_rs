@@ -53,6 +53,11 @@ Separate tail input binds an imported file and raw-signal manifest plus supporte
 caller/version/model/kit/basecaller/configuration. Unsupported/QC-failing rows
 never acquire accepted values. These channels never change UTR censoring.
 Status/value sorts and filters use conservative unit-level collapsed metrics.
+For `value5`, `value3` and `read_length`, observations sort ahead of right-censored
+lower bounds in either direction: an exact 20 bp and a lower bound of 20 bp are
+not tied. Values sort numerically within each group. Missing values stay first
+when ascending and last when descending; ties use ascending sample and unit keys
+before paging. The figure keeps this order within each orientation group.
 Selected-transcript metrics under each hypothesis remain visible separately;
 the viewer does not pick one hypothesis to manufacture a sortable value.
 

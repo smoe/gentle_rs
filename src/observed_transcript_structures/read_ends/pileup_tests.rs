@@ -277,6 +277,69 @@ fn read_end_pileup_sorts_stably_and_never_drops_alternative_hypotheses() {
 }
 
 #[test]
+fn read_end_pileup_value_sorts_separate_observations_from_bounds() {
+    let mut report = report("plus", false);
+    let template = report.lanes[0].clone();
+    let exact = |value_bp| Metric::Observed { value_bp };
+    let bound = |lower_bound_bp| Metric::RightCensored { lower_bound_bp };
+    for sort in [SortKey::Value5, SortKey::Value3, SortKey::ReadLength] {
+        report.lanes = [
+            ("min20", bound(20)),
+            ("obs20b", exact(20)),
+            ("missing", missing(Reason::AxisLengthUnavailable)),
+            ("obs40", exact(40)),
+            ("min5", bound(5)),
+            ("obs20a", exact(20)),
+        ]
+        .into_iter()
+        .map(|(id, metric)| {
+            let mut lane = template.clone();
+            lane.unit.unit.unit_id = id.into();
+            match sort {
+                SortKey::Value5 => lane.unit.utr5 = metric,
+                SortKey::Value3 => lane.unit.utr3 = metric,
+                SortKey::ReadLength => lane.unit.read_length = metric,
+                _ => unreachable!(),
+            }
+            lane
+        })
+        .collect();
+
+        for (descending, expected) in [
+            (
+                false,
+                ["missing", "obs20a", "obs20b", "obs40", "min5", "min20"],
+            ),
+            (
+                true,
+                ["obs40", "obs20a", "obs20b", "min20", "min5", "missing"],
+            ),
+        ] {
+            for (index, wanted) in expected.chunks(3).enumerate() {
+                let v = View {
+                    sort,
+                    descending,
+                    offset: index * 3,
+                    count: 3,
+                    ..view()
+                };
+                let p = page(&report, &v).unwrap();
+                let ids: Vec<_> = p
+                    .lanes
+                    .iter()
+                    .map(|l| l.unit.unit.unit_id.as_str())
+                    .collect();
+                assert_eq!(
+                    ids.as_slice(),
+                    wanted,
+                    "{sort:?}, descending={descending}, page={index}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn read_end_pileup_connectors_keep_n_deletion_and_segment_links_distinct() {
     let (_, mut analysis) = fixture("plus");
     let observation = &mut analysis.observations[0];
