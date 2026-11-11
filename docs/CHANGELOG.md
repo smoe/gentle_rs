@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-11-11 - Isolate Indexed-Locus samtools Calls
+
+- Clear the parent environment before the version probe, header read and region
+  selection. All three receive the locale and private reference paths recorded
+  in the existing receipt. Add a native-stub regression for all three calls;
+  no local Rust build or test was run.
+
 ## 2026-11-11 - Repair C1 Shell Error And Request Ownership Boundaries
 
 - Fix the owner's two C1 compile errors at `d927ffa8`: explicitly convert the

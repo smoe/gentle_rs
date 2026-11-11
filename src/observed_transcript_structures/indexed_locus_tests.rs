@@ -92,6 +92,55 @@ fn indexed_locus_native_stub_binds_partial_units_without_claiming_full_hash() {
 }
 
 #[test]
+fn indexed_locus_isolates_all_three_samtools_calls() {
+    const PARENT_ONLY: &str = "GENTLE_TEST_SAMTOOLS_PARENT_ONLY";
+    if std::env::var(PARENT_ONLY).ok().as_deref() != Some("selection-parent") {
+        // Set the marker on a fresh selection process, not on the parallel test runner.
+        let test = format!(
+            "{}::indexed_locus_isolates_all_three_samtools_calls",
+            module_path!().split_once("::").unwrap().1
+        );
+        let run = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &test, "--nocapture"])
+            .env(PARENT_ONLY, "selection-parent")
+            .env("LC_ALL", "POSIX")
+            .env("REF_PATH", "parent-lookup")
+            .env("REF_CACHE", "parent-cache")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        assert!(
+            run.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        return;
+    }
+
+    let (root, request) = fixture();
+    let trace = root.path().join("samtools-env.trace");
+    File::create(&trace).unwrap();
+    let control = Command::new(request.samtools.as_ref().unwrap())
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(control.status.success());
+    assert_eq!(
+        fs::read_to_string(&trace).unwrap(),
+        "version\ttrue\tPOSIX\tparent-lookup\tparent-cache\n"
+    );
+    File::create(&trace).unwrap();
+
+    let selected = select(&request, &mut || Ok(())).unwrap();
+    let env = &selected.receipt.environment;
+    let (lookup, cache) = (&env["REF_PATH"], &env["REF_CACHE"]);
+    let expected = ["version", "header", "region"]
+        .map(|phase| format!("{phase}\tfalse\tC\t{lookup}\t{cache}\n"))
+        .concat();
+    assert_eq!(fs::read_to_string(trace).unwrap(), expected);
+}
+
+#[test]
 fn indexed_locus_version_metadata_is_lossless_but_sam_remains_strict_utf8() {
     let (root, mut request) = fixture();
     let executable = root.path().canonicalize().unwrap().join(if cfg!(windows) {

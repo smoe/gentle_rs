@@ -2,11 +2,30 @@
 
 use std::io::Write;
 
+fn record_samtools_environment(phase: &str) {
+    let path = std::env::current_exe()
+        .unwrap()
+        .with_file_name("samtools-env.trace");
+    if path.is_file() {
+        let mut trace = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+        writeln!(
+            trace,
+            "{phase}\t{}\t{}\t{}\t{}",
+            std::env::var_os("GENTLE_TEST_SAMTOOLS_PARENT_ONLY").is_some(),
+            std::env::var("LC_ALL").unwrap_or_default(),
+            std::env::var("REF_PATH").unwrap_or_default(),
+            std::env::var("REF_CACHE").unwrap_or_default(),
+        )
+        .unwrap();
+    }
+}
+
 fn main() {
     let mode = std::env::args().nth(1).unwrap_or_default();
     let mut stdout = std::io::stdout().lock();
     match mode.as_str() {
         "--version" => {
+            record_samtools_environment("version");
             stdout
                 .write_all(b"samtools 1.25 synthetic\nUsing htslib 1.25 synthetic\n")
                 .unwrap();
@@ -30,6 +49,7 @@ fn main() {
                 }
             }
             let header = args.iter().any(|a| a == "-H");
+            record_samtools_environment(if header { "header" } else { "region" });
             let position = if header {
                 args.len() - 1
             } else {

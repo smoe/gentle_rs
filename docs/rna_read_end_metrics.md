@@ -61,7 +61,10 @@ dictionary, interval and declared filters. Full alignment SHA verification is
 optional and explicitly labelled; index pairing is a producer declaration plus
 hash/size/mtime and tool-warning checks, not an exhaustive index proof. CRAM
 requires a bound uncompressed FASTA and adjacent FAI, matching dictionary and
-private REF_PATH/REF_CACHE. Alternate header UR locations are refused before
+private `REF_PATH`/`REF_CACHE`. For the version probe, header read and region
+selection, GENtle clears the inherited environment and sets only these two paths
+and `LC_ALL=C`. Older selection receipts list the same settings but do not prove
+that the environment was cleared. Alternate header UR locations are refused before
 decode, conservatively including otherwise valid external-reference CRAMs.
 Non-UTF-8 `samtools --version` diagnostic bytes are explicitly ASCII-escaped
 without loss; valid UTF-8 is unchanged. This does not relax strict SAM/header

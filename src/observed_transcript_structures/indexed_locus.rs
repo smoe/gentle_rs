@@ -474,7 +474,7 @@ pub fn select(
     fs::create_dir(root.join("no-reference-cache")).map_err(io)?;
     let command = |args: &[String]| {
         let mut c = Command::new(&executable.path);
-        c.args(args).envs(&environment);
+        c.env_clear().envs(&environment).args(args);
         c
     };
     let limits = supervised_process::Limits {
