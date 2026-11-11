@@ -1,5 +1,63 @@
 # Glen: Next Verification And Return
 
+## Four Read-End Fixes At 18488691, 2026-11-12
+
+**Pending Glen/CI verification.** Test `184886914e9995f9af08a4ee83ae104e918e6121`
+or record the exact merged SHA tested. This checklist is separate from C1.
+The 208 checks at `d8656d46` predate all four fixes; no private cDNA data or
+repeat of that campaign is needed.
+
+Use a clean checkout and a run-owned `CARGO_TARGET_DIR` on Unix and native
+Windows. Start with the locked compile gates; a same-SHA, same-platform CI
+receipt for the same gate can be cited instead of rerunning it.
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+```
+
+1. **samtools environment (`53558ec5`).** The native stub must see the
+   parent-only variable in its control call, but not in GENtle's version probe,
+   header read or region selection. All three must see `LC_ALL=C` and the
+   private `REF_PATH` and `REF_CACHE`. Glen: also set `GENTLE_TEST_SAMTOOLS` to
+   the absolute path of a real executable and record its version. Confirm the
+   indexed BAM and reference-backed CRAM cases both execute on the synthetic
+   fixture. If the variable is unset, the test prints `NOT RUN` and returns
+   normally: record `not_run` for real samtools, regardless of Cargo's `ok`.
+2. **Pileup sorting (`c5a91881`).** For 5'-UTR, 3'-UTR and read length,
+   exact observations must precede right-censored lower bounds in both sort
+   directions. An observed 20 bp must not tie with a lower bound of 20 bp.
+   Check stable ties across pages and missing values first ascending, last descending.
+3. **Selected SAM retention (`abc60048`).** Omitted or false
+   `retain_selected_sam` must leave no SAM artifact. True must publish
+   `artifacts/selection.sam` byte-for-byte with the receipt's size and SHA-256;
+   verification must reject same-length tampering. Cancellation after staging
+   but before report commit must leave no retained SAM on disk or in the
+   cancelled report. Check cleanup on native Windows as well as Unix.
+4. **Input budget (`18488691`).** Bound JSON must admit 8,387,584 raw bytes
+   and refuse one more. Shell preflight must report the submitted and allowed
+   byte counts and reject an overflowing declaration. A two-sample build must
+   admit 8,386,560 charged raw bytes in total and refuse one more without
+   publishing output. Discovery must distinguish the single-charge ceiling
+   from the 128 MiB file cap. See [input accounting](rna_read_end_metrics.md#read-end-input-budget).
+
+Run these headless library filters in checklist order:
+
+```sh
+cargo test --locked --no-default-features --lib -j1 indexed_locus_isolates_all_three_samtools_calls
+cargo test --locked --no-default-features --lib -j1 indexed_locus_optional_real_samtools_requires_explicit_configuration -- --nocapture
+cargo test --locked --no-default-features --lib -j1 read_end_pileup_value_sorts_separate_observations_from_bounds
+cargo test --locked --no-default-features --lib -j1 indexed_locus_retains_selected_sam_only_on_opt_in
+cargo test --locked --no-default-features --lib -j1 read_end_service_bound_json_input_byte_boundary
+cargo test --locked --no-default-features --lib -j1 read_end_service_build_input_
+cargo test --locked --no-default-features --lib -j1 read_end_oriented_discovery_names_bound_originals_and_preserves_typed_inspection
+```
+
+The `read_end_service_build_input_` filter must run both the shell preflight
+and cumulative two-sample tests. Return the source SHA, OS, Rust/Cargo and
+samtools versions, commands, nonzero test counts, failures and explicit
+`not_run` cases per platform. This is a verification request, not a pass receipt.
+
 ## C1 Bound Coding Models, 2026-11-11
 
 **Active new scope after the owner's push:** verify `DeriveCodingTranscriptModels`
