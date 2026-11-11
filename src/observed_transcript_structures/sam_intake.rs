@@ -316,11 +316,19 @@ impl Read for Verified {
     }
 }
 
-fn json_charge(bytes: u64) -> Result<usize, EngineError> {
+pub(crate) const JSON_MEMORY_BYTES_PER_RAW_BYTE: usize = 64;
+pub(crate) const JSON_FIXED_MEMORY_BYTES: usize = 64 * 1024;
+
+/// Upper bound for a single charge, not a promise that the input is valid.
+pub(crate) const fn max_raw_json_bytes(memory: usize) -> usize {
+    memory.saturating_sub(JSON_FIXED_MEMORY_BYTES) / JSON_MEMORY_BYTES_PER_RAW_BYTE
+}
+
+pub(crate) fn json_charge(bytes: u64) -> Result<usize, EngineError> {
     usize::try_from(bytes)
         .ok()
-        .and_then(|n| n.checked_mul(64))
-        .and_then(|n| n.checked_add(65536))
+        .and_then(|n| n.checked_mul(JSON_MEMORY_BYTES_PER_RAW_BYTE))
+        .and_then(|n| n.checked_add(JSON_FIXED_MEMORY_BYTES))
         .ok_or_else(|| fail("memory_budget"))
 }
 fn json<T: serde::de::DeserializeOwned>(
@@ -362,7 +370,10 @@ pub(crate) fn verified_json<T: serde::de::DeserializeOwned>(
     check: &mut dyn FnMut() -> Result<(), EngineError>,
 ) -> Result<T, EngineError> {
     if json_charge(file.bytes)? > memory {
-        return Err(fail("memory_budget"));
+        return Err(fail("memory_budget").with_cause(format!(
+            "Bound JSON is {} raw bytes; the {memory}-byte memory budget allows at most {} raw bytes.",
+            file.bytes, max_raw_json_bytes(memory)
+        )));
     }
     json(file, check)
 }

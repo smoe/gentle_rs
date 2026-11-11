@@ -47,7 +47,8 @@ pub use sam_intake::{
     SearchDeclaration as ObservedSamSearchDeclaration, Unit as ObservedSamQueryUnit,
 };
 pub(crate) use sam_intake::{
-    Request as SamIntakeRequest, path as validate_sam_raw_path,
+    JSON_FIXED_MEMORY_BYTES, JSON_MEMORY_BYTES_PER_RAW_BYTE, Request as SamIntakeRequest,
+    json_charge, max_raw_json_bytes, path as validate_sam_raw_path,
     verified_bytes as read_sam_bound_bytes, verified_json as read_sam_bound_json,
 };
 pub(crate) use sam_report::summarize_bound as summarize_sam_bound;

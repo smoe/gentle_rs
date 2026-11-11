@@ -72,6 +72,11 @@ artifact-write confirmation before I/O. Generic MCP op, JS/Lua and Python use
 this contract rather than implement geometry in their adapters. Discovery
 templates are placeholders, not executable biological defaults.
 
+The `input_budget` discovery field distinguishes the 128 MiB raw JSON file cap
+from the 512 MiB memory budget. Each charge reserves 64 KiB plus 64 times its
+raw bytes: `max_raw_bytes_one_charge` is **8,387,584** inclusive, not a
+per-sample allowance. See [build preflight and per-sample accounting](rna_read_end_metrics.md#read-end-input-budget).
+
 Inputs bind completed observed-SAM reports, V2 models and normalized annotations;
 coverage/view/completion remain v1; new pileups use `gentle.rna_read_end_pileup.v2`
 with conservative v1 reading. Optional per-sample `original_bases` binds a strict

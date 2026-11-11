@@ -20178,6 +20178,7 @@ fn read_end_descriptor(id: &str) -> Value {
     );
     descriptor["terminal_run_defaults"] =
         json!(crate::observed_transcript_structures::read_ends::oriented::Policy::default());
+    descriptor["input_budget"] = crate::rna_read_ends::input_budget_descriptor();
     descriptor["exon_locus"] = json!({
         "command":{"action":"locus","command":{"action":"inspect","report":{"path":"REPLACE_BOUND_LOCUS_REPORT","sha256":"REPLACE_RAW_SHA256","bytes":0},"view":crate::observed_transcript_structures::read_ends::locus::View::default()}},
         "actions":["build","inspect","export"],"build_schema":crate::rna_read_ends::locus::BUILD_SCHEMA,
@@ -67304,6 +67305,7 @@ fn execute_op_command(
                 | Operation::SaveGelImageDraft { .. }
         ) || matches!(&op, Operation::GelWorkbench { request } if request.mutates())
             || matches!(&op, Operation::BuildRnaReadPanel { request } if request.register_in_project.unwrap_or(false));
+        let show_read_end_causes = matches!(&op, Operation::RnaReadEnds { .. });
         let result = if matches!(
             &op,
             Operation::ComputeTssTfbsProfiles { .. }
@@ -67325,7 +67327,13 @@ fn execute_op_command(
         } else {
             engine.apply(op)
         }
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            if show_read_end_causes && !error.cause_chain.is_empty() {
+                format!("{error}: {}", error.cause_chain.join(": "))
+            } else {
+                error.to_string()
+            }
+        })?;
         return Ok(ShellRunResult {
             state_changed,
             output: json!({ "result": result }),

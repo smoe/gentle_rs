@@ -1,5 +1,11 @@
 # GENtle Changelog
 
+## 2026-11-11 - Clarify The Read-End Input Limit
+
+- Expose the existing 8,387,584-byte single-charge ceiling in read-end
+  discovery and explain memory refusals without changing admission or output.
+  Add boundary regressions for bound JSON and cumulative build inputs.
+
 ## 2026-11-11 - Opt In To Keeping A Locus-Selected SAM
 
 - `select_locus` keeps its SAM temporary unless `retain_selected_sam` is true.

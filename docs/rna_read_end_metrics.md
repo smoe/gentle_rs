@@ -84,6 +84,25 @@ With `"retain_selected_sam": true` on `select_locus`, the completed S2.3
 report also binds an exact copy at `artifacts/selection.sam`. Keeping it does
 not make the selection exhaustive or substitute for an `original_bases` input.
 
+### Read-End Input Budget
+
+The read-end JSON loader has a 128 MiB raw file cap, but its memory guard
+is tighter: it charges **64 KiB + 64 bytes per raw input
+byte** against 512 MiB. A single bound JSON file can therefore be at most
+**8,387,584 bytes** (8 MiB minus 1 KiB). One more byte is refused, even if it
+is just JSON whitespace. This is a conservative admission rule, not measured
+RAM usage, a limit on the source BAM/CRAM, or a guarantee that a build will fit.
+
+Transcript and locus builds share the 512 MiB budget across samples. Each
+sample pays the 64 KiB reserve once and is charged for its saved S2.3
+`report.json` and `analysis.json`, model, normalized annotation and optional
+original bases, counting the supplied bindings for that sample. Two samples
+can therefore contribute at most **8,386,560 charged raw bytes in total**,
+even if they reuse files. Transcript builds also preflight all declared model,
+annotation, original-base, tail and raw-signal manifest bytes together against
+the single-charge ceiling; this check is not debited again. Raising
+`max_output_bytes` or requesting a smaller view does not raise these input limits.
+
 ### Original Bases And Oriented Single-Read Lanes
 
 New builds write `gentle.rna_read_end_pileup.v2`. Existing v1 reports remain

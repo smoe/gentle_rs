@@ -123,7 +123,7 @@ fn load(
 ) -> Result<Loaded, EngineError> {
     check()?;
     let (report, file) = analysis_file(&sample.analysis)?;
-    let size = [
+    let input_bytes = [
         file.bytes,
         fs::metadata(&sample.analysis.report_path)
             .map_err(fail)?
@@ -139,13 +139,8 @@ fn load(
             .map(|f| f.bytes),
     )
     .try_fold(0u64, |n, b| n.checked_add(b))
-    .and_then(|n| n.checked_mul(64))
-    .and_then(|n| n.checked_add(65536))
-    .and_then(|n| usize::try_from(n).ok())
     .ok_or_else(|| fail("input_memory_budget"))?;
-    *remaining = remaining
-        .checked_sub(size)
-        .ok_or_else(|| fail("input_memory_budget"))?;
+    *remaining = remaining_input_memory(input_bytes, *remaining)?;
     let data: ObservedSamData = bound_json(&file, check)?;
     let analysis = data.analysis.ok_or_else(|| fail("analysis_unavailable"))?;
     let annotation: Option<PrimerPayloadAnnotation> = optional(sample.annotation.as_ref(), check)?;

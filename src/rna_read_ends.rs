@@ -21,6 +21,28 @@ const CAP: u64 = 128 * 1024 * 1024;
 const MEMORY: usize = 512 * 1024 * 1024;
 const RASTER_PIXEL_LIMIT: u64 = 32_000_000;
 
+/// Describe the same checked input charges enforced by the reader and the build loaders.
+pub(crate) fn input_budget_descriptor() -> Value {
+    json!({
+        "raw_json_file_cap_bytes": CAP,
+        "memory_budget_bytes": MEMORY,
+        "fixed_memory_bytes_per_charge": kernel::JSON_FIXED_MEMORY_BYTES,
+        "memory_bytes_per_raw_byte": kernel::JSON_MEMORY_BYTES_PER_RAW_BYTE,
+        "max_raw_bytes_one_charge": kernel::max_raw_json_bytes(MEMORY),
+        "scope": "Bound JSON and build admission. Each sample draws from the same budget; this is not a BAM/CRAM or output size limit."
+    })
+}
+
+fn remaining_input_memory(bytes: u64, available: usize) -> Result<usize, EngineError> {
+    kernel::json_charge(bytes)
+        .ok()
+        .and_then(|charge| available.checked_sub(charge))
+        .ok_or_else(|| fail("input_memory_budget").with_cause(format!(
+            "Input is {bytes} raw bytes; the remaining {available}-byte memory budget allows at most {} raw bytes for this charge.",
+            kernel::max_raw_json_bytes(available)
+        )))
+}
+
 /// Versioned exon-locus actions over the same loader, publication and conversion boundary.
 pub mod locus;
 
@@ -449,7 +471,7 @@ fn load(
 ) -> Result<Loaded, EngineError> {
     check()?;
     let (report, file) = analysis_file(&sample.analysis)?;
-    let charged = [
+    let input_bytes = [
         file.bytes,
         sample.model.bytes,
         sample.normalized_annotation.bytes,
@@ -460,13 +482,8 @@ fn load(
     ]
     .into_iter()
     .try_fold(0u64, |n, b| n.checked_add(b))
-    .and_then(|n| n.checked_mul(64))
-    .and_then(|n| n.checked_add(65536))
-    .and_then(|n| usize::try_from(n).ok())
     .ok_or_else(|| fail("input_memory_budget"))?;
-    *remaining = remaining
-        .checked_sub(charged)
-        .ok_or_else(|| fail("input_memory_budget"))?;
+    *remaining = remaining_input_memory(input_bytes, *remaining)?;
     let data: ObservedSamData = bound_json(&file, check)?;
     let analysis = data.analysis.ok_or_else(|| fail("analysis_unavailable"))?;
     let model: core::ModelDocument = bound_json(&sample.model, check)?;
@@ -755,13 +772,8 @@ pub fn execute(
             .into_iter()
             .try_fold(0u64, |n, f| n.checked_add(f.bytes))
             .ok_or_else(|| fail("input_byte_budget"))?;
-            if input_bytes
-                .checked_mul(64)
-                .and_then(|n| n.checked_add(65536))
-                .is_none_or(|n| n > MEMORY as u64)
-            {
-                return Err(fail("input_memory_budget"));
-            }
+            // This preflight overlaps the sample charges below; do not debit it twice.
+            remaining_input_memory(input_bytes, MEMORY)?;
             let mut remaining = MEMORY;
             let loaded = request
                 .samples

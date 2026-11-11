@@ -16,6 +16,14 @@ fn read_end_oriented_discovery_names_bound_originals_and_preserves_typed_inspect
     for id in ["RnaReadEnds", "rna-reads read-ends"] {
         let descriptor = read_end_descriptor(id);
         assert_eq!(
+            descriptor["input_budget"]["max_raw_bytes_one_charge"],
+            8_387_584
+        );
+        assert_eq!(
+            descriptor["input_budget"]["raw_json_file_cap_bytes"],
+            128 * 1024 * 1024
+        );
+        assert_eq!(
             descriptor["terminal_run_defaults"],
             json!({"window_bp":60,"minimum_run_bp":10})
         );

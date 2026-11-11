@@ -85,6 +85,11 @@ New v2 pileups preserve literal A/T, clipped runs, mRNA-relative orientation and
 unresolved alternatives; v1 reports remain readable without invented bases.
 See [original-base input and synthetic replay](../rna_read_end_metrics.md#original-bases-and-oriented-single-read-lanes).
 
+For a bound JSON input, the effective maximum is **8,387,584 bytes** (8 MiB
+minus 1 KiB), not the 128 MiB file cap. Builds share the memory budget across
+samples, including their saved evidence. See [what counts toward the input
+budget](../rna_read_end_metrics.md#read-end-input-budget).
+
 Build/export/selection and cancel-marker writes require confirmation in agent
 and MCP routes, before I/O. Inspect is read-only. Generic `op`, JS/Lua shell
 execution and the Python CLI wrapper use the same service and guardrails.

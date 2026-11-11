@@ -171,6 +171,118 @@ pub(super) fn attach_original_bases(root: &tempfile::TempDir, request: &mut Buil
 }
 
 #[test]
+fn read_end_service_bound_json_input_byte_boundary() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().canonicalize().unwrap().join("padded.json");
+    // JSON whitespace counts toward the raw binding but does not inflate the parsed value.
+    let mut raw = b"true".to_vec();
+    raw.resize(8_387_584, b' ');
+    fs::write(&path, &raw).unwrap();
+    let binding = || ingress::fingerprint(&path, CAP, &mut || Ok(())).unwrap();
+    assert!(bound_json::<bool>(&binding(), &mut || Ok(())).unwrap());
+
+    File::options()
+        .append(true)
+        .open(&path)
+        .unwrap()
+        .write_all(b" ")
+        .unwrap();
+    let error = bound_json::<bool>(&binding(), &mut || Ok(())).unwrap_err();
+    assert_eq!(error.message, "observed_sam_intake_memory_budget");
+    assert!(error.cause_chain.iter().any(|s| s.contains("8387584")));
+}
+
+#[test]
+fn read_end_service_build_input_preflight_boundary() {
+    use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
+
+    let (_root, mut request) = fixture();
+    let mut engine = GentleEngine::new();
+    // A mismatched receipt makes reaching the next guard observable without loading the model.
+    request.samples[0].analysis.report_content_sha256 = format!("sha256:{}", "0".repeat(64));
+    for (declared_bytes, reason) in [
+        (8_387_584_u64, "observed_sam_inspection_binding"),
+        (8_387_585, "rna_read_end_service_input_memory_budget"),
+        (u64::MAX, "rna_read_end_service_input_memory_budget"),
+    ] {
+        request.samples[0].model.bytes =
+            declared_bytes - request.samples[0].normalized_annotation.bytes;
+        let json = serde_json::to_string(&Command::Build {
+            request: Box::new(request.clone()),
+        })
+        .unwrap();
+        let shell =
+            parse_shell_line(&format!("rna-reads read-ends {}", quote_shell_arg(&json))).unwrap();
+        let error = execute_shell_command(&mut engine, &shell).unwrap_err();
+        assert!(error.contains(reason), "{error}");
+        if declared_bytes == 8_387_585 {
+            assert!(
+                error.contains("8387585") && error.contains("8387584"),
+                "{error}"
+            );
+        }
+        assert!(!Path::new(&request.output_dir).exists());
+    }
+}
+
+#[test]
+fn read_end_service_build_input_byte_boundary_is_cumulative() {
+    let (root, mut request) = fixture();
+    let first = &request.samples[0];
+    let report = Path::new(&first.analysis.report_path);
+    let data = report
+        .parent()
+        .unwrap()
+        .join("artifacts")
+        .join("analysis.json");
+    let per_sample = fs::metadata(report).unwrap().len()
+        + fs::metadata(data).unwrap().len()
+        + first.normalized_annotation.bytes;
+    // Two samples each pay the 64 KiB reserve, including when they reference the same files.
+    let second_model_bytes = 8_386_560_u64 - 2 * per_sample - first.model.bytes;
+    let mut raw = fs::read(&first.model.path).unwrap();
+    assert!(raw.len() < second_model_bytes as usize);
+    let mut second = first.clone();
+    second.sample_id = "synthetic_second".into();
+    request.samples.push(second);
+    let path = root
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("second model.json");
+    let out = Path::new(&request.output_dir);
+    let engine = GentleEngine::new();
+    for extra in [1, 0] {
+        raw.resize(second_model_bytes as usize + extra, b' ');
+        fs::write(&path, &raw).unwrap();
+        request.samples[1].model = ingress::fingerprint(&path, CAP, &mut || Ok(())).unwrap();
+        let result = execute(
+            &engine,
+            Command::Build {
+                request: Box::new(request.clone()),
+            },
+            &mut |_| true,
+        );
+        if extra == 1 {
+            assert_eq!(
+                result.unwrap_err().message,
+                "rna_read_end_service_input_memory_budget"
+            );
+            assert!(!out.exists());
+        } else {
+            assert_eq!(
+                result.unwrap()["coverage"]["samples"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                2
+            );
+            assert!(out.join("report.json").is_file());
+        }
+    }
+}
+
+#[test]
 fn read_end_service_original_bases_are_bound_saved_and_no_clobber_under_lf_crlf() {
     for ending in ["\n", "\r\n"] {
         let (root, mut request) = fixture();
