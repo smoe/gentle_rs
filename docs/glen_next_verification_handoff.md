@@ -1,5 +1,96 @@
 # Glen: Next Verification And Return
 
+## Glen Integrated cDNA And Exon-Locus Return At d8656d46, 2026-11-11
+
+Owner-forwarded result for **`d8656d46adb065d212231eef5f4ded071538a8d3`**,
+not just `df47b05e`. It contains fixture/provenance commit `73fd19b1` and the
+cDNA comparison/transitive-phasing commit `df47b05e`; the intervening final
+commit changes only the release-note ledger. Glen reports technical satisfaction
+and no source fix. This closes the reported focused checks at this source,
+not native GUI, scientific acceptance or the selected-release ledger. Do not
+repeat the completed campaigns or execute the historical authoring lists below
+as new requests.
+
+### Focused Return
+
+Glen reports **208 focused test executions passed, zero skips**, plus
+`cargo check -q --locked` passing:
+
+| Reported scope | Passed |
+| --- | ---: |
+| `gentle-engine` library, including cDNA | 91 |
+| Headless comparison/partitioning | 20 |
+| SAM / frozen S2A / read-end service preservation | 12 / 4 / 12 |
+| New fixture provenance/checkout boundaries, not the full 97-test suite | 10 |
+| Actual cDNA CLI | 2 |
+| Pysam fixture preparer | 10 |
+| MCP parity | 1 |
+| Exon-locus | 33 |
+| Renderer | 7 |
+| Actual LF/CRLF CLI rehearsal | 3 |
+| Actual JS / Lua / MCP runtimes | 1 / 1 / 1 |
+
+Partitioning retains original IDs, orientation, bases and qualities, combines
+units before SNP/phasing and refuses duplicates. Supported transitive local
+links do not require a full-marker read; weak/ambiguous/disconnected components
+stay unresolved and K is not forced to two. The actual anchor regression keeps
+query `[65,77)`, reference `[165,177)`, anchor **171** before window start 200,
+complete JSON/TSV and no invalid glyph. All five export formats, repeat
+determinism, pixel/no-clobber guards and 18/18 fixture hashes are reported green.
+
+Glen retains sealed evidence at `/home/clawbio/work/evidence/gentle-d8656d46/`.
+Only abbreviated CLI (`9ddf98b0...149e6`) and lock (`d880f70b...569fe`) hashes
+were forwarded here. The complete manifests, raw commands, environment/profile
+and full hashes have not been independently read/verified by Codex. Keep this
+attribution; do not invent full hashes or transfer older binary identities.
+No private archives were regenerated and the eight real-data analyses were
+not rerun. Native GUI/display acceptance is `not_run`.
+
+### Independent CI Observation
+
+Codex read GitHub's run/job summaries on 2026-11-11 for the same exact SHA:
+[run 42945255867](https://github.com/smoe/gentle_rs/actions/runs/42945255867),
+attempt 1, **completed/success**, final update `2026-11-11T06:43:07Z`.
+[Windows](https://github.com/smoe/gentle_rs/actions/runs/42945255867/job/130276401043)
+and [macOS](https://github.com/smoe/gentle_rs/actions/runs/42945255867/job/130276447264)
+pass, including their `Full test suite` workspace steps, adapter/all-features
+checks and normal tutorial/parity gates. Linux/headless, release safety and the
+selected-platform aggregate pass. **Full Linux is skipped**, as are optional
+08.04 GUI, scroll CPU and authenticated-macOS audit jobs. These are independently
+read status/step summaries, not downloaded full logs, package receipts or a
+native GUI verdict. Glen's earlier `in_progress` observation remains historical;
+no rerun/dispatch was needed or requested.
+Passing configured Windows CI steps does not certify native GUI or additional
+CLI/pysam/path/handle scenarios that were not selected by that workflow.
+
+### Separate Routine Scan And Scientific Limits
+
+The separate routine scan covers 17 commits after `7fa6b15a` through this same
+SHA and reports no concrete regression: Rust 26 engine-cDNA, 18 ingress, six
+locus-service and 26 locus-core passes; Python 11 passes and four expected
+CLI/pysam skips. Do not add these overlapping scopes to the focused 208 or turn
+the routine's skips into passes. Its first default-feature attempt was stopped
+after discovering the shared `/home/clawbio/GENtle/target`; that attempt has no
+test result and the shared cache was not cleaned. The isolated target/worktree
+were removed (5,873 files / 7.2 GiB). No patch was recommended.
+
+The [retained TP53/TP73 analysis](tp53_tp73_cdna_fixture_analysis_20261110.md)
+already records the numerical limits. SK-MEL-28's local TP73 TAT/TCT classes
+at Q30 have 21/8 assigned units but only 1/2 complete-vector units; transitive
+support is not a complete chromosomal allele or independent molecule count.
+WM793/TP73 stays **unassessed**, not a negative second-allele result. Shared
+1:3722110 T evidence (73/73 versus 2/2 at Q20), sparse 1:3733753 callability and
+three WM793 candidates outside all 20 selected mature models do not establish
+cell-line differences. Absent switch/K>2 findings establish neither biological
+absence nor normal copy number. More informative independent WM793 evidence, complete
+mapping views/supplementaries and orthogonal DNA/library evidence remain
+scientific follow-ups, not an authorized new data run or a product-code fix.
+
+Remaining work is native GUI when available, full-Linux and candidate-bound
+release/package/container/readiness/owner gates, plus the explicitly separate
+scientific questions. No source changes, local Rust, private-data analysis,
+push, dispatch, tag or publication were performed by Codex for this receipt.
+
 ## Real-cDNA Fixture Provenance And Checkout Repair, 2026-11-10
 
 Glen's bot commits `a7d16efddae245955dccd4a8c174faeb853665a1` and

@@ -410,8 +410,10 @@ support the recorded qualified allele patterns. See the numerical report for
 local classes, weak links, undercoverage and the absence of an informative
 cross-splicing test.
 
-Native Windows, full-suite CI, native GUI, calibrated error/K inference,
-matched-DNA corroboration and independent scientific acceptance remain open.
+At that pre-commit receipt, native Windows, full-suite CI, native GUI,
+calibrated error/K inference, matched-DNA corroboration and independent
+scientific acceptance remained open. See the integrated return below for later
+scoped execution; it does not retroactively change this source receipt.
 Headless unused-code and macOS unwind-table linker warnings were retained;
 no warning was promoted to a scientific failure. The preserved unpartitioned
 TP53 memory refusal was resolved through bounded composition, not a weakened
@@ -420,3 +422,23 @@ editing failed on a then-missing initializer; final stable-source checks pass.
 Session-close reports no failures and two expected reminders for intentional
 uncommitted/generated files and manual plan fidelity. Scope review confirms
 TP53/TP73 only, with MDM4 excluded. Claude was not invoked.
+
+### Integrated Glen Return At d8656d46
+
+The owner-forwarded 2026-11-11 [Glen return](glen_next_verification_handoff.md#glen-integrated-cdna-and-exon-locus-return-at-d8656d46-2026-11-11)
+reports **208 focused tests passed, zero skips** and `cargo check -q --locked`
+on exact `d8656d46adb065d212231eef5f4ded071538a8d3`, containing `73fd19b1`
+and `df47b05e`. It covers the cDNA engine, partition/ingress and frozen producer
+contracts, actual cDNA CLI/pysam/MCP paths and the exon-locus/renderer/
+LF-CRLF CLI/real-VM checks. The separate routine scan is not added to these
+totals. Eight historical real-data runs were not repeated, and no private
+archive regeneration or new biological analysis was performed.
+
+Codex independently read terminal same-source CI
+[42945255867](https://github.com/smoe/gentle_rs/actions/runs/42945255867):
+Windows/macOS workspace suites, Linux/headless and release safety pass;
+full Linux and optional GUI/audit jobs skip. Native GUI, distinct-isoform/real
+capacity, calibrated inference, matched-DNA/scientific review and candidate-bound
+release acceptance remain open. The full Glen receipts are retained remotely;
+short hashes in the forwarded message are not independently verified full
+binary/environment manifests. No production-code change is indicated.

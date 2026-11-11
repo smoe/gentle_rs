@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-11 - Record Glen's Integrated cDNA And Exon-Locus Pass
+
+- Attribute the focused 208-test/zero-skip return and locked check to exact
+  `d8656d46`, including the real CLI/JS/Lua/MCP, anchor-171, five-format and
+  provenance/checkout checks. Keep the separate routine scan and its four
+  expected skips outside those totals; no source fix or repeated campaign.
+- Independently read terminal same-SHA CI run `42945255867`: Windows/macOS
+  workspace suites, Linux/headless, release safety and aggregate pass. Full
+  Linux and optional GUI/audit jobs skip; native GUI and candidate/package/
+  scientific gates remain separate. Remote full receipts/hashes are retained
+  by Glen but were not independently inspected here.
+- Preserve the TP73 interpretation limits: local transitive RNA patterns are
+  not complete DNA alleles, sparse WM793 stays unassessed, shared ALT is not a
+  cell-line difference, and absent switch/K>2 flags establish neither biological
+  absence nor normal copy number.
+  Documentation only; no Rust execution, data rerun, push or dispatch.
+
 ## 2026-11-10 - Bind Real TP53/TP73 Intake And Correct Local Phase Scope
 
 - Rebase the comparison worktree onto main `249173ee` and consume Glen's

@@ -269,6 +269,12 @@ authored with Rust tests **unrun at authoring**. The later
 [attributed macOS return](glen_next_verification_handoff.md#claude-exon-locus-return-at-b95aae07-2026-11-10)
 records scoped execution and a test-only anchor correction, not current-lock,
 default-feature, VM, actual-CLI, Windows or native acceptance.
+The subsequent [integrated Glen return at d8656d46](glen_next_verification_handoff.md#glen-integrated-cdna-and-exon-locus-return-at-d8656d46-2026-11-11)
+reports the committed anchor/locus, actual CLI/VM and locked checks passing;
+matching Windows/macOS normal CI is terminal/green. These later results close
+their scoped execution requests, not native GUI, full-Linux, capacity/scientific
+or selected-release gates. Do not repeat the completed filters below merely
+because this historical authoring ledger names them.
 No schema/RULE_VERSION bump for this unreleased v1, new dependency, additional
 calibrated cutoff, mask policy, queue, release gate or legacy gene-only behavior.
 
