@@ -243,14 +243,14 @@ pub fn derive_coding_transcript_models(
     {
         return Err(fail("schema_context_or_budget"));
     }
-    let mut files = [
+    let total = [
         &request.gtf,
         &request.normalized_annotation,
         &request.reference.locus_fasta,
     ]
     .into_iter()
-    .chain(request.protein_fasta.iter());
-    let total = files.try_fold(0u64, |n, f| {
+    .chain(request.protein_fasta.iter())
+    .try_fold(0u64, |n, f| {
         n.checked_add(f.bytes).ok_or_else(|| fail("input_budget"))
     })?;
     if total > b.max_input_bytes {

@@ -338,6 +338,74 @@ fn coding_models_budgets_cancellation_and_non_nuclear_context_fail_closed() {
 }
 
 #[test]
+fn coding_models_input_budget_includes_optional_protein_and_returns_owned_request() {
+    for supplied in [false, true] {
+        let (_root, mut request) = fixture(false, false, false);
+        if !supplied {
+            request.protein_fasta = None;
+        }
+        let total = request.gtf.bytes
+            + request.normalized_annotation.bytes
+            + request.reference.locus_fasta.bytes
+            + request.protein_fasta.as_ref().map_or(0, |file| file.bytes);
+        request.budgets.max_input_bytes = total;
+        let expected_request = serde_json::to_value(&request).unwrap();
+        let report = run(request.clone());
+        assert_eq!(
+            serde_json::to_value(&report.request).unwrap(),
+            expected_request
+        );
+        assert_eq!(report.models[0].translation_status, "complete_verified");
+        assert_eq!(
+            report.models[0]
+                .coding
+                .as_ref()
+                .unwrap()
+                .supplied_protein_comparison,
+            if supplied {
+                "identical"
+            } else {
+                "not_supplied"
+            }
+        );
+        request.budgets.max_input_bytes = total - 1;
+        assert_eq!(
+            derive_coding_transcript_models(request, &mut |_| true)
+                .unwrap_err()
+                .message,
+            "coding_models.input_budget"
+        );
+    }
+}
+
+#[test]
+fn coding_models_shell_preserves_engine_error_text_without_state_or_journal_changes() {
+    let (_root, mut request) = fixture(false, false, false);
+    request.gtf.sha256 = digest(b"wrong bound source");
+    let expected = derive_coding_transcript_models(request.clone(), &mut |_| true)
+        .unwrap_err()
+        .to_string();
+    let mut engine = GentleEngine::new();
+    let before = serde_json::to_value(engine.snapshot()).unwrap();
+    let revision = engine.mutation_revision();
+    let journal = engine.journal_len();
+    let undo = engine.undo_available();
+    let line = format!(
+        "rna-reads coding-models-derive {}",
+        quote_shell_arg(&serde_json::to_string(&request).unwrap())
+    );
+    let command = parse_shell_line(&line).unwrap();
+    assert_eq!(
+        execute_shell_command(&mut engine, &command).unwrap_err(),
+        expected
+    );
+    assert_eq!(serde_json::to_value(engine.snapshot()).unwrap(), before);
+    assert_eq!(engine.mutation_revision(), revision);
+    assert_eq!(engine.journal_len(), journal);
+    assert_eq!(engine.undo_available(), undo);
+}
+
+#[test]
 fn coding_models_operation_and_shared_shell_leave_state_history_and_input_bytes_unchanged() {
     let (_root, request) = fixture(false, false, false);
     let files = [

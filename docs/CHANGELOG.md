@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-11 - Repair C1 Shell Error And Request Ownership Boundaries
+
+- Fix the owner's two C1 compile errors at `d927ffa8`: explicitly convert the
+  engine error to the shell's existing String error type, and consume the input
+  iterator before moving its request into the report. No additional clones,
+  dependency/lock changes, budget weakening or biological/schema changes.
+- Add regressions for shell error text and unchanged project/journal state,
+  owned report requests and exact input budgets with/without protein FASTA;
+  strengthen the actual-CLI tamper diagnostic. Rust/process verification remains
+  external; the [C1 handoff](glen_next_verification_handoff.md#c1-bound-coding-models-2026-11-11)
+  records the primary failures and compile-first order without reopening old
+  cDNA/locus campaigns. No local Rust build or push.
+
 ## 2026-11-11 - Derive Bound Coding Transcript Models (C1)
 
 - Add one read-only file service/operation and shared CLI/GUI Shell/MCP/VM route

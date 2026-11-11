@@ -11,6 +11,22 @@ authorized by this checklist. No fixed gene/barcode/provider rules.
 
 ### Compile, Grammar And Shared Routes
 
+The owner's local compile of `d927ffa8` exposed two primary C1 errors before
+runtime acceptance: E0277 (missing `EngineError` to shell `String` conversion)
+and E0505 (a named input iterator retained request borrows until drop).
+The narrow repair converts errors only at the existing shell boundary and
+consumes the temporary iterator before moving the owned request into its report.
+It adds no input clones or changes to bindings, budgets, schemas or biology.
+Verify the repaired integrated source, not the original `d927ffa8` binary;
+start with the compilation gates below before generator/VM/CLI execution.
+New Rust regressions cover exact shell error text/state preservation and the
+exact cumulative input-byte boundary with and without optional protein FASTA.
+The actual-CLI tamper case now also requires the original reader diagnostic.
+These Rust/process checks remain unrun by Codex; no new green compile is claimed.
+Repair-only local checks: three Python/source/LF-CRLF cases pass; the two real
+CLI cases skip without a supplied binary. Scoped formatting, documentation
+status and whitespace checks pass; these do not replace a compiler run.
+
 Use one clean source checkout and an explicitly run-owned target (never an
 inherited shared `CARGO_TARGET_DIR`). Record the actual integrated SHA, lock
 identity, Rust/Cargo, platform, features/profile, commands/counts and skips.
@@ -65,7 +81,7 @@ Local evidence is Python/source/checkout and formatting only. Rust, VM/MCP and
 actual C1 CLI execution are **not_run locally**. Do not repeat the completed
 208-check d8656d46 return, real Q20/Q30 analyses, locus exports, reader/BLAST,
 barcode or packaging campaigns merely for this new read-only contract.
-Local combined command: `python3 -m unittest scripts.test_coding_transcript_models
+Initial C1 combined command: `python3 -m unittest scripts.test_coding_transcript_models
 scripts.test_tutorial_checkouts scripts.test_capability_maturity -q` reports
 119 cases: **117 passed, two same-source CLI skips**. Documentation-status and
 whitespace checks pass. Session-close: four OK, two intentional warnings

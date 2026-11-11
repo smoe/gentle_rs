@@ -67143,8 +67143,10 @@ fn execute_op_command(
         }
         Operation::DeriveCodingTranscriptModels { request } => {
             let report = crate::allele_hash_screen::derive_coding_transcript_models(
-                *request.clone(), &mut |progress| forward_shell_progress(options, progress).unwrap_or(false),
-            )?;
+                *request.clone(), &mut |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                },
+            ).map_err(|e| e.to_string())?;
             return Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({"result":{"coding_transcript_models":report}}),

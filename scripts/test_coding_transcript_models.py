@@ -146,6 +146,7 @@ class CodingModelCliTests(unittest.TestCase):
         request["gtf"]["sha256"] = digest(b"not the input")
         result = self.invoke(request)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("file_hash_or_change", result.stderr)
         self.assertNotIn('"coding_transcript_models":', result.stdout)
 
 
