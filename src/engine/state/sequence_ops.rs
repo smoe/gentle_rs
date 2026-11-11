@@ -2734,6 +2734,18 @@ impl GentleEngine {
                     }
                 }
             }
+            Operation::CompareCdnaAlleles { request } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.reference.locus_fasta.path);
+                Self::push_unique_token(&mut summary.file_paths, &request.normalized_annotation.path);
+                for sample in &request.samples {
+                    Self::push_unique_token(&mut summary.file_paths, &sample.analysis.report_path);
+                    Self::push_unique_token(&mut summary.file_paths, &sample.basecalls.path);
+                    for partition in &sample.additional_partitions {
+                        Self::push_unique_token(&mut summary.file_paths, &partition.analysis.report_path);
+                        Self::push_unique_token(&mut summary.file_paths, &partition.basecalls.path);
+                    }
+                }
+            }
             Operation::AssessRtPrimerCandidates { request } => {
                 for reference in &request.references {
                     if let Some(file) = &reference.fasta {

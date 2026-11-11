@@ -1,6 +1,13 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["CompareCdnaAlleles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads allele-hash-screen --compare-cdna",
+         "summary": "Compare explicit quality-bound cDNA SNP observations and local haplotypes against a genomic locus through the existing allele-screen family. Preserve mapping ambiguity, transcript projections, distinct units and sample differences; extra haplotypes and switches remain candidates, not CNV or trans-splicing calls.",
+         "usage": "rna-reads allele-hash-screen --compare-cdna REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["RnaReadEnds"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads read-ends",

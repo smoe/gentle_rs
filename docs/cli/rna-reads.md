@@ -1,5 +1,51 @@
 # RNA Read Interpretation
 
+## Quality-Bearing cDNA Allele Comparison
+
+Use the `--compare-cdna` mode of the existing allele-screen family to compare
+saved cDNA evidence against an explicit genomic locus and transcript annotation:
+
+```sh
+gentle_cli allele-hash-screen --compare-cdna @comparison.request.json
+gentle_cli shell 'rna-reads allele-hash-screen --compare-cdna @comparison.request.json'
+```
+
+Both routes accept one `gentle.cdna_allele_comparison_request.v1` JSON value or
+`@FILE` and use `CompareCdnaAlleles`. Supply saved observed-SAM result bindings,
+the exact normalized annotation, a bounded single-record reference FASTA, and
+separate `gentle.cdna_allele_basecalls.v1` sidecars containing original bases and
+Phred+33 qualities. No original-read join or aligner runs implicitly. The request
+needs no loaded project; the result is read-only JSON at
+`result.cdna_allele_comparison`, without file or project/history changes.
+
+The report distinguishes supported reference/alternate bases from uncallable or
+ambiguous observations, projects sites into individual transcripts, derives
+conservative connected-block candidate haplotypes and compares samples. It
+preserves mapping/basecall alternatives and distinct-unit denominators; it
+does not force two alleles. Pilot thresholds are uncalibrated. Switch-like
+findings and more than two candidate patterns remain candidate evidence;
+trans-splicing, DNA genotype and copy number are not inferred. Existing v3
+supplied-variant k-mer screening remains unchanged.
+
+See the [request, limitations and Glen asset checklist](../cdna_allele_comparison.md).
+Glen's pinned real TP53/TP73 fixture is now available. The current analysis
+receipt is [TP53/TP73 analysis receipt](../tp53_tp73_cdna_fixture_analysis_20261110.md); its findings are
+RNA/cDNA evidence against GRCh38, not germline/somatic or RNA-editing calls.
+The source-bound software and scientific verdicts remain separate.
+
+A biological sample may supply up to 64 disjoint saved-analysis/basecall
+partitions through `additional_partitions`, cross-bound by
+`partition_source_sha256` and stable original record IDs. The engine combines
+all units before one comparison/phasing pass; budgets remain cumulative.
+Optional `phase_marker_positions` is an explicit subset of `supplied_sites` for
+the phase question only. It leaves SNP discovery, reads and annotations intact.
+Supported partial-read patterns can phase transitively within local blocks;
+complete-marker reads are not required. Ambiguous couplings and disconnected
+components remain unresolved/separate. Candidate support links are nonadditive,
+and allele/splice evidence stays on the original read and mapping hypothesis.
+Data-derived exploratory panels and per-sample depth/callability must be stated
+explicitly; reusing a panel at Q30 is not independent validation.
+
 ## Saved Read-End Pileup And Coverage
 
 For overlapping sense/antisense models, use the additive typed `locus` action
@@ -361,6 +407,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
     - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
     - `rna-reads allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR`
+    - `rna-reads allele-hash-screen --compare-cdna REQUEST_JSON_OR_@FILE`
     - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`

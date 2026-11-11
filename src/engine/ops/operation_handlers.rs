@@ -40638,6 +40638,7 @@ impl GentleEngine {
         let mut result = OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -52351,6 +52352,11 @@ impl GentleEngine {
                 Operation::CompareRtPrimerCandidates { request } => {
                     result.rt_primer_comparison = Some(Box::new(
                         self.compare_rt_primer_candidates(*request, on_progress)?,
+                    ));
+                }
+                Operation::CompareCdnaAlleles { request } => {
+                    result.cdna_allele_comparison = Some(Box::new(
+                        crate::allele_hash_screen::compare_cdna_files(*request, on_progress)?,
                     ));
                 }
                 Operation::AssessRtPrimerCandidates { request } => {

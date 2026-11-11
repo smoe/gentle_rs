@@ -8,6 +8,9 @@
 //! screen: it reports sequence support for allele imbalance, but it does not
 //! call biological significance.
 
+/// Quality-aware cDNA comparison over explicitly normalized alignment evidence.
+pub mod cdna_comparison;
+
 use crate::target_rescue::{
     canonical_kmers_for_each, normalize_read_id, open_maybe_gz_reader, read_id_set_from_path,
     target_mapped_read_ids_from_sam, visit_fasta_records, visit_paired_read_records,

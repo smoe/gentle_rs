@@ -1647,6 +1647,47 @@ splice junction for that gene is recorded separately as an RNA anchor. Such an
 anchor strengthens an RNA-derived interpretation without excluding pre-mRNA or
 genomic-DNA contamination and is not itself a retained-intron call.
 
+The quality-bearing cDNA comparison extends the existing allele-screen owner
+through a separate versioned request/report, not an adapter-owned pipeline or
+reinterpretation of v3 hash-screen records. It consumes explicit saved mapping
+hypotheses and producer-bound original bases/qualities through shared supported-
+block geometry; QNAME alone cannot join original records or manufacture quality.
+Definite unit/site calls require agreement across eligible supplied alternatives
+and assessment of every supplied query view. This assessment is distinct from
+producer-declared search/view completeness; primary-only findings remain
+conditional on the supplied hypotheses, with omitted alternatives explicit.
+Missing/filtered/skipped/deleted evidence is never a
+reference call, and producer-bound read units are not independent molecules.
+Raw-file hashes, normalized locus-sequence identity and declared parent-genome
+identity remain distinct; cross-binding a declared full-genome hash does not
+reverify its bytes.
+
+Local phase can propagate transitively through supported shared-marker
+patterns; no single original read must span the entire marker basis. Every
+necessary local link retains distinct-unit witnesses and minimum support.
+Connectivity alone cannot resolve ambiguous many-to-many couplings or K; weak
+bridges and disconnected components must not manufacture phase. Never force a
+second allele or concatenate disconnected blocks. A transitive candidate's
+proof links are nonadditive evidence, not an assembled molecule; whole-vector
+seed counts list only reads that actually cover that vector. Switch-template
+support is assessed after removing the inspected read from every necessary link.
+Allele/junction linkage within a producer-bound unit must retain the same
+mapping hypothesis; no transitive phase join may assemble a splice event across
+physical reads.
+
+Bounded producer partitions preserve original record IDs, bases and qualities,
+and enter one biological sample's comparison before discovery or phasing.
+Stable original-source/unit keys reject repeated units; QNAME alone is not a
+physical-identity join. Per-part provenance and cumulative budgets remain
+explicit. Phase-marker panels only scope the phase question and cannot erase
+SNP evidence or read denominators. A panel selected from the analyzed RNA is
+exploratory and must not be described as prospective or independent validation.
+Switches and excess expressed haplotype diversity remain uncalibrated candidate
+findings with competing RT/PCR, editing, mapping and sample/subclone explanations;
+they cannot establish trans-splicing, DNA genotype or copy number. Protein,
+indel and clinical interpretations require separate contracts. See the
+[bounded cDNA comparison contract](cdna_allele_comparison.md).
+
 ## DEC-028: Construct Reasoning Outputs Are Fingerprinted Snapshots
 
 Status: active

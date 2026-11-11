@@ -14517,6 +14517,7 @@ impl GentleEngine {
         let mut result = OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -14723,6 +14724,7 @@ impl GentleEngine {
         let mut result = OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,

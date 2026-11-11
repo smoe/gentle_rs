@@ -14300,6 +14300,7 @@ impl ShellCommand {
                 | Operation::InspectRnaReadPanel { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
+                | Operation::CompareCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
@@ -19897,6 +19898,25 @@ fn rt_primer_comparison_descriptor(id: &str) -> Value {
         "precondition_expr":{"all":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}]},
         "description":"Read-only per-isoform RT-tail presence and CDS/5-prime-UTR/3-prime-UTR/mixed/unknown classification, common prospective background assessment and shared oligo metrics. Keeps ambiguous sites unresolved, explicit member denominators and multiple binding sites. No ranking, abundance, hairpin prediction or order approval.",
         "request_template":template,"operation_template":{"CompareRtPrimerCandidates":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
+        "registry":registry_metadata_for_introspection(id)})
+}
+
+fn cdna_allele_comparison_descriptor(id: &str) -> Value {
+    let template = json!({
+        "schema":"gentle.cdna_allele_comparison_request.v1",
+        "gene":"REPLACE_GENE", "source_id":"REPLACE_SOURCE_ID", "gene_id":"REPLACE_STABLE_GENE_ID",
+        "reference":{"assembly":"REPLACE_ASSEMBLY","contig":"REPLACE_CONTIG","start_0based":0,
+            "genomic_reference_sha256":"REPLACE_REFERENCE_SHA256",
+            "locus_fasta":{"path":"/REPLACE/locus.fa","sha256":"REPLACE_RAW_SHA256","bytes":0}},
+        "normalized_annotation":{"path":"/REPLACE/annotation.json","sha256":"REPLACE_RAW_SHA256","bytes":0},
+        "samples":[], "supplied_sites":[], "policy":{}, "budgets":{}
+    });
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"gentle.cdna_allele_comparison_request.v1 with saved SAM result bindings, explicit original bases/qualities, reference locus and normalized transcript annotation"}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},
+        "description":"Read-only quality-aware cDNA SNP comparison in the existing allele-screen family. Preserves unit/mapping/basecall alternatives, local phase blocks, transcript coordinates, same-hypothesis junction support and sample comparisons without forcing two haplotypes. Switches and excess haplotypes are candidate findings, not confirmed trans-splicing, genomic genotype or copy number. No source/project/file mutation.",
+        "request_template":template,"operation_template":{"CompareCdnaAlleles":{"request":template}},
         "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
         "registry":registry_metadata_for_introspection(id)})
 }
@@ -26759,6 +26779,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rt_primer_redesign_descriptor("primers redesign-rt"),
         rt_primer_comparison_descriptor("CompareRtPrimerCandidates"),
         rt_primer_comparison_descriptor("primers compare-rt-candidates"),
+        cdna_allele_comparison_descriptor("CompareCdnaAlleles"),
+        cdna_allele_comparison_descriptor("rna-reads allele-hash-screen --compare-cdna"),
         rt_primer_assessment_descriptor("AssessRtPrimerCandidates"),
         rt_primer_assessment_descriptor("primers assess-rt-candidates"),
         transcript_capture_descriptor("DesignTranscriptCapturePool"),
@@ -32853,6 +32875,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact":"sequence.exists", "subject":{"arg":"SOURCE_SEQ_ID"}}),
         ]),
         "InspectPrimerPayloadJunctions" | "rna-reads primer-junctions" => Some(vec![]),
+        "CompareCdnaAlleles" | "rna-reads allele-hash-screen --compare-cdna" => Some(vec![]),
         "AssessRtPrimerCandidates" | "primers assess-rt-candidates" => Some(vec![]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
@@ -67093,6 +67116,17 @@ fn execute_op_command(
             return Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({"result":{"rt_primer_comparison":report}}),
+            });
+        }
+        Operation::CompareCdnaAlleles { request } => {
+            let report = crate::allele_hash_screen::compare_cdna_files(
+                *request.clone(), &mut |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                },
+            ).map_err(|e| e.to_string())?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"cdna_allele_comparison":report}}),
             });
         }
         Operation::AssessRtPrimerCandidates { request } => {

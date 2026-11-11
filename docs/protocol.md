@@ -1,5 +1,55 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Quality-Bearing cDNA Allele Comparison
+
+`CompareCdnaAlleles { request }` / `rna-reads allele-hash-screen --compare-cdna
+REQUEST_JSON_OR_@FILE` uses the strict file request
+`gentle.cdna_allele_comparison_request.v1` and returns
+`gentle.cdna_allele_comparison.v1` through optional
+`OpResult.cdna_allele_comparison` (omitted when absent). The standalone
+`gentle_cli allele-hash-screen --compare-cdna` uses the same parser/executor;
+generic MCP `op` advertises the existing family's new submode. It is an expensive
+project-free read-only observation, with no file output, history/checkpoint
+change, implicit state save or artifact-publication exception.
+
+Inputs bind existing observed-SAM reports/artifacts, a shared normalized
+annotation, exact stable gene/source IDs and a bounded single-record genomic
+locus FASTA. Separate `gentle.cdna_allele_basecalls.v1` sidecars bind full-axis
+original-sequencing bases and optional Phred+33 qualities to saved analysis/unit
+identities. No implicit QNAME join or reference-filled bases. Raw files and locus
+sequence are reverified; the parent genome hash is declared and cross-bound,
+without rereading the whole genome. Shared supported-block geometry feeds the
+pure existing allele-screen module's new kernel. Per-sample calls, transcript
+positions, local candidate haplotypes, same-hypothesis junction support and
+sample differences preserve alternatives and distinct-unit denominators.
+Samples may include `additional_partitions: [{analysis,basecalls}, ...]` up to
+64 parts including the first pair. `partition_source_sha256` binds each part's
+original-BAM conversion declaration; stable original unit IDs and raw unit keys
+prevent read multiplication. All units enter one sample's discovery/phasing pass
+under the same cumulative budgets. Inputs retain per-part scope/completeness
+counts and `partition_index`; original source identity remains a declaration.
+Assessment of supplied views is distinct from declared search/view completeness.
+
+Optional `phase_marker_positions` is nonempty, unique, in-reference, contained
+in `supplied_sites` and bounded by the existing phase-site limit. Its normalized
+sorted echo scopes only phase blocks/templates/assignments/switches; discovery,
+per-site evidence, annotations and read counts remain unchanged. Supported
+partial-pattern families can link transitively without a whole-marker read.
+Weak links separate blocks; ambiguous many-to-many couplings leave phase/K open.
+Haplotypes retain `phase_method`, real `exact_seed_units` (possibly empty) and
+nonadditive `support_links {sites_0based,alleles,unit_ids}`. Switch leave-one-unit-
+out support must hold for every required transitive proof link; splice evidence
+never joins physical reads or mapping alternatives.
+
+No forced second allele, genomic genotype, protein consequence, trans-splicing
+mechanism or CNV claim follows. RNA/cDNA differences against GRCh38 are not
+classified as germline, somatic or editing events. Pilot policy is uncalibrated;
+connectedness alone may still leave K unresolved. Data-derived panels are
+exploratory, and per-sample callability/depth/base support remain visible. All
+previous allele-screen v3, observed-transcript/SAM and original-bases v1
+contracts remain unchanged.
+See the [full request, limits, assets and verification ledger](cdna_allele_comparison.md).
+
 ## Shared Saved Read Ends
 
 `RnaReadEnds { command }` / `rna-reads read-ends REQUEST_JSON_OR_@FILE` dispatch

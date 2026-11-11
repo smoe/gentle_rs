@@ -379,7 +379,7 @@ fn cancelled(marker: Option<&Path>, identity: &str) -> Result<bool, EngineError>
     }
     Ok(true)
 }
-fn bound_json<T: DeserializeOwned>(
+pub(crate) fn bound_json<T: DeserializeOwned>(
     file: &PrimerPayloadFile,
     check: &mut dyn FnMut() -> Result<(), EngineError>,
 ) -> Result<T, EngineError> {
@@ -404,7 +404,7 @@ struct Loaded {
     original_bases_sha256: Option<String>,
 }
 
-fn analysis_file(
+pub(crate) fn analysis_file(
     binding: &ObservedSamResultBinding,
 ) -> Result<(crate::engine::ObservedSamReport, PrimerPayloadFile), EngineError> {
     ingress::local_file(&binding.report_path)?;

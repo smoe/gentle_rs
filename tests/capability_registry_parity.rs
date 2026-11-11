@@ -1223,6 +1223,39 @@ fn engine_operations_are_reachable_on_shell_route_adapters() {
 }
 
 #[test]
+fn cdna_comparison_mcp_family_path_preserves_read_only_operation() {
+    let path = "rna-reads allele-hash-screen --compare-cdna";
+    let command = capability_registry()
+        .iter()
+        .find(|c| c.source == CapabilitySource::GlossaryCommand && c.name == path)
+        .unwrap();
+    assert_eq!(
+        command.engine_operations,
+        vec!["CompareCdnaAlleles".to_owned()]
+    );
+    assert_eq!(command.mutating, CapabilityMutation::ReadOnly);
+    let operation = capability_registry()
+        .iter()
+        .find(|c| c.source == CapabilitySource::EngineOperation && c.name == "CompareCdnaAlleles")
+        .unwrap();
+    assert_eq!(operation.mutating, CapabilityMutation::ReadOnly);
+    let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();
+    let tool = tools
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "op")
+        .unwrap();
+    assert!(
+        tool["commandPaths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == path)
+    );
+}
+
+#[test]
 fn transcript_assay_panel_multi_paths_share_registered_operations() {
     let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();
     for (suffix, op) in [

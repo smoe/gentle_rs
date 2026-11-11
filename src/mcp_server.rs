@@ -1419,6 +1419,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_execute_plan" => &["agents execute-plan"],
         "op" => &[
             "rna-reads read-ends",
+            "rna-reads allele-hash-screen --compare-cdna",
             "rna-reads primer-panel-validate",
             "rna-reads primer-trace",
             "rna-reads primer-payload-prepare",
@@ -3636,6 +3637,7 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
             Operation::EvaluateGenomeEditIntent { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
+                | Operation::CompareCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

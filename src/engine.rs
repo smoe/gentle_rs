@@ -4845,6 +4845,10 @@ pub enum Operation {
     DesignTerminalExonRtPrimerPool {
         request: TerminalExonRtPrimerPoolRequest,
     },
+    /// Compare quality-bound cDNA SNP evidence and local haplotypes in the allele-screen family.
+    CompareCdnaAlleles {
+        request: Box<crate::allele_hash_screen::CdnaFileComparisonRequest>,
+    },
     /// Assess supplied RT oligos against explicit, content-bound background FASTA inputs.
     AssessRtPrimerCandidates {
         request: Box<AssessRtPrimerCandidatesRequest>,
@@ -10444,6 +10448,7 @@ impl GentleEngine {
             Operation::SaveFile { .. }
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
+                | Operation::CompareCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

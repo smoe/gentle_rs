@@ -48,7 +48,7 @@ pub use sam_intake::{
 };
 pub(crate) use sam_intake::{
     Request as SamIntakeRequest, path as validate_sam_raw_path,
-    verified_json as read_sam_bound_json,
+    verified_bytes as read_sam_bound_bytes, verified_json as read_sam_bound_json,
 };
 pub(crate) use sam_report::summarize_bound as summarize_sam_bound;
 pub use sam_report::*;

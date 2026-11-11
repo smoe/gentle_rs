@@ -117,7 +117,8 @@ fn classify(op: Operation) -> Policy {
         },
         Operation::CancelPrimerPayload { .. } => Policy::Control,
         Operation::TracePrimerReads { request } => Policy::PrimerTrace(request),
-        Operation::AssessRtPrimerCandidates { .. }
+        Operation::CompareCdnaAlleles { .. }
+        | Operation::AssessRtPrimerCandidates { .. }
         | Operation::ValidateRnaPrimerPanel { .. }
         | Operation::InspectPrimerTrace { .. } => {
             Policy::Observe { expensive: true }
@@ -537,6 +538,41 @@ pub(super) fn publication(
 #[cfg(test)]
 mod rt_assessment_policy_tests {
     use super::*;
+
+    #[test]
+    fn cdna_comparison_uses_execution_capacity_without_project_attachment() {
+        let mut engine = GentleEngine::new();
+        let discovery = crate::engine_shell::execute_shell_command(
+            &mut engine,
+            &crate::engine_shell::parse_shell_line("introspect capabilities --kind operation")
+                .unwrap(),
+        )
+        .unwrap();
+        let descriptor = discovery.output["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == "CompareCdnaAlleles")
+            .unwrap();
+        let op: Operation =
+            serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        let mut command = ShellCommand::Op {
+            payload: serde_json::to_string(&op).unwrap(),
+        };
+        assert!(!command.is_state_mutating());
+        for policy in [
+            classify(op),
+            admission(&command),
+            freeze(&mut command).unwrap(),
+        ] {
+            assert!(!policy.needs_project());
+            assert!(matches!(policy.lane(), Lane::Execution));
+            assert!(matches!(
+                publication(policy, &serde_json::json!({})).unwrap(),
+                Publication::Observation
+            ));
+        }
+    }
 
     #[test]
     fn rt_primer_assessment_uses_execution_capacity_without_project_attachment() {

@@ -324,6 +324,19 @@ fn json<T: serde::de::DeserializeOwned>(
     file: &PrimerPayloadFile,
     check: &mut dyn FnMut() -> Result<(), EngineError>,
 ) -> Result<T, EngineError> {
+    let bytes = verified_bytes(file, file.bytes, check)?;
+    serde_json::from_slice(&bytes).map_err(|e| fail(&format!("json: {e}")))
+}
+
+/// The same byte-bound reader for bounded locus FASTA and other explicit evidence inputs.
+pub(crate) fn verified_bytes(
+    file: &PrimerPayloadFile,
+    cap: u64,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<Vec<u8>, EngineError> {
+    if file.bytes > cap {
+        return Err(fail("input_byte_budget"));
+    }
     let mut source = Verified::open(file)?;
     let mut bytes =
         Vec::with_capacity(usize::try_from(file.bytes).map_err(|_| fail("memory_budget"))?);
@@ -337,7 +350,7 @@ fn json<T: serde::de::DeserializeOwned>(
         bytes.extend_from_slice(&chunk[..n]);
     }
     source.finish()?;
-    serde_json::from_slice(&bytes).map_err(|e| fail(&format!("json: {e}")))
+    Ok(bytes)
 }
 
 pub(crate) fn verified_json<T: serde::de::DeserializeOwned>(

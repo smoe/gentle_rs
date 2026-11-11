@@ -1,5 +1,52 @@
 # GENtle Changelog
 
+## 2026-11-10 - Bind Real TP53/TP73 Intake And Correct Local Phase Scope
+
+- Rebase the comparison worktree onto main `249173ee` and consume Glen's
+  real fixture `42e819c9` with explicit source/reference/annotation bindings.
+  Preserve main's independent CF01 and exon-locus review entries and receipts.
+- Add bounded disjoint producer partitions combined before one sample's engine
+  discovery/phasing pass. Preserve all original records/models, bases/qualities,
+  stable original-source unit IDs, completeness declarations and cumulative
+  budgets. Keep the original unpartitioned memory-guard failure visible.
+- Supersede the overly conservative whole-vector seed requirement with supported
+  transitive local partial-pattern joins, retained link witnesses and unresolved
+  ambiguous/weak/disconnected relationships. Switch support remains leave-one-
+  original-unit-out, and splice evidence stays on the same read/hypothesis.
+- Add explicit optional phase-marker scope without filtering discovery or reads;
+  panels derived from the same Q20 data remain post hoc exploratory. Reusing them
+  at Q30 is sensitivity, not prospective or independent validation. Separate each
+  sample's callability/depth/allele support from pooled candidate counts; RNA/cDNA
+  evidence against GRCh38 is not a germline/somatic/editing or CNV diagnosis.
+- Verify 140 unique Rust and 45 Python tests, one expected optional legacy CLI
+  skip, the default locked/offline check, original-record partition equivalence
+  and all eight source-matched real-data runs. The [receipt](tp53_tp73_cdna_fixture_analysis_20261110.md#verification-and-artifact-receipt)
+  retains exact source/binary hashes, per-sample evidence and transitive witnesses;
+  no DNA genotype or scientific acceptance is inherited. Scope stays TP53/TP73.
+
+## 2026-11-10 - Add Bound cDNA SNP And Local Haplotype Comparison
+
+- Extend the existing allele-screen module with a pure quality-aware cDNA
+  comparison kernel and thin saved-evidence service. Preserve original bases,
+  quality, mapping alternatives and distinct-unit denominators; project sites
+  into individual transcripts and compare samples without forcing two alleles.
+- Add the existing family's `--compare-cdna` shared/direct CLI mode, typed
+  `CompareCdnaAlleles` result, read-only discovery and project-free observation
+  policy. No file publication, project/history mutation or automatic original-
+  read joining; legacy allele-screen and observed-transcript contracts stay.
+- Record the historical pre-rebase `8df29b7d` receipt: 125 unique Rust and 122
+  Python tests passed locally, with one expected optional
+  legacy CLI replay skip. The default locked/offline check and source-matched
+  headless CLI replay pass after the owner-authorized fresh-worktree clean;
+  [the ledger](cdna_allele_comparison.md#verification-ledger) records exact source,
+  binary hashes, corrected fixture failures and build warnings. Full/native-
+  platform and scientific acceptance remain separate.
+- Document uncalibrated candidate phasing, same-hypothesis junction/switch
+  evidence and excess-haplotype limitations. TP53 then TP73, separately for
+  SK-MEL-28/barcode15 and WM793/barcode16, awaited Glen's bound assets at this
+  initial stage. The later delivery/analysis has a separate source receipt; no
+  DNA genotype, trans-splicing mechanism or CNV conclusion follows.
+
 ## 2026-11-10 - Authenticate The Real-cDNA Fixture Regenerator And Checkouts
 
 - Integrate Glen's bot commits `a7d16efd`/`42e819c9`, preserving attribution,

@@ -14876,6 +14876,7 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
         result: Ok(OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -15197,6 +15198,7 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -15402,6 +15404,7 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
             rna_primer_panel: None,
             rt_primer_assessment: None,
+            cdna_allele_comparison: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -15829,6 +15832,7 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
         rna_primer_panel: None,
         rt_primer_assessment: None,
+        cdna_allele_comparison: None,
         rt_primer_comparison: None,
         rt_primer_redesign: None,
         rna_primer_trace: None,

@@ -5549,6 +5549,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_assessment: Option<Box<RtPrimerAssessmentReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_allele_comparison: Option<Box<crate::allele_hash_screen::CdnaFileComparisonReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_comparison: Option<Box<RtPrimerComparisonReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_redesign: Option<Box<RtPrimerRedesignReport>>,

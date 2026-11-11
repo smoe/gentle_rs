@@ -13846,6 +13846,19 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         "allele-hash-screen" => {
+            if tokens.get(2).is_some_and(|s| s == "--compare-cdna") {
+                if tokens.len() != 4 {
+                    return Err("rna-reads allele-hash-screen --compare-cdna requires REQUEST_JSON_OR_@FILE".into());
+                }
+                let request = parse_required_json_payload::<crate::allele_hash_screen::CdnaFileComparisonRequest>(
+                    &tokens[3], "cDNA allele comparison request",
+                )?;
+                return Ok(ShellCommand::Op {
+                    payload: serde_json::to_string(&Operation::CompareCdnaAlleles {
+                        request: Box::new(request),
+                    }).map_err(|e| e.to_string())?,
+                });
+            }
             let mut gene: Option<String> = None;
             let mut transcript_fasta: Option<String> = None;
             let mut variant_table: Option<String> = None;
