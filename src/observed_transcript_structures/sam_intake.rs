@@ -36,6 +36,9 @@ pub enum Conversion {
     /// GENtle-executed indexed selection, distinct from a producer's declaration.
     ExecutedIndexedSelection {
         receipt: Box<super::indexed_locus::Receipt>,
+        /// Publication intent, not evidence that a SAM artifact was committed.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        retain_selected_sam: bool,
     },
 }
 
@@ -410,7 +413,9 @@ pub(super) fn prepare(
             arguments,
             selection_scope,
         } => sha(bam_sha256) && provenance(producer, version, arguments, selection_scope),
-        Conversion::ExecutedIndexedSelection { receipt } => receipt.validate(&request.sam).is_ok(),
+        Conversion::ExecutedIndexedSelection { receipt, .. } => {
+            receipt.validate(&request.sam).is_ok()
+        }
     };
     if !valid_provenance {
         return Err(fail("conversion_provenance"));

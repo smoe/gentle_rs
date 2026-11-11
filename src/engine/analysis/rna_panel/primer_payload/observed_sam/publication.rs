@@ -20,6 +20,41 @@ impl Write for Output {
     }
 }
 
+fn stage_selected_sam(
+    root: &Path,
+    sam: &PrimerPayloadFile,
+    left: u64,
+    check: &mut dyn FnMut() -> Result<(), EngineError>,
+) -> Result<RnaReadPanelArtifact, EngineError> {
+    if sam.bytes > left {
+        return Err(bad("observed_sam_output_budget"));
+    }
+    let mut source = VerifiedReader::open(sam, left)?;
+    let mut file = tempfile::NamedTempFile::new_in(root).map_err(|e| bad(e.to_string()))?;
+    let mut buffer = [0u8; 8 * 1024];
+    loop {
+        check()?;
+        let n = source.read(&mut buffer).map_err(|e| bad(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buffer[..n])
+            .map_err(|e| bad(e.to_string()))?;
+    }
+    source.finish()?;
+    file.as_file().sync_all().map_err(|e| bad(e.to_string()))?;
+    drop(
+        file.persist_noclobber(root.join(SELECTED_SAM))
+            .map_err(|e| bad(e.to_string()))?,
+    );
+    Ok(RnaReadPanelArtifact {
+        path: SELECTED_SAM.into(),
+        bytes: sam.bytes,
+        sha256: sam.sha256.clone(),
+        locus_id: None,
+    })
+}
+
 fn table<T: Serialize>(
     root: &Path,
     name: &str,
@@ -132,6 +167,9 @@ pub(super) fn artifacts(
                 .then(|| json!({"kind":"analysis_unavailable","execution_status":status})),
         );
     artifacts.push(table(root, TABLES[5], unavailable, r, &mut left, check)?);
+    if let Some(sam) = retained_selection_source(r, status == "completed")? {
+        artifacts.push(stage_selected_sam(root, sam, left, check)?);
+    }
     Ok(artifacts)
 }
 

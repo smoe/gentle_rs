@@ -287,7 +287,7 @@ Chain/junction membership is deduplicated per declared unit, with separate
 junction common to every retained hypothesis can be definite even if no full
 chain is. Search/view declarations gate certainty; masks independently gate
 flank qualification. Unqualified/unannotated skips do not establish novel RNA.
-SEQ/QUAL strings are not retained; row diagnostics keep their lengths only.
+Row diagnostics keep only the lengths of SEQ/QUAL, never the strings.
 
 Service budgets explicitly require `max_input_bytes`, `max_annotation_bytes`,
 `max_output_bytes`, `max_output_row_bytes`, `max_units`, `max_retained_bytes`,
@@ -301,10 +301,15 @@ JSON/retained-geometry admission can refuse inputs below raw caps; these are
 engineering charges, not allocator/RSS or throughput promises. Exhaustion
 refuses publication, never truncates biological evidence.
 
-Seven artifacts (`analysis.json`, `query_structures.tsv`,
+Seven standard artifacts (`analysis.json`, `query_structures.tsv`,
 `alignment_observations.tsv`, `structure_catalog.tsv`,
 `reference_compatibility.tsv`, `junction_catalog.tsv`, `unavailable.tsv`)
-precede a final `report.json` in a fresh immutable directory. TSVs have one
+precede a final `report.json` in a fresh immutable directory. A completed
+`select_locus` action with top-level `"retain_selected_sam": true` adds
+`artifacts/selection.sam`, bound by byte count and SHA-256 to the executed
+selection receipt and charged to `max_output_bytes`. Omitted or false keeps
+the seven-artifact contract; interrupted analysis does not retain the SAM.
+The temporary selection manifest is never published. TSVs have one
 `row_json` column; the producer enforces row and total-byte limits. Canonical
 sorted-key request/policy/context/report hashes are separate from raw artifact
 hashes. Report content hashing omits `content_sha256` itself. Publication uses
@@ -315,8 +320,9 @@ Execution `completed`, `cancelled` and `control_error` is separate from annotati
 availability. Interrupted analysis has null counts/context, not measured zeros.
 Successful execution can still have refused/missing/ambiguous annotation sources.
 Inspection defaults to zero rows; `--rows 0..1000` reads a selected bounded table,
-`--verify-artifacts` hashes all seven saved artifacts to EOF. No original SAM,
-annotation, dictionary, manifest or GTF is reopened. Saved report paths are
+`--verify-artifacts` hashes every listed artifact to EOF, including the selected
+SAM when retained. No original SAM, annotation, dictionary, manifest or GTF
+is reopened. Saved report paths are
 bound to the original resolved output directory; relocation is not automatic.
 Cancel writes only the identical request's explicit marker, idempotently without
 overwriting another request or requiring original inputs; this is not confirmed

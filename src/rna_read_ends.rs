@@ -136,6 +136,9 @@ pub enum Command {
     SelectLocus {
         request: Box<ingress::Request>,
         analysis: Box<SummarizeObservedTranscriptStructuresFromSamRequest>,
+        /// Publish the exact selected SAM with a completed report; otherwise only stage it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        retain_selected_sam: bool,
         cancel_path: Option<String>,
     },
     Cancel {
@@ -859,6 +862,7 @@ pub fn execute(
         Command::SelectLocus {
             request,
             mut analysis,
+            retain_selected_sam,
             ..
         } => {
             directory(&analysis.output_dir)?;
@@ -883,6 +887,7 @@ pub fn execute(
             analysis.manifest = selected.manifest.clone();
             analysis.conversion = kernel::ObservedSamConversion::ExecutedIndexedSelection {
                 receipt: Box::new(selected.receipt.clone()),
+                retain_selected_sam,
             };
             let report =
                 engine.summarize_observed_sam_internal(*analysis, &mut |_| check().is_ok())?;

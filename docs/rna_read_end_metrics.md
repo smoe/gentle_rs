@@ -79,6 +79,11 @@ See [samtools view](https://www.htslib.org/doc/samtools-view.html) and the
 This is a trusted direct-child supervisor, not a process-tree security sandbox
 or an operating-system guarantee against stalled filesystem calls.
 
+Indexed selection normally deletes its private SAM and query-unit manifest.
+With `"retain_selected_sam": true` on `select_locus`, the completed S2.3
+report also binds an exact copy at `artifacts/selection.sam`. Keeping it does
+not make the selection exhaustive or substitute for an `original_bases` input.
+
 ### Original Bases And Oriented Single-Read Lanes
 
 New builds write `gentle.rna_read_end_pileup.v2`. Existing v1 reports remain

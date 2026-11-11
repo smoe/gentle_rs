@@ -92,6 +92,104 @@ fn indexed_locus_native_stub_binds_partial_units_without_claiming_full_hash() {
 }
 
 #[test]
+fn indexed_locus_retains_selected_sam_only_on_opt_in() {
+    use crate::engine::{GentleEngine, ObservedSamExecutionStatus, ObservedSamReport};
+    use crate::rna_read_ends::{Command as ReadEndCommand, execute};
+
+    let (root, request) = fixture();
+    let root_path = root.path().canonicalize().unwrap();
+    let (_sources, mut analysis) = GentleEngine::observed_sam_test_fixture();
+    analysis.dictionary = request.dictionary.clone();
+    let expected = fs::read(&request.alignment.path).unwrap(); // The stub emits these exact SAM bytes.
+    for (name, flag, cancel_before_commit) in [
+        ("default", None, false),
+        ("disabled", Some(false), false),
+        ("retained", Some(true), false),
+        ("cancelled", Some(true), true),
+    ] {
+        let out = root_path.join(name);
+        let path = out.join("artifacts").join("selection.sam");
+        analysis.output_dir = out.to_str().unwrap().into();
+        let mut wire = serde_json::json!({"action": "select_locus", "request": &request, "analysis": &analysis});
+        if let Some(value) = flag {
+            wire["retain_selected_sam"] = value.into();
+        }
+        let command: ReadEndCommand = serde_json::from_value(wire).unwrap();
+        assert!(command.requires_confirmation());
+        let retain = flag == Some(true);
+        assert_eq!(
+            serde_json::to_value(&command)
+                .unwrap()
+                .get("retain_selected_sam")
+                .is_some(),
+            retain
+        );
+        // Cancel only after the staged artifacts are visible but before report.json commits.
+        let mut saw_staged_sam = false;
+        let result = execute(&GentleEngine::new(), command, &mut |_| {
+            saw_staged_sam |= cancel_before_commit && path.is_file();
+            !saw_staged_sam
+        });
+        if cancel_before_commit {
+            assert!(saw_staged_sam);
+            assert_eq!(
+                result.unwrap_err().message,
+                "rna_read_end_service_selection_analysis_not_completed"
+            );
+            let report: ObservedSamReport =
+                serde_json::from_reader(File::open(out.join("report.json")).unwrap()).unwrap();
+            assert_eq!(report.status, ObservedSamExecutionStatus::Cancelled);
+            assert!(!path.exists());
+            assert!(!report.artifacts.iter().any(|a| a.path == "selection.sam"));
+            continue;
+        }
+        let result = result.unwrap();
+        let report: ObservedSamReport =
+            serde_json::from_value(result["observed_sam_report"].clone()).unwrap();
+        assert!(!Path::new(&report.request.sam.path).exists());
+        assert!(!Path::new(&report.request.manifest.path).exists());
+        let conversion = &result["observed_sam_report"]["request"]["conversion"];
+        assert_eq!(
+            conversion
+                .get("retain_selected_sam")
+                .and_then(|v| v.as_bool()),
+            retain.then_some(true)
+        );
+
+        let artifact = report.artifacts.iter().find(|a| a.path == "selection.sam");
+        assert_eq!(path.exists(), retain);
+        assert_eq!(artifact.is_some(), retain);
+        assert_eq!(report.artifacts.len(), if retain { 8 } else { 7 });
+        let binding = GentleEngine::observed_sam_result_binding(&report.request, &report).unwrap();
+        let verify = || {
+            GentleEngine::inspect_observed_transcript_structures_from_sam(
+                &binding.report_path,
+                Some(&binding),
+                "query_structures.tsv",
+                0,
+                true,
+            )
+        };
+        assert!(verify().unwrap().artifacts_verified);
+        if let Some(artifact) = artifact {
+            let receipt: Receipt = serde_json::from_value(result["selection"].clone()).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), expected);
+            assert_eq!(artifact.bytes, expected.len() as u64);
+            assert_eq!(artifact.bytes, receipt.sam_bytes);
+            assert_eq!(
+                artifact.sha256,
+                crate::digest_utils::sha256_prefixed_bytes(&expected)
+            );
+            assert_eq!(artifact.sha256, receipt.sam_sha256);
+            let mut altered = expected.clone();
+            altered[0] ^= 1;
+            fs::write(&path, altered).unwrap();
+            assert!(verify().is_err(), "verification must read the retained SAM");
+        }
+    }
+}
+
+#[test]
 fn indexed_locus_isolates_all_three_samtools_calls() {
     const PARENT_ONLY: &str = "GENTLE_TEST_SAMTOOLS_PARENT_ONLY";
     if std::env::var(PARENT_ONLY).ok().as_deref() != Some("selection-parent") {

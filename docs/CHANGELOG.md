@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-11-11 - Opt In To Keeping A Locus-Selected SAM
+
+- `select_locus` keeps its SAM temporary unless `retain_selected_sam` is true.
+  A completed opted-in analysis publishes the exact file with the other
+  budgeted, hash-verified artifacts. Add a native-stub regression for omitted,
+  false and true settings, retained-file tampering and cancellation before commit.
+
 ## 2026-11-11 - Distinguish Exact Values From Bounds In Pileup Sorting
 
 - Sort observed values and right-censored lower bounds in separate groups for

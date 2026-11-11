@@ -92,6 +92,11 @@ execution and the Python CLI wrapper use the same service and guardrails.
 dictionary, explicit interval/filters/budgets and an S2.3 analysis template;
 its separate outer cancel marker must not be supplied as the inner template's
 `cancel_path`. No tool discovery, indexing, alignment or remote reference fetch.
+The selected SAM is temporary by default. To keep it, set
+`"retain_selected_sam": true` alongside `"action": "select_locus"`. A completed
+analysis saves the exact bytes to `artifacts/selection.sam` under
+`analysis.output_dir` and lists the byte count and SHA-256 in `report.json`.
+This file can contain read names, sequences, qualities and optional tags.
 Cancellation requests are not terminal receipts. Existing files are never
 overwritten; published artifacts are not rolled back by a later host cancellation.
 The generic MCP `op` tool keeps its own additive `confirm=true` gate even for

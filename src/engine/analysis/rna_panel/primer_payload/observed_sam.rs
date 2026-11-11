@@ -20,8 +20,25 @@ const TABLES: [&str; 6] = [
     "unavailable.tsv",
 ];
 const DATA: &str = "analysis.json";
+const SELECTED_SAM: &str = "selection.sam";
 
 type Request = SummarizeObservedTranscriptStructuresFromSamRequest;
+
+fn retained_selection_source(
+    r: &Request,
+    completed: bool,
+) -> Result<Option<&PrimerPayloadFile>, EngineError> {
+    if completed
+        && let kernel::ObservedSamConversion::ExecutedIndexedSelection {
+            receipt,
+            retain_selected_sam: true,
+        } = &r.conversion
+    {
+        receipt.validate(&r.sam)?;
+        return Ok(Some(&r.sam));
+    }
+    Ok(None)
+}
 
 #[cfg(test)]
 impl GentleEngine {
@@ -551,8 +568,19 @@ fn validate_report(r: &ObservedSamReport) -> Result<ObservedSamResultBinding, En
         .iter()
         .map(|a| a.path.as_str())
         .collect::<BTreeSet<_>>();
-    let expected = TABLES.into_iter().chain([DATA]).collect::<BTreeSet<_>>();
+    let mut expected = TABLES.into_iter().chain([DATA]).collect::<BTreeSet<_>>();
     let completed = r.status == ObservedSamExecutionStatus::Completed;
+    if let Some(sam) = retained_selection_source(&r.request, completed)? {
+        expected.insert(SELECTED_SAM);
+        if !r.artifacts.iter().any(|a| {
+            a.path == SELECTED_SAM
+                && a.sha256 == sam.sha256
+                && a.bytes == sam.bytes
+                && a.locus_id.is_none()
+        }) {
+            return Err(bad("observed_sam_retained_selection_binding"));
+        }
+    }
     let mut resolution_ids = BTreeSet::new();
     let resolutions_valid = r.gene_resolutions.iter().all(|row| {
         let Some(source) = r
