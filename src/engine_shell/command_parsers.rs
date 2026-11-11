@@ -13389,6 +13389,19 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 .map_err(|e| e.to_string())?,
             })
         }
+        "coding-models-derive" => {
+            if tokens.len() != 3 {
+                return Err("Use rna-reads coding-models-derive REQUEST_JSON_OR_@FILE".into());
+            }
+            let request = parse_required_json_payload::<crate::allele_hash_screen::CodingTranscriptModelsRequest>(
+                &tokens[2], "coding transcript models request",
+            )?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::DeriveCodingTranscriptModels {
+                    request: Box::new(request),
+                }).map_err(|e| e.to_string())?,
+            })
+        }
         "transcript-annotation-prepare" | "transcript-annotation-cancel" => {
             if tokens.len() != 3 {
                 return Err("Use rna-reads transcript-annotation-prepare|transcript-annotation-cancel REQUEST_JSON_OR_@FILE".into());

@@ -20,9 +20,13 @@ fn decimal(value: &str) -> Result<usize, EngineError> {
     value.parse().map_err(|_| bad("observed_gtf_coordinate"))
 }
 
-fn attributes(raw: &str) -> Result<[Option<String>; 4], EngineError> {
+fn attributes(
+    raw: &str,
+    coding: bool,
+) -> Result<([Option<String>; 4], BTreeMap<String, Vec<String>>), EngineError> {
     let bytes = raw.as_bytes();
     let mut out: [Option<String>; 4] = [None, None, None, None];
+    let mut extra = BTreeMap::<String, Vec<String>>::new();
     let mut i = 0;
     while i < bytes.len() {
         while bytes.get(i) == Some(&b' ') {
@@ -54,7 +58,12 @@ fn attributes(raw: &str) -> Result<[Option<String>; 4], EngineError> {
             _ => None,
         };
         let quoted = bytes.get(i) == Some(&b'"');
-        if slot.is_some() && !quoted {
+        let capture = coding
+            && matches!(
+                key,
+                "protein_id" | "protein_version" | "transcript_biotype" | "transcript_type" | "tag"
+            );
+        if (slot.is_some() || capture) && !quoted {
             return Err(bad("observed_gtf_attribute_quoted"));
         }
         let mut value = String::new();
@@ -80,7 +89,7 @@ fn attributes(raw: &str) -> Result<[Option<String>; 4], EngineError> {
                 };
                 i += ch.len_utf8();
                 value_bytes += ch.len_utf8();
-                if slot.is_some() {
+                if slot.is_some() || capture {
                     if value_bytes > 512 {
                         return Err(bad("observed_gtf_attribute_length"));
                     }
@@ -118,15 +127,21 @@ fn attributes(raw: &str) -> Result<[Option<String>; 4], EngineError> {
                 return Err(bad("observed_gtf_identifier"));
             }
             out[slot] = Some(value);
+        } else if capture {
+            if !identifier(&value, 512) {
+                return Err(bad("observed_gtf_identifier"));
+            }
+            let values = extra.entry(key.to_owned()).or_default();
+            if values.len() >= 64 || (key != "tag" && !values.is_empty()) {
+                return Err(bad("observed_gtf_attribute_duplicate"));
+            }
+            values.push(value);
         }
     }
-    Ok(out)
+    Ok((out, extra))
 }
 
-pub(super) fn parse<'a>(
-    line: &'a str,
-    dictionary: &BTreeMap<&str, (usize, usize)>,
-) -> Result<Row<'a>, EngineError> {
+fn columns(line: &str) -> Result<[&str; 9], EngineError> {
     if line.trim().is_empty() {
         return Err(bad("observed_gtf_blank_line"));
     }
@@ -138,14 +153,33 @@ pub(super) fn parse<'a>(
     if fields.next().is_some() {
         return Err(bad("observed_gtf_columns"));
     }
-    let &(contig, length) = dictionary
-        .get(cols[0])
-        .ok_or_else(|| bad("observed_gtf_contig"))?;
+    Ok(cols)
+}
+
+/// Coding capture is opt-in: legacy annotation normalization retains its old grammar/output.
+pub(crate) struct CodingRow<'a> {
+    pub contig: &'a str,
+    pub feature: &'a str,
+    pub strand: char,
+    pub span: Interval,
+    pub frame: Option<u8>,
+    pub gene: String,
+    pub transcript: Option<String>,
+    pub gene_version: Option<String>,
+    pub transcript_version: Option<String>,
+    pub attributes: BTreeMap<String, Vec<String>>,
+}
+
+fn parsed<'a>(
+    cols: [&'a str; 9],
+    length: Option<usize>,
+    coding: bool,
+) -> Result<CodingRow<'a>, EngineError> {
     if !identifier(cols[1], 4096) || !identifier(cols[2], 4096) {
         return Err(bad("observed_gtf_columns"));
     }
     let (start, end) = (decimal(cols[3])?, decimal(cols[4])?);
-    if start == 0 || start > end || end > length {
+    if start == 0 || start > end || length.is_some_and(|n| end > n) {
         return Err(bad("observed_gtf_coordinate"));
     }
     if cols[5] != "."
@@ -162,21 +196,54 @@ pub(super) fn parse<'a>(
         "." => '.',
         _ => return Err(bad("observed_gtf_strand")),
     };
-    let [gene, transcript, gene_version, transcript_version] = attributes(cols[8])?;
+    let ([gene, transcript, gene_version, transcript_version], attributes) =
+        attributes(cols[8], coding)?;
     let gene = gene.ok_or_else(|| bad("observed_gtf_gene_id"))?;
     if (cols[2] == "gene") != transcript.is_none()
         || (cols[2] == "gene" && transcript_version.is_some())
     {
         return Err(bad("observed_gtf_transcript_id"));
     }
-    Ok(Row {
+    Ok(CodingRow {
         feature: cols[2],
-        contig,
+        contig: cols[0],
+        frame: cols[7].parse().ok(),
         strand,
         span: (start - 1, end),
         gene,
         transcript,
         gene_version,
         transcript_version,
+        attributes,
     })
+}
+
+pub(super) fn parse<'a>(
+    line: &'a str,
+    dictionary: &BTreeMap<&str, (usize, usize)>,
+) -> Result<Row<'a>, EngineError> {
+    let cols = columns(line)?;
+    let &(contig, length) = dictionary
+        .get(cols[0])
+        .ok_or_else(|| bad("observed_gtf_contig"))?;
+    let value = parsed(cols, Some(length), false)?;
+    Ok(Row {
+        feature: value.feature,
+        contig,
+        strand: value.strand,
+        span: value.span,
+        gene: value.gene,
+        transcript: value.transcript,
+        gene_version: value.gene_version,
+        transcript_version: value.transcript_version,
+    })
+}
+
+/// Parse the same strict row grammar without asserting geometry on unselected contigs.
+pub(crate) fn parse_coding(line: &str) -> Result<CodingRow<'_>, EngineError> {
+    let cols = columns(line)?;
+    if !identifier(cols[0], 4096) {
+        return Err(bad("observed_gtf_contig"));
+    }
+    parsed(cols, None, true)
 }

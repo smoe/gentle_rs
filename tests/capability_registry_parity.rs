@@ -1224,19 +1224,27 @@ fn engine_operations_are_reachable_on_shell_route_adapters() {
 
 #[test]
 fn cdna_comparison_mcp_family_path_preserves_read_only_operation() {
-    let path = "rna-reads allele-hash-screen --compare-cdna";
+    assert_file_model_path("rna-reads allele-hash-screen --compare-cdna", "CompareCdnaAlleles");
+}
+
+#[test]
+fn coding_models_mcp_path_preserves_read_only_operation() {
+    assert_file_model_path("rna-reads coding-models-derive", "DeriveCodingTranscriptModels");
+}
+
+fn assert_file_model_path(path: &str, op: &str) {
     let command = capability_registry()
         .iter()
         .find(|c| c.source == CapabilitySource::GlossaryCommand && c.name == path)
         .unwrap();
     assert_eq!(
         command.engine_operations,
-        vec!["CompareCdnaAlleles".to_owned()]
+        vec![op.to_owned()]
     );
     assert_eq!(command.mutating, CapabilityMutation::ReadOnly);
     let operation = capability_registry()
         .iter()
-        .find(|c| c.source == CapabilitySource::EngineOperation && c.name == "CompareCdnaAlleles")
+        .find(|c| c.source == CapabilitySource::EngineOperation && c.name == op)
         .unwrap();
     assert_eq!(operation.mutating, CapabilityMutation::ReadOnly);
     let tools = gentle::mcp_server::mcp_tool_list_for_capability_surface_tests();

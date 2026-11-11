@@ -1,6 +1,13 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["DeriveCodingTranscriptModels"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads coding-models-derive",
+         "summary": "Derive hash-bound coding transcript models from explicit GTF, normalized annotation and locus FASTA. Preserve CDS phase, separate transcript/CDS completeness and optional protein comparison. Read-only; no HGVS or allele consequences.",
+         "usage": "rna-reads coding-models-derive REQUEST_JSON_OR_@FILE"
+      },
+      {
          "aliases": [], "engine_operations": ["CompareCdnaAlleles"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads allele-hash-screen --compare-cdna",

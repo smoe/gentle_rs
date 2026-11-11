@@ -2734,6 +2734,12 @@ impl GentleEngine {
                     }
                 }
             }
+            Operation::DeriveCodingTranscriptModels { request } => {
+                for file in [&request.gtf, &request.normalized_annotation, &request.reference.locus_fasta]
+                    .into_iter().chain(request.protein_fasta.iter()) {
+                    Self::push_unique_token(&mut summary.file_paths, &file.path);
+                }
+            }
             Operation::CompareCdnaAlleles { request } => {
                 Self::push_unique_token(&mut summary.file_paths, &request.reference.locus_fasta.path);
                 Self::push_unique_token(&mut summary.file_paths, &request.normalized_annotation.path);

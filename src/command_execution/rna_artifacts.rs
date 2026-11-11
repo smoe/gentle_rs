@@ -118,6 +118,7 @@ fn classify(op: Operation) -> Policy {
         Operation::CancelPrimerPayload { .. } => Policy::Control,
         Operation::TracePrimerReads { request } => Policy::PrimerTrace(request),
         Operation::CompareCdnaAlleles { .. }
+        | Operation::DeriveCodingTranscriptModels { .. }
         | Operation::AssessRtPrimerCandidates { .. }
         | Operation::ValidateRnaPrimerPanel { .. }
         | Operation::InspectPrimerTrace { .. } => {
@@ -541,6 +542,15 @@ mod rt_assessment_policy_tests {
 
     #[test]
     fn cdna_comparison_uses_execution_capacity_without_project_attachment() {
+        assert_file_observation_policy("CompareCdnaAlleles");
+    }
+
+    #[test]
+    fn coding_models_use_execution_capacity_without_project_attachment() {
+        assert_file_observation_policy("DeriveCodingTranscriptModels");
+    }
+
+    fn assert_file_observation_policy(id: &str) {
         let mut engine = GentleEngine::new();
         let discovery = crate::engine_shell::execute_shell_command(
             &mut engine,
@@ -552,7 +562,7 @@ mod rt_assessment_policy_tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|d| d["id"] == "CompareCdnaAlleles")
+            .find(|d| d["id"] == id)
             .unwrap();
         let op: Operation =
             serde_json::from_value(descriptor["operation_template"].clone()).unwrap();

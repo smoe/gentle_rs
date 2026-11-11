@@ -1,5 +1,14 @@
 # RNA Read Interpretation
 
+## Bound Coding Models
+
+`rna-reads coding-models-derive REQUEST_JSON_OR_@FILE` derives a read-only C1
+report from bound GTF, normalized annotation, locus FASTA and optional protein
+FASTA. Explicit source/gene, release, nuclear table-1 context and stopcodon
+convention are required. No project or output file is created. See
+[the request, coordinates and limitations](../coding_transcript_models.md).
+This prepares coding models, not HGVS or allele consequences.
+
 ## Quality-Bearing cDNA Allele Comparison
 
 Use the `--compare-cdna` mode of the existing allele-screen family to compare

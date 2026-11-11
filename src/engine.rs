@@ -4849,6 +4849,10 @@ pub enum Operation {
     CompareCdnaAlleles {
         request: Box<crate::allele_hash_screen::CdnaFileComparisonRequest>,
     },
+    /// Derive authenticated coding geometry without interpreting observed alleles.
+    DeriveCodingTranscriptModels {
+        request: Box<crate::allele_hash_screen::CodingTranscriptModelsRequest>,
+    },
     /// Assess supplied RT oligos against explicit, content-bound background FASTA inputs.
     AssessRtPrimerCandidates {
         request: Box<AssessRtPrimerCandidatesRequest>,
@@ -10449,6 +10453,7 @@ impl GentleEngine {
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
                 | Operation::CompareCdnaAlleles { .. }
+                | Operation::DeriveCodingTranscriptModels { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

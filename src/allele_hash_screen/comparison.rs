@@ -160,7 +160,7 @@ fn reserve(remaining: &mut u64, bytes: u64) -> Result<(), EngineError> {
     Ok(())
 }
 
-fn locus_sequence(
+pub(super) fn locus_sequence(
     file: &PrimerPayloadFile,
     contig: &str,
     check: &mut dyn FnMut() -> Result<(), EngineError>,

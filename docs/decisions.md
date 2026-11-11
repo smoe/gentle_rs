@@ -1,5 +1,28 @@
 # GENtle Decisions
 
+## Bound Coding Models Before Allele Consequences
+
+Status: active
+
+Owner-authorized C1, 2026-11-11: derive a separate versioned, read-only coding
+model from raw-bound GTF, unchanged normalized annotation and locus reference.
+Reuse the strict GTF grammar, exon projection and table-1 translator. Provider
+name never determines stop inclusion or code; nuclear context and CDS convention
+must be explicit. Keep raw phase, version evidence and optional protein binding.
+CDS and transcript completeness are independent: `mRNA_end_NF` alone does not
+invalidate a complete CDS. Structural contradictions refuse; biological
+irregularities stay per-model unavailable/flagged, never silently repaired.
+Hash the actual genetic-code asset. No project mutation or publication route.
+
+This does not authorize C2-C4, HGVS, protein consequences, private data runs or
+new variant/splice joins. Future codon composition must obey transcript coding
+geometry (including split codons); genomic adjacency alone is not an HGVS rule.
+Local RNA phase never establishes chromosomal cis/trans, and variant-to-junction
+linkage remains same-unit/hypothesis evidence. Non-claim validation must allow
+explicit negative warnings rather than blindly banning biological keywords.
+See [C1 contract](coding_transcript_models.md); compiler/runtime verification
+is delegated to Glen/CI, not inferred from previous comparison passes.
+
 ## Repository Line Endings
 
 Status: active

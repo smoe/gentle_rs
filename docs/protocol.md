@@ -1,5 +1,18 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Bound Coding Models (C1)
+
+`DeriveCodingTranscriptModels { request }` /
+`rna-reads coding-models-derive REQUEST_JSON_OR_@FILE` returns
+`gentle.coding_transcript_models.v1` through optional
+`OpResult.coding_transcript_models` (omitted when absent). It is an expensive,
+project-free read-only observation through shared shell and generic MCP/VM routes.
+The strict request is `gentle.coding_transcript_models_request.v1`. Raw bindings,
+exact annotation geometry, explicit nuclear table-1 and stop convention are
+required. Transcript/CDS completeness stays separate; irregular biology is not
+repaired. Comparison/annotation formats remain unchanged.
+[Full C1 contract](coding_transcript_models.md).
+
 ## Quality-Bearing cDNA Allele Comparison
 
 `CompareCdnaAlleles { request }` / `rna-reads allele-hash-screen --compare-cdna

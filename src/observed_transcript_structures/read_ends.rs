@@ -337,7 +337,7 @@ impl Prepared<'_> {
     }
 }
 
-fn exon_map(exons: &[Interval], strand: char) -> Result<Vec<SupportedBlock>, EngineError> {
+pub(crate) fn exon_map(exons: &[Interval], strand: char) -> Result<Vec<SupportedBlock>, EngineError> {
     let mut length = 0usize;
     let mut out = Vec::new();
     for position in 0..exons.len() {

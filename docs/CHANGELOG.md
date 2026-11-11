@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-11 - Derive Bound Coding Transcript Models (C1)
+
+- Add one read-only file service/operation and shared CLI/GUI Shell/MCP/VM route
+  for bound GTF, unchanged normalized annotation, locus and optional protein
+  FASTA. Capture coding attributes through the existing strict GTF grammar,
+  reuse exon projection and table-1 translation, and bind the genetic-code asset.
+- Separate mRNA-end tags from CDS completeness; preserve phases across exon
+  junctions, explicit stop convention, version conflicts and biological reasons.
+  Refuse structural/binding errors, non-nuclear context, budgets and cancellation
+  without repair, publication, project/undo mutation or provider contact.
+- Add invented plus/minus/split-codon, stop/phase/version/protein, LF/CRLF,
+  tamper/budget/cancellation, shared-route and VM/MCP regression cases, plus an
+  opt-in actual-CLI companion and checkout coverage. Update discovery/maturity
+  projections and the [new-only verification scope](glen_next_verification_handoff.md#c1-bound-coding-models-2026-11-11).
+  Python/source checks do not certify Rust/runtime behavior; canonical Rust
+  generation and C1 runtime acceptance remain with Glen/CI. No local Cargo,
+  private-data rerun or push. HGVS/consequences and C2-C4 remain separate.
+
 ## 2026-11-11 - Record Glen's Integrated cDNA And Exon-Locus Pass
 
 - Attribute the focused 208-test/zero-skip return and locked check to exact

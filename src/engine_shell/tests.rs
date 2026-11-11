@@ -2037,6 +2037,7 @@ fn smoke_command_line_for_glossary_command(
     scratch: &Path,
 ) -> String {
     let observed_descriptor = match command.path.as_str() {
+        "rna-reads coding-models-derive" => Some(coding_models_descriptor(&command.path)),
         "rna-reads allele-hash-screen --compare-cdna" => Some(cdna_allele_comparison_descriptor(&command.path)),
         "primers assess-rt-candidates" => Some(rt_primer_assessment_descriptor(&command.path)),
         "primers compare-rt-candidates" => Some(rt_primer_comparison_descriptor(&command.path)),
@@ -50453,5 +50454,24 @@ fn cdna_comparison_typed_discovery_and_family_route_are_read_only() {
         assert!(capability_precondition_atoms(id).is_some());
         assert!(parse_shell_line("rna-reads allele-hash-screen --compare-cdna").is_err());
         assert!(parse_shell_line("rna-reads allele-hash-screen --compare-cdna '{}' extra").is_err());
+    }
+}
+
+#[test]
+fn coding_models_discovery_templates_and_parser_keep_observation_contract() {
+    for id in ["DeriveCodingTranscriptModels", "rna-reads coding-models-derive"] {
+        let descriptor = coding_models_descriptor(id);
+        assert_eq!(descriptor["mutating"], "false");
+        assert_eq!(descriptor["requires_confirmation"], false);
+        assert_eq!(descriptor["annotation_status"], "fact_annotated");
+        let op: Operation = serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        assert!(matches!(op, Operation::DeriveCodingTranscriptModels { .. }));
+        let request = descriptor["request_template"].clone();
+        let command = parse_shell_line(&format!("rna-reads coding-models-derive {}", quote_shell_arg(&request.to_string()))).unwrap();
+        assert!(!command.is_state_mutating());
+        assert!(capability_precondition_atoms(id).is_some());
+        let mut invalid = request;
+        invalid["guess_cds"] = json!(true);
+        assert!(serde_json::from_value::<crate::allele_hash_screen::CodingTranscriptModelsRequest>(invalid).is_err());
     }
 }

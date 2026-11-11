@@ -1,5 +1,76 @@
 # Glen: Next Verification And Return
 
+## C1 Bound Coding Models, 2026-11-11
+
+**Active new scope after the owner's push:** verify `DeriveCodingTranscriptModels`
+and `rna-reads coding-models-derive`, not another cDNA/exon-locus campaign.
+The [C1 contract](coding_transcript_models.md) is separate from unchanged
+`CompareCdnaAlleles` and normalized annotation v1. C2-C4/HGVS/consequences,
+private reads and regeneration of the real fixture/analysis archives are not
+authorized by this checklist. No fixed gene/barcode/provider rules.
+
+### Compile, Grammar And Shared Routes
+
+Use one clean source checkout and an explicitly run-owned target (never an
+inherited shared `CARGO_TARGET_DIR`). Record the actual integrated SHA, lock
+identity, Rust/Cargo, platform, features/profile, commands/counts and skips.
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate
+cargo test --locked --no-default-features --lib -j1 coding_models -- --test-threads=1
+cargo test --locked --no-default-features --lib -j1 gtf_preparation -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 coding_models -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+```
+
+The new matrix delta was derived from registry rules **without running its Rust
+generator locally**. Confirm the canonical output/freshness, return any differing
+patch, and distinguish primary compiler failures from cascades. Maturity catalogs
+were regenerated with the Python projector; no evidence maturity was raised.
+Require nonzero test counts, including actual JS/Lua VM and generic MCP cases,
+the service observation/capacity test and typed discovery/parser regressions.
+Existing GTF normalization tests are relevant because its shared grammar now
+has opt-in coding capture; old annotation output must stay byte-identical.
+
+### Synthetic Boundary And Actual CLI
+
+Check plus/minus split codons without per-segment trimming, included/excluded
+stop equivalence, explicit nuclear/table-1 refusal, malformed geometry and raw
+tampering. Preserve separate mRNA/CDS completeness: `mRNA_end_NF` with complete
+CDS must still translate, CDS-specific/missing-start/stop evidence must not.
+Retain every biological reason, missing/inconsistent versions, optional protein
+comparison, noncoding/undefined CDS, budgets, cooperative cancellation and
+determinism. No fallback provider convention, repaired reference or HGVS output.
+
+With a freshly built **same-source** CLI (record its SHA-256):
+
+```sh
+GENTLE_CODING_MODELS_CLI=/absolute/path/gentle_cli python3 -m unittest scripts.test_coding_transcript_models -v
+python3 -m unittest scripts.test_tutorial_checkouts scripts.test_capability_maturity -v
+```
+
+The two actual-process cases must execute, not skip. They cover LF/CRLF raw
+hashes versus equal model semantics, spaced/apostrophe paths, repeat output,
+tamper refusal and absence of project/output files. Also use the direct
+`gentle_cli rna-reads coding-models-derive @FILE` route. MCP's generic `op`
+confirmation must remain before I/O; readonly discovery is not a bypass.
+Windows path/handle and native GUI Shell observations need actual available
+hosts; report `not_run` rather than inheriting Linux/macOS results. There is no
+new dedicated C1 inspector or biological acceptance gate implied.
+
+Local evidence is Python/source/checkout and formatting only. Rust, VM/MCP and
+actual C1 CLI execution are **not_run locally**. Do not repeat the completed
+208-check d8656d46 return, real Q20/Q30 analyses, locus exports, reader/BLAST,
+barcode or packaging campaigns merely for this new read-only contract.
+Local combined command: `python3 -m unittest scripts.test_coding_transcript_models
+scripts.test_tutorial_checkouts scripts.test_capability_maturity -q` reports
+119 cases: **117 passed, two same-source CLI skips**. Documentation-status and
+whitespace checks pass. Session-close: four OK, two intentional warnings
+(dirty/untracked work and plan-label/manual-fidelity reminder), no failures.
+
 ## Glen Integrated cDNA And Exon-Locus Return At d8656d46, 2026-11-11
 
 Owner-forwarded result for **`d8656d46adb065d212231eef5f4ded071538a8d3`**,

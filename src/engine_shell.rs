@@ -14301,6 +14301,7 @@ impl ShellCommand {
                 | Operation::CompareRtPrimerCandidates { .. }
                 | Operation::RedesignRtPrimers { .. }
                 | Operation::CompareCdnaAlleles { .. }
+                | Operation::DeriveCodingTranscriptModels { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
@@ -19898,6 +19899,25 @@ fn rt_primer_comparison_descriptor(id: &str) -> Value {
         "precondition_expr":{"all":[{"fact":"sequence.exists","subject":{"arg":"SOURCE_SEQ_ID"}}]},
         "description":"Read-only per-isoform RT-tail presence and CDS/5-prime-UTR/3-prime-UTR/mixed/unknown classification, common prospective background assessment and shared oligo metrics. Keeps ambiguous sites unresolved, explicit member denominators and multiple binding sites. No ranking, abundance, hairpin prediction or order approval.",
         "request_template":template,"operation_template":{"CompareRtPrimerCandidates":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
+        "registry":registry_metadata_for_introspection(id)})
+}
+
+fn coding_models_descriptor(id: &str) -> Value {
+    let file = json!({"path":"/REPLACE/input", "sha256":"REPLACE_RAW_SHA256", "bytes":0});
+    let template = json!({"schema":"gentle.coding_transcript_models_request.v1",
+        "gtf":file, "normalized_annotation":file,
+        "reference":{"assembly":"REPLACE_ASSEMBLY", "contig":"REPLACE_CONTIG", "start_0based":0,
+            "genomic_reference_sha256":"REPLACE_REFERENCE_SHA256", "locus_fasta":file},
+        "selector":{"source_id":"REPLACE_SOURCE_ID", "gene_id":"REPLACE_GENE_ID"},
+        "provider":{"name":"REPLACE_PROVIDER", "release":"REPLACE_RELEASE",
+            "cds_row_convention":"stop_codon_excluded_from_cds_rows"},
+        "reference_kind":"nuclear", "translation_table":1, "budgets":{}});
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"Hash-bound GTF, normalized annotation, locus FASTA and explicit coding convention; optional protein FASTA"}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},
+        "description":"Read-only C1 coding-model derivation. Separate transcript/CDS completeness, phases and table-1 translation; no allele consequences or HGVS. No project or file mutation.",
+        "request_template":template,"operation_template":{"DeriveCodingTranscriptModels":{"request":template}},
         "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
         "registry":registry_metadata_for_introspection(id)})
 }
@@ -26779,6 +26799,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rt_primer_redesign_descriptor("primers redesign-rt"),
         rt_primer_comparison_descriptor("CompareRtPrimerCandidates"),
         rt_primer_comparison_descriptor("primers compare-rt-candidates"),
+        coding_models_descriptor("DeriveCodingTranscriptModels"),
+        coding_models_descriptor("rna-reads coding-models-derive"),
         cdna_allele_comparison_descriptor("CompareCdnaAlleles"),
         cdna_allele_comparison_descriptor("rna-reads allele-hash-screen --compare-cdna"),
         rt_primer_assessment_descriptor("AssessRtPrimerCandidates"),
@@ -32876,6 +32898,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "InspectPrimerPayloadJunctions" | "rna-reads primer-junctions" => Some(vec![]),
         "CompareCdnaAlleles" | "rna-reads allele-hash-screen --compare-cdna" => Some(vec![]),
+        "DeriveCodingTranscriptModels" | "rna-reads coding-models-derive" => Some(vec![]),
         "AssessRtPrimerCandidates" | "primers assess-rt-candidates" => Some(vec![]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
@@ -67116,6 +67139,15 @@ fn execute_op_command(
             return Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({"result":{"rt_primer_comparison":report}}),
+            });
+        }
+        Operation::DeriveCodingTranscriptModels { request } => {
+            let report = crate::allele_hash_screen::derive_coding_transcript_models(
+                *request.clone(), &mut |progress| forward_shell_progress(options, progress).unwrap_or(false),
+            )?;
+            return Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result":{"coding_transcript_models":report}}),
             });
         }
         Operation::CompareCdnaAlleles { request } => {

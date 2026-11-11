@@ -32,6 +32,7 @@ from scripts import check_manual_migration as manual_migration
 from scripts import manual_docs
 from scripts import generate_capability_maturity as maturity_generator
 from scripts.test_capability_maturity import populate as populate_maturity_fixture
+from scripts.test_coding_transcript_models import digest as coding_model_digest
 
 
 def prepare_unprotected_checkout(source, destination, attributes):
@@ -49,6 +50,33 @@ def prepare_unprotected_checkout(source, destination, attributes):
 
 class DocumentationStatusTests(unittest.TestCase):
     """Copy public source inputs into synthetic disposable documentation repos."""
+
+    def test_coding_model_synthetic_bindings_survive_lf_crlf_source_checkouts(self):
+        with tempfile.TemporaryDirectory(prefix="gentle-coding-checkout-") as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            relative = Path("scripts/test_coding_transcript_models.py")
+            (source / relative).parent.mkdir()
+            (source / relative).write_bytes((checker.ROOT / relative).read_bytes())
+            checker.git(source, "init", "--quiet")
+            checker.git(source, "config", "core.autocrlf", "false")
+            checker.git(source, "config", "user.name", "Synthetic test")
+            checker.git(source, "config", "user.email", "fixture@example.invalid")
+            checker.git(source, "add", "--", str(relative))
+            checker.git(source, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic C1 source")
+            for mode in checker.MODES:
+                target = Path(tmp) / mode[0]
+                checker.prepare_checkout(source, target, mode, (checker.ROOT / ".gitattributes").read_bytes())
+                spec = importlib.util.spec_from_file_location("c1_checkout", target / relative)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                for crlf in (False, True):
+                    request = module.fixture(target / f"O'Brien inputs {crlf}", crlf)
+                    for binding in [request["gtf"], request["normalized_annotation"],
+                                    request["reference"]["locus_fasta"], request["protein_fasta"]]:
+                        raw = Path(binding["path"]).read_bytes()
+                        self.assertEqual(binding["sha256"], coding_model_digest(raw))
+                        self.assertEqual(binding["bytes"], len(raw))
 
     def fixture(self):
         tmp = tempfile.TemporaryDirectory(prefix="gentle-doc-status-")

@@ -8,7 +8,7 @@ use super::*;
 use crate::engine::{PRIMER_PAYLOAD_ANNOTATION_SCHEMA, PrimerPayloadTranscript};
 use ring::digest::{Context as ShaContext, SHA256};
 
-mod gtf;
+pub(crate) mod gtf;
 #[cfg(test)]
 mod tests;
 
