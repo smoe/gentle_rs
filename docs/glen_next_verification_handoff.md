@@ -49,6 +49,32 @@ CI `43223393601` was still running at Glen's closing observation; no terminal
 or native-host verdict is inferred here. Glen's separate cleanup/archived unused
 Nanopore import is not part of this repair.
 
+### Windows Test-Helper Warning Follow-Up
+
+The owner's repeated E0282 log has the old untyped geometry key. Current
+`d41bb602` already contains the explicit `(String, String, String)` repair.
+A later read-only observation of the old source's
+[Windows job 131200343514](https://github.com/smoe/gentle_rs/actions/runs/43223393601/job/131200343514)
+confirms that same E0282 in the full-suite step; it is not a new failure of
+`d41bb602`. Overall run/macOS completion and repaired-source acceptance were not
+established by that job's log.
+
+Additional warning cleanup scopes two imports and six helpers to their existing
+Unix-only callers: Primer3 options, primer-specificity fixture/projection,
+BigWig converter constant, acquisition environment lock, Primer3 fixture path
+and the two default CUT&RUN wrappers. Shared CUT&RUN implementations and all test
+bodies remain unchanged. No Windows test is newly gated and no warning class is
+suppressed. Two source regressions run in the existing release-policy suite.
+Local `python3 -m unittest scripts.test_release_candidate -q`: **59 passed**,
+including those two guards; documentation status, syntax parsing and whitespace
+also pass. This does not establish a clean Windows Rust build.
+
+After the owner's next push, include both Unix and Windows test-target compile
+receipts with the existing C2-C4 gates below; verify the named warnings are gone
+on Windows and the Unix callers still compile. The separate `gentle-engine`
+test target must also compile. Reuse matching CI evidence; do not repeat old
+C1/Read-End campaigns. These source checks do not imply Rust/native acceptance.
+
 ### Existing Evidence, Not New-Source Acceptance
 
 Two independent Glen repositories/runs must remain distinct. The owner-supplied

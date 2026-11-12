@@ -18,6 +18,7 @@ use crate::allele_hash_screen::{
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+#[cfg(unix)]
 use crate::engine::sequence_ops::Primer3PairDesignOptions;
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::ensembl_gene::{
@@ -10753,6 +10754,7 @@ fn write_fake_blastdbcmd(path: &Path, sequence_count: u64, total_bases: u64) {
     fs::set_permissions(path, permissions).expect("enable fake blastdbcmd");
 }
 
+#[cfg(unix)]
 fn primer_specificity_collection_test_design_report(
     report_id: &str,
     template: &str,
@@ -10787,6 +10789,7 @@ fn primer_specificity_collection_test_design_report(
     }
 }
 
+#[cfg(unix)]
 fn primer_specificity_parity_projection(report: &PrimerSpecificityReport) -> serde_json::Value {
     serde_json::json!({
         "schema": report.schema,

@@ -893,12 +893,14 @@ use crate::allele_hash_screen::{
     AlleleReadSourceOrigin,
 };
 use crate::dna_sequence::DNAsequence;
+#[cfg(unix)]
+use crate::engine::BIGWIG_TO_BEDGRAPH_ENV_BIN;
 use crate::engine::FEATURE_LOCATION_EDIT_SCHEMA_V2;
 use crate::engine::GENE_SET_RESOLUTION_SCHEMA;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
-    BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructRole, Container,
     ContainerKind, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, DesignDecisionNode, DesignEvidence, DesignFact, DisplayTarget,
@@ -3172,6 +3174,7 @@ fn cutrun_test_env_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+#[cfg(unix)]
 fn read_acquisition_test_env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -3452,6 +3455,7 @@ fn write_synthetic_attract_zip(dir: &Path) -> std::path::PathBuf {
     archive_path
 }
 
+#[cfg(unix)]
 fn primer3_fixture_path(name: &str) -> String {
     format!(
         "{}/test_files/fixtures/primer3/{name}",
@@ -3470,6 +3474,7 @@ fn shell_file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
+#[cfg(unix)]
 fn write_cutrun_shell_reference_catalog(root: &Path, genome_id: &str) -> String {
     write_cutrun_shell_reference_catalog_with_sequence(root, genome_id, "ACGTACGTACGT")
 }
@@ -3522,6 +3527,7 @@ fn write_cutrun_shell_reference_catalog_with_sequence(
     catalog_path.to_string_lossy().to_string()
 }
 
+#[cfg(unix)]
 fn prepare_cutrun_shell_anchor(
     engine: &mut GentleEngine,
     genome_id: &str,

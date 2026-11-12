@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-12 - Scope Unix-Only Test Helpers On Windows
+
+- Give the two imports and six helpers named in the Windows warnings the same
+  `cfg(unix)` scope as their existing callers. Keep shared helpers available on
+  Windows, retain every test body and add no blanket unused/dead-code allowance.
+- Add two fast source regressions to the existing release-policy suite for
+  helper/import scopes and their already Unix-only callers. This is not Windows
+  compilation proof; external Unix/Windows test-target checks remain required.
+- The repeated E0282 message shows the old untyped tuple: `d41bb602` already
+  declares `(String, String, String)`. The old Windows CI failure is not a
+  failure of that later fix or acceptance of its unrun C2-C4 runtime gates.
+
 ## 2026-11-12 - Repair C2-C4 Identity Binding And Crate-Test Type Inference
 
 - Record Glen's rejected Linux result at `2f1a3062`: compile/parity and several

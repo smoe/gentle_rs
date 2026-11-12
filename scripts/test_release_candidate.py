@@ -95,6 +95,54 @@ class WorkspaceCompilerPolicyTests(unittest.TestCase):
         self.assertEqual(manifest.get("dependencies", {}), {})
 
 
+class PlatformTestHelperScopeTests(unittest.TestCase):
+    """Source guards for Unix-only helpers; Windows compilation remains external."""
+
+    def test_unix_only_helpers_keep_their_existing_callers_target_scope(self):
+        root = Path(__file__).resolve().parents[1]
+        helpers = {
+            "src/engine/tests.rs": (
+                "primer_specificity_collection_test_design_report",
+                "primer_specificity_parity_projection",
+            ),
+            "src/engine_shell/tests.rs": (
+                "read_acquisition_test_env_lock", "primer3_fixture_path",
+                "write_cutrun_shell_reference_catalog", "prepare_cutrun_shell_anchor",
+            ),
+        }
+        callers = {
+            "src/engine/tests.rs": (
+                "collection_primer_specificity_matches_direct_per_member_assessment",
+                "primer3_runtime_reduction_stops_child_and_preserves_output_receipt",
+            ),
+            "src/engine_shell/tests.rs": (
+                "execute_primers_design_internal_vs_primer3_fixture_normalization_parity",
+                "execute_primers_preflight_reports_reachable_primer3",
+                "execute_cutrun_prepare_and_project_return_shared_payloads",
+                "execute_reads_acquire_prepare_with_fake_sra_toolkit_reports_outputs",
+                "execute_reads_acquire_prepare_can_be_cancelled_from_progress_callback",
+            ),
+        }
+        for path, names in helpers.items():
+            source = (root / path).read_text(encoding="utf-8")
+            for name in names:
+                with self.subTest(path=path, name=name):
+                    self.assertRegex(source, rf"(?m)^#\[cfg\(unix\)\]\nfn {name}\(")
+            for name in callers[path]:
+                with self.subTest(path=path, caller=name):
+                    self.assertRegex(source, rf"(?m)^#\[cfg\(unix\)\]\n(?:#\[test\]\n)?fn {name}\(")
+
+    def test_unix_only_imports_do_not_gate_the_shared_import_groups(self):
+        root = Path(__file__).resolve().parents[1]
+        for path, item in (
+            ("src/engine/tests.rs", "sequence_ops::Primer3PairDesignOptions"),
+            ("src/engine_shell/tests.rs", "BIGWIG_TO_BEDGRAPH_ENV_BIN"),
+        ):
+            with self.subTest(path=path, item=item):
+                source = (root / path).read_text(encoding="utf-8")
+                self.assertRegex(source, rf"(?m)^#\[cfg\(unix\)\]\nuse crate::engine::{item};$")
+
+
 class DependencyPinTests(unittest.TestCase):
     @staticmethod
     def vector_pdf_writer_binding_is_shared(lock):
