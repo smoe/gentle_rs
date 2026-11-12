@@ -5553,6 +5553,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coding_transcript_models: Option<Box<crate::allele_hash_screen::CodingTranscriptModelsReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdna_allele_interpretation: Option<Box<crate::allele_hash_screen::interpretation::Report>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_comparison: Option<Box<RtPrimerComparisonReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rt_primer_redesign: Option<Box<RtPrimerRedesignReport>>,

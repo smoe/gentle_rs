@@ -14302,6 +14302,7 @@ impl ShellCommand {
                 | Operation::RedesignRtPrimers { .. }
                 | Operation::CompareCdnaAlleles { .. }
                 | Operation::DeriveCodingTranscriptModels { .. }
+                | Operation::InterpretCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::InspectPrimerTrace { .. }
@@ -19901,6 +19902,18 @@ fn rt_primer_comparison_descriptor(id: &str) -> Value {
         "request_template":template,"operation_template":{"CompareRtPrimerCandidates":{"request":template}},
         "request_template_is_example_not_resolved_input":true,"annotation_status":"fact_annotated",
         "registry":registry_metadata_for_introspection(id)})
+}
+
+fn cdna_interpretation_descriptor(id: &str) -> Value {
+    let file=json!({"path":"/REPLACE/report.json","bytes":0,"sha256":"REPLACE_RAW_SHA256"});
+    let template=json!({"schema":"gentle.cdna_allele_interpretation_request.v1",
+        "genes":[{"comparison_report":file,"coding_models":file}],"policy":{},"linkage":"none","known_variants":null,"budgets":{},"format":"json"});
+    json!({"id":id,"kind":"operation","mutating":"false","requires_confirmation":false,
+        "args":[{"name":"REQUEST_JSON","required":true,"detail":"Hash-bound comparison and C1 models; optional same-unit linkage/frozen variant labels"}],
+        "reads":[],"effects":[],"precondition_expr":{"all":[]},"annotation_status":"fact_annotated",
+        "description":"Conditional read-only cDNA consequences and all same-unit codon patterns. No new allele calls, chromosomal phase, expressed/full-length isoform or clinical classification.",
+        "request_template":template,"operation_template":{"InterpretCdnaAlleles":{"request":template}},
+        "request_template_is_example_not_resolved_input":true,"registry":registry_metadata_for_introspection(id)})
 }
 
 fn coding_models_descriptor(id: &str) -> Value {
@@ -26801,6 +26814,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         rt_primer_comparison_descriptor("CompareRtPrimerCandidates"),
         rt_primer_comparison_descriptor("primers compare-rt-candidates"),
         coding_models_descriptor("DeriveCodingTranscriptModels"),
+        cdna_interpretation_descriptor("InterpretCdnaAlleles"),
+        cdna_interpretation_descriptor("rna-reads allele-hash-screen --interpret-cdna"),
         coding_models_descriptor("rna-reads coding-models-derive"),
         cdna_allele_comparison_descriptor("CompareCdnaAlleles"),
         cdna_allele_comparison_descriptor("rna-reads allele-hash-screen --compare-cdna"),
@@ -32900,6 +32915,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "InspectPrimerPayloadJunctions" | "rna-reads primer-junctions" => Some(vec![]),
         "CompareCdnaAlleles" | "rna-reads allele-hash-screen --compare-cdna" => Some(vec![]),
         "DeriveCodingTranscriptModels" | "rna-reads coding-models-derive" => Some(vec![]),
+        "InterpretCdnaAlleles" | "rna-reads allele-hash-screen --interpret-cdna" => Some(vec![]),
         "AssessRtPrimerCandidates" | "primers assess-rt-candidates" => Some(vec![]),
         "primers list-reports" => Some(vec![]),
         "primers show-report" => Some(vec![
@@ -67141,6 +67157,17 @@ fn execute_op_command(
                 state_changed: false,
                 output: json!({"result":{"rt_primer_comparison":report}}),
             });
+        }
+        Operation::InterpretCdnaAlleles { request } => {
+            use crate::allele_hash_screen::interpretation::{self, Format};
+            let report=interpretation::interpret_cdna_files(*request.clone(),&mut |progress|forward_shell_progress(options,progress).unwrap_or(false))
+                .map_err(|e|e.to_string())?;
+            let text=if request.format!=Format::Json {Some(interpretation::render(&report,request.format).map_err(|e|e.to_string())?)} else {None};
+            let mut output=json!({"result":{"cdna_allele_interpretation":report}});
+            if let Some(text)=text {
+                output["cdna_interpretation_projection"]=json!({"format":request.format,"text":text});
+            }
+            return Ok(ShellRunResult{state_changed:false,output});
         }
         Operation::DeriveCodingTranscriptModels { request } => {
             let report = crate::allele_hash_screen::derive_coding_transcript_models(

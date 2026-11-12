@@ -1,6 +1,114 @@
 # Glen: Next Verification And Return
 
+## C2-C4 Conditional cDNA Interpretation, 2026-11-12
+
+**New active scope after the owner's push:** the integrated source containing
+`InterpretCdnaAlleles`, not a repeat of prior reader/BLAST, cDNA/locus, barcode,
+packaging or real-data campaigns. C1 remains a separate artifact; comparison and
+annotation-v1 wires/counts/policies must remain unchanged. See the
+[contract](cdna_allele_interpretation.md) and [C1-C4 ledger](cdna_allele_interpretation_plan.md).
+Record exact tested SHA, lock/binary hashes, toolchain, platform/features/profile,
+commands, nonzero counts, failures and explicit skips. No private-data run,
+provider call, push, dispatch or publication is requested.
+
+### Existing Evidence, Not New-Source Acceptance
+
+At **`4966a3a514c1765b2e931c4b51cc078037e65634`**, normal
+[CI 43122283124](https://github.com/smoe/gentle_rs/actions/runs/43122283124)
+finished green for Linux, Windows, Linux/headless and release safety; macOS
+skipped. The Linux log includes C1/core/GTF/shell/MCP and the seven nonoptional
+Read-End fixes, 5,115 library passes (17 ignored), 31 registry and one freshness
+pass. Glen's separate ENOSPC run reached no focused tests and failed to advance
+its status file: record it as incomplete, not a product failure or extra pass.
+Do not rebuild those old gates merely to repair that missing local receipt.
+Actual configured samtools and C1 VM/CLI evidence remain distinct. These receipts
+do not accept this newer C2-C4 source or its shared-lowering refactor.
+
+### Compile First, Then New Rust/VM/Parity Boundaries
+
+Use a clean checkout, adequate scratch space and **explicit run-owned**
+`CARGO_TARGET_DIR`; verify it before the first Cargo call. Never clean the shared
+cache. A matching same-source/platform CI receipt can replace the same command.
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate
+cargo test --locked -p gentle-engine -j1 cdna_interpretation -- --test-threads=1
+cargo test --locked --no-default-features --lib -j1 cdna_interpretation -- --test-threads=1
+cargo test --locked --lib --features script-interfaces -j1 cdna_interpretation -- --test-threads=1
+cargo test --locked --no-default-features --lib -j1 coding_models_downstream_work_ceiling -- --test-threads=1
+cargo test --locked --lib -j1 glossary_ -- --test-threads=1
+cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+```
+
+The matrix was projected from registry rules without running its Rust generator
+locally. Return the canonical patch if it differs. Maturity projector updates
+only discovery hashes, not evidence verdicts. Require actual JS and Lua VM tests,
+MCP denied/approved calls and project-free command policy; version smokes and
+filtered-out tests do not prove those routes.
+
+Verify plus/minus coding/UTR/noncoding/not-present coordinates, missing/inconsistent
+accessions and incomplete CDS, split codons and all four TCC/TAC/TCA/TAA patterns.
+Check below-threshold evidence, incomplete groups, sample isolation, inherited
+counts/statuses, disjoint local blocks and explicit negative nonclaims. HGVS
+follows the transcript reference, including cross-intron delins and the same-codon
+one-base-gap exception; stop-loss extension counts the former stop as position 1.
+Multi-codon protein composites stay withheld. Check strict frozen-label assembly,
+alleles/source/UTC/license, tampering, cancellation and cumulative work/input/output.
+
+C3 must match the original normalized evidence-request hash. No QNAME join,
+cross-hypothesis allele/junction pairing or transitive splice support. Distinguish
+compatible, competitor-excluding and selected-model-unique units. Retained-intron,
+off-locus and foreign-contig geometry must not disappear under variant filtering.
+For comparison byte preservation, additionally compare **old `4966a3a5` and new
+source-matched binaries on the same prepared synthetic files/paths**. The new
+same-process rerun regression alone is not a historical-byte proof. No old
+private-data campaign or archive regeneration is needed.
+
+### Real Processes And Remaining Host Boundaries
+
+Build once per required feature profile, record binary SHA-256 and run:
+
+```sh
+GENTLE_CDNA_INTERPRETATION_CLI=/absolute/path/gentle_cli python3 -m unittest scripts.test_cdna_allele_interpretation -v
+python3 -m unittest scripts.test_tutorial_checkouts scripts.test_capability_maturity -v
+```
+
+Both process cases must execute: real saved-evidence producer, C1, comparison,
+C2/C3/C4, direct/shell JSON/TSV/summary, LF/CRLF raw bindings, quoted/apostrophe/
+Unicode paths, deterministic repeats, refusal and unchanged files/project. Check
+pure saved-JSON projection regeneration and confirmation before I/O. Existing
+C1 real-CLI companion remains pending if no matching receipt is available; reuse
+these actual C1 invocations for overlapping proof rather than repeat old campaigns.
+The positive process case also invokes the actual `GentleClient.shell` wrapper
+with an explicit same-source binary (no Cargo fallback), comparing JSON and both
+text formats to the direct route. The separate mocked subprocess check proves
+argument/format delegation only, not runtime or scientific acceptance. Owner
+confirmed that Glen executes the remaining gates after the owner's push;
+Codex does not push or substitute local Rust execution.
+
+Native Windows requires actual path/handle checks; GUI Shell needs an available
+native host, not inferred headless acceptance. No new GUI form is requested.
+Real TP53 conditional HGVS receipt remains pending separately: only already
+committed/authorized bound artifacts, no private source regeneration/other genes
+or hard-coded observed counts. Do not let that optional data receipt imply a
+biological verdict. OD-I1-I5 remain conservative defaults in the plan.
+
+Codex local evidence: combined new companion/checkout/maturity suite reports
+**119 passed, two same-source CLI skips** (121 cases); seven existing Python
+wrapper tests also pass without Rust. The separate C1 source suite
+has two passes and two process skips. Documentation status, maturity freshness
+and whitespace pass. Session-close: four OK, two warnings (intentional dirty
+tree and manual plan-fidelity reminder), zero failures. Synthetic evidence only;
+new Rust, VM, canonical generator, historical-byte comparison, actual process and
+native checks are **not_run**. Return primary diagnostics before cascade failures.
+
 ## Four Read-End Fixes At 18488691, 2026-11-12
+
+Historical authoring checklist: nonoptional Linux gates are now covered at
+`4966a3a5` as recorded above. Do not repeat those completed checks. Actual samtools
+and any unproved native-platform scenarios remain separate.
 
 **Pending Glen/CI verification.** Test `184886914e9995f9af08a4ee83ae104e918e6121`
 or record the exact merged SHA tested. This checklist is separate from C1.
@@ -59,6 +167,10 @@ samtools versions, commands, nonzero test counts, failures and explicit
 `not_run` cases per platform. This is a verification request, not a pass receipt.
 
 ## C1 Bound Coding Models, 2026-11-11
+
+Historical authoring checklist: compile/core/GTF/shell/MCP/parity have subsequent
+CI evidence at `4966a3a5` above. Only unproved VM/real-process/native checks remain;
+the newer C2-C4 checklist supersedes this section's former C1-only scope limit.
 
 **Active new scope after the owner's push:** verify `DeriveCodingTranscriptModels`
 and `rna-reads coding-models-derive`, not another cDNA/exon-locus campaign.

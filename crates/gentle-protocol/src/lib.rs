@@ -5903,6 +5903,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "DesignTranscriptCapturePool",
     "CompareCdnaAlleles",
     "DeriveCodingTranscriptModels",
+    "InterpretCdnaAlleles",
     "AssessRtPrimerCandidates",
     "CompareRtPrimerCandidates",
     "RedesignRtPrimers",
@@ -8074,6 +8075,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "RedesignRtPrimers"
         || operation == "CompareCdnaAlleles"
         || operation == "DeriveCodingTranscriptModels"
+        || operation == "InterpretCdnaAlleles"
         || operation == "AssessRtPrimerCandidates"
         || operation == "SaveFile"
         || operation == "EvaluateGenomeEditIntent"

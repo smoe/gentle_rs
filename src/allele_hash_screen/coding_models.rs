@@ -217,6 +217,15 @@ pub fn derive_coding_transcript_models(
     request: CodingTranscriptModelsRequest,
     progress: &mut dyn FnMut(OperationProgress) -> bool,
 ) -> Result<CodingTranscriptModelsReport, EngineError> {
+    derive_with_work_limit(request, progress, 100_000_000)
+}
+
+/// Downstream batches share a work ceiling without changing the echoed C1 request or result.
+pub(super) fn derive_with_work_limit(
+    request: CodingTranscriptModelsRequest,
+    progress: &mut dyn FnMut(OperationProgress) -> bool,
+    work_limit: usize,
+) -> Result<CodingTranscriptModelsReport, EngineError> {
     let b = &request.budgets;
     let reference_hash = request
         .reference
@@ -293,8 +302,8 @@ pub fn derive_coding_transcript_models(
         .map(|f| bytes(f, b.max_input_bytes, &mut check))
         .transpose()?;
     let mut meter = Meter {
-        remaining: b.max_work,
-        initial: b.max_work,
+        remaining: b.max_work.min(work_limit),
+        initial: b.max_work.min(work_limit),
         check: &mut check,
     };
     let mut selected = BTreeMap::new();

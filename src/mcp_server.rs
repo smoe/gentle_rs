@@ -1420,6 +1420,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "op" => &[
             "rna-reads read-ends",
             "rna-reads allele-hash-screen --compare-cdna",
+            "rna-reads allele-hash-screen --interpret-cdna",
             "rna-reads coding-models-derive",
             "rna-reads primer-panel-validate",
             "rna-reads primer-trace",
@@ -3640,6 +3641,7 @@ fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
                 | Operation::RedesignRtPrimers { .. }
                 | Operation::CompareCdnaAlleles { .. }
                 | Operation::DeriveCodingTranscriptModels { .. }
+                | Operation::InterpretCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

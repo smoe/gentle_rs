@@ -1,5 +1,21 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Conditional cDNA Interpretation (C2-C4)
+
+`InterpretCdnaAlleles { request }` returns optional
+`OpResult.cdna_allele_interpretation` (`gentle.cdna_allele_interpretation.v1`).
+The strict request is `gentle.cdna_allele_interpretation_request.v1`: 1-64
+comparison/C1 file pairs, shared policy, `linkage: none|same_unit`, optional
+raw-bound `gentle.known_variant_manifest.v1`, cumulative budgets and output format.
+It preserves upstream counts and uses same-unit codon combinations, conditional
+HGVS/protein consequences and explicitly scoped model compatibility. It is an
+expensive project-free observation; MCP confirmation is still required before
+I/O. No state save, file publication, clinical or biological acceptance follows.
+Shell/direct CLI use `allele-hash-screen --interpret-cdna @REQUEST` and optional
+`--format json|tsv|summary`; VM/MCP/Python routes delegate to the shared service.
+See [bindings, notation and limits](cdna_allele_interpretation.md). Existing
+comparison, annotation v1 and C1 wire formats remain unchanged.
+
 ## Bound Coding Models (C1)
 
 `DeriveCodingTranscriptModels { request }` /

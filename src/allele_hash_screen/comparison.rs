@@ -197,12 +197,29 @@ pub(super) fn locus_sequence(
     Ok(sequence)
 }
 
-/// Verify saved evidence, project bases through existing blocks, then call the allele-screen kernel.
-/// No original SAM/BAM/FASTQ is reopened; no files or project content are written.
-pub fn compare_cdna_files(
-    request: CdnaFileComparisonRequest,
+/// Additional geometry for downstream same-hypothesis linkage; never serialized in old reports.
+#[derive(Debug, Clone, Default)]
+pub(super) struct HypothesisGeometry {
+    pub blocks: Vec<(String, usize, usize)>,
+    pub junctions: Vec<(String, usize, usize)>,
+}
+
+pub(super) struct LoweredCdnaFiles {
+    pub request: core::CdnaComparisonRequest,
+    pub inputs: Vec<CdnaComparisonInputBinding>,
+    pub geometry: BTreeMap<(String, String, String), HypothesisGeometry>,
+    pub input_bytes: u64,
+    pub projected_bases: usize,
+}
+
+/// One shared saved-analysis lowering for comparison and downstream interpretation.
+pub(super) fn lower_cdna_files(
+    request: &CdnaFileComparisonRequest,
     progress: &mut dyn FnMut(OperationProgress) -> bool,
-) -> Result<CdnaFileComparisonReport, EngineError> {
+    retain_geometry: bool,
+    projection_budget: usize,
+    input_budget: u64,
+) -> Result<LoweredCdnaFiles, EngineError> {
     if request.schema != CDNA_FILE_COMPARISON_REQUEST_SCHEMA
         || !(1..=16).contains(&request.samples.len())
         || !(1..=128_000_000).contains(&request.max_input_bytes)
@@ -228,7 +245,8 @@ pub fn compare_cdna_files(
         }
     };
     check()?;
-    let mut remaining = request.max_input_bytes;
+    let input_limit = request.max_input_bytes.min(input_budget);
+    let mut remaining = input_limit;
     reserve(&mut remaining, request.reference.locus_fasta.bytes)?;
     reserve(&mut remaining, request.normalized_annotation.bytes)?;
     for sample in &request.samples {
@@ -298,6 +316,7 @@ pub fn compare_cdna_files(
         return Err(fail("transcript_universe"));
     }
     let mut samples = Vec::new();
+    let mut geometry = BTreeMap::new();
     let mut inputs = Vec::new();
     let mut sample_ids = BTreeSet::new();
     let mut seen_analysis = BTreeSet::new();
@@ -305,7 +324,8 @@ pub fn compare_cdna_files(
     let mut seen_partition_units = BTreeSet::new();
     let mut bases_left = request.max_basecall_bases;
     let mut units_left = 10_000usize;
-    let mut projected_left = 2_000_000usize;
+    let projection_budget = projection_budget.min(2_000_000);
+    let mut projected_left = projection_budget;
     for sample in &request.samples {
         check()?;
         if sample.sample_id.is_empty()
@@ -451,6 +471,7 @@ pub fn compare_cdna_files(
                         for (vi, call) in variants.iter().enumerate() {
                             let mut bases = Vec::new();
                             let mut junctions = Vec::new();
+                            let mut raw_geometry = HypothesisGeometry::default();
                             for id in path {
                                 if vi == 0 && !seen_obs.insert(id) {
                                     return Err(fail("repeated_hypothesis_observation"));
@@ -488,6 +509,10 @@ pub fn compare_cdna_files(
                                             != block.target.1 - block.target.0
                                 }) {
                                     return Err(fail("supported_block"));
+                                }
+                                if retain_geometry {
+                                    raw_geometry.blocks.extend(obs.blocks.iter().map(|b| (obs.contig.clone(), b.target.0, b.target.1)));
+                                    raw_geometry.junctions.extend(obs.skips.iter().map(|&(a,z)| (obs.contig.clone(), a, z)));
                                 }
                                 if obs.contig != request.reference.contig {
                                     continue;
@@ -548,6 +573,10 @@ pub fn compare_cdna_files(
                             }
                             junctions.sort();
                             junctions.dedup();
+                            if retain_geometry {
+                                let unit_id = format!("{}:{}", sample.partition_source_sha256.as_ref().unwrap_or(&unit.unit.source_sha256), unit.unit.unit_id);
+                                geometry.insert((sample.sample_id.clone(), unit_id, format!("{hi}:{vi}")), raw_geometry);
+                            }
                             hypotheses.push(core::CdnaHypothesis {
                                 hypothesis_id: format!("{hi}:{vi}"),
                                 eligible: true,
@@ -620,8 +649,8 @@ pub fn compare_cdna_files(
         });
     }
     drop(check);
-    let comparison = core::compare_cdna_alleles(
-        core::CdnaComparisonRequest {
+    Ok(LoweredCdnaFiles {
+        request: core::CdnaComparisonRequest {
             schema: core::CDNA_COMPARISON_REQUEST_SCHEMA.into(),
             gene: request.gene.clone(),
             reference: core::CdnaReference {
@@ -637,10 +666,20 @@ pub fn compare_cdna_files(
             phase_marker_positions: request.phase_marker_positions.clone(),
             policy: request.policy.clone(),
             budgets: request.budgets.clone(),
-        },
-        &mut |completed, total| progress(OperationProgress::Workflow { completed, total }),
-    )
-    .map_err(fail)?;
+        }, inputs, geometry, input_bytes: input_limit - remaining,
+        projected_bases: projection_budget - projected_left,
+    })
+}
+
+/// Verify saved evidence and project it through the shared lowering without changing old reports.
+pub fn compare_cdna_files(
+    request: CdnaFileComparisonRequest,
+    progress: &mut dyn FnMut(OperationProgress) -> bool,
+) -> Result<CdnaFileComparisonReport, EngineError> {
+    let lowered = lower_cdna_files(&request, progress, false, 2_000_000, request.max_input_bytes)?;
+    let comparison = core::compare_cdna_alleles(lowered.request,
+        &mut |completed, total| progress(OperationProgress::Workflow { completed, total })).map_err(fail)?;
+    let inputs = lowered.inputs;
     let mut report=CdnaFileComparisonReport{schema:CDNA_FILE_COMPARISON_SCHEMA.into(),content_sha256:String::new(),request_sha256:hash(&request)?,request,inputs,comparison,
         limitations:vec!["Raw saved artifacts and supplied base/quality bytes are verified; original physical read identity and basecaller provenance remain producer declarations.".into(),
             "The parent genomic-reference hash is declared and cross-bound to saved annotation/analysis. Only supplied locus FASTA bytes/sequence are reverified here.".into(),
@@ -656,3 +695,10 @@ pub fn compare_cdna_files(
 
 #[cfg(test)]
 mod tests;
+
+/// Reusable invented saved-SAM/basecall inputs for downstream contract regressions.
+#[cfg(test)]
+pub(crate) fn synthetic_comparison_fixture() -> (tempfile::TempDir, CdnaFileComparisonRequest) {
+    let fixture=tests::fixture(false,true);
+    (fixture._root,fixture.request)
+}

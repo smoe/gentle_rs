@@ -14,9 +14,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-struct Fixture {
-    _root: tempfile::TempDir,
-    request: CdnaFileComparisonRequest,
+pub(super) struct Fixture {
+    pub(super) _root: tempfile::TempDir,
+    pub(super) request: CdnaFileComparisonRequest,
     original_inputs: Vec<PathBuf>,
 }
 
@@ -47,7 +47,7 @@ fn reverse_complement(s: &str) -> String {
         .collect()
 }
 
-fn fixture(reverse: bool, two_samples: bool) -> Fixture {
+pub(super) fn fixture(reverse: bool, two_samples: bool) -> Fixture {
     let (root, mut template) = GentleEngine::observed_sam_test_fixture();
     let directory = root.path().canonicalize().unwrap();
     let annotation_file = match &template.annotation_sources[0] {

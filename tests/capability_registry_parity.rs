@@ -1232,6 +1232,11 @@ fn coding_models_mcp_path_preserves_read_only_operation() {
     assert_file_model_path("rna-reads coding-models-derive", "DeriveCodingTranscriptModels");
 }
 
+#[test]
+fn cdna_interpretation_mcp_family_path_preserves_read_only_operation() {
+    assert_file_model_path("rna-reads allele-hash-screen --interpret-cdna", "InterpretCdnaAlleles");
+}
+
 fn assert_file_model_path(path: &str, op: &str) {
     let command = capability_registry()
         .iter()

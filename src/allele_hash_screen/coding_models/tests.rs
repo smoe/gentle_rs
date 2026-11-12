@@ -379,6 +379,15 @@ fn coding_models_input_budget_includes_optional_protein_and_returns_owned_reques
 }
 
 #[test]
+fn coding_models_downstream_work_ceiling_preserves_original_report_bytes() {
+    let (_root,request)=fixture(false,false,false);
+    let original=run(request.clone());
+    let bounded=derive_with_work_limit(request.clone(),&mut |_|true,original.work).unwrap();
+    assert_eq!(serde_json::to_vec(&original).unwrap(),serde_json::to_vec(&bounded).unwrap());
+    assert!(derive_with_work_limit(request,&mut |_|true,original.work-1).is_err());
+}
+
+#[test]
 fn coding_models_shell_preserves_engine_error_text_without_state_or_journal_changes() {
     let (_root, mut request) = fixture(false, false, false);
     request.gtf.sha256 = digest(b"wrong bound source");

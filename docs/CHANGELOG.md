@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-11-12 - Add Conditional cDNA Interpretation (C2-C4)
+
+- Add a separate read-only, raw/hash-bound batch service and pure consequence
+  kernel over unchanged comparison/C1 artifacts. Preserve inherited samples,
+  counts, statuses and phase; retain all same-unit codon patterns and incomplete
+  units, predicted HGVS and conservative version/CDS/start/stop handling.
+- Share saved-analysis lowering for optional same-unit isoform compatibility,
+  competitor exclusion and selected-model uniqueness. Require normalized input
+  hash equality; no QNAME join or cross-read splice assembly. Frozen labels use
+  exact genomic alleles with attribution, not live/clinical interpretation.
+- Reuse shared shell/direct CLI, generic MCP and VM/Python routes; add pure
+  JSON/TSV/summary projections, cumulative limits, typed discovery, synthetic
+  regressions and LF/CRLF checkout coverage. The optional process replay now
+  compares the actual Python client with direct JSON/text routes using an
+  explicit binary, with no Cargo fallback; mocked delegation checks stay
+  separate from runtime evidence. Other genes/barcodes/private data,
+  project mutation, new dependencies and publication remain outside scope.
+- Record the HGVS correction to the original proposal: transcript delins need
+  not be genomic-adjacent. Protein predictions use parentheses; stop extension
+  numbering includes the replaced stop. OD-I1-I5 keep conservative defaults.
+  See the [plan](cdna_allele_interpretation_plan.md) and
+  [remaining Glen gates](glen_next_verification_handoff.md#c2-c4-conditional-cdna-interpretation-2026-11-12).
+  New Rust/VM/process/native and canonical-generator checks remain unrun here.
+  Earlier green CI at `4966a3a5` is source-bound, not this implementation's pass.
+
 ## 2026-11-11 - Clarify The Read-End Input Limit
 
 - Expose the existing 8,387,584-byte single-charge ceiling in read-end

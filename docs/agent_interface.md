@@ -1031,7 +1031,17 @@ an agent has selected a deterministic operation.
 - `variant promoter-context`
 - `variant reporter-fragments`
 
-For `rna-reads allele-hash-screen`, agents may supply
+The separate `rna-reads allele-hash-screen --interpret-cdna REQUEST` mode consumes
+bound comparison/C1 artifacts for conditional consequences, all same-unit codon
+patterns and optional frozen labels. `linkage: same_unit` reauthenticates the exact
+saved evidence; it never joins by read name or across units/hypotheses. Inspect
+unavailable models, inherited thresholds, incomplete patterns and explicit
+nonclaims before explaining the result. No genotype, complete/expressed isoform,
+clinical conclusion, project save or live lookup follows. Generic MCP `op`
+retains confirmation before I/O. JSON/TSV/summary share one service; see the
+[contract](cdna_allele_interpretation.md).
+
+For the existing v3 `rna-reads allele-hash-screen` mode, agents may supply
 `--from-rna-report REPORT_ID` to let the engine resolve target-gene-aligned
 retained rows and their stored sequences through the same gene-support cohort
 logic used by the audit command. Salmon `unmapped_names` and mapping SAM files

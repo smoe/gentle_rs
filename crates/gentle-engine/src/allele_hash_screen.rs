@@ -10,6 +10,8 @@
 
 /// Quality-aware cDNA comparison over explicitly normalized alignment evidence.
 pub mod cdna_comparison;
+/// Conditional downstream consequences, same-unit linkage and frozen labels.
+pub mod cdna_interpretation;
 
 use crate::target_rescue::{
     canonical_kmers_for_each, normalize_read_id, open_maybe_gz_reader, read_id_set_from_path,

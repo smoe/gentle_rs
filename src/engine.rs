@@ -4853,6 +4853,10 @@ pub enum Operation {
     DeriveCodingTranscriptModels {
         request: Box<crate::allele_hash_screen::CodingTranscriptModelsRequest>,
     },
+    /// Conditional downstream cDNA consequences and optional same-unit isoform linkage.
+    InterpretCdnaAlleles {
+        request: Box<crate::allele_hash_screen::interpretation::Request>,
+    },
     /// Assess supplied RT oligos against explicit, content-bound background FASTA inputs.
     AssessRtPrimerCandidates {
         request: Box<AssessRtPrimerCandidatesRequest>,
@@ -10454,6 +10458,7 @@ impl GentleEngine {
                 | Operation::RedesignRtPrimers { .. }
                 | Operation::CompareCdnaAlleles { .. }
                 | Operation::DeriveCodingTranscriptModels { .. }
+                | Operation::InterpretCdnaAlleles { .. }
                 | Operation::AssessRtPrimerCandidates { .. }
                 | Operation::ValidateRnaPrimerPanel { .. }
                 | Operation::TracePrimerReads { .. }

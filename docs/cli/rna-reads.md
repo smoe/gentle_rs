@@ -1,5 +1,25 @@
 # RNA Read Interpretation
 
+## Conditional cDNA Consequences
+
+After comparison and C1 model derivation, supply their exact file bindings to
+the separate read-only C2-C4 service:
+
+```sh
+gentle_cli allele-hash-screen --interpret-cdna @interpretation.request.json
+gentle_cli shell 'rna-reads allele-hash-screen --interpret-cdna @interpretation.request.json'
+gentle_cli allele-hash-screen --interpret-cdna @interpretation.request.json --format tsv
+gentle_cli allele-hash-screen --interpret-cdna @interpretation.request.json --format summary
+```
+
+Default JSON returns `result.cdna_allele_interpretation`; direct/shell text
+formats print the pure TSV/summary projection. All adapters use
+`InterpretCdnaAlleles`, including generic MCP (confirmation before I/O), JS/Lua
+and Python shell delegation. No file or project is saved. Same-unit combinations
+and model compatibility remain conditional RNA evidence, never a genotype,
+complete/expressed isoform or clinical verdict. See the
+[request, HGVS scope, frozen labels and budgets](../cdna_allele_interpretation.md).
+
 ## Bound Coding Models
 
 `rna-reads coding-models-derive REQUEST_JSON_OR_@FILE` derives a read-only C1

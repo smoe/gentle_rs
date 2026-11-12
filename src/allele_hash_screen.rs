@@ -8,3 +8,5 @@ pub use comparison::*;
 /// Authenticated CDS geometry and translation before downstream allele interpretation.
 pub mod coding_models;
 pub use coding_models::*;
+/// File-bound downstream interpretation and pure JSON/text projections.
+pub mod interpretation;

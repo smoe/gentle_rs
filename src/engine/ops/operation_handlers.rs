@@ -40640,6 +40640,7 @@ impl GentleEngine {
             rt_primer_assessment: None,
             cdna_allele_comparison: None,
             coding_transcript_models: None,
+            cdna_allele_interpretation: None,
             rt_primer_comparison: None,
             rt_primer_redesign: None,
             rna_primer_trace: None,
@@ -52353,6 +52354,11 @@ impl GentleEngine {
                 Operation::CompareRtPrimerCandidates { request } => {
                     result.rt_primer_comparison = Some(Box::new(
                         self.compare_rt_primer_candidates(*request, on_progress)?,
+                    ));
+                }
+                Operation::InterpretCdnaAlleles { request } => {
+                    result.cdna_allele_interpretation = Some(Box::new(
+                        crate::allele_hash_screen::interpretation::interpret_cdna_files(*request, on_progress)?,
                     ));
                 }
                 Operation::DeriveCodingTranscriptModels { request } => {

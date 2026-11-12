@@ -51,6 +51,34 @@ def prepare_unprotected_checkout(source, destination, attributes):
 class DocumentationStatusTests(unittest.TestCase):
     """Copy public source inputs into synthetic disposable documentation repos."""
 
+    def test_cdna_interpretation_bindings_survive_lf_crlf_source_checkouts(self):
+        with tempfile.TemporaryDirectory(prefix="gentle-interpretation-checkout-") as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            relative = Path("scripts/test_cdna_allele_interpretation.py")
+            (source / relative).parent.mkdir()
+            (source / relative).write_bytes((checker.ROOT / relative).read_bytes())
+            checker.git(source, "init", "--quiet")
+            checker.git(source, "config", "core.autocrlf", "false")
+            checker.git(source, "config", "user.name", "Synthetic test")
+            checker.git(source, "config", "user.email", "fixture@example.invalid")
+            checker.git(source, "add", "--", str(relative))
+            checker.git(source, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic interpretation source")
+            for mode in checker.MODES:
+                target = Path(tmp) / mode[0]
+                checker.prepare_checkout(source, target, mode, (checker.ROOT / ".gitattributes").read_bytes())
+                spec = importlib.util.spec_from_file_location("interpretation_checkout", target / relative)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                raw_sets = []
+                for ending in (b"\n", b"\r\n"):
+                    files = module.write_coding_inputs(target / f"O'Brien inputs {len(ending)}", ending)
+                    for binding in files:
+                        self.assertEqual(binding, module.bound(Path(binding["path"])))
+                    raw_sets.append([Path(f["path"]).read_bytes() for f in files])
+                self.assertNotEqual(raw_sets[0], raw_sets[1])
+                self.assertEqual(raw_sets[0], [raw.replace(b"\r\n", b"\n") for raw in raw_sets[1]])
+
     def test_coding_model_synthetic_bindings_survive_lf_crlf_source_checkouts(self):
         with tempfile.TemporaryDirectory(prefix="gentle-coding-checkout-") as tmp:
             source = Path(tmp) / "source"

@@ -119,6 +119,7 @@ fn classify(op: Operation) -> Policy {
         Operation::TracePrimerReads { request } => Policy::PrimerTrace(request),
         Operation::CompareCdnaAlleles { .. }
         | Operation::DeriveCodingTranscriptModels { .. }
+        | Operation::InterpretCdnaAlleles { .. }
         | Operation::AssessRtPrimerCandidates { .. }
         | Operation::ValidateRnaPrimerPanel { .. }
         | Operation::InspectPrimerTrace { .. } => {
@@ -548,6 +549,11 @@ mod rt_assessment_policy_tests {
     #[test]
     fn coding_models_use_execution_capacity_without_project_attachment() {
         assert_file_observation_policy("DeriveCodingTranscriptModels");
+    }
+
+    #[test]
+    fn cdna_interpretation_uses_execution_capacity_without_project_attachment() {
+        assert_file_observation_policy("InterpretCdnaAlleles");
     }
 
     fn assert_file_observation_policy(id: &str) {

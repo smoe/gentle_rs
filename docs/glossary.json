@@ -1,6 +1,13 @@
 {
    "commands": [
       {
+         "aliases": [], "engine_operations": ["InterpretCdnaAlleles"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "rna-reads allele-hash-screen --interpret-cdna",
+         "summary": "Conditionally interpret bound cDNA comparisons and C1 coding models: all same-unit codon patterns, reference-specific HGVS, optional same-unit isoform compatibility and frozen exact-allele labels. No new allele calls, project/file writes, clinical classification or inferred complete isoforms.",
+         "usage": "rna-reads allele-hash-screen --interpret-cdna REQUEST_JSON_OR_@FILE [--format json|tsv|summary]"
+      },
+      {
          "aliases": [], "engine_operations": ["DeriveCodingTranscriptModels"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "rna-reads coding-models-derive",

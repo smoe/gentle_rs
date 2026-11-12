@@ -12560,6 +12560,7 @@ Error: `{err}`"
                 rt_primer_assessment: None,
                 cdna_allele_comparison: None,
                 coding_transcript_models: None,
+                cdna_allele_interpretation: None,
                 rt_primer_comparison: None,
                 rt_primer_redesign: None,
                 rna_primer_trace: None,

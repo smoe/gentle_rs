@@ -2045,6 +2045,7 @@ fn smoke_command_line_for_glossary_command(
     scratch: &Path,
 ) -> String {
     let observed_descriptor = match command.path.as_str() {
+        "rna-reads allele-hash-screen --interpret-cdna" => Some(cdna_interpretation_descriptor(&command.path)),
         "rna-reads coding-models-derive" => Some(coding_models_descriptor(&command.path)),
         "rna-reads allele-hash-screen --compare-cdna" => Some(cdna_allele_comparison_descriptor(&command.path)),
         "primers assess-rt-candidates" => Some(rt_primer_assessment_descriptor(&command.path)),
@@ -50481,5 +50482,38 @@ fn coding_models_discovery_templates_and_parser_keep_observation_contract() {
         let mut invalid = request;
         invalid["guess_cds"] = json!(true);
         assert!(serde_json::from_value::<crate::allele_hash_screen::CodingTranscriptModelsRequest>(invalid).is_err());
+    }
+}
+
+#[test]
+fn cdna_interpretation_discovery_parser_and_formats_keep_typed_observation_contract() {
+    for id in ["InterpretCdnaAlleles", "rna-reads allele-hash-screen --interpret-cdna"] {
+        let descriptor = cdna_interpretation_descriptor(id);
+        assert_eq!(descriptor["mutating"], "false");
+        assert_eq!(descriptor["annotation_status"], "fact_annotated");
+        assert_eq!(descriptor["requires_confirmation"], false);
+        assert!(capability_precondition_atoms(id).is_some());
+        let operation: Operation = serde_json::from_value(descriptor["operation_template"].clone()).unwrap();
+        assert!(matches!(operation, Operation::InterpretCdnaAlleles { .. }));
+        let request = descriptor["request_template"].clone();
+        for format in ["json", "tsv", "summary"] {
+            let line = format!("rna-reads allele-hash-screen --interpret-cdna {} --format {format}", quote_shell_arg(&request.to_string()));
+            let command = parse_shell_line(&line).unwrap();
+            assert!(!command.is_state_mutating());
+            let ShellCommand::Op { payload } = command else { panic!("wrong interpretation route"); };
+            let Operation::InterpretCdnaAlleles { request } = serde_json::from_str(&payload).unwrap() else { panic!("wrong interpretation operation"); };
+            assert_eq!(serde_json::to_value(request.format).unwrap(), format);
+        }
+        let mut invalid = request;
+        invalid["infer_genotype"] = json!(true);
+        assert!(serde_json::from_value::<crate::allele_hash_screen::interpretation::Request>(invalid).is_err());
+    }
+    for line in [
+        "rna-reads allele-hash-screen --interpret-cdna",
+        "rna-reads allele-hash-screen --interpret-cdna '{}'",
+        "rna-reads allele-hash-screen --interpret-cdna '{}' --format fasta",
+        "rna-reads allele-hash-screen --interpret-cdna '{}' extra",
+    ] {
+        assert!(parse_shell_line(line).is_err(), "{line}");
     }
 }

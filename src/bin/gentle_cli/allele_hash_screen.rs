@@ -232,6 +232,13 @@ pub(super) fn handle_allele_hash_screen(
     cmd_idx: usize,
     state_path: &str,
 ) -> Result<(), String> {
+    if args.get(cmd_idx+1).is_some_and(|s|s=="--interpret-cdna") {
+        let mut tokens=vec!["rna-reads".to_string(),"allele-hash-screen".to_string()];
+        tokens.extend_from_slice(&args[cmd_idx+1..]);
+        let command=gentle::engine_shell::parse_shell_tokens(&tokens)?;
+        let result=gentle::engine_shell::execute_shell_command(&mut GentleEngine::new(),&command)?;
+        return print_cdna_shell_output(&result.output);
+    }
     if args.get(cmd_idx + 1).is_some_and(|s| s == "--compare-cdna") {
         if args.len() != cmd_idx + 3 {
             return Err("allele-hash-screen --compare-cdna requires REQUEST_JSON_OR_@FILE".into());

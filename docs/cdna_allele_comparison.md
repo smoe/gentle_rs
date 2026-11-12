@@ -150,8 +150,11 @@ geometry. Original and reference-forward bases, original query positions,
 quality and alignment orientation remain in evidence. Reverse-aligned bases are
 complemented once for reference comparison. Transcript annotations use each
 transcript's strand and report mature cDNA positions **one-based**; a site absent
-from that transcript remains `not_present`. Protein consequences, HGVS annotation,
-indels and clinical classification are not implemented.
+from that transcript remains `not_present`. This comparison does not add HGVS or
+protein consequences; the separate downstream
+[conditional interpretation](cdna_allele_interpretation.md) consumes its bound
+report without changing counts or phase blocks. Indel calling and clinical
+classification remain outside both contracts.
 
 A definite unit/site call requires quality-qualified agreement across every
 eligible retained mapping/basecall alternative and assessment of every supplied

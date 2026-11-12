@@ -510,6 +510,7 @@ fn usage_text() -> String {
   gentle_cli [--state PATH|--project PATH] promoters panel-materialize PROPOSAL_JSON_OR_@FILE --approve DIGEST\n\n  \
   gentle_cli rescue-screen --transcript-fasta PATH [--transcript-fasta PATH ...] --genes SYM[,SYM,...] [--gene SYM ...] (--reads PATH [--reads PATH ...] | --read-pair R1,R2 [--read-pair R1,R2 ...]) [--exon-fasta PATH] [--junction-fasta PATH] [--exon-intron-boundary-fasta PATH] [--intron-fasta PATH] [--genomic-region-fasta PATH] [--read-id-allowlist PATH] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--kmer-len N] [--min-kmer-hits N] [--gene-symbol-tag KEY ...] --output-prefix PREFIX\n\n  \
   gentle_cli [--state PATH|--project PATH] allele-hash-screen --gene GENE --transcript-fasta PATH (--variant-table PATH | --vcf PATH --transcript-map PATH [--vcf-sample SAMPLE]) [--from-rna-report REPORT_ID] [--read-file PATH ...] [--read-pair R1,R2 ...] [--salmon-unmapped-names PATH] [--salmon-mappings-sam PATH] [--read-id-allowlist PATH] [--kmer-len N] [--min-unique-kmer-hits N] [--min-informative-reads N] [--balanced-band-lo F] [--balanced-band-hi F] [--max-inline-read-calls N] --out OUT_DIR\n\n  \
+  gentle_cli allele-hash-screen --interpret-cdna REQUEST_JSON_OR_@FILE [--format json|tsv|summary]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n  \
   TSS exports print a compact summary by default; --full-report restores complete result JSON on stdout.\n  \
@@ -699,6 +700,17 @@ fn read_text_input(path_or_url: &str) -> Result<String, String> {
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
     load_state_or_default(path)
+}
+
+fn print_cdna_shell_output(value: &serde_json::Value) -> Result<(), String> {
+    if value["result"]["cdna_allele_interpretation"]["schema"]=="gentle.cdna_allele_interpretation.v1"
+        && let Some(projection)=value.get("cdna_interpretation_projection")
+        && matches!(projection["format"].as_str(),Some("tsv"|"summary"))
+        && let Some(text)=projection["text"].as_str() {
+        print!("{text}");
+        return Ok(());
+    }
+    print_json(value)
 }
 
 fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
@@ -1254,7 +1266,7 @@ fn run() -> Result<(), String> {
                 .save_to_path(&state_path)
                 .map_err(|e| e.to_string())?;
         }
-        return print_json(&gentle_cli_tss_output::shell_output(
+        return print_cdna_shell_output(&gentle_cli_tss_output::shell_output(
             run.output,
             export_dir.as_deref(),
             global.full_report,
@@ -1309,7 +1321,7 @@ fn run() -> Result<(), String> {
                     .save_to_path(&state_path)
                     .map_err(|e| e.to_string())?;
             }
-            print_json(&gentle_cli_tss_output::shell_output(
+            print_cdna_shell_output(&gentle_cli_tss_output::shell_output(
                 run.output,
                 export_dir.as_deref(),
                 global.full_report,

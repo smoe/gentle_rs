@@ -13859,6 +13859,18 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         "allele-hash-screen" => {
+            if tokens.get(2).is_some_and(|s| s == "--interpret-cdna") {
+                if tokens.len()!=4 && !(tokens.len()==6 && tokens[4]=="--format") {
+                    return Err("Use rna-reads allele-hash-screen --interpret-cdna REQUEST_JSON_OR_@FILE [--format json|tsv|summary]".into());
+                }
+                let mut request=parse_required_json_payload::<crate::allele_hash_screen::interpretation::Request>(&tokens[3],"cDNA allele interpretation request")?;
+                if let Some(format)=tokens.get(5) {
+                    request.format=match format.as_str() {"json"=>crate::allele_hash_screen::interpretation::Format::Json,
+                        "tsv"=>crate::allele_hash_screen::interpretation::Format::Tsv,"summary"=>crate::allele_hash_screen::interpretation::Format::Summary,
+                        _=>return Err("Interpretation format must be json, tsv or summary".into())};
+                }
+                return Ok(ShellCommand::Op{payload:serde_json::to_string(&Operation::InterpretCdnaAlleles{request:Box::new(request)}).map_err(|e|e.to_string())?});
+            }
             if tokens.get(2).is_some_and(|s| s == "--compare-cdna") {
                 if tokens.len() != 4 {
                     return Err("rna-reads allele-hash-screen --compare-cdna requires REQUEST_JSON_OR_@FILE".into());

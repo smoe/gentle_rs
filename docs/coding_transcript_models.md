@@ -117,7 +117,8 @@ The fast checkout gate recreates raw bindings in LF/CRLF checkouts. Actual CLI
 tests require `GENTLE_CODING_MODELS_CLI`; skips are not runtime acceptance.
 See the [C1 Glen checklist](glen_next_verification_handoff.md#c1-bound-coding-models-2026-11-11).
 
-HGVS/consequences, codon haplotypes, variant-to-isoform linkage and frozen known
-variants remain C2-C4. C1 establishes no genotype, zygosity, expression, CNV,
+HGVS/consequences, codon combinations, same-unit isoform linkage and frozen known
+labels belong to the separate downstream [C2-C4 contract](cdna_allele_interpretation.md),
+not to this C1 report. C1 establishes no genotype, zygosity, expression, CNV,
 somatic/germline, pathogenicity or NMD verdict. No private reads or completed
 cDNA analyses are rerun.

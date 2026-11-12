@@ -1,5 +1,40 @@
 # GENtle Decisions
 
+## Conditional cDNA Consequences And Same-Unit Isoform Evidence
+
+Status: active
+
+Owner-authorized 2026-11-12: implement C1 through C4 under the
+[interpretation plan](cdna_allele_interpretation_plan.md). This extends the earlier
+C1-only authorization, not biological/release acceptance or private-data access.
+`InterpretCdnaAlleles` is a separate checksum-bound, read-only operation over
+unchanged comparison and C1 artifacts. Preserve the comparison's counts, unit
+statuses, policy, phase blocks and annotation-v1 bytes. Reuse the existing genetic
+code and shared saved-analysis lowering. Never infer input identity from QNAME.
+
+Codon combinations require definite calls on the same unit in the same sample;
+retain every combination and incomplete unit, including below-threshold evidence.
+Inherit the support threshold. Local RNA phase is not chromosomal cis/trans.
+Isoform linkage requires allele and compatible geometry within every eligible
+hypothesis of that unit. Compatibility, exclusion of selected competitors and
+uniqueness within the selected model universe are separate facts, not a complete
+or expressed isoform. No transitive variant-to-splice join is authorized.
+
+HGVS 21.1.5 is evaluated on the named reference: transcript-consecutive changes
+and its same-codon one-intervening-base exception can be delins across genomic
+introns. Genomic adjacency is not required for transcript delins. Predicted
+protein notation uses parentheses. Missing/conflicting accessions or incomplete
+CDS withhold the appropriate notation; multi-codon protein composites remain
+withheld unless separately verified. Nuclear table 1 only. No reference repair,
+indel calling, intronic/upstream coordinate invention or molecular claim.
+
+Frozen known-variant labels match exact genomic alleles and preserve source,
+release, license and attribution; no live database or clinical classification.
+JSON is authoritative; TSV and summary are pure deterministic projections.
+No new GUI form, project mutation or filesystem publication is introduced.
+MCP confirmation remains before I/O. OD-I1 through OD-I5 retain the plan's
+conservative defaults; richer behavior needs a separate owner decision.
+
 ## Bound Coding Models Before Allele Consequences
 
 Status: active
@@ -14,8 +49,8 @@ invalidate a complete CDS. Structural contradictions refuse; biological
 irregularities stay per-model unavailable/flagged, never silently repaired.
 Hash the actual genetic-code asset. No project mutation or publication route.
 
-This does not authorize C2-C4, HGVS, protein consequences, private data runs or
-new variant/splice joins. Future codon composition must obey transcript coding
+This initial C1 decision did not authorize C2-C4; the 2026-11-12 decision above
+extends that scope without authorizing private data runs. Codon composition obeys transcript coding
 geometry (including split codons); genomic adjacency alone is not an HGVS rule.
 Local RNA phase never establishes chromosomal cis/trans, and variant-to-junction
 linkage remains same-unit/hypothesis evidence. Non-claim validation must allow
