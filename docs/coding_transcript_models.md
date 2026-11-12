@@ -117,6 +117,14 @@ The fast checkout gate recreates raw bindings in LF/CRLF checkouts. Actual CLI
 tests require `GENTLE_CODING_MODELS_CLI`; skips are not runtime acceptance.
 See the [C1 Glen checklist](glen_next_verification_handoff.md#c1-bound-coding-models-2026-11-11).
 
+Glen's supplied clean-run report at exact `4966a3a5` records a Linux pass for
+both compile gates, C1/GTF, actual JS/Lua VMs, MCP, shell, canonical parity and
+the C1 CLI companion (4/4, both process cases executed, zero skips), plus a
+deterministic direct-route replay. A separate repository's routine scan failed
+for lack of disk space; it does not invalidate that clean-run result. Preserve
+the [source-bound receipt](glen_next_verification_handoff.md#existing-evidence-not-new-source-acceptance)
+without treating it as native Windows/macOS, GUI or later C2-C4 acceptance.
+
 HGVS/consequences, codon combinations, same-unit isoform linkage and frozen known
 labels belong to the separate downstream [C2-C4 contract](cdna_allele_interpretation.md),
 not to this C1 report. C1 establishes no genotype, zygosity, expression, CNV,

@@ -13,16 +13,48 @@ provider call, push, dispatch or publication is requested.
 
 ### Existing Evidence, Not New-Source Acceptance
 
-At **`4966a3a514c1765b2e931c4b51cc078037e65634`**, normal
+Two independent Glen repositories/runs must remain distinct. The owner-supplied
+`GENtle-4966a3a5-verification-report.md` records a successful clean Linux run at
+**`4966a3a514c1765b2e931c4b51cc078037e65634`**. The later routine scan's ENOSPC and
+failed status update do not invalidate that pass or make completed checks unrun.
+
+Glen's clean run used Debian Linux x86_64, Rust/Cargo 1.97.1, a clean detached
+checkout and an explicitly run-owned target. Both locked compile gates passed;
+canonical matrix generation produced no tracked diff. C1 headless: 14 passes;
+GTF: 16; C1 with `script-interfaces`: 16, including one actual JS VM and one actual
+Lua VM case. MCP confirmation-before-I/O passed in both profiles; glossary 16,
+registry 31 and freshness one passed. Counts overlap across profiles: do not
+sum them as independent tests.
+
+The source-matched C1 CLI companion passed **4/4, zero skips**, including both
+actual-process cases. A separate repeated direct-route probe was byte-identical,
+kept inputs unchanged and created no project. All eight Read-End filter tests
+passed, including explicitly configured `/usr/bin/samtools` 1.24 for indexed BAM
+and reference-backed CRAM (no `NOT RUN`). C1 VM/CLI and real-samtools Linux
+acceptance are therefore recorded, not pending historical campaigns.
+
+- Report SHA-256 (the supplied Markdown only):
+  `d7b592b24b2b9cf941bf5354d6c6f8bac4e648e33a6f8a83b54aedebbda7988c`.
+- CLI SHA-256:
+  `de8d5c29e1031363192198be800d9c9fcae962d91d72713abf5d2661f9723879`.
+- Lockfile SHA-256:
+  `d880f70bcb3bb8ebd8db53e0ef7a8456a060c841a891f97f8d4a2eaf159569fe`.
+
+This is Glen-attributed evidence: the supplied file describes sealed raw logs,
+but those logs were not independently inspected here. Its closing CI observation
+was still in progress; retain the separate later terminal CI receipt below.
+
+At the same SHA, normal
 [CI 43122283124](https://github.com/smoe/gentle_rs/actions/runs/43122283124)
 finished green for Linux, Windows, Linux/headless and release safety; macOS
 skipped. The Linux log includes C1/core/GTF/shell/MCP and the seven nonoptional
 Read-End fixes, 5,115 library passes (17 ignored), 31 registry and one freshness
 pass. Glen's separate ENOSPC run reached no focused tests and failed to advance
 its status file: record it as incomplete, not a product failure or extra pass.
-Do not rebuild those old gates merely to repair that missing local receipt.
-Actual configured samtools and C1 VM/CLI evidence remain distinct. These receipts
-do not accept this newer C2-C4 source or its shared-lowering refactor.
+Do not rebuild those old gates merely to repair the routine scan's missing local
+receipt. These successful clean-run and CI receipts do not accept the newer
+C2-C4 source or its shared-lowering/work-ceiling changes. Native GUI and unproved
+Windows/macOS path/handle scenarios remain separate.
 
 ### Compile First, Then New Rust/VM/Parity Boundaries
 
@@ -78,9 +110,10 @@ python3 -m unittest scripts.test_tutorial_checkouts scripts.test_capability_matu
 Both process cases must execute: real saved-evidence producer, C1, comparison,
 C2/C3/C4, direct/shell JSON/TSV/summary, LF/CRLF raw bindings, quoted/apostrophe/
 Unicode paths, deterministic repeats, refusal and unchanged files/project. Check
-pure saved-JSON projection regeneration and confirmation before I/O. Existing
-C1 real-CLI companion remains pending if no matching receipt is available; reuse
-these actual C1 invocations for overlapping proof rather than repeat old campaigns.
+pure saved-JSON projection regeneration and confirmation before I/O. C1's old
+CLI/VM campaign already passed at `4966a3a5`; do not rerun it as missing evidence.
+These new process/VM tests exercise the affected newer source and reuse C1 within
+the C2-C4 flow, rather than repeating the completed historical campaign.
 The positive process case also invokes the actual `GentleClient.shell` wrapper
 with an explicit same-source binary (no Cargo fallback), comparing JSON and both
 text formats to the direct route. The separate mocked subprocess check proves
@@ -106,11 +139,11 @@ native checks are **not_run**. Return primary diagnostics before cascade failure
 
 ## Four Read-End Fixes At 18488691, 2026-11-12
 
-Historical authoring checklist: nonoptional Linux gates are now covered at
-`4966a3a5` as recorded above. Do not repeat those completed checks. Actual samtools
-and any unproved native-platform scenarios remain separate.
+Historical authoring checklist: all requested Linux filters, including configured
+real samtools, passed in Glen's clean run at `4966a3a5` above. Do not repeat these
+completed checks. Unproved native-platform scenarios remain separate.
 
-**Pending Glen/CI verification.** Test `184886914e9995f9af08a4ee83ae104e918e6121`
+**Original request, completed on Linux at `4966a3a5`:** test `184886914e9995f9af08a4ee83ae104e918e6121`
 or record the exact merged SHA tested. This checklist is separate from C1.
 The 208 checks at `d8656d46` predate all four fixes; no private cDNA data or
 repeat of that campaign is needed.
@@ -168,11 +201,12 @@ samtools versions, commands, nonzero test counts, failures and explicit
 
 ## C1 Bound Coding Models, 2026-11-11
 
-Historical authoring checklist: compile/core/GTF/shell/MCP/parity have subsequent
-CI evidence at `4966a3a5` above. Only unproved VM/real-process/native checks remain;
+Historical authoring checklist: compile/core/GTF/shell/MCP/VM/real-process/parity
+passed in Glen's clean Linux run at `4966a3a5` above. Only unproved native-host
+scenarios and affected newer-source regressions remain;
 the newer C2-C4 checklist supersedes this section's former C1-only scope limit.
 
-**Active new scope after the owner's push:** verify `DeriveCodingTranscriptModels`
+**Original request, completed on Linux at `4966a3a5`:** verify `DeriveCodingTranscriptModels`
 and `rna-reads coding-models-derive`, not another cDNA/exon-locus campaign.
 The [C1 contract](coding_transcript_models.md) is separate from unchanged
 `CompareCdnaAlleles` and normalized annotation v1. C2-C4/HGVS/consequences,

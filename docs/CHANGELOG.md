@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-12 - Distinguish Glen's Clean Verification From The Routine Scan
+
+- Record the owner-supplied successful clean Linux run at `4966a3a5` separately
+  from the other repository's ENOSPC-limited routine scan. C1 compile/core/GTF,
+  real JS/Lua VMs, MCP/shell, canonical parity and actual CLI acceptance passed;
+  the C1 companion ran 4/4 with zero skips. Explicit samtools 1.24 BAM/CRAM and
+  all eight Read-End filter tests also passed.
+- Correct the plan, C1 reference and Glen handoff so these completed campaigns
+  are not requested as missing. Preserve report/binary/lock identities, the
+  report's then-in-progress CI observation and the separately recorded later
+  terminal CI result. No raw-log revalidation, local Rust run or later-source,
+  native-host, scientific or release acceptance is inferred.
+
 ## 2026-11-12 - Add Conditional cDNA Interpretation (C2-C4)
 
 - Add a separate read-only, raw/hash-bound batch service and pure consequence

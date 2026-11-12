@@ -34,7 +34,7 @@ Claude consultation was offered; no new consultation has been invoked.
 
 | Slice / explicit requirement | Current evidence / remaining proof |
 | --- | --- |
-| C1 coding models, phases, versions, protein binding | Implemented `d927ffa8` + compiler repair `36c7e954`; Linux core/GTF/MCP/shell and parity pass in CI at `4966a3a5`; separate VM/CLI receipt pending |
+| C1 coding models, phases, versions, protein binding | Implemented `d927ffa8` + compiler repair `36c7e954`; Glen's clean Linux run at `4966a3a5` passes compile/core/GTF/MCP/shell, real JS/Lua VMs, 4/4 CLI companion cases (zero skips), direct replay and canonical parity; separate routine ENOSPC does not invalidate that receipt. Native-host and affected newer-source checks remain separate |
 | C2 authenticated 1-64-gene batch, unchanged counts/policy | Source and refusal regressions authored; raw/hash/assembly/model/cumulative limits and copied sample/status records need Rust execution |
 | C2 CDS/UTR/noncoding/not-present projection, plus/minus | Source and hand-computed coordinate/codon/unavailable-model regressions authored; runtime pending |
 | C2 all same-unit codon combinations, inherited support | TCC/TAC/TCA/TAA, split codon, disjoint/partial/low-depth/cross-sample tests authored; runtime pending |
