@@ -11,6 +11,44 @@ Record exact tested SHA, lock/binary hashes, toolchain, platform/features/profil
 commands, nonzero counts, failures and explicit skips. No private-data run,
 provider call, push, dispatch or publication is requested.
 
+### Glen Return At 2f1a3062
+
+Exact source `2f1a30620ae04cba2c4def4f29fb46279b0b8f84` is **not accepted for
+C2-C4**. Glen's Debian Linux/Rust-Cargo 1.97.1 run passed both compile gates,
+canonical generation (zero diff bytes), the C1 downstream work-ceiling test
+(1/1), glossary (16), registry/freshness (32 + 1), checkout/maturity (116) and
+three source-level companion checks. Preserve those scoped results; the work-
+ceiling test is not a comparison-byte or C2-C4 runtime pass.
+
+Two primary boundaries failed independently:
+
+- Six headless tests and both actual CLI cases stopped during C1 preparation
+  with `coding_models.annotation_binding`. The script-interface build selected
+  JS/Lua tests but failed at the same fixture before their VM route; MCP also
+  never reached its intended assertions. Isolated reruns reproduced the refusal,
+  so this is not mutex-poisoning fallout and not a VM pass or VM-engine defect.
+- The `gentle-engine` test target failed E0282 at its unconstrained tuple key.
+  Root `cargo check --tests` did not prove that separate crate's test target
+  compiled. Its kernel tests and the historical old/new byte comparison remain
+  blocked/not run, not passed.
+
+Repair source now uses C1's existing annotation-reference selector namespace and
+keeps the saved-analysis source distinct. C2 no longer equates those unrelated
+IDs; shared raw annotation, exact gene, reference, model and C3 input-hash guards
+remain. New guards exercise wrong selectors and mismatched bindings. The tuple
+has an explicit `(String, String, String)` type. **These repairs are not yet
+Rust/VM/process-verified.** No C1 schema or producer files were rewritten.
+
+The supplied archive was checked without extraction/execution: all **22/22**
+manifest entries match and its report is byte-identical to the standalone file.
+Archive SHA-256: `b6a8677c9d87611684b2c90f04c31b98c887f9af3436d77c4d3034b241baf087`;
+report SHA-256: `258b681580ae6d54eb24b20671b98b93e5dcabb8d3c928d908873709577b09af`.
+The failed-source CLI hash was
+`da95aebbc2173be7b28373c27f4b168f3c0a34a2357516678b2b0e32bcf6150d`.
+CI `43223393601` was still running at Glen's closing observation; no terminal
+or native-host verdict is inferred here. Glen's separate cleanup/archived unused
+Nanopore import is not part of this repair.
+
 ### Existing Evidence, Not New-Source Acceptance
 
 Two independent Glen repositories/runs must remain distinct. The owner-supplied
@@ -65,18 +103,24 @@ cache. A matching same-source/platform CI receipt can replace the same command.
 ```sh
 cargo check --locked --tests -j1
 cargo check --locked --no-default-features --lib -j1
-cargo run --locked --quiet --bin gentle_examples_docs -- parity-matrix-generate
+cargo test --locked -p gentle-engine -j1 cdna_interpretation --no-run
 cargo test --locked -p gentle-engine -j1 cdna_interpretation -- --test-threads=1
 cargo test --locked --no-default-features --lib -j1 cdna_interpretation -- --test-threads=1
 cargo test --locked --lib --features script-interfaces -j1 cdna_interpretation -- --test-threads=1
-cargo test --locked --no-default-features --lib -j1 coding_models_downstream_work_ceiling -- --test-threads=1
-cargo test --locked --lib -j1 glossary_ -- --test-threads=1
-cargo test --locked -j1 --test capability_registry_parity --test parity_matrix_freshness
+cargo test --locked --no-default-features --lib -j1 coding_models_selector_rejects_annotation_reference_id_mismatch -- --test-threads=1
 ```
 
-The matrix was projected from registry rules without running its Rust generator
-locally. Return the canonical patch if it differs. Maturity projector updates
-only discovery hashes, not evidence verdicts. Require actual JS and Lua VM tests,
+The first two root checks must not substitute for compiling the separate engine
+crate's test target. Then execute the original failing kernel/service tests,
+isolated JS/Lua/MCP cases and both process cases, requiring nonzero counts and
+actual route entry. Check distinct namespace preservation and fail-closed wrong
+selectors/shared annotation/gene/reference bindings, not renamed-equal fixtures.
+
+Canonical generator (zero diff), registry/freshness, glossary, work-ceiling and
+checkout/maturity are already passed at `2f1a3062`. This identity/test repair
+does not change their registry/projection inputs; do not repeat those campaigns
+as missing evidence. Normal newer-source CI remains distinct; recheck affected
+projections if their inputs change. Require actual JS and Lua VM tests,
 MCP denied/approved calls and project-free command policy; version smokes and
 filtered-out tests do not prove those routes.
 
@@ -104,7 +148,6 @@ Build once per required feature profile, record binary SHA-256 and run:
 
 ```sh
 GENTLE_CDNA_INTERPRETATION_CLI=/absolute/path/gentle_cli python3 -m unittest scripts.test_cdna_allele_interpretation -v
-python3 -m unittest scripts.test_tutorial_checkouts scripts.test_capability_maturity -v
 ```
 
 Both process cases must execute: real saved-evidence producer, C1, comparison,
@@ -128,14 +171,15 @@ committed/authorized bound artifacts, no private source regeneration/other genes
 or hard-coded observed counts. Do not let that optional data receipt imply a
 biological verdict. OD-I1-I5 remain conservative defaults in the plan.
 
-Codex local evidence: combined new companion/checkout/maturity suite reports
-**119 passed, two same-source CLI skips** (121 cases); seven existing Python
-wrapper tests also pass without Rust. The separate C1 source suite
-has two passes and two process skips. Documentation status, maturity freshness
-and whitespace pass. Session-close: four OK, two warnings (intentional dirty
-tree and manual plan-fidelity reminder), zero failures. Synthetic evidence only;
-new Rust, VM, canonical generator, historical-byte comparison, actual process and
-native checks are **not_run**. Return primary diagnostics before cascade failures.
+Repair-only Codex local evidence: combined companion/checkout/maturity suite
+reports **120 passed, two same-source CLI skips** (122 cases), with the new
+distinct-ID request regression and expanded LF/CRLF checkout coverage. Prior
+Python-wrapper/C1 source checks remain historical, not runtime proof for this fix.
+Documentation status, scoped formatting/syntax and whitespace pass. Synthetic
+evidence only; repaired-source Rust, VM, historical-byte comparison, actual
+process and native checks are **not_run**. The generator/freshness pass at
+`2f1a3062` above remains source-bound; no new generator run is claimed.
+Return primary diagnostics before cascade failures.
 
 ## Four Read-End Fixes At 18488691, 2026-11-12
 

@@ -98,7 +98,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, Request) {
         normalized_annotation: comparison.normalized_annotation.clone(),
         reference: comparison.reference.clone(),
         selector: CodingModelSelector {
-            source_id: comparison.source_id.clone(),
+            source_id: annotation.reference_id.clone(),
             gene_id: comparison.gene_id.clone(),
         },
         provider: CodingModelProvider {
@@ -184,6 +184,61 @@ fn cdna_interpretation_file_service_reverifies_c1_and_keeps_every_source_byte() 
             .content_sha256,
         linked.content_sha256
     );
+}
+
+#[test]
+fn cdna_interpretation_distinct_identity_namespaces_keep_reference_bindings_strict() {
+    let (root, request) = fixture();
+    let before = snapshot(root.path());
+    let files = &request.genes[0];
+    let c1: coding_models::CodingTranscriptModelsReport =
+        serde_json::from_slice(&fs::read(&files.coding_models.path).unwrap()).unwrap();
+    let comparison: comparison::CdnaFileComparisonReport =
+        serde_json::from_slice(&fs::read(&files.comparison_report.path).unwrap()).unwrap();
+    let annotation: PrimerPayloadAnnotation =
+        serde_json::from_slice(&fs::read(&comparison.request.normalized_annotation.path).unwrap())
+            .unwrap();
+    assert_eq!(c1.request.selector.source_id, annotation.reference_id);
+    assert_ne!(c1.request.selector.source_id, comparison.request.source_id);
+    let sequence = comparison::locus_sequence(
+        &comparison.request.reference.locus_fasta,
+        &comparison.request.reference.contig,
+        &mut || Ok(()),
+    )
+    .unwrap();
+    assert_eq!(
+        portable_models(&c1, &comparison, &sequence).unwrap().len(),
+        c1.models.len()
+    );
+    for fault in 0..7 {
+        let mut altered = c1.clone();
+        match fault {
+            0 => altered.request.selector.gene_id = "unrelated-gene".into(),
+            1 => altered.request.normalized_annotation.sha256 = digest(b"different annotation"),
+            2 => {
+                altered.request.reference.genomic_reference_sha256 =
+                    digest(b"different parent reference")
+            }
+            3 => altered.request.reference.assembly = "different-assembly".into(),
+            4 => altered.request.reference.contig = "different-contig".into(),
+            5 => altered.request.reference.start_0based += 1,
+            6 => altered.models[0].genomic_exons_0based_half_open[0].1 -= 1,
+            _ => unreachable!(),
+        }
+        assert!(
+            portable_models(&altered, &comparison, &sequence).is_err(),
+            "fault {fault}"
+        );
+    }
+    let mut wrong_selector = c1.request.clone();
+    wrong_selector.selector.source_id = comparison.request.source_id;
+    assert!(
+        coding_models::derive_coding_transcript_models(wrong_selector, &mut |_| true)
+            .unwrap_err()
+            .message
+            .contains("coding_models.annotation_binding")
+    );
+    assert_eq!(snapshot(root.path()), before);
 }
 
 #[test]

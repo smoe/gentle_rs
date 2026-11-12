@@ -26,7 +26,7 @@ C1 does not bypass that adapter gate.
 | --- | --- |
 | `gtf`, `normalized_annotation` | Local raw-byte `{path,sha256,bytes}` bindings |
 | `reference` | Comparison-compatible `assembly`, `contig`, `start_0based`, declared `genomic_reference_sha256`, bound single-record `locus_fasta` |
-| `selector` | Exact `source_id` and `gene_id`, no symbol guessing |
+| `selector` | `source_id` equals the normalized annotation's `reference_id`; exact `gene_id`, no symbol guessing |
 | `provider` | Declared `name`, `release`, explicit `cds_row_convention` |
 | `reference_kind`, `translation_table` | Explicit `nuclear` and `1`; other contexts refused in v1 |
 | `protein_fasta` | Optional bound protein FASTA with exact versioned protein IDs |
@@ -46,6 +46,14 @@ not checked against the selected locus's reference length. Hashes bind the
 supplied snapshots, not proof that the annotation was generated from that GTF.
 The whole-genome digest is declared/cross-bound, not reauthenticated by rereading
 a whole genome.
+
+C1's `selector.source_id` names the annotation reference, not the saved-analysis
+source used by `CompareCdnaAlleles`. These identifiers may legitimately differ.
+Downstream interpretation binds the two artifacts through the identical raw
+normalized-annotation hash, gene, reference sequence/assembly and transcript
+geometry, not equality between those different ID namespaces. A wrong C1
+annotation-reference selector still refuses with `coding_models.annotation_binding`.
+No schema, alias inference or input rewrite is introduced.
 
 ## Coordinates And Biological Boundaries
 

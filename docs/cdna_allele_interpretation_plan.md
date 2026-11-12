@@ -35,23 +35,29 @@ Claude consultation was offered; no new consultation has been invoked.
 | Slice / explicit requirement | Current evidence / remaining proof |
 | --- | --- |
 | C1 coding models, phases, versions, protein binding | Implemented `d927ffa8` + compiler repair `36c7e954`; Glen's clean Linux run at `4966a3a5` passes compile/core/GTF/MCP/shell, real JS/Lua VMs, 4/4 CLI companion cases (zero skips), direct replay and canonical parity; separate routine ENOSPC does not invalidate that receipt. Native-host and affected newer-source checks remain separate |
-| C2 authenticated 1-64-gene batch, unchanged counts/policy | Source and refusal regressions authored; raw/hash/assembly/model/cumulative limits and copied sample/status records need Rust execution |
+| C2 authenticated 1-64-gene batch, unchanged counts/policy | Glen's `2f1a3062` root checks compile, but shared fixture refused at C1 annotation binding. Distinct-namespace repair and stricter negative regressions authored; runtime pending |
 | C2 CDS/UTR/noncoding/not-present projection, plus/minus | Source and hand-computed coordinate/codon/unavailable-model regressions authored; runtime pending |
 | C2 all same-unit codon combinations, inherited support | TCC/TAC/TCA/TAA, split codon, disjoint/partial/low-depth/cross-sample tests authored; runtime pending |
 | C2 local phase relations, disconnected blocks | Source copies IDs/fingerprints/method; local-pattern classes avoid chromosomal cis/trans; Rust tests pending |
 | C2 substitution, delins, alleles, protein/start/stop forms | Source/tests follow official HGVS 21.1.5, including old-stop-as-1 extension; no Rust result yet |
 | C2 JSON/TSV/summary projections and nonclaims | Pure saved-JSON projections and escaping/refusal/nonclaim regressions authored; execution pending |
-| C3 shared authenticated lowering and comparison byte preservation | Shared lowering/hash-drift guard and same-source rerun regression authored; historical old/new binary byte proof pending externally |
+| C3 shared authenticated lowering and comparison byte preservation | C1 work-ceiling test passes 1/1 at `2f1a3062`; comparison-byte tests were blocked before execution by C1 fixture refusal. Historical old/new binary proof remains not run |
 | C3 compatible/discriminating/unique-model support | Same-unit/all-hypothesis/retained-intron tests authored; no QNAME/cross-hypothesis joins; runtime pending |
 | C4 frozen manifest, exact SNV/composite matching | Strict synthetic-only source/UTC/license/allele/assembly/clinical-field/composite tests authored; runtime pending |
-| Shared engine/shell/direct CLI/MCP/JS/Lua/Python routes | Wired to one service; typed parser/MCP confirmation/real VM/process tests authored, execution pending |
-| Discovery, canonical parity, maturity and LF/CRLF | Discovery/maturity and matrix delta projected; Python source/raw-binding checkout tests pass; external canonical Rust generator/freshness pending |
+| Shared engine/shell/direct CLI/MCP/JS/Lua/Python routes | JS/Lua harnesses built/selected at `2f1a3062`, but fixture refusal prevented VM/MCP/consequence entry; both actual CLI cases failed at that same boundary. Repair needs genuine route execution |
+| Discovery, canonical parity, maturity and LF/CRLF | Glen `2f1a3062`: generator zero diff, registry 32/32, freshness 1/1, glossary 16/16, checkout/maturity 116/116. Preserve these source-bound passes without repeating unaffected campaigns |
 | Real TP53 conditional receipt | Pending external execution; no new private data or hard-coded expected counts |
 | Windows/macOS/native GUI | Pending where applicable; headless or Linux proof is not native acceptance |
 
 The kernel belongs in `gentle-engine::allele_hash_screen`; main-crate file
 authentication, C1 conversion and table injection remain outside it. C3 shares
 one lowering routine rather than opening a QNAME-based adapter pipeline.
+The separate kernel crate's test target failed E0282 at `2f1a3062`, independently
+of the root fixture failure. Its tuple type is now explicit but not compiled
+locally. C1 keeps its existing `selector.source_id == annotation.reference_id`
+guard; the comparison source names saved analysis and remains different. Shared
+raw annotation, gene, reference and geometry bind C2, not cross-namespace string
+equality. Neither schema nor fixture IDs are homogenized.
 OD-I1 same-unit-only linkage, OD-I2 inherited minimum support, OD-I3 identifiers
 without clinical text, OD-I4 JSON plus pure text projections and OD-I5 withheld
 unverified multi-codon protein composites remain conservative defaults; richer
@@ -71,7 +77,8 @@ acceptance; do not close the objective while those proofs remain absent.
 
 ## Local Source Evidence, 2026-11-12
 
-Against working changes based on `4966a3a5`, without Cargo/Rust compilation:
+Initial authored-source checks before Glen's rejected `2f1a3062` return,
+against changes based on `4966a3a5`, without Cargo/Rust compilation:
 
 - `python3 -m unittest scripts.test_cdna_allele_interpretation scripts.test_tutorial_checkouts scripts.test_capability_maturity -q`:
   121 cases, 119 passed, two actual-CLI skips, including the Python-client
@@ -92,3 +99,20 @@ chromosomal phase terminology, negative nonclaims permitted, no speculative
 multi-codon protein composite. No new Claude consultation was run. Rust, VM,
 same-source process, historical comparison-byte proof and native acceptance
 remain pending; this ledger is not a green implementation acceptance receipt.
+
+## Repair Evidence After Glen's 2f1a3062 Return
+
+The supplied report and archive match; all 22 manifest entries were independently
+verified without extraction/execution. Preserve the failed VM/CLI/crate and
+blocked historical-byte verdicts in the
+[return](glen_next_verification_handoff.md#glen-return-at-2f1a3062), not a generic pass.
+
+After the ID-namespace and tuple repairs, the combined companion/checkout/maturity
+command selects 122 cases: **120 passed, two real-CLI skips** (the binary variable
+was explicitly unset). This includes actual LF/CRLF Git checkouts and bound
+request construction keeping annotation-reference and analysis-source IDs
+different. Scoped syntax/formatting, documentation status and whitespace pass.
+New Rust negatives preserve wrong-selector/shared-binding refusals; they remain
+unexecuted here. No Rust build, provider/private-data run or push. Glen must first
+compile the separate kernel test target, then execute the failed/new service,
+VM/MCP and actual-process cases before historical comparison-byte acceptance.

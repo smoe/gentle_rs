@@ -44,6 +44,11 @@ model from raw-bound GTF, unchanged normalized annotation and locus reference.
 Reuse the strict GTF grammar, exon projection and table-1 translator. Provider
 name never determines stop inclusion or code; nuclear context and CDS convention
 must be explicit. Keep raw phase, version evidence and optional protein binding.
+C1 `selector.source_id` is checked against normalized `annotation.reference_id`;
+it is not the saved-analysis source namespace of `CompareCdnaAlleles`. Preserve
+distinct identifiers rather than homogenizing fixtures. Downstream C2 joins
+through the exact shared raw annotation, gene, reference and transcript geometry,
+while C1's reference-ID guard and C3's analysis/request-hash guards remain strict.
 CDS and transcript completeness are independent: `mRNA_end_NF` alone does not
 invalidate a complete CDS. Structural contradictions refuse; biological
 irregularities stay per-model unavailable/flagged, never silently repaired.

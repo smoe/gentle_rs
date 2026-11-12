@@ -49,10 +49,20 @@ comparison policies. Bare comparison reports and the documented CLI envelope
 are supported; `inputs[].comparison_form` records which was used. Verify raw
 file sizes/hashes, both comparison content hashes and typed request hashes.
 Reauthenticate and rederive C1 against its original bound files; compare its
-content hash. Cross-bind reference/sequence, assembly, source/gene, normalized
+content hash. Cross-bind reference/sequence, assembly, gene, normalized
 annotation and every transcript's strand/exons. No repaired/guessed reference.
 Local-file and symlink rules remain strict. Declared parent-genome identity is
 cross-bound, not proof obtained by rereading a whole genome.
+
+Keep the identity namespaces separate: C1 `selector.source_id` must equal its
+normalized annotation's `reference_id`, whereas the comparison's `source_id`
+names its saved-analysis source. They need not have the same spelling. The
+shared raw annotation, exact gene and reference/model checks above link them;
+C1 rederivation and C3's saved-analysis/request-hash verification remain strict.
+The synthetic rehearsal deliberately keeps `synthetic_reference` and
+`invented_source` distinct. Its earlier `2f1a3062` preparation incorrectly used
+the latter for C1 and was refused before consequence/VM/CLI acceptance; see
+the [Glen return](glen_next_verification_handoff.md#glen-return-at-2f1a3062).
 
 Default policy is nuclear `translation_table: 1`,
 `minimum_codon_haplotype_units: null` (inherit comparison threshold) and

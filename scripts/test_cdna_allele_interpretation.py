@@ -57,6 +57,16 @@ def write_coding_inputs(root, ending):
     return bound(gtf), bound(protein)
 
 
+def coding_model_request(comparison, annotation, gtf, protein):
+    return {
+        "schema": "gentle.coding_transcript_models_request.v1", "gtf": gtf,
+        "normalized_annotation": comparison["normalized_annotation"], "reference": comparison["reference"],
+        "selector": {"source_id": annotation["reference_id"], "gene_id": comparison["gene_id"]},
+        "provider": {"name": "synthetic", "release": annotation["release"], "cds_row_convention": "stop_codon_excluded_from_cds_rows"},
+        "reference_kind": "nuclear", "translation_table": 1, "protein_fasta": protein,
+    }
+
+
 def python_client(state, binary, cwd):
     with patch.object(sys, "path", [str(ROOT / "integrations/python"), *sys.path]):
         from gentle_py.client import GentleClient
@@ -65,6 +75,24 @@ def python_client(state, binary, cwd):
 
 
 class InterpretationSourceTests(unittest.TestCase):
+    def test_coding_request_keeps_annotation_and_analysis_identity_namespaces_distinct(self):
+        comparison = {"source_id": "invented_source", "gene_id": "invented_gene",
+                      "normalized_annotation": {"path": "annotation.json", "sha256": "sha256:synthetic", "bytes": 1},
+                      "reference": {"assembly": "synthetic"}}
+        annotation = {"reference_id": "synthetic_reference", "release": "invented-1"}
+        before = copy.deepcopy(comparison)
+        request = coding_model_request(comparison, annotation, {}, {})
+        self.assertEqual(request["selector"]["source_id"], annotation["reference_id"])
+        self.assertNotEqual(request["selector"]["source_id"], comparison["source_id"])
+        self.assertEqual(request["selector"]["gene_id"], comparison["gene_id"])
+        self.assertEqual(comparison, before)
+        with tempfile.TemporaryDirectory(prefix="gentle-identity-") as temp:
+            for ending in (b"\n", b"\r\n"):
+                file = Path(temp) / f"request O'Brien {len(ending)}.json"
+                binding = write(file, request, ending)
+                self.assertEqual(binding, bound(file))
+                self.assertEqual(json.loads(file.read_bytes()), request)
+
     def test_python_delegation_keeps_json_and_text_separate_without_cargo_fallback(self):
         client = python_client("absent project.json", "synthetic CLI's \u03b1", ROOT)
         self.assertEqual(client.cli_prefix, ("synthetic CLI's \u03b1",))
@@ -130,13 +158,8 @@ class InterpretationCliTests(unittest.TestCase):
             sample["basecalls"] = write(path, calls, ending)
         gtf, protein = write_coding_inputs(root, ending)
         annotation = json.loads(Path(comparison["normalized_annotation"]["path"]).read_bytes())
-        model_request = {
-            "schema": "gentle.coding_transcript_models_request.v1", "gtf": gtf,
-            "normalized_annotation": comparison["normalized_annotation"], "reference": comparison["reference"],
-            "selector": {"source_id": comparison["source_id"], "gene_id": comparison["gene_id"]},
-            "provider": {"name": "synthetic", "release": annotation["release"], "cds_row_convention": "stop_codon_excluded_from_cds_rows"},
-            "reference_kind": "nuclear", "translation_table": 1, "protein_fasta": protein,
-        }
+        model_request = coding_model_request(comparison, annotation, gtf, protein)
+        self.assertNotEqual(model_request["selector"]["source_id"], comparison["source_id"])
         path = root / "model request.json"
         write(path, model_request, ending)
         models = self.invoke(state, "rna-reads", "coding-models-derive", "@" + str(path))["result"]["coding_transcript_models"]
@@ -185,12 +208,20 @@ class InterpretationCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="gentle-interpretation-negative-") as temp:
             root = Path(temp).resolve() / "work O'Brien"
             state, request, path = self.prepare(root, b"\n")
-            for fault in ("hash", "duplicate", "assembly"):
+            for fault in ("hash", "duplicate", "assembly", "annotation_source"):
                 altered = copy.deepcopy(request)
                 if fault == "hash":
                     altered["genes"][0]["coding_models"]["sha256"] = "sha256:" + "0" * 64
                 elif fault == "duplicate":
                     altered["genes"] *= 2
+                elif fault == "annotation_source":
+                    model = json.loads(Path(request["genes"][0]["coding_models"]["path"]).read_bytes())
+                    model["request"]["selector"]["source_id"] = "unrelated-annotation-reference"
+                    canonical = lambda value: "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+                    model["request_sha256"] = canonical(model["request"])
+                    model.pop("content_sha256")
+                    model["content_sha256"] = canonical(model)
+                    altered["genes"][0]["coding_models"] = write(root / "wrong annotation source.json", model)
                 else:
                     manifest = {"schema": "gentle.known_variant_manifest.v1", "source_name": "synthetic", "source_release": "invented-1",
                                 "retrieved_utc": "2026-11-12T00:00:00Z", "license": "synthetic-redistributable", "attribution": "Invented test data only",
@@ -198,7 +229,9 @@ class InterpretationCliTests(unittest.TestCase):
                     altered["known_variants"] = write(root / "wrong assembly.json", manifest)
                 write(path, altered)
                 before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
-                self.invoke(state, "allele-hash-screen", "--interpret-cdna", "@" + str(path), success=False)
+                error = self.invoke(state, "allele-hash-screen", "--interpret-cdna", "@" + str(path), success=False)
+                if fault == "annotation_source":
+                    self.assertIn("coding_models.annotation_binding", error)
                 self.assertEqual({p: p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
                 self.assertFalse(state.exists())
 

@@ -497,7 +497,8 @@ fn cdna_interpretation_never_combines_allele_and_junction_across_hypotheses() {
         let mut alternative = unit.hypotheses[0].clone();
         alternative.hypothesis_id = "other".into();
         alternative.bases.clear();
-        let key = ("synthetic-sample".into(), unit.unit_id.clone(), "0".into());
+        let key: (String, String, String) =
+            ("synthetic-sample".into(), unit.unit_id.clone(), "0".into());
         link.geometry.insert(
             (key.0.clone(), key.1.clone(), "other".into()),
             link.geometry[&key].clone(),

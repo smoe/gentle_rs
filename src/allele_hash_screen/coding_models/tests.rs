@@ -118,6 +118,25 @@ fn run(request: CodingTranscriptModelsRequest) -> CodingTranscriptModelsReport {
 }
 
 #[test]
+fn coding_models_selector_rejects_annotation_reference_id_mismatch() {
+    for crlf in [false, true] {
+        let (_root, mut request) = fixture(false, false, crlf);
+        let annotation_before = fs::read(&request.normalized_annotation.path).unwrap();
+        request.selector.source_id = "different-saved-analysis-source".into();
+        assert!(
+            derive_coding_transcript_models(request.clone(), &mut |_| true)
+                .unwrap_err()
+                .message
+                .contains("coding_models.annotation_binding")
+        );
+        assert_eq!(
+            fs::read(&request.normalized_annotation.path).unwrap(),
+            annotation_before
+        );
+    }
+}
+
+#[test]
 fn coding_models_split_codon_both_strands_conventions_and_line_endings() {
     for reverse in [false, true] {
         for included in [false, true] {

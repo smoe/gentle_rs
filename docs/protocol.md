@@ -15,6 +15,9 @@ Shell/direct CLI use `allele-hash-screen --interpret-cdna @REQUEST` and optional
 `--format json|tsv|summary`; VM/MCP/Python routes delegate to the shared service.
 See [bindings, notation and limits](cdna_allele_interpretation.md). Existing
 comparison, annotation v1 and C1 wire formats remain unchanged.
+C1's selector source is its annotation reference ID; the comparison source is
+the saved-analysis source. Different strings are allowed only with the existing
+shared raw-annotation, gene, reference and model bindings intact.
 
 ## Bound Coding Models (C1)
 

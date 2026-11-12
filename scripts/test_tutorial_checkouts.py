@@ -75,6 +75,15 @@ class DocumentationStatusTests(unittest.TestCase):
                     files = module.write_coding_inputs(target / f"O'Brien inputs {len(ending)}", ending)
                     for binding in files:
                         self.assertEqual(binding, module.bound(Path(binding["path"])))
+                    comparison = {"source_id": "invented_source", "gene_id": "invented_gene",
+                                  "normalized_annotation": {}, "reference": {}}
+                    annotation = {"reference_id": "synthetic_reference", "release": "invented-1"}
+                    request = module.coding_model_request(comparison, annotation, *files)
+                    self.assertEqual(request["selector"]["source_id"], annotation["reference_id"])
+                    self.assertNotEqual(request["selector"]["source_id"], comparison["source_id"])
+                    path = target / f"C1 request O'Brien {len(ending)}.json"
+                    self.assertEqual(module.write(path, request, ending), module.bound(path))
+                    self.assertEqual(json.loads(path.read_bytes()), request)
                     raw_sets.append([Path(f["path"]).read_bytes() for f in files])
                 self.assertNotEqual(raw_sets[0], raw_sets[1])
                 self.assertEqual(raw_sets[0], [raw.replace(b"\r\n", b"\n") for raw in raw_sets[1]])

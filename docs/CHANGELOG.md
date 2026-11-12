@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-12 - Repair C2-C4 Identity Binding And Crate-Test Type Inference
+
+- Record Glen's rejected Linux result at `2f1a3062`: compile/parity and several
+  independent gates passed, but the Rust/actual-CLI fixtures failed before
+  consequences, VM or MCP execution; the engine crate's test target separately
+  failed E0282. The historical comparison-byte gate was blocked, not passed.
+- Build C1 requests with the normalized annotation reference ID, preserving the
+  intentionally different saved-analysis source ID. Remove only C2's erroneous
+  cross-namespace equality requirement; retain strict C1 rederivation, shared raw
+  annotation, gene/reference/model and C3 request-hash guards. No wire change or
+  fixture-ID homogenization. Add positive and fail-closed regressions, including
+  LF/CRLF/quoted-path request construction and an actual-CLI wrong-selector case.
+- Type the test's geometry-map key explicitly as `(String, String, String)`.
+  Retest only failed/new boundaries before historical byte comparison; preserve
+  completed `2f1a3062` projection gates and earlier accepted C1/Read-End evidence.
+  Rust/VM/actual-process verification of these repairs remains with Glen/CI;
+  no local Rust build, push or scientific acceptance is claimed.
 ## 2026-11-12 - Distinguish Glen's Clean Verification From The Routine Scan
 
 - Record the owner-supplied successful clean Linux run at `4966a3a5` separately

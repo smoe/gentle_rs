@@ -149,11 +149,11 @@ fn portable_models(
     report: &comparison::CdnaFileComparisonReport,
     sequence: &str,
 ) -> Result<Vec<core::CodingModel>, EngineError> {
+    // C1 binds the annotation reference ID; comparison.source_id names the saved-analysis source.
     if c1.schema != coding_models::CODING_MODELS_SCHEMA
         || c1.sequence_sha256 != report.comparison.reference.sequence_sha256
         || c1.sequence_sha256 != digest(sequence.as_bytes())
         || c1.request.selector.gene_id != report.request.gene_id
-        || c1.request.selector.source_id != report.request.source_id
         || c1.request.reference.assembly != report.request.reference.assembly
         || c1.request.reference.contig != report.request.reference.contig
         || c1.request.reference.start_0based != report.request.reference.start_0based
