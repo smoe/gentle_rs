@@ -148,3 +148,21 @@ remain separate follow-ups. A later read-only observation confirms same-source
 macOS/overall CI success; full Linux and optional GUI/audit jobs skipped. OD-I1-I5 retain their
 implemented conservative defaults; this closes neither scientific nor release
 acceptance and licenses no private data, push, tag or publication.
+
+## Authorized Bound-Artifact Follow-Up, 2026-11-13
+
+The owner authorizes committing the verification documents and then executing
+conditional consequences for TP53 followed by TP73 over existing bound artifacts,
+with WM793/TP73 undercoverage explicit. No new alignment, SNP discovery or private
+archive regeneration is needed. Verification documentation is committed at
+`114126e0`; its terminal CI supplement remains source-bound to `5d310958`.
+
+The first real C3 attempt exposed an order-normalization mismatch, not observed
+input drift. The kernel sorts evidence before hashing; C3 must use that same
+normalization. The repair shares the exact existing sort, retains strict raw
+input equality and rejects genuinely changed calls. Two new deterministic
+regressions pass within 109 engine-library and 63 selected headless cDNA tests.
+The task-owned target was cleaned before these authorized local checks; no
+other checkout target was cleaned. Native/new-source external acceptance remains
+separate. Final linked real-data execution and its receipt follow the repair;
+the initial refusal and consequence-only control remain separately labelled.

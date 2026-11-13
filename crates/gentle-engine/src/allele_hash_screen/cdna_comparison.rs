@@ -1605,16 +1605,11 @@ fn junction_support(
     Ok(result)
 }
 
-/// Compare cDNA SNP evidence for explicit samples in one exact reference locus.
+/// Normalize presentation order for comparison request identity.
 ///
-/// Missing mapping/base-quality alternatives withhold unit consensus. Templates may phase through
-/// identifiable supported overlaps; a whole-block read is not required or invented.
-pub fn compare_cdna_alleles(
-    mut request: CdnaComparisonRequest,
-    progress: &mut dyn FnMut(usize, usize) -> bool,
-) -> Result<CdnaComparisonReport, String> {
-    validate(&request)?;
-    // Normalize presentation order without changing any evidence or selecting an alternative.
+/// This only sorts existing evidence; it neither validates nor removes observations or selects
+/// alternatives. Downstream authentication must use the same order as the comparison's hash.
+pub fn normalize_cdna_comparison_request(request: &mut CdnaComparisonRequest) {
     request
         .transcripts
         .sort_by(|a, b| a.transcript_id.cmp(&b.transcript_id));
@@ -1645,6 +1640,18 @@ pub fn compare_cdna_alleles(
             }
         }
     }
+}
+
+/// Compare cDNA SNP evidence for explicit samples in one exact reference locus.
+///
+/// Missing mapping/base-quality alternatives withhold unit consensus. Templates may phase through
+/// identifiable supported overlaps; a whole-block read is not required or invented.
+pub fn compare_cdna_alleles(
+    mut request: CdnaComparisonRequest,
+    progress: &mut dyn FnMut(usize, usize) -> bool,
+) -> Result<CdnaComparisonReport, String> {
+    validate(&request)?;
+    normalize_cdna_comparison_request(&mut request);
     let mut meter = Meter {
         work: 0,
         limit: request.budgets.max_comparisons,

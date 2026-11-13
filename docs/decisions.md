@@ -19,6 +19,9 @@ Isoform linkage requires allele and compatible geometry within every eligible
 hypothesis of that unit. Compatibility, exclusion of selected competitors and
 uniqueness within the selected model universe are separate facts, not a complete
 or expressed isoform. No transitive variant-to-splice join is authorized.
+Downstream linkage authenticates the same order-normalized request identity as
+the comparison kernel, using one shared normalization helper. Sorting changes
+neither observations nor raw input bindings; actual input drift still refuses.
 
 HGVS 21.1.5 is evaluated on the named reference: transcript-consecutive changes
 and its same-codon one-intervening-base exception can be delins across genomic

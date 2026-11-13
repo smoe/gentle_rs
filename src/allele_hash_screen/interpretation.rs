@@ -338,7 +338,7 @@ pub fn interpret_cdna_files(
             return Err(fail("comparison_reference_binding"));
         }
         let linkage = if request.linkage == Linkage::SameUnit {
-            let lowered = comparison::lower_cdna_files(
+            let mut lowered = comparison::lower_cdna_files(
                 &comparison.request,
                 progress,
                 true,
@@ -349,6 +349,7 @@ pub fn interpret_cdna_files(
             work_left = work_left
                 .checked_sub(lowered.projected_bases as u64)
                 .ok_or_else(|| fail("work_budget"))?;
+            evidence::normalize_cdna_comparison_request(&mut lowered.request);
             if struct_hash(&lowered.request)? != comparison.comparison.request_sha256
                 || canonical(&lowered.inputs)? != canonical(&comparison.inputs)?
             {

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-13 - Normalize cDNA Linkage Identity Before Authentication
+
+- A real TP53 attempt over unchanged saved artifacts exposed an order-only C3
+  refusal: comparison hashes normalized evidence, while linkage hashed the raw
+  lowering order. Reverse-strand block order and reordered samples can differ.
+- Extract the existing kernel normalization and reuse it before C3 request-hash
+  verification. Preserve validation order, raw input equality, original reports,
+  observations, counts, phase, thresholds and every drift refusal.
+- Add shared-hash/byte-preservation and genuine file-service order/drift
+  regressions. After cleaning only the task-owned target, 109 engine-library
+  and 63 selected headless cDNA tests pass with locked/offline dependencies.
+  Existing binaries and input bytes are retained; native/platform and final
+  real-data consequence acceptance remain separate from these tests.
+- The owner now authorizes TP53 followed by TP73 conditional consequences over
+  the existing bound artifacts. C1 retained all 40 TP53 models, and a separately
+  labelled consequence-only control preserved inherited evidence. The initial
+  linked refusal remains recorded; final linked execution follows the repair.
+
 ## 2026-11-12 - Record Glen's C2-C4 Runtime And Windows Repair Verification
 
 - Record accepted Linux verification at exact `5d310958`: three compile gates,

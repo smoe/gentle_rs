@@ -126,6 +126,9 @@ No SO accessions are asserted; only the documented consequence-term names.
 `linkage: same_unit` reopens the exact saved analyses/basecalls through the
 comparison's shared lowering. The normalized kernel request hash and all input
 bindings must match the original report, otherwise `linkage_input_drift` refuses.
+Request identity uses the comparison kernel's shared order normalization before
+hashing; reordered samples or reverse-strand block observations do not change
+evidence identity. Raw input bindings remain independently strict.
 No read-name join, variant recall or transitive splice assembly occurs.
 
 A supporting unit has all query views assessed. Within **every** eligible

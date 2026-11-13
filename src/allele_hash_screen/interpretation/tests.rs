@@ -359,6 +359,68 @@ fn cdna_interpretation_shared_lowering_preserves_comparison_bytes_and_refuses_li
 }
 
 #[test]
+fn cdna_interpretation_noncanonical_sample_order_preserves_linkage_and_refuses_changed_calls() {
+    let (root, mut request) = fixture();
+    request.linkage = Linkage::SameUnit;
+    let expected = interpret_cdna_files(request.clone(), &mut |_| true).unwrap();
+    let mut original: comparison::CdnaFileComparisonReport =
+        serde_json::from_slice(&fs::read(&request.genes[0].comparison_report.path).unwrap())
+            .unwrap();
+    original.request.samples.reverse();
+    let reordered =
+        comparison::compare_cdna_files(original.request.clone(), &mut |_| true).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&reordered.comparison).unwrap(),
+        serde_json::to_vec(&original.comparison).unwrap()
+    );
+    let lowered = comparison::lower_cdna_files(
+        &reordered.request,
+        &mut |_| true,
+        true,
+        2_000_000,
+        reordered.request.max_input_bytes,
+    )
+    .unwrap();
+    // The stored hash is canonical, while this genuine producer request is not.
+    assert_ne!(
+        struct_hash(&lowered.request).unwrap(),
+        reordered.comparison.request_sha256
+    );
+    let directory = root.path().canonicalize().unwrap();
+    request.genes[0].comparison_report =
+        save(&directory.join("reordered comparison.json"), &reordered);
+    let before = snapshot(root.path());
+    let linked = interpret_cdna_files(request.clone(), &mut |_| true).unwrap();
+    assert!(linked.inputs[0].normalized_evidence_reverified);
+    assert_eq!(
+        serde_json::to_value(&linked.genes).unwrap(),
+        serde_json::to_value(&expected.genes).unwrap()
+    );
+    assert_eq!(snapshot(root.path()), before);
+
+    // New, correctly rebound source bytes must still fail against the old calls.
+    let mut drifted = reordered;
+    let mut calls: CdnaBasecallDocument =
+        serde_json::from_slice(&fs::read(&drifted.request.samples[0].basecalls.path).unwrap())
+            .unwrap();
+    calls.reads[0].sequence.replace_range(6..7, "G");
+    drifted.request.samples[0].basecalls =
+        save(&directory.join("changed original calls.json"), &calls);
+    drifted.request_sha256 = canonical(&drifted.request).unwrap();
+    drifted.content_sha256.clear();
+    drifted.content_sha256 = canonical(&drifted).unwrap();
+    request.genes[0].comparison_report = save(&directory.join("drifted comparison.json"), &drifted);
+    let before = snapshot(root.path());
+    assert!(
+        interpret_cdna_files(request, &mut |_| true)
+            .unwrap_err()
+            .message
+            .contains("linkage_input_drift")
+    );
+    assert_eq!(snapshot(root.path()), before);
+}
+
+#[test]
 fn cdna_interpretation_mcp_confirmation_precedes_file_io_and_keeps_state_absent() {
     let (root, request) = fixture();
     let state = root.path().join("absent interpretation project.json");

@@ -965,6 +965,46 @@ fn cdna_comparison_input_permutations_have_stable_reports_and_hashes() {
 }
 
 #[test]
+fn cdna_comparison_shared_normalization_matches_the_saved_evidence_hash() {
+    let mut request = diploid();
+    request.samples.push(sample("b", &["AAAA", "GGGG", "GGGG"]));
+    request.supplied_sites = POS.to_vec();
+    request.phase_marker_positions = Some(POS.to_vec());
+    for sample in &mut request.samples {
+        for unit in &mut sample.units {
+            let mut alternative = unit.hypotheses[0].clone();
+            alternative.hypothesis_id = "audit_alternative".into();
+            alternative.eligible = false;
+            unit.hypotheses.push(alternative);
+        }
+    }
+    let expected = run(request.clone());
+    request.transcripts.reverse();
+    request.samples.reverse();
+    request.supplied_sites.reverse();
+    request.phase_marker_positions.as_mut().unwrap().reverse();
+    for sample in &mut request.samples {
+        sample.units.reverse();
+        for unit in &mut sample.units {
+            unit.hypotheses.reverse();
+            for hypothesis in &mut unit.hypotheses {
+                hypothesis.bases.reverse();
+            }
+        }
+    }
+    assert_ne!(hash(&request).unwrap(), expected.request_sha256);
+    assert_eq!(
+        serde_json::to_value(run(request.clone())).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    normalize_cdna_comparison_request(&mut request);
+    assert_eq!(hash(&request).unwrap(), expected.request_sha256);
+    let once = serde_json::to_vec(&request).unwrap();
+    normalize_cdna_comparison_request(&mut request);
+    assert_eq!(serde_json::to_vec(&request).unwrap(), once);
+}
+
+#[test]
 fn cdna_comparison_schema_hash_geometry_and_quality_refuse_invalid_input() {
     for which in 0..8 {
         let mut r = diploid();
