@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-11-12 - Record Glen's C2-C4 Runtime And Windows Repair Verification
+
+- Record accepted Linux verification at exact `5d310958`: three compile gates,
+  17/17 kernel, 9/9 headless service/MCP, 11/11 script-interfaces with real
+  JS/Lua VMs, 1/1 selector refusal and 6/6 CLI/Python companion checks, including
+  both actual-process cases with zero skips. Profile counts overlap. Preserve
+  the earlier failed-source report and accepted C1/projection receipts without
+  requesting completed campaigns again.
+- Independently verify all 64 archive manifest entries, standalone/report byte
+  equality and old/new comparison JSON/input manifests. Fresh `4966a3a5` and
+  `5d310958` binaries produce byte-identical raw comparison JSON on identical
+  synthetic files/paths. Keep the first ENOSPC build and successful run-owned-
+  target cleanup/rebuild distinct; no product defect is established by it.
+- Supplement Glen's blocked log access with a read-only fetch of the successful
+  same-source Windows job: rustc 1.99.1, workspace/engine checks green, zero
+  occurrences of all eight named helper/import warnings in the raw log. Other
+  manifest warnings remain; zero check annotations was not the proof.
+- Reconcile the C1-C4 requirement ledger and remaining handoff. Native GUI,
+  unproved Windows process paths/handles and the separately authorized real
+  TP53 receipt remain outside this scoped pass.
+- Independently observe terminal same-SHA CI run `43246772124`: macOS and
+  Windows workspace suites, Linux/headless, release safety and aggregate pass;
+  full Linux and optional GUI/audit jobs skip. This is no native GUI, real-data
+  or selected-candidate package acceptance.
+  No source changes, repeated Rust campaign, private-data run, push or release
+  acceptance. See the [full source-bound return](glen_next_verification_handoff.md#glen-return-at-5d310958).
+
 ## 2026-11-12 - Scope Unix-Only Test Helpers On Windows
 
 - Give the two imports and six helpers named in the Windows warnings the same

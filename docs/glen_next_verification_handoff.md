@@ -2,14 +2,99 @@
 
 ## C2-C4 Conditional cDNA Interpretation, 2026-11-12
 
-**New active scope after the owner's push:** the integrated source containing
-`InterpretCdnaAlleles`, not a repeat of prior reader/BLAST, cDNA/locus, barcode,
-packaging or real-data campaigns. C1 remains a separate artifact; comparison and
-annotation-v1 wires/counts/policies must remain unchanged. See the
+**Scoped implementation verification returned:** `InterpretCdnaAlleles` at
+`5d310958` passed the repaired C2-C4 runtime gates below. Do not repeat those or
+prior reader/BLAST, cDNA/locus, barcode, packaging or real-data campaigns as
+missing evidence. C1 remains a separate artifact; comparison and annotation-v1
+wires/counts/policies remain unchanged. See the
 [contract](cdna_allele_interpretation.md) and [C1-C4 ledger](cdna_allele_interpretation_plan.md).
 Record exact tested SHA, lock/binary hashes, toolchain, platform/features/profile,
 commands, nonzero counts, failures and explicit skips. No private-data run,
 provider call, push, dispatch or publication is requested.
+
+### Glen Return At 5d310958
+
+Glen accepts the repaired C2-C4 Linux gates at exact source
+**`5d3109588b1cf9cb64745afbc8f44c33ee2c7f8b`**, tree
+`f9b75cd7188985c3c44a4196329d83022a064a2c`. Closing fetch still matched.
+Debian forky x86_64, Rust/Cargo 1.97.1; clean detached checkout, run-owned target,
+one job, locked dev/test profiles. These results supersede the failed-boundary
+status at `2f1a3062`, not its historical diagnostics.
+
+- Compile first: all three gates below passed, including the separate
+  `gentle-engine` test target; E0282 is absent. Headless compilation's 26
+  unrelated dead-code warnings are not a warning-free-build claim.
+- Pure kernel: **17/17**. Headless service/MCP: **9/9**; script-interfaces:
+  **11/11**, including actual JS and Lua VM cases. The isolated wrong-selector
+  refusal passed **1/1**. Counts overlap across profiles; do not sum them.
+- Source-matched CLI/Python companion: **6/6, zero skips**, including both
+  actual-process cases and actual `GentleClient.shell` delegation. C1 through
+  C4, direct/shared shell, JSON/TSV/summary, LF/CRLF raw bindings, spaced/
+  apostrophe/Unicode paths, deterministic repeats, strict tamper/duplicate/
+  assembly/annotation refusals and unchanged inputs/absent project all passed.
+- Historical comparison-byte proof now passed: freshly built old `4966a3a5`
+  and new `5d310958` CLIs used identical synthetic files and literal paths;
+  both exited zero with **byte-identical raw JSON**. Before/after input manifests
+  matched and no project was created. Output SHA-256:
+  `5f3526f17cb1cc60e0c85a886881cfb7adbea78e5ba3c97a21afabb6010c6641`.
+- A first candidate CLI build failed ENOSPC while multiple feature profiles
+  filled scratch. After process checks and documented cleanup of only the
+  run-owned reproducible target, the CLI rebuild with incremental disabled
+  passed. Preserve that failed build log, but do not relabel the completed
+  runtime campaign as incomplete. Both temporary worktrees/targets were removed;
+  the main checkout/shared cache were untouched.
+
+The supplied archive was inspected without extraction/execution: **64/64**
+manifest entries match, no extra unmanifested payload, and `REPORT.md` is
+byte-identical to the standalone `REPORT (7).md`. Raw test streams and the
+old/new JSON/input-manifest comparisons were independently checked.
+
+- Archive `GENtle-5d310958-C2-C4-verification-evidence.tar.gz` SHA-256:
+  `05675723dc437f3ed89058828e26b00b32d7b173572c91ba9f785f4642e6a5e0`.
+- Report SHA-256:
+  `30cb9409969375151dc81b95e1a34f465c7a4cec70a93fa18e6c0c31d6217b42`.
+- Candidate CLI SHA-256:
+  `e9de896ae7eedec3c875558afb8c1424bc7074b92b1768941d10de2344aa9635`.
+- Historical CLI SHA-256:
+  `9e27dba9b531ec3cd0b1a8fea755bdbca3b96ef677a003a259e3ca2584742a43`.
+- Lockfile SHA-256 (matches current checkout):
+  `d880f70bcb3bb8ebd8db53e0ef7a8456a060c841a891f97f8d4a2eaf159569fe`.
+  Use this final receipt, not the different hash in the early progress message.
+
+**Separate Codex Windows-log supplement, 2026-11-12:** same-source
+[Windows job 131281427332](https://github.com/smoe/gentle_rs/actions/runs/43246772124/job/131281427332)
+is completed/success. Its decoded raw log was retrieved through the GitHub
+connector, closing Glen's `blocked_log_access` only for this log inspection.
+Windows Server 2025 x64/MSVC used **rustc 1.99.1** (`58cf8f9c3`, 2026-10-13),
+not Glen's Linux 1.97.1. Feature/all-features checks, Windows binary build,
+full workspace tests and separate engine tests passed. Root library:
+5,061 passed, 17 ignored; separate engine crate: 108 passed. None of the eight
+reported import/helper names appears anywhere in that raw log. The two source
+guards also passed in Glen's run; zero annotations alone was not this proof.
+Other manifest warnings remain; no blanket warning-free verdict is asserted.
+
+**Terminal CI supplement, observed 2026-11-12:**
+[run 43246772124](https://github.com/smoe/gentle_rs/actions/runs/43246772124)
+is completed/success at the same `5d310958` source. macOS and Windows workspace
+suites, Linux/headless, release safety and aggregate passed. Full Linux and
+optional native-audit/GUI jobs skipped. This supplements the earlier running
+observation without asserting a full-Linux, package or native GUI pass.
+
+**Only remaining follow-ups:** native GUI and the actual Windows CLI/Python
+path/handle rehearsal are not established by these Linux process or Windows
+workspace receipts. The separate real TP53 receipt is
+`not_run`: this campaign authorized synthetic verification, not a new biological
+data run. Do not regenerate private archives or infer counts/protein expression.
+These are native/data/release boundaries, not missing implementation work in
+C1-C4; OD-I1-I5 retain their defaults. No source patch is requested by this return.
+
+Codex's recording-only checks: four fast interpretation source checks,
+documentation status and `git diff --check` pass; roadmap remains 400 lines.
+Session-close: four OK, two expected warnings (intentional dirty/untracked
+worktree and manual plan fidelity), zero failures. Scope audit: only these
+evidence/status docs changed; `paper`, private `data/`, `output/` and owner
+prompts remain untouched. No commit, push or local Rust execution in this
+recording step; no completed Rust campaign was repeated.
 
 ### Glen Return At 2f1a3062
 
@@ -36,8 +121,9 @@ Repair source now uses C1's existing annotation-reference selector namespace and
 keeps the saved-analysis source distinct. C2 no longer equates those unrelated
 IDs; shared raw annotation, exact gene, reference, model and C3 input-hash guards
 remain. New guards exercise wrong selectors and mismatched bindings. The tuple
-has an explicit `(String, String, String)` type. **These repairs are not yet
-Rust/VM/process-verified.** No C1 schema or producer files were rewritten.
+has an explicit `(String, String, String)` type. At that earlier return these
+repairs were unverified; the `5d310958` receipt above now verifies them through
+Rust/VM/process execution. No C1 schema or producer files were rewritten.
 
 The supplied archive was checked without extraction/execution: all **22/22**
 manifest entries match and its report is byte-identical to the standalone file.
@@ -69,11 +155,10 @@ Local `python3 -m unittest scripts.test_release_candidate -q`: **59 passed**,
 including those two guards; documentation status, syntax parsing and whitespace
 also pass. This does not establish a clean Windows Rust build.
 
-After the owner's next push, include both Unix and Windows test-target compile
-receipts with the existing C2-C4 gates below; verify the named warnings are gone
-on Windows and the Unix callers still compile. The separate `gentle-engine`
-test target must also compile. Reuse matching CI evidence; do not repeat old
-C1/Read-End campaigns. These source checks do not imply Rust/native acceptance.
+The `5d310958` return above supplies Unix and Windows test-target compilation,
+the separate engine target and the eight-name Windows raw-log check. Do not
+repeat those as missing evidence. The local source checks alone never implied
+Rust/native acceptance; use the separately attributed runtime/CI receipts.
 
 ### Existing Evidence, Not New-Source Acceptance
 
@@ -120,7 +205,13 @@ receipt. These successful clean-run and CI receipts do not accept the newer
 C2-C4 source or its shared-lowering/work-ceiling changes. Native GUI and unproved
 Windows/macOS path/handle scenarios remain separate.
 
-### Compile First, Then New Rust/VM/Parity Boundaries
+### Completed Compile And Runtime Recipe
+
+All compile, kernel, service/VM/MCP, selector and process gates in this recipe
+passed at `5d310958`; retain it for affected-source regression or release use,
+not as an active request to repeat the completed campaign. Historical comparison
+bytes also passed as recorded above. The earlier projection gates remain at
+their recorded source. Only the explicitly remaining host/data gates are open.
 
 Use a clean checkout, adequate scratch space and **explicit run-owned**
 `CARGO_TARGET_DIR`; verify it before the first Cargo call. Never clean the shared
@@ -192,7 +283,7 @@ Codex does not push or substitute local Rust execution.
 
 Native Windows requires actual path/handle checks; GUI Shell needs an available
 native host, not inferred headless acceptance. No new GUI form is requested.
-Real TP53 conditional HGVS receipt remains pending separately: only already
+Real TP53 conditional HGVS receipt remains unrun separately: only already
 committed/authorized bound artifacts, no private source regeneration/other genes
 or hard-coded observed counts. Do not let that optional data receipt imply a
 biological verdict. OD-I1-I5 remain conservative defaults in the plan.
@@ -203,7 +294,9 @@ distinct-ID request regression and expanded LF/CRLF checkout coverage. Prior
 Python-wrapper/C1 source checks remain historical, not runtime proof for this fix.
 Documentation status, scoped formatting/syntax and whitespace pass. Synthetic
 evidence only; repaired-source Rust, VM, historical-byte comparison, actual
-process and native checks are **not_run**. The generator/freshness pass at
+process and native checks were **not_run locally by Codex**. Glen's external
+`5d310958` runtime receipt above supersedes those runtime gaps, not native/data
+acceptance. The generator/freshness pass at
 `2f1a3062` above remains source-bound; no new generator run is claimed.
 Return primary diagnostics before cascade failures.
 

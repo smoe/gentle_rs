@@ -4,9 +4,12 @@ Use this after [cDNA comparison](cdna_allele_comparison.md) and
 [C1 model derivation](coding_transcript_models.md), not as a new variant caller.
 C2-C4 consume authenticated snapshots and preserve upstream counts, statuses,
 quality policy, reference and local phase. No fixed genes, samples or barcodes.
-Source implementation is not compiler/runtime, scientific or release acceptance;
-the [Glen checklist](glen_next_verification_handoff.md#c2-c4-conditional-cdna-interpretation-2026-11-12)
-records the outstanding checks.
+Glen's [scoped return at `5d310958`](glen_next_verification_handoff.md#glen-return-at-5d310958)
+verifies the repaired C2-C4 Linux kernel/service, actual JS/Lua/MCP and CLI/Python
+routes, plus historical comparison-byte preservation. Same-source Windows and macOS
+compilation/workspace tests and aggregate CI also passed; full Linux and optional
+GUI/audit jobs skipped. The return distinguishes remaining host/data checks from
+scientific or release acceptance.
 
 ## Read-Only Routes
 
@@ -174,8 +177,10 @@ raw bindings; optional actual-process checks need
 `GENTLE_CDNA_INTERPRETATION_CLI`. Skips never count as acceptance. The
 Python-client replay uses that same explicit executable and the shared shell,
 without a Cargo fallback. Mocked argument/JSON/text checks are not runtime proof.
-The only separately permitted real receipt uses already bound committed TP53 evidence;
-no private sequencing run or other-gene analysis is implied.
+The separate real TP53 receipt remains unrun: Glen's verification was synthetic,
+not authorization for a new biological data run. Any later authorized receipt
+must use already bound committed evidence; no private sequencing run or
+other-gene analysis is implied.
 
 No DNA genotype/zygosity, somatic/germline origin, protein expression, copy number,
 NMD or pathogenicity claim follows. OD-I1-I5 remain at their conservative defaults
