@@ -180,10 +180,13 @@ raw bindings; optional actual-process checks need
 `GENTLE_CDNA_INTERPRETATION_CLI`. Skips never count as acceptance. The
 Python-client replay uses that same explicit executable and the shared shell,
 without a Cargo fallback. Mocked argument/JSON/text checks are not runtime proof.
-The separate real TP53 receipt remains unrun: Glen's verification was synthetic,
-not authorization for a new biological data run. Any later authorized receipt
-must use already bound committed evidence; no private sequencing run or
-other-gene analysis is implied.
+Glen's earlier verification was synthetic. The owner-authorized
+[2026-11-13 TP53 then TP73 receipt](tp53_tp73_conditional_consequences_20261113.md)
+now records all eight real C1/C2 views over unchanged bound artifacts. Full-cohort
+C3 attempts hit the existing work ceiling for both genes: completed reports use
+`linkage: none`, with unavailable linkage rather than zero support. No data,
+quality policy, model universe or budget was relaxed; broader data runs remain
+outside that explicit scope.
 
 No DNA genotype/zygosity, somatic/germline origin, protein expression, copy number,
 NMD or pathogenicity claim follows. OD-I1-I5 remain at their conservative defaults

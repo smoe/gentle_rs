@@ -46,7 +46,7 @@ Claude consultation was offered; no new consultation has been invoked.
 | C4 frozen manifest, exact SNV/composite matching | `5d310958`: exact supported-composite, timestamp/indel/assembly/tamper and fail-closed manifest cases passed; synthetic labels only |
 | Shared engine/shell/direct CLI/MCP/JS/Lua/Python routes | `5d310958`: headless 9/9, script-interfaces 11/11 with actual JS/Lua VMs and MCP confirmation-before-I/O, CLI/Python 6/6 with both real processes and zero skips. Profile counts overlap |
 | Discovery, canonical parity, maturity and LF/CRLF | Glen `2f1a3062`: generator zero diff, registry 32/32, freshness 1/1, glossary 16/16, checkout/maturity 116/116. Preserve these source-bound passes without repeating unaffected campaigns |
-| Real TP53 conditional receipt | `not_run`: Glen's synthetic campaign did not authorize a new biological data run. Separate authorized bound-artifact receipt; no inferred counts or private-data execution |
+| Real TP53 conditional receipt | Owner-authorized 2026-11-13 TP53 then TP73: all eight C1/C2 views completed over unchanged bound artifacts; full-cohort C3 refused the existing work ceiling for both genes. See the [source-bound receipt](tp53_tp73_conditional_consequences_20261113.md); unavailable linkage is not zero support and no cap/model/read reduction was used |
 | Windows/macOS/native GUI | Same-source Windows compile/workspace/engine job passed; raw log has zero occurrences of the eight warning names. terminal same-source macOS/overall CI passed, with full Linux and optional GUI/audit skipped; native GUI and actual Windows CLI/Python paths/handles remain separate |
 
 The kernel belongs in `gentle-engine::allele_hash_screen`; main-crate file
@@ -166,3 +166,20 @@ The task-owned target was cleaned before these authorized local checks; no
 other checkout target was cleaned. Native/new-source external acceptance remains
 separate. Final linked real-data execution and its receipt follow the repair;
 the initial refusal and consequence-only control remain separately labelled.
+
+### Bound-Artifact Execution Receipt
+
+[The 2026-11-13 report](tp53_tp73_conditional_consequences_20261113.md) records
+source `984ce08d`, all eight completed C1/C2 views, 40/20 retained models, exact
+inherited evidence and 440 byte-identical input files. Both full-cohort C3
+attempts passed the repaired identity boundary but exhausted the unchanged
+100,000,000-work cap; final `linkage: none`/null fields are unavailable, not zero
+compatible support. Capacity improvement is a separate bounded follow-up.
+No read/model drop, new alignment/calling/phasing or policy relaxation occurred.
+
+The fixed source passes 109 engine-library, 63 selected headless cDNA and six
+Python companion checks (both actual processes ran), plus default locked/offline
+check after the Swift-cache sandbox refusal. The failed identity/cap/cache
+attempts remain recorded separately. Scientific/native/release acceptance is
+not inherited. WM793/TP73 has only ten selected units, with 9/14 Q20 and 11/15
+Q30 sites uncallable; shared ALT2/2 remains visible below nomination threshold.

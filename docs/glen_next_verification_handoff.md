@@ -12,6 +12,28 @@ Record exact tested SHA, lock/binary hashes, toolchain, platform/features/profil
 commands, nonzero counts, failures and explicit skips. No private-data run,
 provider call, push, dispatch or publication is requested.
 
+### Authorized Real TP53 Then TP73 Follow-Up, 2026-11-13
+
+The owner-authorized [conditional-consequence receipt](tp53_tp73_conditional_consequences_20261113.md)
+now covers eight C1/C2 views over the existing bound real artifacts at source
+`984ce08d`, after verification-documentation commit `114126e0`. All 40/20 models,
+original cohorts and inherited counts/statuses/phase remain; 440 raw bound files
+are unchanged. Independent witness/row auditing passed alongside 109 engine,
+63 headless cDNA and six Python checks (both actual CLI cases), plus default
+locked/offline check after the preserved Swift-cache sandbox refusal.
+
+The real attempt exposed a C3 ordering defect not covered by the earlier
+already-ordered synthetic fixtures. Shared kernel normalization repairs it
+without rewriting old reports or weakening raw input equality. Both subsequent
+full-cohort C3 attempts then reached the existing 100-million-work ceiling.
+Final C1/C2 reports explicitly use linkage none/null: compatibility is unavailable,
+not zero support. Next capacity work must preserve caps, data/model universes,
+all-hypothesis rules, original qualities and distinct-unit denominators; do not
+repeat completed C1/C2 or unrelated historical campaigns as missing evidence.
+WM793/TP73 remains undercovered: 9/14 Q20 and 11/15 Q30 sites are uncallable;
+shared ALT2/2 is visible below threshold. Native/new-source CI, scientific and
+release acceptance remain separate. No provider/private-archive run or push.
+
 ### Glen Return At 5d310958
 
 Glen accepts the repaired C2-C4 Linux gates at exact source

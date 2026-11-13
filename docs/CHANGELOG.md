@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-11-13 - Run Bound TP53 Then TP73 Conditional Consequences
+
+- Commit verification documentation at `114126e0` before executing the newly
+  authorized real-data follow-up. Use repaired source `984ce08d` for all eight
+  full/panel Q20/Q30 C1/C2 outputs; retain all 40/20 models and original cohorts.
+- Record conditional TP53 Leu145Arg joint RNA patterns and Pro72Arg support,
+  the shared synonymous TP73 Thr173 observation and 3′-UTR projections. Keep
+  per-sample REF/ALT/callable counts, minor/below-threshold patterns, model
+  absence and WM793/TP73 ten-unit undercoverage explicit; infer no DNA genotype,
+  protein expression, CNV or cross-splicing mechanism.
+- Preserve the initial order-only refusal and subsequent C3 work-cap refusals
+  for both genes. Final reports explicitly use linkage none/null, unavailable
+  rather than zero support. Keep the 100-million cap and all input/model/read
+  sets unchanged; bounded C3 capacity remains follow-up work.
+- Verify 109 engine-library, 63 selected headless cDNA and six Python checks,
+  including both actual CLI process cases, plus default locked/offline compile
+  after the Swift-cache sandbox refusal. Independently audit 6,640 annotation
+  rows/same-unit codon evidence and all 440 unchanged bound files. Retain
+  [the source-bound report](tp53_tp73_conditional_consequences_20261113.md) and
+  run-owned full JSON/provenance outputs; no new-source CI/native/scientific
+  or release approval is inferred and no private archive is regenerated.
+
 ## 2026-11-13 - Normalize cDNA Linkage Identity Before Authentication
 
 - A real TP53 attempt over unchanged saved artifacts exposed an order-only C3
