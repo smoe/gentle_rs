@@ -1,5 +1,48 @@
 # Glen: Next Verification And Return
 
+## Glen Normalization Return At 72176091, 2026-11-14
+
+Glen reports successful software verification at exact source
+`721760914e284aa7019a628049fa8bfcc8a709ea`: normalization **1/1**, headless
+`cdna_interpretation_` **10/10**, actual CLI/Python companion **6/6 with zero
+skips**, and `cargo check` green. Reordered evidence retained comparison bytes
+and valid linkage; genuinely changed calls still refused as input drift.
+These are attributed results for this source, not later C3 capacity acceptance.
+
+The real-data review covered the result documentation and source only. The old
+output directory was absent on Glen's host, so the eight interpretation JSONs,
+440 before/after input bindings and two C3 refusal stderr files were **not
+independently rehashed** there. Keep that unavailable artifact audit separate
+from the passing software tests and from any subsequent TP53/TP73 rerun.
+
+Reported evidence location: `projects/gentle-verification-72176091-20261114/`;
+reported archive SHA-256:
+`265f9eb361d537456b2bbebec071bceb6ec360338a756dc34b3d6d8ebe19adea`.
+Archive bytes have not been obtained or locally verified here. This return does
+not establish biological, native, release or new-source capacity acceptance.
+
+## C3 Capacity Follow-Up At 9b68ebb6, 2026-11-14
+
+The owner-authorized [linked TP53/TP73 rerun](tp53_tp73_c3_capacity_20261114.md)
+completed locally at `9b68ebb67d7d4d0dd591aeaa731cd78bdd86ed01`: all eight views
+fit the unchanged 100M work cap with all 40/20 models and original reads.
+115 engine tests, six Python/CLI cases (both actual processes, zero skips),
+headless build and default locked/offline check pass. Audit preserves 6,640 C2
+rows and all 450 input/C1/C2 bindings; both unchanged no-linkage full-Q20
+controls reproduce old reports byte-for-byte. Raw copies and old refusals are
+included in the new owner-workspace `outputs/tp53_tp73_c3_capacity_20261114`
+bundle. Captured original paths/hashes remain authoritative.
+
+For independent new-source verification, run the 115-test engine library suite
+(including six new cache regressions), six actual CLI/Python companion cases and
+compile check with a source-matched CLI. Audit the eight linked outputs against
+the retained C2 baselines and unchanged 100M cap, including legacy-oracle parity,
+capacity/streaming fallback, cancellation and all 256 model bits. Keep WM793/TP73
+at ten units, 9/14 Q20 and 11/15 Q30 sites uncallable and shared ALT2/2 observed.
+Record whether raw artifacts were actually available and rehashed. This request
+is separate from Glen's completed 72176091 software return; it neither repeats
+that campaign as missing nor inherits scientific/host/release acceptance.
+
 ## C2-C4 Conditional cDNA Interpretation, 2026-11-12
 
 **Scoped implementation verification returned:** `InterpretCdnaAlleles` at

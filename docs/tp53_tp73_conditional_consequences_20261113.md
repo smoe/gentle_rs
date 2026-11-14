@@ -1,5 +1,9 @@
 # TP53 / TP73 Conditional cDNA Consequences — 2026-11-13
 
+Subsequent [2026-11-14 C3 capacity reruns](tp53_tp73_c3_capacity_20261114.md)
+complete all eight linked views under the same cap. This dated receipt retains
+its original C2 results and historical C3 refusals.
+
 The owner-authorized run used the existing bound TP53 artifacts first, followed
 by TP73. All four saved views per gene were retained: full/panel at Q20/Q30.
 There was no new alignment, SNP discovery, phasing, read selection or model

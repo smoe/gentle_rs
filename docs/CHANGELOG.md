@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-11-14 - Complete Bound TP53 Then TP73 C3 Reruns
+
+- Use source `9b68ebb6` for all eight full/panel Q20/Q30 linked views, retaining
+  the default 100M ceiling, original policies/reads and all 40/20 models.
+  TP53 uses 62.5–76.9M work; TP73 uses 8.9–10.3M. Both full-Q20 requests are
+  exactly equal to their retained historical cap-refusal requests.
+- Audit all 6,640 rows and original codon witnesses, exact C2 gene fields except
+  linkage, same-unit C3 support/competitor consistency and 450 unchanged input,
+  C1 and C2 bindings. Both no-linkage full-Q20 reports remain byte-identical.
+- Preserve WM793/TP73 ten-unit undercoverage, 9/14 Q20 and 11/15 Q30 uncallable
+  sites and observed shared ALT2/2. Compatible/discriminating support is
+  conditional on supplied hypotheses/models, not full isoforms or DNA alleles.
+- Record 115 engine tests, six Python/CLI cases (both real processes, zero
+  skips), headless build and default locked/offline check; retain raw artifacts,
+  old refusals and [the source-bound result](tp53_tp73_c3_capacity_20261114.md).
+  New-source/host and scientific/release acceptance remain separate.
+- Attribute Glen's reported `72176091` software return and explicit unavailable
+  raw-artifact audit; do not claim locally obtained archive bytes or later-source
+  acceptance from that return.
+
 ## 2026-11-14 - Share C3 Admissibility Work Within The Existing Cap
 
 - Index immutable sample units and reuse per-site/ALT admissible-model masks
@@ -14,8 +34,8 @@
   capacity control where legacy exhausts 100M and optimized execution fits.
   Bounded fallback, cancellation/work/output limits, context isolation and all
   256 model-mask bits pass.
-- The owner authorizes source-matched TP53 then TP73 reruns over the existing
-  bound artifacts; runtime/data receipts follow separately. Keep earlier
+- The owner-authorized TP53 then TP73 linked reruns now have a separate
+  [source-bound receipt](tp53_tp73_c3_capacity_20261114.md). Keep earlier
   refusals, WM793/TP73 undercoverage and scientific/native acceptance explicit.
 
 ## 2026-11-13 - Run Bound TP53 Then TP73 Conditional Consequences

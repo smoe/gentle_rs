@@ -214,6 +214,11 @@ engine package artifacts were cleaned, not other checkout/shared caches.
 
 At the owner's earlier preference, an optional read-only Claude review prompt
 is prepared in the run bundle; Claude was not invoked and work does not wait
-for review. Source-matched CLI verification, default compile and real TP53 then
-TP73 execution follow this implementation; prior work-cap refusals remain
-historical evidence, not current success.
+for review. Source-matched CLI, default compile and six Python checks now pass.
+All eight TP53-then-TP73 linked views complete within the unchanged 100M cap;
+all 450 input/C1/C2 bindings and every C2 gene field except added linkage are
+preserved. Both no-linkage full-Q20 controls reproduce old reports byte-for-byte.
+See the [source-bound result](tp53_tp73_c3_capacity_20261114.md) for actual work,
+C3 witnesses, audit limits and explicit WM793/TP73 undercoverage. Prior work-cap
+refusals remain historical evidence, not silently replaced receipts. Independent
+new-source/host and scientific acceptance remain open.
