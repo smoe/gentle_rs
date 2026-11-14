@@ -23,6 +23,16 @@ Downstream linkage authenticates the same order-normalized request identity as
 the comparison kernel, using one shared normalization helper. Sorting changes
 neither observations nor raw input bindings; actual input drift still refuses.
 
+C3 may reuse admissibility work only within one immutable gene/sample context.
+A bounded per-site/ALT cache stores source-unit indices and admissible-model
+masks, never repeated full output vectors. Retention is limited by remaining
+output allowance, eight MiB and 512 entries; oversized entries use the same
+uncached walker and eviction never removes reads/models from the calculation.
+Indexing, cache construction/hits, projection, copying, sorting and eviction
+remain metered and cancellable under the unchanged 100-million-work ceiling.
+The visited hypothesis/geometry predicates and strict input authentication are
+unchanged; no-linkage C2 retains its original work and output path.
+
 HGVS 21.1.5 is evaluated on the named reference: transcript-consecutive changes
 and its same-codon one-intervening-base exception can be delins across genomic
 introns. Genomic adjacency is not required for transcript delins. Predicted

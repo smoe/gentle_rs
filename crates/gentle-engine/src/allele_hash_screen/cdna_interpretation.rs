@@ -359,6 +359,11 @@ pub fn interpret(
             local_phase_relations: Vec::new(),
         };
         for sample in &r.samples {
+            let mut linkage_cache = input
+                .linkage
+                .as_ref()
+                .map(|link| linkage::Cache::new(input, link, sample, &mut meter))
+                .transpose()?;
             meter.charge(sample.site_calls.len())?;
             let calls = sample
                 .site_calls
@@ -534,20 +539,10 @@ pub fn interpret(
                                 &[alt],
                                 &mut meter,
                             )?,
-                            linkage: input
-                                .linkage
-                                .as_ref()
+                            linkage: linkage_cache
+                                .as_mut()
                                 .map(|link| {
-                                    linkage::link(
-                                        input,
-                                        link,
-                                        sample,
-                                        model,
-                                        site.position_0based,
-                                        alt,
-                                        policy,
-                                        &mut meter,
-                                    )
+                                    link.link(model, site.position_0based, alt, policy, &mut meter)
                                 })
                                 .transpose()?,
                         };

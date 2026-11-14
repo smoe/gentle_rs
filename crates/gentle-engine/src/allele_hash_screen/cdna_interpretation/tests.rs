@@ -900,3 +900,670 @@ fn cdna_interpretation_incomplete_query_views_and_foreign_contigs_cannot_identif
         );
     }
 }
+
+/// Expand the invented inline locus through the unchanged comparison kernel.
+/// Every cloned read/model receives a distinct ID; no observation or model is removed.
+fn capacity_fixture(reverse: bool, unit_count: usize, model_count: usize) -> GeneInput {
+    let mut input = fixture(reverse);
+    let original_models = input.models.clone();
+    input.models = (0..model_count)
+        .map(|i| {
+            let mut model = original_models[0].clone();
+            model.transcript.transcript_id = format!("capacity-model-{i:03}");
+            model.accession = Some(format!("SYN_T{i}.2"));
+            model.protein_accession = Some(format!("SYN_P{i}.3"));
+            model
+        })
+        .collect();
+    let original = input.linkage.as_ref().unwrap().clone();
+    let sample = &mut input.linkage.as_mut().unwrap().samples[0];
+    sample.units = (0..unit_count)
+        .map(|i| {
+            let mut unit = original.samples[0].units[i % original.samples[0].units.len()].clone();
+            unit.unit_id = format!("capacity-unit-{i:04}");
+            unit
+        })
+        .collect();
+    let mut geometry = BTreeMap::new();
+    for (i, unit) in sample.units.iter().enumerate() {
+        let old = &original.samples[0].units[i % original.samples[0].units.len()];
+        for hypothesis in &unit.hypotheses {
+            geometry.insert(
+                (
+                    sample.sample_id.clone(),
+                    unit.unit_id.clone(),
+                    hypothesis.hypothesis_id.clone(),
+                ),
+                original.geometry[&(
+                    sample.sample_id.clone(),
+                    old.unit_id.clone(),
+                    hypothesis.hypothesis_id.clone(),
+                )]
+                    .clone(),
+            );
+        }
+    }
+    input.linkage.as_mut().unwrap().geometry = geometry;
+    recompare_capacity_fixture(&mut input);
+    input
+}
+
+fn recompare_capacity_fixture(input: &mut GeneInput) {
+    let request = evidence::CdnaComparisonRequest {
+        schema: evidence::CDNA_COMPARISON_REQUEST_SCHEMA.into(),
+        gene: input.report.gene.clone(),
+        reference: evidence::CdnaReference {
+            assembly: input.report.reference.assembly.clone(),
+            contig: input.report.reference.contig.clone(),
+            start_0based: input.report.reference.start_0based,
+            sequence: input.genomic_sequence.clone(),
+            sha256: input.report.reference.sequence_sha256.clone(),
+        },
+        transcripts: input.models.iter().map(|m| m.transcript.clone()).collect(),
+        samples: input.linkage.as_ref().unwrap().samples.clone(),
+        supplied_sites: input
+            .report
+            .sites
+            .iter()
+            .map(|s| s.position_0based)
+            .collect(),
+        phase_marker_positions: None,
+        policy: input.report.policy.clone(),
+        budgets: Default::default(),
+    };
+    input.report = evidence::compare_cdna_alleles(request, &mut |_, _| true).unwrap();
+}
+
+fn serialized_link(result: Result<IsoformLinkage, String>) -> Result<serde_json::Value, String> {
+    result.map(|value| serde_json::to_value(value).unwrap())
+}
+
+/// Test-only reference walks are capped exactly like production; no higher work limit is used.
+fn compare_cached_and_legacy_links(
+    input: &GeneInput,
+    policy: &Policy,
+    bytes: usize,
+    entries: usize,
+) {
+    let evidence = input.linkage.as_ref().unwrap();
+    let mut keep_running = || true;
+    let mut cached_meter = Meter {
+        work: 0,
+        limit: Budgets::default().max_work,
+        progress: &mut keep_running,
+        remaining_output: Budgets::default().max_output_bytes,
+    };
+    let mut keep_running_legacy = || true;
+    let mut legacy_meter = Meter {
+        work: 0,
+        limit: Budgets::default().max_work,
+        progress: &mut keep_running_legacy,
+        remaining_output: Budgets::default().max_output_bytes,
+    };
+    for sample in &input.report.samples {
+        let mut cache =
+            linkage::Cache::with_limits(input, evidence, sample, &mut cached_meter, bytes, entries)
+                .unwrap();
+        for model in &input.models {
+            for site in &input.report.sites {
+                for alt in alternates(site) {
+                    let expected = linkage::legacy_oracle::link(
+                        input,
+                        evidence,
+                        sample,
+                        model,
+                        site.position_0based,
+                        alt,
+                        policy,
+                        &mut legacy_meter,
+                    );
+                    let actual =
+                        cache.link(model, site.position_0based, alt, policy, &mut cached_meter);
+                    assert_eq!(
+                        serialized_link(actual),
+                        serialized_link(expected),
+                        "sample {} / model {} / {} {alt}",
+                        sample.sample_id,
+                        model.transcript.transcript_id,
+                        site.position_0based,
+                    );
+                    assert!(cache.retained_bytes() <= bytes);
+                    assert!(cache.retained_entries() <= entries);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_matches_frozen_legacy_fields_and_error_boundaries() {
+    for reverse in [false, true] {
+        for variant in 0..21 {
+            let mut input = capacity_fixture(reverse, 8, 2);
+            let link = input.linkage.as_mut().unwrap();
+            match variant {
+                0 => {}
+                1 => {
+                    for unit in &mut link.samples[0].units {
+                        unit.all_query_views_assessed = false;
+                    }
+                    link.geometry.clear();
+                }
+                2 => {
+                    for unit in &mut link.samples[0].units {
+                        for hypothesis in &mut unit.hypotheses {
+                            hypothesis.eligible = false;
+                        }
+                    }
+                    link.geometry.clear();
+                }
+                3 => {
+                    for geometry in link.geometry.values_mut() {
+                        geometry.blocks.push(("foreign-contig".into(), 100, 101));
+                    }
+                }
+                4 => {
+                    for geometry in link.geometry.values_mut() {
+                        geometry.junctions.push(("foreign-contig".into(), 107, 109));
+                    }
+                }
+                5 => {
+                    for geometry in link.geometry.values_mut() {
+                        geometry.blocks = vec![("chrSynthetic".into(), 100, 127)];
+                        geometry.junctions.clear();
+                    }
+                }
+                6 => {
+                    for geometry in link.geometry.values_mut() {
+                        geometry.blocks.clear();
+                    }
+                }
+                7 => {
+                    for geometry in link.geometry.values_mut() {
+                        geometry.blocks.push(("chrSynthetic".into(), 101, 101));
+                    }
+                }
+                8 => {
+                    // The old evaluator rejects the foreign skip before visiting the bad block.
+                    for geometry in link.geometry.values_mut() {
+                        geometry.blocks.push(("chrSynthetic".into(), 101, 101));
+                        geometry.junctions = vec![("foreign-contig".into(), 107, 109)];
+                    }
+                }
+                9 => {
+                    link.geometry.clear();
+                }
+                10..=14 => {
+                    let sample_id = link.samples[0].sample_id.clone();
+                    for unit in &mut link.samples[0].units {
+                        let mut alternative = unit.hypotheses[0].clone();
+                        alternative.hypothesis_id = "other".into();
+                        alternative.bases.clear();
+                        alternative.eligible = variant != 10;
+                        let original_key = (sample_id.clone(), unit.unit_id.clone(), "0".into());
+                        if variant == 11 || variant == 14 {
+                            let mut geometry = link.geometry[&original_key].clone();
+                            if variant == 14 {
+                                geometry.blocks.clear();
+                            }
+                            link.geometry.insert(
+                                (sample_id.clone(), unit.unit_id.clone(), "other".into()),
+                                geometry,
+                            );
+                        }
+                        if variant == 13 {
+                            // Missing later geometry is not reached after the earlier hyp fails.
+                            link.geometry.get_mut(&original_key).unwrap().blocks.push((
+                                "foreign-contig".into(),
+                                100,
+                                101,
+                            ));
+                        }
+                        unit.hypotheses.push(alternative);
+                    }
+                }
+                15 => {
+                    // Both competing models are legitimate; only one admits the spliced chain.
+                    input.models[1].transcript.exons = vec![(100, 127)];
+                    input.models[1].sequence = if reverse {
+                        input
+                            .genomic_sequence
+                            .chars()
+                            .rev()
+                            .map(|c| complement(c, '-'))
+                            .collect()
+                    } else {
+                        input.genomic_sequence.clone()
+                    };
+                    input.models[1].cds = None;
+                    input.models[1].translation_status = "noncoding".into();
+                    recompare_capacity_fixture(&mut input);
+                }
+                16 => {
+                    // A model lacking both markers stays not_present and cannot gain support.
+                    input.models[1].transcript.exons = vec![(109, 116)];
+                    input.models[1].sequence = "N".repeat(7);
+                    input.models[1].cds = None;
+                    input.models[1].protein_accession = None;
+                    input.models[1].translation_status = "noncoding".into();
+                    recompare_capacity_fixture(&mut input);
+                }
+                17 | 18 => {
+                    for unit in &mut link.samples[0].units {
+                        for hypothesis in &mut unit.hypotheses {
+                            for base in &mut hypothesis.bases {
+                                if variant == 17 {
+                                    base.phred = Some(1);
+                                } else {
+                                    base.mapq = Some(255);
+                                }
+                            }
+                        }
+                    }
+                }
+                19 | 20 => {
+                    // Nondefinite or no-ALT calls never visit otherwise missing geometry.
+                    for sample in &mut input.report.samples {
+                        for call in &mut sample.site_calls {
+                            call.status = if variant == 19 {
+                                evidence::CdnaCallStatus::Ambiguous
+                            } else {
+                                evidence::CdnaCallStatus::Unassessed
+                            };
+                            if variant == 20 {
+                                call.base = None;
+                            }
+                        }
+                    }
+                    link.geometry.clear();
+                }
+                _ => unreachable!(),
+            }
+            compare_cached_and_legacy_links(&input, &Policy::default(), 8 * 1024 * 1024, 512);
+        }
+    }
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_capacity_keeps_all_units_models_and_the_100m_cap() {
+    let input = capacity_fixture(false, 2048, 40);
+    assert_eq!(Budgets::default().max_work, 100_000_000);
+    let evidence = input.linkage.as_ref().unwrap();
+    let mut progress = || true;
+    let mut legacy_meter = Meter {
+        work: 0,
+        limit: 100_000_000,
+        progress: &mut progress,
+        remaining_output: Budgets::default().max_output_bytes,
+    };
+    let mut exhausted = false;
+    'legacy: for sample in &input.report.samples {
+        for model in &input.models {
+            for site in &input.report.sites {
+                for alt in alternates(site) {
+                    match linkage::legacy_oracle::link(
+                        &input,
+                        evidence,
+                        sample,
+                        model,
+                        site.position_0based,
+                        alt,
+                        &Policy::default(),
+                        &mut legacy_meter,
+                    ) {
+                        Ok(_) => {}
+                        Err(error) => {
+                            assert!(error.contains("work_budget"), "{error}");
+                            exhausted = true;
+                            break 'legacy;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        exhausted,
+        "legacy repeated work must exceed the unchanged 100M cap"
+    );
+    let before = serde_json::to_value(&input.report).unwrap();
+    let (mut reports, work) = interpret(
+        &[input.clone()],
+        &Policy::default(),
+        &code(),
+        None,
+        &Budgets::default(),
+        &mut || true,
+    )
+    .unwrap();
+    let result = reports.remove(0);
+    assert!(work < 100_000_000, "optimized actual work: {work}");
+    assert_eq!(result.sites.len(), 80);
+    assert_eq!(result.inherited_samples[0].total_units, 2048);
+    assert_eq!(
+        serde_json::to_value(&result.inherited_samples).unwrap(),
+        serde_json::to_value(&input.report.samples).unwrap()
+    );
+    assert_eq!(serde_json::to_value(&input.report).unwrap(), before);
+    assert_eq!(
+        result
+            .sites
+            .iter()
+            .map(|r| r.transcript_id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        40
+    );
+    for row in &result.sites {
+        let expected = input.report.samples[0]
+            .site_calls
+            .iter()
+            .filter(|c| {
+                c.position_0based == row.genomic_position_0based
+                    && c.base == Some(row.genomic_alternate_base)
+                    && definite(c)
+            })
+            .map(|c| c.unit_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(expected.len(), 1024);
+        let link = row.linkage.as_ref().unwrap();
+        assert_eq!(link.compatible_units, expected);
+        assert!(link.discriminating_units.is_empty());
+        assert!(link.unique_model_units.is_empty());
+        assert!(link.excluded_transcripts.is_empty());
+        assert_eq!(link.status, "same_unit_compatible_only");
+    }
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_bounded_fallback_and_policy_keys_preserve_evidence() {
+    let input = capacity_fixture(false, 12, 3);
+    for (bytes, entries) in [(0, 0), (0, 1), (1, 1), (1024, 1), (8 * 1024 * 1024, 1)] {
+        compare_cached_and_legacy_links(&input, &Policy::default(), bytes, entries);
+    }
+    let mut retained = input.clone();
+    for geometry in retained.linkage.as_mut().unwrap().geometry.values_mut() {
+        geometry.blocks = vec![("chrSynthetic".into(), 100, 127)];
+        geometry.junctions.clear();
+    }
+    let evidence = retained.linkage.as_ref().unwrap();
+    let sample = &retained.report.samples[0];
+    let mut progress = || true;
+    let mut meter = Meter {
+        work: 0,
+        limit: 100_000_000,
+        progress: &mut progress,
+        remaining_output: 32_000_000,
+    };
+    let mut cache = linkage::Cache::new(&retained, evidence, sample, &mut meter).unwrap();
+    let strict = Policy::default();
+    let mut permissive = strict.clone();
+    permissive.maximum_out_of_model_aligned_bases = 14;
+    for policy in [&strict, &permissive, &strict] {
+        let mut progress = || true;
+        let mut oracle_meter = Meter {
+            work: 0,
+            limit: 100_000_000,
+            progress: &mut progress,
+            remaining_output: 32_000_000,
+        };
+        let expected = linkage::legacy_oracle::link(
+            &retained,
+            evidence,
+            sample,
+            &retained.models[0],
+            120,
+            'A',
+            policy,
+            &mut oracle_meter,
+        );
+        let actual = cache.link(&retained.models[0], 120, 'A', policy, &mut meter);
+        assert_eq!(serialized_link(actual), serialized_link(expected));
+    }
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_hits_still_obey_cancellation_work_and_output_limits() {
+    use std::cell::Cell;
+    let input = fixture(false);
+    let evidence = input.linkage.as_ref().unwrap();
+    let sample = &input.report.samples[0];
+    let running = Cell::new(true);
+    let mut progress = || running.get();
+    let mut meter = Meter {
+        work: 0,
+        limit: 100_000_000,
+        progress: &mut progress,
+        remaining_output: 32_000_000,
+    };
+    let mut cache = linkage::Cache::new(&input, evidence, sample, &mut meter).unwrap();
+    cache
+        .link(&input.models[0], 120, 'A', &Policy::default(), &mut meter)
+        .unwrap();
+    assert_eq!(cache.retained_entries(), 1);
+    running.set(false);
+    assert!(
+        cache
+            .link(&input.models[0], 120, 'A', &Policy::default(), &mut meter)
+            .unwrap_err()
+            .contains("cancelled")
+    );
+    running.set(true);
+    meter.limit = meter.work;
+    assert!(
+        cache
+            .link(&input.models[0], 120, 'A', &Policy::default(), &mut meter)
+            .unwrap_err()
+            .contains("work_budget")
+    );
+
+    for (bytes, entries) in [(0, 0), (8 * 1024 * 1024, 512)] {
+        let mut progress = || false;
+        let mut cancelled_meter = Meter {
+            work: 0,
+            limit: 100_000_000,
+            progress: &mut progress,
+            remaining_output: 32_000_000,
+        };
+        let result = linkage::Cache::with_limits(
+            &input,
+            evidence,
+            sample,
+            &mut cancelled_meter,
+            bytes,
+            entries,
+        )
+        .and_then(|mut cache| {
+            cache.link(
+                &input.models[0],
+                120,
+                'A',
+                &Policy::default(),
+                &mut cancelled_meter,
+            )
+        });
+        assert!(result.unwrap_err().contains("cancelled"));
+        let mut progress = || true;
+        let mut tiny_meter = Meter {
+            work: 0,
+            limit: 1,
+            progress: &mut progress,
+            remaining_output: 32_000_000,
+        };
+        let result =
+            linkage::Cache::with_limits(&input, evidence, sample, &mut tiny_meter, bytes, entries)
+                .and_then(|mut cache| {
+                    cache.link(
+                        &input.models[0],
+                        120,
+                        'A',
+                        &Policy::default(),
+                        &mut tiny_meter,
+                    )
+                });
+        assert!(result.unwrap_err().contains("work_budget"));
+    }
+
+    // Force refusal at the first site row, after the linkage cache has been populated.
+    let normal = run(input.clone());
+    let prefix_bytes = serde_json::to_vec(&input.report.samples).unwrap().len()
+        + serde_json::to_vec(&input.report.warnings).unwrap().len()
+        + normal
+            .codon_groups
+            .iter()
+            .map(|v| serde_json::to_vec(v).unwrap().len())
+            .sum::<usize>()
+        + normal
+            .codon_combinations
+            .iter()
+            .map(|v| serde_json::to_vec(v).unwrap().len())
+            .sum::<usize>();
+    let mut budgets = Budgets::default();
+    budgets.max_output_bytes = prefix_bytes + 1;
+    assert!(
+        interpret(
+            &[input.clone()],
+            &Policy::default(),
+            &code(),
+            None,
+            &budgets,
+            &mut || true
+        )
+        .unwrap_err()
+        .contains("output_budget")
+    );
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_contexts_do_not_share_sample_or_gene_witnesses() {
+    let mut input = capacity_fixture(false, 8, 2);
+    let first = input.linkage.as_ref().unwrap().samples[0].clone();
+    let mut second = first.clone();
+    second.sample_id = "another-sample-with-the-same-unit-ids".into();
+    // Distinct producer sources may legitimately reuse unit IDs; physical duplicates may not.
+    second.source_sha256 = format!("sha256:{}", "a".repeat(64));
+    let original_geometry = input.linkage.as_ref().unwrap().geometry.clone();
+    for unit in &second.units {
+        for hypothesis in &unit.hypotheses {
+            let mut geometry = original_geometry[&(
+                first.sample_id.clone(),
+                unit.unit_id.clone(),
+                hypothesis.hypothesis_id.clone(),
+            )]
+                .clone();
+            geometry.blocks.push(("foreign-contig".into(), 100, 101));
+            input.linkage.as_mut().unwrap().geometry.insert(
+                (
+                    second.sample_id.clone(),
+                    unit.unit_id.clone(),
+                    hypothesis.hypothesis_id.clone(),
+                ),
+                geometry,
+            );
+        }
+    }
+    input.linkage.as_mut().unwrap().samples.push(second.clone());
+    recompare_capacity_fixture(&mut input);
+    let report = run(input.clone());
+    assert!(
+        report
+            .sites
+            .iter()
+            .filter(|r| r.sample_id == first.sample_id)
+            .all(|r| !r.linkage.as_ref().unwrap().compatible_units.is_empty())
+    );
+    assert!(
+        report
+            .sites
+            .iter()
+            .filter(|r| r.sample_id == second.sample_id)
+            .all(|r| r.linkage.as_ref().unwrap().compatible_units.is_empty())
+    );
+
+    let good = capacity_fixture(false, 8, 2);
+    let mut bad = good.clone();
+    bad.gene_id = "another-gene-with-the-same-sample-unit-model-ids".into();
+    for geometry in bad.linkage.as_mut().unwrap().geometry.values_mut() {
+        geometry.blocks.push(("foreign-contig".into(), 100, 101));
+    }
+    let (reports, _) = interpret(
+        &[good, bad],
+        &Policy::default(),
+        &code(),
+        None,
+        &Budgets::default(),
+        &mut || true,
+    )
+    .unwrap();
+    assert!(
+        reports[0]
+            .sites
+            .iter()
+            .all(|r| !r.linkage.as_ref().unwrap().compatible_units.is_empty())
+    );
+    assert!(
+        reports[1]
+            .sites
+            .iter()
+            .all(|r| r.linkage.as_ref().unwrap().compatible_units.is_empty())
+    );
+}
+
+#[test]
+fn cdna_interpretation_cached_linkage_all_256_model_mask_bits_match_legacy() {
+    let mut input = capacity_fixture(false, 4, 256);
+    // Keep bit255 admissible while excluding one competitor in the fourth word.
+    let excluded_id = input.models[200].transcript.transcript_id.clone();
+    input.models[200].transcript.exons = vec![(100, 127)];
+    input.models[200].sequence = input.genomic_sequence.clone();
+    input.models[200].cds = None;
+    input.models[200].protein_accession = None;
+    input.models[200].translation_status = "noncoding".into();
+    recompare_capacity_fixture(&mut input);
+    compare_cached_and_legacy_links(&input, &Policy::default(), 8 * 1024 * 1024, 512);
+
+    let last_id = input.models[255].transcript.transcript_id.clone();
+    let report = run(input.clone());
+    assert_eq!(report.sites.len(), 512);
+    assert_eq!(
+        report
+            .sites
+            .iter()
+            .map(|row| row.transcript_id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        256,
+    );
+    let high_bit_rows = report
+        .sites
+        .iter()
+        .filter(|row| row.transcript_id == last_id)
+        .collect::<Vec<_>>();
+    assert_eq!(high_bit_rows.len(), 2);
+    for row in high_bit_rows {
+        let expected = input.report.samples[0]
+            .site_calls
+            .iter()
+            .filter(|call| {
+                call.position_0based == row.genomic_position_0based
+                    && call.base == Some(row.genomic_alternate_base)
+                    && definite(call)
+            })
+            .map(|call| call.unit_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(expected.len(), 2);
+        let link = row.linkage.as_ref().unwrap();
+        assert_eq!(link.compatible_units, expected);
+        assert_eq!(link.discriminating_units, expected);
+        assert!(link.unique_model_units.is_empty());
+        assert_eq!(link.excluded_transcripts.len(), 1);
+        assert_eq!(link.excluded_transcripts.get(&excluded_id), Some(&expected));
+    }
+    assert!(
+        report
+            .sites
+            .iter()
+            .filter(|row| row.transcript_id == excluded_id)
+            .all(|row| row.linkage.as_ref().unwrap().compatible_units.is_empty())
+    );
+}

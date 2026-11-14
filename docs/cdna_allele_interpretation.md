@@ -144,6 +144,16 @@ is only within supplied models containing the site. Partial compatibility is not
 identification of a full-length/expressed isoform. Default `linkage: none` does
 not reopen the original evidence and reports no invented linkage.
 
+C3 capacity uses an immutable per-gene/sample unit index and a bounded
+site/ALT witness cache. Each competitor/hypothesis admissibility calculation is
+shared across model rows; compact model masks retain the full competitor
+universe. Cache storage is at most the remaining output allowance or eight MiB,
+with at most 512 retained entries. Oversized entries stream through the same
+walker; eviction can repeat work, never remove evidence. Construction, lookups,
+projection, copies, sorting and eviction consume work and poll cancellation,
+including cache hits. The 100-million work cap and input/output ceilings,
+quality policy, full-geometry rules and file bindings are unchanged.
+
 ## C4: Frozen Labels, Not Clinical Interpretation
 
 Optional bound `gentle.known_variant_manifest.v1` has `source_name`,

@@ -183,3 +183,37 @@ check after the Swift-cache sandbox refusal. The failed identity/cap/cache
 attempts remain recorded separately. Scientific/native/release acceptance is
 not inherited. WM793/TP73 has only ten selected units, with 9/14 Q20 and 11/15
 Q30 sites uncallable; shared ALT2/2 remains visible below nomination threshold.
+
+## C3 Capacity Improvement, 2026-11-14
+
+The owner authorizes improving C3 capacity without increasing the 100-million
+work cap or dropping reads/models, then rerunning TP53 before TP73. The original
+Codex plan targets repeated competitor checks rather than changed biology:
+
+1. Build a lazy source-unit index within one immutable gene/sample context.
+2. Evaluate the existing competitor/hypothesis walk once per site/ALT and reuse
+   compact admissible-model masks across output-model rows.
+3. Bound retained storage by existing output allowance, eight MiB and 512
+   entries, with eviction/streaming fallback instead of evidence truncation.
+4. Meter actual construction, lookups, hits, projections/copies and eviction;
+   preserve cancellation, strict bindings, quality and full-geometry checks.
+5. Compare every linkage field/error boundary to a frozen `72176091` legacy
+   oracle, prove a 2,048-unit/40-model workload fails the old but fits the new
+   algorithm under the same 100M cap, then audit the eight real linked views
+   against unchanged C1/C2 artifacts and explicit WM793/TP73 undercoverage.
+
+The two production files implement this plan without new dependencies or wire
+changes. The old geometry predicate and visited-hypothesis short circuits remain
+unchanged. C2 without linkage uses its existing work/output path. All 115 engine
+library tests pass after an affected-package clean, including six new tests
+covering 42 mirrored legacy cases, capacity, bounded fallback, hit/miss
+cancellation/budgets, sample/gene isolation and all 256 model-mask bits. See
+the run-owned final test log for the complete 115/115 receipt. No root/full/native campaign is
+inferred. The compiler is unchanged from the earlier clean; only the task-owned
+engine package artifacts were cleaned, not other checkout/shared caches.
+
+At the owner's earlier preference, an optional read-only Claude review prompt
+is prepared in the run bundle; Claude was not invoked and work does not wait
+for review. Source-matched CLI verification, default compile and real TP53 then
+TP73 execution follow this implementation; prior work-cap refusals remain
+historical evidence, not current success.

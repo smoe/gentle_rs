@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-14 - Share C3 Admissibility Work Within The Existing Cap
+
+- Index immutable sample units and reuse per-site/ALT admissible-model masks
+  across output-model rows, removing repeated all-competitor calculations.
+  Bound retained cache storage/entries, stream oversized entries through the
+  same walker and meter construction, hits, projection, copying and eviction.
+- Preserve geometry/hypothesis short circuits, quality and raw identity guards,
+  all reads/models, output schema and no-linkage C2 output/work. The 100-million
+  work ceiling and input/output limits remain unchanged; no cap-based dropping.
+- Freeze the old algorithm as a test-only oracle. All 115 engine-library tests
+  pass, including 42 plus/minus field/error cases and a 2,048-unit/40-model
+  capacity control where legacy exhausts 100M and optimized execution fits.
+  Bounded fallback, cancellation/work/output limits, context isolation and all
+  256 model-mask bits pass.
+- The owner authorizes source-matched TP53 then TP73 reruns over the existing
+  bound artifacts; runtime/data receipts follow separately. Keep earlier
+  refusals, WM793/TP73 undercoverage and scientific/native acceptance explicit.
+
 ## 2026-11-13 - Run Bound TP53 Then TP73 Conditional Consequences
 
 - Commit verification documentation at `114126e0` before executing the newly
