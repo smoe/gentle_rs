@@ -1,5 +1,35 @@
 # Glen: Next Verification And Return
 
+## Glen C3 Regression Return At 919e7163, 2026-11-15
+
+Glen reports a fresh `origin/main` fetch and a temporary-worktree review at exact
+`919e71635dac27f38e13689497d94a704adee203`, covering the four-commit range
+`114126e0..919e7163` with the old source retained as an ancestor. Real diffs,
+changed tests and documentation were reviewed; `git diff --check` passed.
+The reported `cdna_interpretation` filter passed **23/23 engine tests** and
+**10/10 root tests without default features**. The 23 engine cases include all
+six new cache regressions: frozen-legacy parity, capacity within unchanged 100M,
+bounded fallback/policy keys, cancellation/budgets, context isolation and all
+256 model-mask bits. No concrete regression or corrective patch was identified.
+Do not reopen these completed focused checks or treat the earlier local
+115-test engine run as a missing external full-suite requirement.
+
+An initial default-feature build was stopped as unnecessarily broad and replaced
+by the successful targeted run. It is neither a completed default-feature gate
+nor a reported product failure. Glen reports an atomic status update to this
+SHA at `2026-11-15T04:50:08Z`, cleanup of 6,472 Cargo files / 7.6 GiB and removal
+of the temporary worktree. These are attributed operational outcomes; the
+message supplies no raw archive, toolchain/CLI/lock hashes or target path, so
+neither raw-log verification nor cache-isolation proof is inferred.
+
+The six actual CLI/Python companion cases and independent rehash/witness audit
+of the eight real-data outputs, 450 bindings, 6,640 C2 rows and two byte-identical
+no-linkage controls are **not reported in this return**. Existing local
+[2026-11-14 evidence](tp53_tp73_c3_capacity_20261114.md) remains separate.
+Native Windows/GUI, package/release and scientific acceptance are unchanged.
+WM793/TP73 remains ten selected units, 9/14 Q20 and 11/15 Q30 sites uncallable,
+with shared ALT2/2 observed rather than absent.
+
 ## Glen Normalization Return At 72176091, 2026-11-14
 
 Glen reports successful software verification at exact source
@@ -33,15 +63,17 @@ controls reproduce old reports byte-for-byte. Raw copies and old refusals are
 included in the new owner-workspace `outputs/tp53_tp73_c3_capacity_20261114`
 bundle. Captured original paths/hashes remain authoritative.
 
-For independent new-source verification, run the 115-test engine library suite
-(including six new cache regressions), six actual CLI/Python companion cases and
-compile check with a source-matched CLI. Audit the eight linked outputs against
-the retained C2 baselines and unchanged 100M cap, including legacy-oracle parity,
-capacity/streaming fallback, cancellation and all 256 model bits. Keep WM793/TP73
-at ten units, 9/14 Q20 and 11/15 Q30 sites uncallable and shared ALT2/2 observed.
-Record whether raw artifacts were actually available and rehashed. This request
-is separate from Glen's completed 72176091 software return; it neither repeats
-that campaign as missing nor inherits scientific/host/release acceptance.
+The [919e7163 return](#glen-c3-regression-return-at-919e7163-2026-11-15)
+closes focused Rust regression review, including the six cache cases; do not
+repeat it as missing. Remaining independent evidence is the six actual
+CLI/Python companion cases with a source-matched CLI and the raw-artifact audit
+of all eight linked outputs against the retained C2 baselines and unchanged
+100M cap. Preserve source/CLI/lock identity, original read/model sets and both
+byte-identical no-linkage controls. Keep WM793/TP73 at ten units, 9/14 Q20 and
+11/15 Q30 sites uncallable and shared ALT2/2 observed. Record whether raw
+artifacts were actually available and rehashed. These remaining boundaries do
+not reopen the completed 72176091 software return or establish scientific,
+native/platform or release acceptance.
 
 ## C2-C4 Conditional cDNA Interpretation, 2026-11-12
 

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-11-15 - Record Glen's Focused C3 Regression Return
+
+- Attribute Glen's fresh-main review at exact `919e7163`, four commits after
+  `114126e0`: diff/docs review and whitespace check passed, with 23/23 engine
+  `cdna_interpretation` cases and 10/10 root cases without default features.
+  The engine selection includes all six new cache regressions; no concrete
+  regression or corrective patch was reported. Do not request these checks
+  again as missing or add their counts to earlier overlapping campaigns.
+- Keep the stopped broad default-feature build separate from the successful
+  targeted run. Record the reported atomic status time, temporary-worktree
+  removal and 6,472-file / 7.6-GiB Cargo cleanup without inferring target
+  isolation, raw-log verification or a completed default-feature gate.
+- Narrow the remaining [handoff](glen_next_verification_handoff.md#glen-c3-regression-return-at-919e7163-2026-11-15)
+  to unreported actual CLI/Python and independent raw-artifact evidence, with
+  native/platform, scientific and release acceptance unchanged. Preserve local
+  eight-view C3 results, the 100M cap, all reads/models and WM793/TP73 sparse
+  callability; this documentation change runs no local Rust or real-data job.
+
 ## 2026-11-14 - Complete Bound TP53 Then TP73 C3 Reruns
 
 - Use source `9b68ebb6` for all eight full/panel Q20/Q30 linked views, retaining
