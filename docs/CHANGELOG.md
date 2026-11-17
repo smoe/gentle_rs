@@ -162,6 +162,32 @@
   See the [implementation ledger](primer_design_specialist_plan.md#simple-pcr-pair-preparation-ledger-2026-11-19).
 
 
+## 2026-11-17 - Freeze Primer Specificity Identities And Stage Mismatch Rules
+
+- Freeze synthetic stored policy, single/multi handoff, populated report,
+  summary and panel-selection records using baseline `b62d21c9` serializers.
+  Reopen them through the real identity/hash and selected-report paths instead
+  of rebuilding expectations from current defaults. Include changed-command,
+  changed-alignment and changed-selected-report negative controls.
+- Preserve the original bytes/checksum with scoped LF policy and LF/CRLF
+  checkout tests, including a missing-policy control. The fixture is explicitly
+  synthetic, with baseline capture/recreation provenance; it is not Glen's
+  PATZ1/GFI1/TBCE acceptance evidence or an externally executed BLAST result.
+- Add a private, unwired classifier for complete ungapped mismatch counts:
+  per-primer total/last-five thresholds and the six-total ignore boundary,
+  with separate per-site reasons, count validation and deterministic truth-table,
+  symmetry and 9,216-case decomposition coverage. It is not called by requests,
+  searches, imports, pair construction or verdict generation.
+- Retain the reviewed [local compatibility plan](primer_blast_local_compatibility_plan_20261116.md)
+  and original review request. Runtime schemas, legacy policy/IDs, BLAST arguments,
+  CLI/MCP behavior, reference preparation and dependencies remain unchanged.
+  Reader, alignment/deduplication, named-profile wiring, RefSeq intake and real
+  acceptance are later slices, not an additional `.13` gate.
+- Verify 23 focused headless Rust tests and 100 checkout tests, plus the default-
+  feature locked/offline Cargo check after allowing Swift cache writes. Preserve
+  existing warnings and separate native Windows/Linux, full-suite and real-data
+  acceptance; the plan retains the exact recipe and fixture identity.
+
 ## 2026-11-16 - Add Shared Termination And 3′-Processing Evidence
 
 - Implement `terminators screen` and separately reviewed, undoable

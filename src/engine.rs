@@ -1351,6 +1351,10 @@ pub(crate) use tss_workspace::tests::{
 mod genome_editing;
 #[path = "engine/analysis/primer_specificity_matrix.rs"]
 mod primer_specificity_matrix;
+// Pure groundwork only: an opt-in compatibility profile is not wired yet.
+#[cfg_attr(not(test), allow(dead_code))]
+#[path = "engine/analysis/primer_blast_mismatch.rs"]
+mod primer_blast_mismatch;
 #[path = "engine/analysis/primer_specificity_multi.rs"]
 mod primer_specificity_multi;
 #[path = "engine/analysis/primer_specificity_panel_multi.rs"]

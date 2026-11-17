@@ -1,0 +1,2807 @@
+{
+  "multi_handoff": {
+    "content_sha256": "sha256:56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+    "handoff_id": "primer_multi_56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+    "manifest_path": "synthetic/execution_manifest.json",
+    "nonclaims": [
+      "Specificity applies only to the explicitly bound prepared references and policy, not every genome or transcript.",
+      "A hash binds retained content; it does not authenticate external process execution.",
+      "This standalone summary does not establish isoform discrimination, oligo QC, laboratory validation or order readiness.",
+      "Current applicability is checked at import; historical display performs no database probes."
+    ],
+    "pair_binding_sha256": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9",
+    "primers": [
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "ACGTACGTACGTACGTACGT",
+        "full_sequence": "ACGTACGTACGTACGTACGT",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "forward"
+      },
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "TGCATGCATGCATGCATGCA",
+        "full_sequence": "TGCATGCATGCATGCATGCA",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "reverse"
+      }
+    ],
+    "references": [
+      {
+        "availability": "prepared",
+        "child": {
+          "blast_database": {
+            "blast_database_version": null,
+            "blastdbcmd_reachable": false,
+            "compatible_operations": [],
+            "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fingerprint_algorithm": "synthetic_sha256",
+            "index_files_present": false,
+            "index_kind": "transcriptome_cdna",
+            "masking": "",
+            "prefix": "",
+            "schema": "",
+            "sequence_count": 2,
+            "source_assembly": null,
+            "source_genome_id": "synthetic_cdna",
+            "source_release": "synthetic_release",
+            "status_code": null,
+            "subject_annotation_annotated_count": 0,
+            "subject_annotation_record_count": 0,
+            "subject_annotation_source_counts": {},
+            "subject_annotation_status": "",
+            "tool_executable": "",
+            "tool_version": null,
+            "total_bases": null,
+            "validation_status": "valid",
+            "warnings": []
+          },
+          "blast_db_prefix": "",
+          "blast_preflight": {
+            "blastn": {
+              "detail": null,
+              "env_var": "",
+              "error": null,
+              "executable": "",
+              "found": false,
+              "resolved_path": null,
+              "status_code": null,
+              "tool": "",
+              "version": null,
+              "version_probe_ok": false
+            },
+            "makeblastdb": {
+              "detail": null,
+              "env_var": "",
+              "error": null,
+              "executable": "",
+              "found": false,
+              "resolved_path": null,
+              "status_code": null,
+              "tool": "",
+              "version": null,
+              "version_probe_ok": false
+            },
+            "schema": ""
+          },
+          "bundle_dir": "",
+          "commands": [
+            {
+              "args": [
+                "-evalue",
+                "1000",
+                "-max_target_seqs",
+                "3"
+              ],
+              "command_id": "synthetic:forward",
+              "command_line": "",
+              "output_tsv_path": "synthetic/forward.tsv",
+              "program": "not_executed_blastn",
+              "query_fasta_path": "synthetic/forward.fa",
+              "query_label": "forward",
+              "query_length_bp": 20,
+              "role": "forward",
+              "success_exit_codes": [
+                0
+              ]
+            },
+            {
+              "args": [
+                "-evalue",
+                "1000",
+                "-max_target_seqs",
+                "3"
+              ],
+              "command_id": "synthetic:reverse",
+              "command_line": "",
+              "output_tsv_path": "synthetic/reverse.tsv",
+              "program": "not_executed_blastn",
+              "query_fasta_path": "synthetic/reverse.fa",
+              "query_label": "reverse",
+              "query_length_bp": 20,
+              "role": "reverse",
+              "success_exit_codes": [
+                0
+              ]
+            }
+          ],
+          "completion_policy": "all_commands_success",
+          "design_provenance": {
+            "status": "not_run",
+            "summary": ""
+          },
+          "handoff_id": "primer_specificity_handoff_4ed6819f64d5c420",
+          "handoff_path": "",
+          "import_command": [],
+          "import_command_line": "",
+          "intended_target": {
+            "contiguous_genomic_product_expected": false,
+            "expected_products": [
+              {
+                "expected_product_range": {
+                  "end_1based": 100,
+                  "start_1based": 1
+                },
+                "source_transcript_id": "synthetic_transcript.1",
+                "subject_id": "synthetic_transcript.1",
+                "target_space": "transcriptome_cdna"
+              }
+            ],
+            "forward_binding_ranges": [],
+            "model": "transcript_set",
+            "reference_binding": {
+              "assembly": null,
+              "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "fingerprint_algorithm": "synthetic_sha256",
+              "genome_id": "synthetic_cdna",
+              "index_kind": "transcriptome_cdna",
+              "release": "synthetic_release",
+              "subject_annotation_fingerprint": null,
+              "subject_annotation_fingerprint_algorithm": null
+            },
+            "reverse_binding_ranges": [],
+            "source": "synthetic_fixture",
+            "subject_id": null,
+            "warnings": []
+          },
+          "policy": {
+            "allow_same_gene_splice_variants": false,
+            "avoid_known_variants": false,
+            "avoid_low_complexity": false,
+            "avoid_rmsk_repeats": false,
+            "full_alignment": {
+              "gap_extend_score": -2,
+              "gap_open_score": -5,
+              "match_score": 2,
+              "mismatch_score": -3,
+              "mode": "best_effort",
+              "subject_flank_bp": 0
+            },
+            "max_3prime_mismatches": 0,
+            "max_hits_per_primer": 500,
+            "max_target_amplicon_bp": 4000,
+            "min_primer_coverage_fraction": 0.8,
+            "min_total_mismatches_to_unintended_target": 2,
+            "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+            "report_detail_mode": "compact",
+            "specificity_check": "report_only",
+            "three_prime_window_bp": 5
+          },
+          "primers": [
+            {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "ACGTACGTACGTACGTACGT",
+              "full_sequence": "ACGTACGTACGTACGTACGT",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "forward"
+            },
+            {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "TGCATGCATGCATGCATGCA",
+              "full_sequence": "TGCATGCATGCATGCATGCA",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "reverse"
+            }
+          ],
+          "related_seq_ids": [],
+          "requested_target_genome_id": "synthetic_cdna",
+          "resolved_target_genome_id": "synthetic_cdna",
+          "schema": "gentle.primer_specificity_handoff.v1",
+          "search_completeness": {
+            "command_count": 2,
+            "complete": true,
+            "database_sequence_count": 2,
+            "observed_min_max_target_seqs": 3,
+            "reason": "synthetic subject-coverage evidence only",
+            "required_max_target_seqs": 3,
+            "status": "complete"
+          },
+          "warnings": []
+        },
+        "diagnostic": null,
+        "expected_index_kind": "transcriptome_cdna",
+        "reference": {
+          "assembly": null,
+          "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "fingerprint_algorithm": "synthetic_sha256",
+          "genome_id": "synthetic_cdna",
+          "index_kind": "transcriptome_cdna",
+          "release": "synthetic_release",
+          "subject_annotation_fingerprint": null,
+          "subject_annotation_fingerprint_algorithm": null
+        },
+        "requested_genome_id": "synthetic_cdna",
+        "required": true,
+        "resolved_genome_id": "synthetic_cdna"
+      }
+    ],
+    "request": {
+      "pair": {
+        "forward": {
+          "annealing_length_bp": 20,
+          "annealing_sequence": "ACGTACGTACGTACGTACGT",
+          "full_sequence": "ACGTACGTACGTACGTACGT",
+          "non_annealing_5prime_tail": "",
+          "non_annealing_5prime_tail_bp": 0,
+          "role": "forward"
+        },
+        "kind": "explicit_pair",
+        "reverse": {
+          "annealing_length_bp": 20,
+          "annealing_sequence": "TGCATGCATGCATGCATGCA",
+          "full_sequence": "TGCATGCATGCATGCATGCA",
+          "non_annealing_5prime_tail": "",
+          "non_annealing_5prime_tail_bp": 0,
+          "role": "reverse"
+        }
+      },
+      "policy": {
+        "allow_same_gene_splice_variants": false,
+        "avoid_known_variants": false,
+        "avoid_low_complexity": false,
+        "avoid_rmsk_repeats": false,
+        "full_alignment": {
+          "gap_extend_score": -2,
+          "gap_open_score": -5,
+          "match_score": 2,
+          "mismatch_score": -3,
+          "mode": "best_effort",
+          "subject_flank_bp": 0
+        },
+        "max_3prime_mismatches": 0,
+        "max_hits_per_primer": 500,
+        "max_target_amplicon_bp": 4000,
+        "min_primer_coverage_fraction": 0.8,
+        "min_total_mismatches_to_unintended_target": 2,
+        "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+        "report_detail_mode": "compact",
+        "specificity_check": "report_only",
+        "three_prime_window_bp": 5
+      },
+      "references": [
+        {
+          "expected_index_kind": "transcriptome_cdna",
+          "intended_target": {
+            "contiguous_genomic_product_expected": false,
+            "expected_products": [
+              {
+                "expected_product_range": {
+                  "end_1based": 100,
+                  "start_1based": 1
+                },
+                "source_transcript_id": "synthetic_transcript.1",
+                "subject_id": "synthetic_transcript.1",
+                "target_space": "transcriptome_cdna"
+              }
+            ],
+            "forward_binding_ranges": [],
+            "model": "transcript_set",
+            "reference_binding": {
+              "assembly": null,
+              "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "fingerprint_algorithm": "synthetic_sha256",
+              "genome_id": "synthetic_cdna",
+              "index_kind": "transcriptome_cdna",
+              "release": "synthetic_release",
+              "subject_annotation_fingerprint": null,
+              "subject_annotation_fingerprint_algorithm": null
+            },
+            "reverse_binding_ranges": [],
+            "source": "synthetic_fixture",
+            "subject_id": null,
+            "warnings": []
+          },
+          "required": true,
+          "target_genome_id": "synthetic_cdna"
+        }
+      ],
+      "schema": "gentle.primer_pair_multi_reference_request.v1"
+    },
+    "schema": "gentle.primer_pair_multi_reference_handoff.v1",
+    "source_snapshot_sha256": null
+  },
+  "origin": "synthetic records captured from b62d21c971c207704b96396523eec0ce61659806 plus test-only harness; no external execution or biological acceptance",
+  "panel": {
+    "assay_kind": "taqman_qpcr",
+    "backend_runs": [],
+    "band_size_matrix": [],
+    "candidate_assay_count": 0,
+    "cdna_synthesis": "unspecified",
+    "completion_status": "complete",
+    "coverage_policy": "require_all",
+    "coverage_resolution": {
+      "ambiguous_target_ids": [],
+      "annotated_transcript_count": 0,
+      "excluded_annotated_equivalence_group_ids": [],
+      "excluded_annotated_transcript_ids": [],
+      "included_equivalence_group_ids": [],
+      "included_transcript_ids": [],
+      "linked_transcript_inventory_authoritative": false,
+      "linked_transcript_inventory_ids": [],
+      "required_target_count": 0,
+      "targets": [],
+      "uncovered_target_ids": [],
+      "universe": {
+        "kind": "all_annotated_cdna_classes",
+        "required_transcript_ids": [],
+        "sources": []
+      },
+      "unresolved_target_ids": [],
+      "unresolved_target_pairs": [],
+      "warnings": []
+    },
+    "coverage_universe": {
+      "kind": "all_annotated_cdna_classes",
+      "required_transcript_ids": [],
+      "sources": []
+    },
+    "detection_matrix": [],
+    "end_classes": [],
+    "end_reactions": [],
+    "equivalence_group_count": 0,
+    "equivalence_groups": [],
+    "exact_negative_prefilter_count": 0,
+    "full_assay_evaluation_count": 0,
+    "generated_at_unix_ms": 0,
+    "genomic_specificity_assessments": [],
+    "group_label": "",
+    "junction_evaluations": [],
+    "max_amplicon_bp": 0,
+    "max_mismatches": 0,
+    "min_amplicon_bp": 0,
+    "objective": "pan_transcript",
+    "order_ready_primers": [],
+    "pareto_frontier": {
+      "accepted_candidate_count": 0,
+      "alternatives": [],
+      "evaluated_candidate_count": 0,
+      "non_dominated_candidate_count": 0,
+      "objective_directions": [],
+      "retained_candidate_count": 0,
+      "status": "",
+      "truncated": false
+    },
+    "provenance": {
+      "junction_sources": [],
+      "primer_backend": "",
+      "transcript_ids": []
+    },
+    "report_id": "synthetic_panel",
+    "require_3prime_exact_bases": 0,
+    "schema": "",
+    "selected_assay_count": 0,
+    "selected_assays": [
+      {
+        "assay_id": "synthetic_assay",
+        "assay_kind": "taqman_qpcr",
+        "design_equivalence_group_id": "",
+        "design_transcript_id": "",
+        "end_reaction_ids": [],
+        "junction_matches": [],
+        "primer_pair": {
+          "amplicon_end_0based_exclusive": 0,
+          "amplicon_length_bp": 0,
+          "amplicon_start_0based": 0,
+          "forward": {
+            "anneal_hits": 0,
+            "anneal_length_bp": 20,
+            "end_0based_exclusive": 0,
+            "gc_fraction": 0.0,
+            "length_bp": 20,
+            "longest_homopolymer_run_bp": 0,
+            "non_annealing_5prime_tail_bp": 0,
+            "self_complementary_run_bp": 0,
+            "sequence": "ACGTACGTACGTACGTACGT",
+            "start_0based": 0,
+            "three_prime_base": "",
+            "three_prime_gc_clamp": false,
+            "tm_c": 0.0
+          },
+          "primer_pair_3prime_complementary_run_bp": 0,
+          "primer_pair_complementary_run_bp": 0,
+          "rank": 0,
+          "reverse": {
+            "anneal_hits": 0,
+            "anneal_length_bp": 20,
+            "end_0based_exclusive": 0,
+            "gc_fraction": 0.0,
+            "length_bp": 20,
+            "longest_homopolymer_run_bp": 0,
+            "non_annealing_5prime_tail_bp": 0,
+            "self_complementary_run_bp": 0,
+            "sequence": "TGCATGCATGCATGCATGCA",
+            "start_0based": 0,
+            "three_prime_base": "",
+            "three_prime_gc_clamp": false,
+            "tm_c": 0.0
+          },
+          "rule_flags": {
+            "amplicon_size_in_range": false,
+            "forward_secondary_structure_ok": false,
+            "forward_three_prime_gc_clamp": false,
+            "primer_pair_dimer_risk_low": false,
+            "reverse_secondary_structure_ok": false,
+            "reverse_three_prime_gc_clamp": false,
+            "roi_covered": false,
+            "tm_delta_in_range": false
+          },
+          "score": 0.0,
+          "tm_delta_c": 0.0
+        },
+        "primer_pair_summary": {
+          "aliases": [],
+          "amplicon_spans_junction": false,
+          "assay_id": "",
+          "binary_redundant_with_assay_ids": [],
+          "binding_coordinate_system": "",
+          "common_region_evidence": {
+            "basis": "",
+            "intended_transcript_ids": [],
+            "source_ranges_0based": [],
+            "status": "unspecified",
+            "supporting_psr_evidence_ids": []
+          },
+          "considered_alternatives": [],
+          "design_amplicon_end_0based_exclusive": 0,
+          "design_amplicon_length_bp": 0,
+          "design_amplicon_start_0based": 0,
+          "design_equivalence_group_id": "",
+          "design_transcript_id": "",
+          "display_label": "",
+          "exclusive_binary_distinction_count": 0,
+          "forward": {
+            "aliases": [],
+            "anneal_hit_count": 0,
+            "anneal_length_nt": 0,
+            "binding_end_0based_exclusive": 0,
+            "binding_start_0based": 0,
+            "display_label": "",
+            "exon_ordinals": [],
+            "gc_fraction": 0.0,
+            "gc_percent": 0.0,
+            "length_nt": 0,
+            "longest_homopolymer_run_bp": 0,
+            "origin": "unknown",
+            "primer_id": "",
+            "primer_spans_junction": false,
+            "role": "",
+            "self_complementary_run_bp": 0,
+            "sequence_5_to_3": "",
+            "three_prime_base": "",
+            "three_prime_gc_clamp": false,
+            "tm_c": 0.0
+          },
+          "genomic_carryover_rationale": "",
+          "genomic_carryover_status": "",
+          "incremental_binary_distinction_count": 0,
+          "junction_matches": [],
+          "junction_spanning_status": "",
+          "newly_separated_equivalence_group_pairs": [],
+          "newly_separated_target_pairs": [],
+          "oligo_qc": {
+            "primer_pair_3prime_complementary_run_bp": 0,
+            "primer_pair_complementary_run_bp": 0,
+            "rule_flags": {
+              "amplicon_size_in_range": false,
+              "forward_secondary_structure_ok": false,
+              "forward_three_prime_gc_clamp": false,
+              "primer_pair_dimer_risk_low": false,
+              "reverse_secondary_structure_ok": false,
+              "reverse_three_prime_gc_clamp": false,
+              "roi_covered": false,
+              "tm_delta_in_range": false
+            },
+            "status": "",
+            "warnings": []
+          },
+          "pair_rank": 0,
+          "practicality_classification": "unspecified",
+          "predicted_amplicon_lengths_bp": [],
+          "predicted_products": [],
+          "provenance": {
+            "annotation_release": null,
+            "exon_numbering_basis": "",
+            "exon_numbering_reference_transcript_id": "",
+            "exon_numbering_status": "",
+            "gentle_version": "",
+            "primer_backend_requested": "",
+            "primer_backend_used": "",
+            "source_report_schema": ""
+          },
+          "retained_because_of_differential_junction_evidence": false,
+          "retained_despite_zero_marginal_discrimination": false,
+          "reverse": {
+            "aliases": [],
+            "anneal_hit_count": 0,
+            "anneal_length_nt": 0,
+            "binding_end_0based_exclusive": 0,
+            "binding_start_0based": 0,
+            "display_label": "",
+            "exon_ordinals": [],
+            "gc_fraction": 0.0,
+            "gc_percent": 0.0,
+            "length_nt": 0,
+            "longest_homopolymer_run_bp": 0,
+            "origin": "unknown",
+            "primer_id": "",
+            "primer_spans_junction": false,
+            "role": "",
+            "self_complementary_run_bp": 0,
+            "sequence_5_to_3": "",
+            "three_prime_base": "",
+            "three_prime_gc_clamp": false,
+            "tm_c": 0.0
+          },
+          "satisfied_design_objective": "",
+          "schema": "",
+          "selected_because_of_junction_evidence": false,
+          "selection_audit_status": "not_computed_legacy",
+          "selection_evidence": [],
+          "selection_evidence_matched_target_count": 0,
+          "selection_evidence_observation_count": 0,
+          "selection_evidence_projection_count": 0,
+          "selection_provenance_status": "",
+          "selection_reasons": [],
+          "selection_role": null,
+          "tm_delta_c": 0.0,
+          "whole_genome_specificity_status": ""
+        },
+        "rank": 1,
+        "single_product_coverage_target_ids": [],
+        "single_product_equivalence_group_ids": []
+      }
+    ],
+    "short_sybr_junction_assays": [],
+    "source_feature_id": 0,
+    "source_seq_id": "",
+    "specificity_followups": [],
+    "strand": "",
+    "transcript_count": 0,
+    "transcript_rows": [],
+    "uncovered_coverage_target_ids": [],
+    "uncovered_equivalence_group_ids": [],
+    "unresolved_coverage_target_pairs": [],
+    "unresolved_group_pairs": [],
+    "warnings": []
+  },
+  "panel_digest": "sha256:6ec46f31a338182fd80cc16b490c7c4ac074213fefe4199780fb62d3c4ee29f7",
+  "policy": {
+    "allow_same_gene_splice_variants": false,
+    "avoid_known_variants": false,
+    "avoid_low_complexity": false,
+    "avoid_rmsk_repeats": false,
+    "full_alignment": {
+      "gap_extend_score": -2,
+      "gap_open_score": -5,
+      "match_score": 2,
+      "mismatch_score": -3,
+      "mode": "best_effort",
+      "subject_flank_bp": 0
+    },
+    "max_3prime_mismatches": 0,
+    "max_hits_per_primer": 500,
+    "max_target_amplicon_bp": 4000,
+    "min_primer_coverage_fraction": 0.8,
+    "min_total_mismatches_to_unintended_target": 2,
+    "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+    "report_detail_mode": "compact",
+    "specificity_check": "report_only",
+    "three_prime_window_bp": 5
+  },
+  "policy_sha256": "sha256:eb2f5ddf44ff260e64c4b3f19eed1f8eddbe7a27ba47d35711572ea1696d2469",
+  "report": {
+    "amplicons": [
+      {
+        "combined_mismatches": 0,
+        "end_1based": 100,
+        "failure_reasons": [],
+        "intended": true,
+        "intended_reason": "synthetic_fixture",
+        "kind": "forward_reverse",
+        "left_hit_index": 0,
+        "left_role": "forward",
+        "length_bp": 100,
+        "long_product_warning": false,
+        "max_three_prime_mismatches": 0,
+        "reviewed_allowlisted": false,
+        "right_hit_index": 0,
+        "right_role": "reverse",
+        "specificity_failure": false,
+        "start_1based": 1,
+        "subject_id": "synthetic_transcript.1",
+        "terminal_policy_pass": true,
+        "within_readiness_amplicon_range": true
+      }
+    ],
+    "blast_database": {
+      "blast_database_version": null,
+      "blastdbcmd_reachable": false,
+      "compatible_operations": [],
+      "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint_algorithm": "synthetic_sha256",
+      "index_files_present": false,
+      "index_kind": "transcriptome_cdna",
+      "masking": "",
+      "prefix": "",
+      "schema": "",
+      "sequence_count": 2,
+      "source_assembly": null,
+      "source_genome_id": "synthetic_cdna",
+      "source_release": "synthetic_release",
+      "status_code": null,
+      "subject_annotation_annotated_count": 0,
+      "subject_annotation_record_count": 0,
+      "subject_annotation_source_counts": {},
+      "subject_annotation_status": "",
+      "tool_executable": "",
+      "tool_version": null,
+      "total_bases": null,
+      "validation_status": "valid",
+      "warnings": []
+    },
+    "blast_preflight": {
+      "blastn": {
+        "detail": null,
+        "env_var": "",
+        "error": null,
+        "executable": "",
+        "found": false,
+        "resolved_path": null,
+        "status_code": null,
+        "tool": "",
+        "version": null,
+        "version_probe_ok": false
+      },
+      "makeblastdb": {
+        "detail": null,
+        "env_var": "",
+        "error": null,
+        "executable": "",
+        "found": false,
+        "resolved_path": null,
+        "status_code": null,
+        "tool": "",
+        "version": null,
+        "version_probe_ok": false
+      },
+      "schema": ""
+    },
+    "blast_runs": [],
+    "characterization_dimensions": [],
+    "compaction": {
+      "detail_mode": "compact",
+      "pairing_candidate_comparison_count": 1,
+      "raw_amplicon_count": 1,
+      "raw_forward_hit_count": 1,
+      "raw_reverse_hit_count": 1,
+      "retained_amplicon_count": 1,
+      "retained_forward_hit_count": 1,
+      "retained_reverse_hit_count": 1
+    },
+    "design_provenance": {
+      "status": "not_run",
+      "summary": ""
+    },
+    "effective_settings_summary": {},
+    "export_kinds": [],
+    "external_inputs": [],
+    "forward_hits": [
+      {
+        "accepted_by_policy": true,
+        "alignment_length_bp": 20,
+        "binding_end_1based": 20,
+        "binding_start_1based": 1,
+        "bit_score": 40.0,
+        "effective_mismatches": 0,
+        "evalue": 0.001,
+        "full_alignment": {
+          "algorithm": "blast_full_query_aligned_strings_v1",
+          "aligned_subject_end_1based": 20,
+          "aligned_subject_start_1based": 1,
+          "cigar": "20M",
+          "deletions": 0,
+          "effective_mismatches": 0,
+          "gap_extend_score": -2,
+          "gap_open_score": -5,
+          "insertions": 0,
+          "match_score": 2,
+          "matches": 20,
+          "mismatch_score": -3,
+          "mismatches": 0,
+          "query_alignment": "ACGTACGTACGTACGTACGT",
+          "relation_alignment": "||||||||||||||||||||",
+          "score": 40,
+          "status": "complete",
+          "strand": "+",
+          "subject_alignment": "ACGTACGTACGTACGTACGT",
+          "subject_window_end_1based": 20,
+          "subject_window_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "subject_window_start_1based": 1,
+          "three_prime_mismatches": 0,
+          "three_prime_window_bp": 5
+        },
+        "gap_opens": 0,
+        "hit_index": 0,
+        "identity_percent": 100.0,
+        "mismatches": 0,
+        "query_coverage_fraction": 1.0,
+        "query_end_1based": 20,
+        "query_start_1based": 1,
+        "rejection_reasons": [],
+        "role": "forward",
+        "strand": "+",
+        "subject_end_1based": 20,
+        "subject_id": "synthetic_transcript.1",
+        "subject_max_1based": 20,
+        "subject_min_1based": 1,
+        "subject_start_1based": 1,
+        "three_prime_mismatches": 0,
+        "three_prime_window_bp": 5,
+        "unaligned_query_bases": 0
+      }
+    ],
+    "generated_at_unix_ms": 0,
+    "genomic_specificity": {
+      "compatible_product_count": 0,
+      "contiguous_intended_product_expected": false,
+      "expected_intended_product_count": 0,
+      "failing_off_target_product_count": 0,
+      "intended_product_observed": false,
+      "intended_target_model": "unknown",
+      "observed_intended_product_count": 0,
+      "status": "",
+      "summary": "",
+      "target_space": ""
+    },
+    "intended_target": {
+      "contiguous_genomic_product_expected": false,
+      "expected_products": [
+        {
+          "expected_product_range": {
+            "end_1based": 100,
+            "start_1based": 1
+          },
+          "source_transcript_id": "synthetic_transcript.1",
+          "subject_id": "synthetic_transcript.1",
+          "target_space": "transcriptome_cdna"
+        }
+      ],
+      "forward_binding_ranges": [],
+      "model": "transcript_set",
+      "reference_binding": {
+        "assembly": null,
+        "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fingerprint_algorithm": "synthetic_sha256",
+        "genome_id": "synthetic_cdna",
+        "index_kind": "transcriptome_cdna",
+        "release": "synthetic_release",
+        "subject_annotation_fingerprint": null,
+        "subject_annotation_fingerprint_algorithm": null
+      },
+      "reverse_binding_ranges": [],
+      "source": "synthetic_fixture",
+      "subject_id": null,
+      "warnings": []
+    },
+    "policy": {
+      "allow_same_gene_splice_variants": false,
+      "avoid_known_variants": false,
+      "avoid_low_complexity": false,
+      "avoid_rmsk_repeats": false,
+      "full_alignment": {
+        "gap_extend_score": -2,
+        "gap_open_score": -5,
+        "match_score": 2,
+        "mismatch_score": -3,
+        "mode": "best_effort",
+        "subject_flank_bp": 0
+      },
+      "max_3prime_mismatches": 0,
+      "max_hits_per_primer": 500,
+      "max_target_amplicon_bp": 4000,
+      "min_primer_coverage_fraction": 0.8,
+      "min_total_mismatches_to_unintended_target": 2,
+      "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+      "report_detail_mode": "compact",
+      "specificity_check": "report_only",
+      "three_prime_window_bp": 5
+    },
+    "primers": [
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "ACGTACGTACGTACGTACGT",
+        "full_sequence": "ACGTACGTACGTACGTACGT",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "forward"
+      },
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "TGCATGCATGCATGCATGCA",
+        "full_sequence": "TGCATGCATGCATGCATGCA",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "reverse"
+      }
+    ],
+    "raw_detail_artifacts": [
+      {
+        "checksum": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+        "source_id": "",
+        "source_kind": ""
+      },
+      {
+        "checksum": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+        "source_id": "",
+        "source_kind": ""
+      }
+    ],
+    "related_seq_ids": [],
+    "report_id": "synthetic_saved_specificity_report",
+    "request_summary": {},
+    "reverse_hits": [
+      {
+        "accepted_by_policy": true,
+        "alignment_length_bp": 20,
+        "bit_score": 40.0,
+        "effective_mismatches": 0,
+        "evalue": 0.001,
+        "gap_opens": 0,
+        "hit_index": 0,
+        "identity_percent": 100.0,
+        "mismatches": 0,
+        "query_coverage_fraction": 1.0,
+        "query_end_1based": 20,
+        "query_start_1based": 1,
+        "rejection_reasons": [],
+        "role": "reverse",
+        "strand": "-",
+        "subject_end_1based": 81,
+        "subject_id": "synthetic_transcript.1",
+        "subject_max_1based": 100,
+        "subject_min_1based": 81,
+        "subject_start_1based": 100,
+        "three_prime_mismatches": 0,
+        "three_prime_window_bp": 5,
+        "unaligned_query_bases": 0
+      }
+    ],
+    "schema": "gentle.primer_specificity_report.v4",
+    "search_completeness": {
+      "command_count": 2,
+      "complete": true,
+      "database_sequence_count": 2,
+      "observed_min_max_target_seqs": 3,
+      "reason": "synthetic subject-coverage evidence only",
+      "required_max_target_seqs": 3,
+      "status": "complete"
+    },
+    "summary": {
+      "accepted_primer_hit_count": 2,
+      "amplicon_count": 1,
+      "failing_unintended_amplicon_count": 0,
+      "intended_amplicon_count": 1,
+      "long_product_warning_count": 0,
+      "primer_hit_count": 2,
+      "specificity_pass": true,
+      "status": "pass",
+      "summary": "",
+      "unintended_amplicon_count": 0
+    },
+    "target_genome_id": "synthetic_cdna",
+    "target_kind": "transcriptome_cdna",
+    "transcriptome_specificity": {
+      "compatible_product_count": 1,
+      "contiguous_intended_product_expected": false,
+      "expected_intended_product_count": 1,
+      "failing_off_target_product_count": 0,
+      "intended_product_observed": true,
+      "intended_target_model": "transcript_set",
+      "observed_intended_product_count": 1,
+      "status": "pass",
+      "summary": "",
+      "target_space": "transcriptome_cdna"
+    },
+    "warnings": []
+  },
+  "report_sha256": "sha256:ee14497d3a14489254bc7688e2d5e87f8acb685dcf25afe8f66a543686044b36",
+  "selection_id": "specificity_selection_91022ad77c4e58c3",
+  "single_handoff": {
+    "blast_database": {
+      "blast_database_version": null,
+      "blastdbcmd_reachable": false,
+      "compatible_operations": [],
+      "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint_algorithm": "synthetic_sha256",
+      "index_files_present": false,
+      "index_kind": "transcriptome_cdna",
+      "masking": "",
+      "prefix": "",
+      "schema": "",
+      "sequence_count": 2,
+      "source_assembly": null,
+      "source_genome_id": "synthetic_cdna",
+      "source_release": "synthetic_release",
+      "status_code": null,
+      "subject_annotation_annotated_count": 0,
+      "subject_annotation_record_count": 0,
+      "subject_annotation_source_counts": {},
+      "subject_annotation_status": "",
+      "tool_executable": "",
+      "tool_version": null,
+      "total_bases": null,
+      "validation_status": "valid",
+      "warnings": []
+    },
+    "blast_db_prefix": "",
+    "blast_preflight": {
+      "blastn": {
+        "detail": null,
+        "env_var": "",
+        "error": null,
+        "executable": "",
+        "found": false,
+        "resolved_path": null,
+        "status_code": null,
+        "tool": "",
+        "version": null,
+        "version_probe_ok": false
+      },
+      "makeblastdb": {
+        "detail": null,
+        "env_var": "",
+        "error": null,
+        "executable": "",
+        "found": false,
+        "resolved_path": null,
+        "status_code": null,
+        "tool": "",
+        "version": null,
+        "version_probe_ok": false
+      },
+      "schema": ""
+    },
+    "bundle_dir": "",
+    "commands": [
+      {
+        "args": [
+          "-evalue",
+          "1000",
+          "-max_target_seqs",
+          "3"
+        ],
+        "command_id": "synthetic:forward",
+        "command_line": "",
+        "output_tsv_path": "synthetic/forward.tsv",
+        "program": "not_executed_blastn",
+        "query_fasta_path": "synthetic/forward.fa",
+        "query_label": "forward",
+        "query_length_bp": 20,
+        "role": "forward",
+        "success_exit_codes": [
+          0
+        ]
+      },
+      {
+        "args": [
+          "-evalue",
+          "1000",
+          "-max_target_seqs",
+          "3"
+        ],
+        "command_id": "synthetic:reverse",
+        "command_line": "",
+        "output_tsv_path": "synthetic/reverse.tsv",
+        "program": "not_executed_blastn",
+        "query_fasta_path": "synthetic/reverse.fa",
+        "query_label": "reverse",
+        "query_length_bp": 20,
+        "role": "reverse",
+        "success_exit_codes": [
+          0
+        ]
+      }
+    ],
+    "completion_policy": "all_commands_success",
+    "design_provenance": {
+      "status": "not_run",
+      "summary": ""
+    },
+    "handoff_id": "primer_specificity_handoff_4ed6819f64d5c420",
+    "handoff_path": "",
+    "import_command": [],
+    "import_command_line": "",
+    "intended_target": {
+      "contiguous_genomic_product_expected": false,
+      "expected_products": [
+        {
+          "expected_product_range": {
+            "end_1based": 100,
+            "start_1based": 1
+          },
+          "source_transcript_id": "synthetic_transcript.1",
+          "subject_id": "synthetic_transcript.1",
+          "target_space": "transcriptome_cdna"
+        }
+      ],
+      "forward_binding_ranges": [],
+      "model": "transcript_set",
+      "reference_binding": {
+        "assembly": null,
+        "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fingerprint_algorithm": "synthetic_sha256",
+        "genome_id": "synthetic_cdna",
+        "index_kind": "transcriptome_cdna",
+        "release": "synthetic_release",
+        "subject_annotation_fingerprint": null,
+        "subject_annotation_fingerprint_algorithm": null
+      },
+      "reverse_binding_ranges": [],
+      "source": "synthetic_fixture",
+      "subject_id": null,
+      "warnings": []
+    },
+    "policy": {
+      "allow_same_gene_splice_variants": false,
+      "avoid_known_variants": false,
+      "avoid_low_complexity": false,
+      "avoid_rmsk_repeats": false,
+      "full_alignment": {
+        "gap_extend_score": -2,
+        "gap_open_score": -5,
+        "match_score": 2,
+        "mismatch_score": -3,
+        "mode": "best_effort",
+        "subject_flank_bp": 0
+      },
+      "max_3prime_mismatches": 0,
+      "max_hits_per_primer": 500,
+      "max_target_amplicon_bp": 4000,
+      "min_primer_coverage_fraction": 0.8,
+      "min_total_mismatches_to_unintended_target": 2,
+      "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+      "report_detail_mode": "compact",
+      "specificity_check": "report_only",
+      "three_prime_window_bp": 5
+    },
+    "primers": [
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "ACGTACGTACGTACGTACGT",
+        "full_sequence": "ACGTACGTACGTACGTACGT",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "forward"
+      },
+      {
+        "annealing_length_bp": 20,
+        "annealing_sequence": "TGCATGCATGCATGCATGCA",
+        "full_sequence": "TGCATGCATGCATGCATGCA",
+        "non_annealing_5prime_tail": "",
+        "non_annealing_5prime_tail_bp": 0,
+        "role": "reverse"
+      }
+    ],
+    "related_seq_ids": [],
+    "requested_target_genome_id": "synthetic_cdna",
+    "resolved_target_genome_id": "synthetic_cdna",
+    "schema": "gentle.primer_specificity_handoff.v1",
+    "search_completeness": {
+      "command_count": 2,
+      "complete": true,
+      "database_sequence_count": 2,
+      "observed_min_max_target_seqs": 3,
+      "reason": "synthetic subject-coverage evidence only",
+      "required_max_target_seqs": 3,
+      "status": "complete"
+    },
+    "warnings": []
+  },
+  "store": {
+    "active_primer_specificity_reference_selections": {
+      "synthetic_panel:transcriptome_cdna": "specificity_selection_91022ad77c4e58c3"
+    },
+    "external_primer_pair_imports": {},
+    "oligo_order_forms": {},
+    "primer_specificity_multi_summaries": {
+      "primer_multi_summary_eb9fd5e8a289b5e6f1cc5aa0cff85df53098daa7bf7397123fc09274b6642d5e": {
+        "content_sha256": "sha256:eb9fd5e8a289b5e6f1cc5aa0cff85df53098daa7bf7397123fc09274b6642d5e",
+        "execution_complete": true,
+        "execution_manifest": {
+          "commands": [
+            {
+              "command_id": "synthetic:forward",
+              "command_sha256": "sha256:425bf3aedfc528b2dbc307f4d011a3d80a7dc64782cd407884b4970ba2bc5a71",
+              "exit_code": 0,
+              "output_path": "synthetic/forward.tsv",
+              "output_sha256": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+              "output_size_bytes": 110,
+              "state": "completed"
+            },
+            {
+              "command_id": "synthetic:reverse",
+              "command_sha256": "sha256:38d58ce73fdd3b732af926832ab851850a178b5be0be91eae7efab298aff906b",
+              "exit_code": 0,
+              "output_path": "synthetic/reverse.tsv",
+              "output_sha256": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+              "output_size_bytes": 67,
+              "state": "completed"
+            }
+          ],
+          "handoff_content_sha256": "sha256:56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+          "handoff_id": "primer_multi_56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+          "pair_binding_sha256": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9",
+          "schema": "gentle.primer_pair_multi_reference_execution_manifest.v1"
+        },
+        "genomic": "not_requested",
+        "handoff_id": "primer_multi_56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+        "nonclaims": [
+          "Specificity applies only to the explicitly bound prepared references and policy, not every genome or transcript.",
+          "A hash binds retained content; it does not authenticate external process execution.",
+          "This standalone summary does not establish isoform discrimination, oligo QC, laboratory validation or order readiness.",
+          "Current applicability is checked at import; historical display performs no database probes."
+        ],
+        "pair_binding_sha256": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9",
+        "references": [
+          {
+            "applicability": "synthetic_fixture_only",
+            "diagnostics": [],
+            "genome_id": "synthetic_cdna",
+            "index_kind": "transcriptome_cdna",
+            "reference": {
+              "assembly": null,
+              "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "fingerprint_algorithm": "synthetic_sha256",
+              "genome_id": "synthetic_cdna",
+              "index_kind": "transcriptome_cdna",
+              "release": "synthetic_release",
+              "subject_annotation_fingerprint": null,
+              "subject_annotation_fingerprint_algorithm": null
+            },
+            "report": {
+              "amplicons": [
+                {
+                  "combined_mismatches": 0,
+                  "end_1based": 100,
+                  "failure_reasons": [],
+                  "intended": true,
+                  "intended_reason": "synthetic_fixture",
+                  "kind": "forward_reverse",
+                  "left_hit_index": 0,
+                  "left_role": "forward",
+                  "length_bp": 100,
+                  "long_product_warning": false,
+                  "max_three_prime_mismatches": 0,
+                  "reviewed_allowlisted": false,
+                  "right_hit_index": 0,
+                  "right_role": "reverse",
+                  "specificity_failure": false,
+                  "start_1based": 1,
+                  "subject_id": "synthetic_transcript.1",
+                  "terminal_policy_pass": true,
+                  "within_readiness_amplicon_range": true
+                }
+              ],
+              "blast_database": {
+                "blast_database_version": null,
+                "blastdbcmd_reachable": false,
+                "compatible_operations": [],
+                "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "fingerprint_algorithm": "synthetic_sha256",
+                "index_files_present": false,
+                "index_kind": "transcriptome_cdna",
+                "masking": "",
+                "prefix": "",
+                "schema": "",
+                "sequence_count": 2,
+                "source_assembly": null,
+                "source_genome_id": "synthetic_cdna",
+                "source_release": "synthetic_release",
+                "status_code": null,
+                "subject_annotation_annotated_count": 0,
+                "subject_annotation_record_count": 0,
+                "subject_annotation_source_counts": {},
+                "subject_annotation_status": "",
+                "tool_executable": "",
+                "tool_version": null,
+                "total_bases": null,
+                "validation_status": "valid",
+                "warnings": []
+              },
+              "blast_preflight": {
+                "blastn": {
+                  "detail": null,
+                  "env_var": "",
+                  "error": null,
+                  "executable": "",
+                  "found": false,
+                  "resolved_path": null,
+                  "status_code": null,
+                  "tool": "",
+                  "version": null,
+                  "version_probe_ok": false
+                },
+                "makeblastdb": {
+                  "detail": null,
+                  "env_var": "",
+                  "error": null,
+                  "executable": "",
+                  "found": false,
+                  "resolved_path": null,
+                  "status_code": null,
+                  "tool": "",
+                  "version": null,
+                  "version_probe_ok": false
+                },
+                "schema": ""
+              },
+              "blast_runs": [],
+              "characterization_dimensions": [],
+              "compaction": {
+                "detail_mode": "compact",
+                "pairing_candidate_comparison_count": 1,
+                "raw_amplicon_count": 1,
+                "raw_forward_hit_count": 1,
+                "raw_reverse_hit_count": 1,
+                "retained_amplicon_count": 1,
+                "retained_forward_hit_count": 1,
+                "retained_reverse_hit_count": 1
+              },
+              "design_provenance": {
+                "status": "not_run",
+                "summary": ""
+              },
+              "effective_settings_summary": {},
+              "export_kinds": [],
+              "external_inputs": [],
+              "forward_hits": [
+                {
+                  "accepted_by_policy": true,
+                  "alignment_length_bp": 20,
+                  "binding_end_1based": 20,
+                  "binding_start_1based": 1,
+                  "bit_score": 40.0,
+                  "effective_mismatches": 0,
+                  "evalue": 0.001,
+                  "full_alignment": {
+                    "algorithm": "blast_full_query_aligned_strings_v1",
+                    "aligned_subject_end_1based": 20,
+                    "aligned_subject_start_1based": 1,
+                    "cigar": "20M",
+                    "deletions": 0,
+                    "effective_mismatches": 0,
+                    "gap_extend_score": -2,
+                    "gap_open_score": -5,
+                    "insertions": 0,
+                    "match_score": 2,
+                    "matches": 20,
+                    "mismatch_score": -3,
+                    "mismatches": 0,
+                    "query_alignment": "ACGTACGTACGTACGTACGT",
+                    "relation_alignment": "||||||||||||||||||||",
+                    "score": 40,
+                    "status": "complete",
+                    "strand": "+",
+                    "subject_alignment": "ACGTACGTACGTACGTACGT",
+                    "subject_window_end_1based": 20,
+                    "subject_window_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "subject_window_start_1based": 1,
+                    "three_prime_mismatches": 0,
+                    "three_prime_window_bp": 5
+                  },
+                  "gap_opens": 0,
+                  "hit_index": 0,
+                  "identity_percent": 100.0,
+                  "mismatches": 0,
+                  "query_coverage_fraction": 1.0,
+                  "query_end_1based": 20,
+                  "query_start_1based": 1,
+                  "rejection_reasons": [],
+                  "role": "forward",
+                  "strand": "+",
+                  "subject_end_1based": 20,
+                  "subject_id": "synthetic_transcript.1",
+                  "subject_max_1based": 20,
+                  "subject_min_1based": 1,
+                  "subject_start_1based": 1,
+                  "three_prime_mismatches": 0,
+                  "three_prime_window_bp": 5,
+                  "unaligned_query_bases": 0
+                }
+              ],
+              "generated_at_unix_ms": 0,
+              "genomic_specificity": {
+                "compatible_product_count": 0,
+                "contiguous_intended_product_expected": false,
+                "expected_intended_product_count": 0,
+                "failing_off_target_product_count": 0,
+                "intended_product_observed": false,
+                "intended_target_model": "unknown",
+                "observed_intended_product_count": 0,
+                "status": "",
+                "summary": "",
+                "target_space": ""
+              },
+              "intended_target": {
+                "contiguous_genomic_product_expected": false,
+                "expected_products": [
+                  {
+                    "expected_product_range": {
+                      "end_1based": 100,
+                      "start_1based": 1
+                    },
+                    "source_transcript_id": "synthetic_transcript.1",
+                    "subject_id": "synthetic_transcript.1",
+                    "target_space": "transcriptome_cdna"
+                  }
+                ],
+                "forward_binding_ranges": [],
+                "model": "transcript_set",
+                "reference_binding": {
+                  "assembly": null,
+                  "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "fingerprint_algorithm": "synthetic_sha256",
+                  "genome_id": "synthetic_cdna",
+                  "index_kind": "transcriptome_cdna",
+                  "release": "synthetic_release",
+                  "subject_annotation_fingerprint": null,
+                  "subject_annotation_fingerprint_algorithm": null
+                },
+                "reverse_binding_ranges": [],
+                "source": "synthetic_fixture",
+                "subject_id": null,
+                "warnings": []
+              },
+              "policy": {
+                "allow_same_gene_splice_variants": false,
+                "avoid_known_variants": false,
+                "avoid_low_complexity": false,
+                "avoid_rmsk_repeats": false,
+                "full_alignment": {
+                  "gap_extend_score": -2,
+                  "gap_open_score": -5,
+                  "match_score": 2,
+                  "mismatch_score": -3,
+                  "mode": "best_effort",
+                  "subject_flank_bp": 0
+                },
+                "max_3prime_mismatches": 0,
+                "max_hits_per_primer": 500,
+                "max_target_amplicon_bp": 4000,
+                "min_primer_coverage_fraction": 0.8,
+                "min_total_mismatches_to_unintended_target": 2,
+                "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+                "report_detail_mode": "compact",
+                "specificity_check": "report_only",
+                "three_prime_window_bp": 5
+              },
+              "primers": [
+                {
+                  "annealing_length_bp": 20,
+                  "annealing_sequence": "ACGTACGTACGTACGTACGT",
+                  "full_sequence": "ACGTACGTACGTACGTACGT",
+                  "non_annealing_5prime_tail": "",
+                  "non_annealing_5prime_tail_bp": 0,
+                  "role": "forward"
+                },
+                {
+                  "annealing_length_bp": 20,
+                  "annealing_sequence": "TGCATGCATGCATGCATGCA",
+                  "full_sequence": "TGCATGCATGCATGCATGCA",
+                  "non_annealing_5prime_tail": "",
+                  "non_annealing_5prime_tail_bp": 0,
+                  "role": "reverse"
+                }
+              ],
+              "raw_detail_artifacts": [
+                {
+                  "checksum": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+                  "source_id": "",
+                  "source_kind": ""
+                },
+                {
+                  "checksum": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+                  "source_id": "",
+                  "source_kind": ""
+                }
+              ],
+              "related_seq_ids": [],
+              "report_id": "synthetic_saved_specificity_report",
+              "request_summary": {},
+              "reverse_hits": [
+                {
+                  "accepted_by_policy": true,
+                  "alignment_length_bp": 20,
+                  "bit_score": 40.0,
+                  "effective_mismatches": 0,
+                  "evalue": 0.001,
+                  "gap_opens": 0,
+                  "hit_index": 0,
+                  "identity_percent": 100.0,
+                  "mismatches": 0,
+                  "query_coverage_fraction": 1.0,
+                  "query_end_1based": 20,
+                  "query_start_1based": 1,
+                  "rejection_reasons": [],
+                  "role": "reverse",
+                  "strand": "-",
+                  "subject_end_1based": 81,
+                  "subject_id": "synthetic_transcript.1",
+                  "subject_max_1based": 100,
+                  "subject_min_1based": 81,
+                  "subject_start_1based": 100,
+                  "three_prime_mismatches": 0,
+                  "three_prime_window_bp": 5,
+                  "unaligned_query_bases": 0
+                }
+              ],
+              "schema": "gentle.primer_specificity_report.v4",
+              "search_completeness": {
+                "command_count": 2,
+                "complete": true,
+                "database_sequence_count": 2,
+                "observed_min_max_target_seqs": 3,
+                "reason": "synthetic subject-coverage evidence only",
+                "required_max_target_seqs": 3,
+                "status": "complete"
+              },
+              "summary": {
+                "accepted_primer_hit_count": 2,
+                "amplicon_count": 1,
+                "failing_unintended_amplicon_count": 0,
+                "intended_amplicon_count": 1,
+                "long_product_warning_count": 0,
+                "primer_hit_count": 2,
+                "specificity_pass": true,
+                "status": "pass",
+                "summary": "",
+                "unintended_amplicon_count": 0
+              },
+              "target_genome_id": "synthetic_cdna",
+              "target_kind": "transcriptome_cdna",
+              "transcriptome_specificity": {
+                "compatible_product_count": 1,
+                "contiguous_intended_product_expected": false,
+                "expected_intended_product_count": 1,
+                "failing_off_target_product_count": 0,
+                "intended_product_observed": true,
+                "intended_target_model": "transcript_set",
+                "observed_intended_product_count": 1,
+                "status": "pass",
+                "summary": "",
+                "target_space": "transcriptome_cdna"
+              },
+              "warnings": []
+            },
+            "required": true,
+            "verdict": "pass"
+          }
+        ],
+        "request": {
+          "pair": {
+            "forward": {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "ACGTACGTACGTACGTACGT",
+              "full_sequence": "ACGTACGTACGTACGTACGT",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "forward"
+            },
+            "kind": "explicit_pair",
+            "reverse": {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "TGCATGCATGCATGCATGCA",
+              "full_sequence": "TGCATGCATGCATGCATGCA",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "reverse"
+            }
+          },
+          "policy": {
+            "allow_same_gene_splice_variants": false,
+            "avoid_known_variants": false,
+            "avoid_low_complexity": false,
+            "avoid_rmsk_repeats": false,
+            "full_alignment": {
+              "gap_extend_score": -2,
+              "gap_open_score": -5,
+              "match_score": 2,
+              "mismatch_score": -3,
+              "mode": "best_effort",
+              "subject_flank_bp": 0
+            },
+            "max_3prime_mismatches": 0,
+            "max_hits_per_primer": 500,
+            "max_target_amplicon_bp": 4000,
+            "min_primer_coverage_fraction": 0.8,
+            "min_total_mismatches_to_unintended_target": 2,
+            "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+            "report_detail_mode": "compact",
+            "specificity_check": "report_only",
+            "three_prime_window_bp": 5
+          },
+          "references": [
+            {
+              "expected_index_kind": "transcriptome_cdna",
+              "intended_target": {
+                "contiguous_genomic_product_expected": false,
+                "expected_products": [
+                  {
+                    "expected_product_range": {
+                      "end_1based": 100,
+                      "start_1based": 1
+                    },
+                    "source_transcript_id": "synthetic_transcript.1",
+                    "subject_id": "synthetic_transcript.1",
+                    "target_space": "transcriptome_cdna"
+                  }
+                ],
+                "forward_binding_ranges": [],
+                "model": "transcript_set",
+                "reference_binding": {
+                  "assembly": null,
+                  "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "fingerprint_algorithm": "synthetic_sha256",
+                  "genome_id": "synthetic_cdna",
+                  "index_kind": "transcriptome_cdna",
+                  "release": "synthetic_release",
+                  "subject_annotation_fingerprint": null,
+                  "subject_annotation_fingerprint_algorithm": null
+                },
+                "reverse_binding_ranges": [],
+                "source": "synthetic_fixture",
+                "subject_id": null,
+                "warnings": []
+              },
+              "required": true,
+              "target_genome_id": "synthetic_cdna"
+            }
+          ],
+          "schema": "gentle.primer_pair_multi_reference_request.v1"
+        },
+        "schema": "gentle.primer_pair_multi_reference_summary.v1",
+        "source_snapshot_sha256": null,
+        "summary_id": "primer_multi_summary_eb9fd5e8a289b5e6f1cc5aa0cff85df53098daa7bf7397123fc09274b6642d5e",
+        "transcriptome": "pass"
+      }
+    },
+    "primer_specificity_panel_sources": {},
+    "primer_specificity_reference_selections": {
+      "specificity_selection_91022ad77c4e58c3": {
+        "acceptance": {
+          "acceptance_id": "synthetic_acceptance",
+          "accepted": true,
+          "assessed_assay_count": 1,
+          "assessments": [
+            {
+              "assay_id": "synthetic_assay",
+              "assay_rank": 1,
+              "report": {
+                "amplicons": [
+                  {
+                    "combined_mismatches": 0,
+                    "end_1based": 100,
+                    "failure_reasons": [],
+                    "intended": true,
+                    "intended_reason": "synthetic_fixture",
+                    "kind": "forward_reverse",
+                    "left_hit_index": 0,
+                    "left_role": "forward",
+                    "length_bp": 100,
+                    "long_product_warning": false,
+                    "max_three_prime_mismatches": 0,
+                    "reviewed_allowlisted": false,
+                    "right_hit_index": 0,
+                    "right_role": "reverse",
+                    "specificity_failure": false,
+                    "start_1based": 1,
+                    "subject_id": "synthetic_transcript.1",
+                    "terminal_policy_pass": true,
+                    "within_readiness_amplicon_range": true
+                  }
+                ],
+                "blast_database": {
+                  "blast_database_version": null,
+                  "blastdbcmd_reachable": false,
+                  "compatible_operations": [],
+                  "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "fingerprint_algorithm": "synthetic_sha256",
+                  "index_files_present": false,
+                  "index_kind": "transcriptome_cdna",
+                  "masking": "",
+                  "prefix": "",
+                  "schema": "",
+                  "sequence_count": 2,
+                  "source_assembly": null,
+                  "source_genome_id": "synthetic_cdna",
+                  "source_release": "synthetic_release",
+                  "status_code": null,
+                  "subject_annotation_annotated_count": 0,
+                  "subject_annotation_record_count": 0,
+                  "subject_annotation_source_counts": {},
+                  "subject_annotation_status": "",
+                  "tool_executable": "",
+                  "tool_version": null,
+                  "total_bases": null,
+                  "validation_status": "valid",
+                  "warnings": []
+                },
+                "blast_preflight": {
+                  "blastn": {
+                    "detail": null,
+                    "env_var": "",
+                    "error": null,
+                    "executable": "",
+                    "found": false,
+                    "resolved_path": null,
+                    "status_code": null,
+                    "tool": "",
+                    "version": null,
+                    "version_probe_ok": false
+                  },
+                  "makeblastdb": {
+                    "detail": null,
+                    "env_var": "",
+                    "error": null,
+                    "executable": "",
+                    "found": false,
+                    "resolved_path": null,
+                    "status_code": null,
+                    "tool": "",
+                    "version": null,
+                    "version_probe_ok": false
+                  },
+                  "schema": ""
+                },
+                "blast_runs": [],
+                "characterization_dimensions": [],
+                "compaction": {
+                  "detail_mode": "compact",
+                  "pairing_candidate_comparison_count": 1,
+                  "raw_amplicon_count": 1,
+                  "raw_forward_hit_count": 1,
+                  "raw_reverse_hit_count": 1,
+                  "retained_amplicon_count": 1,
+                  "retained_forward_hit_count": 1,
+                  "retained_reverse_hit_count": 1
+                },
+                "design_provenance": {
+                  "status": "not_run",
+                  "summary": ""
+                },
+                "effective_settings_summary": {},
+                "export_kinds": [],
+                "external_inputs": [],
+                "forward_hits": [
+                  {
+                    "accepted_by_policy": true,
+                    "alignment_length_bp": 20,
+                    "binding_end_1based": 20,
+                    "binding_start_1based": 1,
+                    "bit_score": 40.0,
+                    "effective_mismatches": 0,
+                    "evalue": 0.001,
+                    "full_alignment": {
+                      "algorithm": "blast_full_query_aligned_strings_v1",
+                      "aligned_subject_end_1based": 20,
+                      "aligned_subject_start_1based": 1,
+                      "cigar": "20M",
+                      "deletions": 0,
+                      "effective_mismatches": 0,
+                      "gap_extend_score": -2,
+                      "gap_open_score": -5,
+                      "insertions": 0,
+                      "match_score": 2,
+                      "matches": 20,
+                      "mismatch_score": -3,
+                      "mismatches": 0,
+                      "query_alignment": "ACGTACGTACGTACGTACGT",
+                      "relation_alignment": "||||||||||||||||||||",
+                      "score": 40,
+                      "status": "complete",
+                      "strand": "+",
+                      "subject_alignment": "ACGTACGTACGTACGTACGT",
+                      "subject_window_end_1based": 20,
+                      "subject_window_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "subject_window_start_1based": 1,
+                      "three_prime_mismatches": 0,
+                      "three_prime_window_bp": 5
+                    },
+                    "gap_opens": 0,
+                    "hit_index": 0,
+                    "identity_percent": 100.0,
+                    "mismatches": 0,
+                    "query_coverage_fraction": 1.0,
+                    "query_end_1based": 20,
+                    "query_start_1based": 1,
+                    "rejection_reasons": [],
+                    "role": "forward",
+                    "strand": "+",
+                    "subject_end_1based": 20,
+                    "subject_id": "synthetic_transcript.1",
+                    "subject_max_1based": 20,
+                    "subject_min_1based": 1,
+                    "subject_start_1based": 1,
+                    "three_prime_mismatches": 0,
+                    "three_prime_window_bp": 5,
+                    "unaligned_query_bases": 0
+                  }
+                ],
+                "generated_at_unix_ms": 0,
+                "genomic_specificity": {
+                  "compatible_product_count": 0,
+                  "contiguous_intended_product_expected": false,
+                  "expected_intended_product_count": 0,
+                  "failing_off_target_product_count": 0,
+                  "intended_product_observed": false,
+                  "intended_target_model": "unknown",
+                  "observed_intended_product_count": 0,
+                  "status": "",
+                  "summary": "",
+                  "target_space": ""
+                },
+                "intended_target": {
+                  "contiguous_genomic_product_expected": false,
+                  "expected_products": [
+                    {
+                      "expected_product_range": {
+                        "end_1based": 100,
+                        "start_1based": 1
+                      },
+                      "source_transcript_id": "synthetic_transcript.1",
+                      "subject_id": "synthetic_transcript.1",
+                      "target_space": "transcriptome_cdna"
+                    }
+                  ],
+                  "forward_binding_ranges": [],
+                  "model": "transcript_set",
+                  "reference_binding": {
+                    "assembly": null,
+                    "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "fingerprint_algorithm": "synthetic_sha256",
+                    "genome_id": "synthetic_cdna",
+                    "index_kind": "transcriptome_cdna",
+                    "release": "synthetic_release",
+                    "subject_annotation_fingerprint": null,
+                    "subject_annotation_fingerprint_algorithm": null
+                  },
+                  "reverse_binding_ranges": [],
+                  "source": "synthetic_fixture",
+                  "subject_id": null,
+                  "warnings": []
+                },
+                "policy": {
+                  "allow_same_gene_splice_variants": false,
+                  "avoid_known_variants": false,
+                  "avoid_low_complexity": false,
+                  "avoid_rmsk_repeats": false,
+                  "full_alignment": {
+                    "gap_extend_score": -2,
+                    "gap_open_score": -5,
+                    "match_score": 2,
+                    "mismatch_score": -3,
+                    "mode": "best_effort",
+                    "subject_flank_bp": 0
+                  },
+                  "max_3prime_mismatches": 0,
+                  "max_hits_per_primer": 500,
+                  "max_target_amplicon_bp": 4000,
+                  "min_primer_coverage_fraction": 0.8,
+                  "min_total_mismatches_to_unintended_target": 2,
+                  "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+                  "report_detail_mode": "compact",
+                  "specificity_check": "report_only",
+                  "three_prime_window_bp": 5
+                },
+                "primers": [
+                  {
+                    "annealing_length_bp": 20,
+                    "annealing_sequence": "ACGTACGTACGTACGTACGT",
+                    "full_sequence": "ACGTACGTACGTACGTACGT",
+                    "non_annealing_5prime_tail": "",
+                    "non_annealing_5prime_tail_bp": 0,
+                    "role": "forward"
+                  },
+                  {
+                    "annealing_length_bp": 20,
+                    "annealing_sequence": "TGCATGCATGCATGCATGCA",
+                    "full_sequence": "TGCATGCATGCATGCATGCA",
+                    "non_annealing_5prime_tail": "",
+                    "non_annealing_5prime_tail_bp": 0,
+                    "role": "reverse"
+                  }
+                ],
+                "raw_detail_artifacts": [
+                  {
+                    "checksum": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+                    "source_id": "",
+                    "source_kind": ""
+                  },
+                  {
+                    "checksum": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+                    "source_id": "",
+                    "source_kind": ""
+                  }
+                ],
+                "related_seq_ids": [],
+                "report_id": "synthetic_saved_specificity_report",
+                "request_summary": {},
+                "reverse_hits": [
+                  {
+                    "accepted_by_policy": true,
+                    "alignment_length_bp": 20,
+                    "bit_score": 40.0,
+                    "effective_mismatches": 0,
+                    "evalue": 0.001,
+                    "gap_opens": 0,
+                    "hit_index": 0,
+                    "identity_percent": 100.0,
+                    "mismatches": 0,
+                    "query_coverage_fraction": 1.0,
+                    "query_end_1based": 20,
+                    "query_start_1based": 1,
+                    "rejection_reasons": [],
+                    "role": "reverse",
+                    "strand": "-",
+                    "subject_end_1based": 81,
+                    "subject_id": "synthetic_transcript.1",
+                    "subject_max_1based": 100,
+                    "subject_min_1based": 81,
+                    "subject_start_1based": 100,
+                    "three_prime_mismatches": 0,
+                    "three_prime_window_bp": 5,
+                    "unaligned_query_bases": 0
+                  }
+                ],
+                "schema": "gentle.primer_specificity_report.v4",
+                "search_completeness": {
+                  "command_count": 2,
+                  "complete": true,
+                  "database_sequence_count": 2,
+                  "observed_min_max_target_seqs": 3,
+                  "reason": "synthetic subject-coverage evidence only",
+                  "required_max_target_seqs": 3,
+                  "status": "complete"
+                },
+                "summary": {
+                  "accepted_primer_hit_count": 2,
+                  "amplicon_count": 1,
+                  "failing_unintended_amplicon_count": 0,
+                  "intended_amplicon_count": 1,
+                  "long_product_warning_count": 0,
+                  "primer_hit_count": 2,
+                  "specificity_pass": true,
+                  "status": "pass",
+                  "summary": "",
+                  "unintended_amplicon_count": 0
+                },
+                "target_genome_id": "synthetic_cdna",
+                "target_kind": "transcriptome_cdna",
+                "transcriptome_specificity": {
+                  "compatible_product_count": 1,
+                  "contiguous_intended_product_expected": false,
+                  "expected_intended_product_count": 1,
+                  "failing_off_target_product_count": 0,
+                  "intended_product_observed": true,
+                  "intended_target_model": "transcript_set",
+                  "observed_intended_product_count": 1,
+                  "status": "pass",
+                  "summary": "",
+                  "target_space": "transcriptome_cdna"
+                },
+                "warnings": []
+              },
+              "status": "external_blast_pass"
+            }
+          ],
+          "execution_failed_assay_ids": [],
+          "execution_manifest": {
+            "executions": [],
+            "handoff_id": "",
+            "panel_digest": "",
+            "schema": ""
+          },
+          "expected_assay_count": 1,
+          "failing_assay_ids": [],
+          "generated_at_unix_ms": 0,
+          "handoff_id": "",
+          "incomplete_assay_ids": [],
+          "issues": [],
+          "not_assessed_assay_ids": [],
+          "panel_digest": "sha256:6ec46f31a338182fd80cc16b490c7c4ac074213fefe4199780fb62d3c4ee29f7",
+          "panel_report_id": "synthetic_panel",
+          "passing_assay_ids": [],
+          "policy": {
+            "allow_same_gene_splice_variants": false,
+            "avoid_known_variants": false,
+            "avoid_low_complexity": false,
+            "avoid_rmsk_repeats": false,
+            "full_alignment": {
+              "gap_extend_score": -2,
+              "gap_open_score": -5,
+              "match_score": 2,
+              "mismatch_score": -3,
+              "mode": "best_effort",
+              "subject_flank_bp": 0
+            },
+            "max_3prime_mismatches": 0,
+            "max_hits_per_primer": 500,
+            "max_target_amplicon_bp": 4000,
+            "min_primer_coverage_fraction": 0.8,
+            "min_total_mismatches_to_unintended_target": 2,
+            "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+            "report_detail_mode": "compact",
+            "specificity_check": "report_only",
+            "three_prime_window_bp": 5
+          },
+          "policy_schema": "",
+          "requested_target_genome_id": "",
+          "resolved_target_genome_id": "",
+          "schema": "",
+          "status": "pass"
+        },
+        "pair_bindings_by_assay": {
+          "synthetic_assay": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9"
+        },
+        "panel_digest": "sha256:6ec46f31a338182fd80cc16b490c7c4ac074213fefe4199780fb62d3c4ee29f7",
+        "panel_report_id": "synthetic_panel",
+        "policy": {
+          "allow_same_gene_splice_variants": false,
+          "avoid_known_variants": false,
+          "avoid_low_complexity": false,
+          "avoid_rmsk_repeats": false,
+          "full_alignment": {
+            "gap_extend_score": -2,
+            "gap_open_score": -5,
+            "match_score": 2,
+            "mismatch_score": -3,
+            "mode": "best_effort",
+            "subject_flank_bp": 0
+          },
+          "max_3prime_mismatches": 0,
+          "max_hits_per_primer": 500,
+          "max_target_amplicon_bp": 4000,
+          "min_primer_coverage_fraction": 0.8,
+          "min_total_mismatches_to_unintended_target": 2,
+          "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+          "report_detail_mode": "compact",
+          "specificity_check": "report_only",
+          "three_prime_window_bp": 5
+        },
+        "reference": {
+          "assembly": null,
+          "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "fingerprint_algorithm": "synthetic_sha256",
+          "genome_id": "synthetic_cdna",
+          "index_kind": "transcriptome_cdna",
+          "release": "synthetic_release",
+          "subject_annotation_fingerprint": null,
+          "subject_annotation_fingerprint_algorithm": null
+        },
+        "replaces_selection_id": null,
+        "report_content_sha256_by_assay": {
+          "synthetic_assay": "sha256:ee14497d3a14489254bc7688e2d5e87f8acb685dcf25afe8f66a543686044b36"
+        },
+        "report_ids_by_assay": {
+          "synthetic_assay": "synthetic_saved_specificity_report"
+        },
+        "schema": "gentle.primer_specificity_reference_selection.v1",
+        "selection_id": "specificity_selection_91022ad77c4e58c3"
+      }
+    },
+    "primer_specificity_reports": {
+      "synthetic_saved_specificity_report": {
+        "amplicons": [
+          {
+            "combined_mismatches": 0,
+            "end_1based": 100,
+            "failure_reasons": [],
+            "intended": true,
+            "intended_reason": "synthetic_fixture",
+            "kind": "forward_reverse",
+            "left_hit_index": 0,
+            "left_role": "forward",
+            "length_bp": 100,
+            "long_product_warning": false,
+            "max_three_prime_mismatches": 0,
+            "reviewed_allowlisted": false,
+            "right_hit_index": 0,
+            "right_role": "reverse",
+            "specificity_failure": false,
+            "start_1based": 1,
+            "subject_id": "synthetic_transcript.1",
+            "terminal_policy_pass": true,
+            "within_readiness_amplicon_range": true
+          }
+        ],
+        "blast_database": {
+          "blast_database_version": null,
+          "blastdbcmd_reachable": false,
+          "compatible_operations": [],
+          "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "fingerprint_algorithm": "synthetic_sha256",
+          "index_files_present": false,
+          "index_kind": "transcriptome_cdna",
+          "masking": "",
+          "prefix": "",
+          "schema": "",
+          "sequence_count": 2,
+          "source_assembly": null,
+          "source_genome_id": "synthetic_cdna",
+          "source_release": "synthetic_release",
+          "status_code": null,
+          "subject_annotation_annotated_count": 0,
+          "subject_annotation_record_count": 0,
+          "subject_annotation_source_counts": {},
+          "subject_annotation_status": "",
+          "tool_executable": "",
+          "tool_version": null,
+          "total_bases": null,
+          "validation_status": "valid",
+          "warnings": []
+        },
+        "blast_preflight": {
+          "blastn": {
+            "detail": null,
+            "env_var": "",
+            "error": null,
+            "executable": "",
+            "found": false,
+            "resolved_path": null,
+            "status_code": null,
+            "tool": "",
+            "version": null,
+            "version_probe_ok": false
+          },
+          "makeblastdb": {
+            "detail": null,
+            "env_var": "",
+            "error": null,
+            "executable": "",
+            "found": false,
+            "resolved_path": null,
+            "status_code": null,
+            "tool": "",
+            "version": null,
+            "version_probe_ok": false
+          },
+          "schema": ""
+        },
+        "blast_runs": [],
+        "characterization_dimensions": [],
+        "compaction": {
+          "detail_mode": "compact",
+          "pairing_candidate_comparison_count": 1,
+          "raw_amplicon_count": 1,
+          "raw_forward_hit_count": 1,
+          "raw_reverse_hit_count": 1,
+          "retained_amplicon_count": 1,
+          "retained_forward_hit_count": 1,
+          "retained_reverse_hit_count": 1
+        },
+        "design_provenance": {
+          "status": "not_run",
+          "summary": ""
+        },
+        "effective_settings_summary": {},
+        "export_kinds": [],
+        "external_inputs": [],
+        "forward_hits": [
+          {
+            "accepted_by_policy": true,
+            "alignment_length_bp": 20,
+            "binding_end_1based": 20,
+            "binding_start_1based": 1,
+            "bit_score": 40.0,
+            "effective_mismatches": 0,
+            "evalue": 0.001,
+            "full_alignment": {
+              "algorithm": "blast_full_query_aligned_strings_v1",
+              "aligned_subject_end_1based": 20,
+              "aligned_subject_start_1based": 1,
+              "cigar": "20M",
+              "deletions": 0,
+              "effective_mismatches": 0,
+              "gap_extend_score": -2,
+              "gap_open_score": -5,
+              "insertions": 0,
+              "match_score": 2,
+              "matches": 20,
+              "mismatch_score": -3,
+              "mismatches": 0,
+              "query_alignment": "ACGTACGTACGTACGTACGT",
+              "relation_alignment": "||||||||||||||||||||",
+              "score": 40,
+              "status": "complete",
+              "strand": "+",
+              "subject_alignment": "ACGTACGTACGTACGTACGT",
+              "subject_window_end_1based": 20,
+              "subject_window_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "subject_window_start_1based": 1,
+              "three_prime_mismatches": 0,
+              "three_prime_window_bp": 5
+            },
+            "gap_opens": 0,
+            "hit_index": 0,
+            "identity_percent": 100.0,
+            "mismatches": 0,
+            "query_coverage_fraction": 1.0,
+            "query_end_1based": 20,
+            "query_start_1based": 1,
+            "rejection_reasons": [],
+            "role": "forward",
+            "strand": "+",
+            "subject_end_1based": 20,
+            "subject_id": "synthetic_transcript.1",
+            "subject_max_1based": 20,
+            "subject_min_1based": 1,
+            "subject_start_1based": 1,
+            "three_prime_mismatches": 0,
+            "three_prime_window_bp": 5,
+            "unaligned_query_bases": 0
+          }
+        ],
+        "generated_at_unix_ms": 0,
+        "genomic_specificity": {
+          "compatible_product_count": 0,
+          "contiguous_intended_product_expected": false,
+          "expected_intended_product_count": 0,
+          "failing_off_target_product_count": 0,
+          "intended_product_observed": false,
+          "intended_target_model": "unknown",
+          "observed_intended_product_count": 0,
+          "status": "",
+          "summary": "",
+          "target_space": ""
+        },
+        "intended_target": {
+          "contiguous_genomic_product_expected": false,
+          "expected_products": [
+            {
+              "expected_product_range": {
+                "end_1based": 100,
+                "start_1based": 1
+              },
+              "source_transcript_id": "synthetic_transcript.1",
+              "subject_id": "synthetic_transcript.1",
+              "target_space": "transcriptome_cdna"
+            }
+          ],
+          "forward_binding_ranges": [],
+          "model": "transcript_set",
+          "reference_binding": {
+            "assembly": null,
+            "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fingerprint_algorithm": "synthetic_sha256",
+            "genome_id": "synthetic_cdna",
+            "index_kind": "transcriptome_cdna",
+            "release": "synthetic_release",
+            "subject_annotation_fingerprint": null,
+            "subject_annotation_fingerprint_algorithm": null
+          },
+          "reverse_binding_ranges": [],
+          "source": "synthetic_fixture",
+          "subject_id": null,
+          "warnings": []
+        },
+        "policy": {
+          "allow_same_gene_splice_variants": false,
+          "avoid_known_variants": false,
+          "avoid_low_complexity": false,
+          "avoid_rmsk_repeats": false,
+          "full_alignment": {
+            "gap_extend_score": -2,
+            "gap_open_score": -5,
+            "match_score": 2,
+            "mismatch_score": -3,
+            "mode": "best_effort",
+            "subject_flank_bp": 0
+          },
+          "max_3prime_mismatches": 0,
+          "max_hits_per_primer": 500,
+          "max_target_amplicon_bp": 4000,
+          "min_primer_coverage_fraction": 0.8,
+          "min_total_mismatches_to_unintended_target": 2,
+          "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+          "report_detail_mode": "compact",
+          "specificity_check": "report_only",
+          "three_prime_window_bp": 5
+        },
+        "primers": [
+          {
+            "annealing_length_bp": 20,
+            "annealing_sequence": "ACGTACGTACGTACGTACGT",
+            "full_sequence": "ACGTACGTACGTACGTACGT",
+            "non_annealing_5prime_tail": "",
+            "non_annealing_5prime_tail_bp": 0,
+            "role": "forward"
+          },
+          {
+            "annealing_length_bp": 20,
+            "annealing_sequence": "TGCATGCATGCATGCATGCA",
+            "full_sequence": "TGCATGCATGCATGCATGCA",
+            "non_annealing_5prime_tail": "",
+            "non_annealing_5prime_tail_bp": 0,
+            "role": "reverse"
+          }
+        ],
+        "raw_detail_artifacts": [
+          {
+            "checksum": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+            "source_id": "",
+            "source_kind": ""
+          },
+          {
+            "checksum": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+            "source_id": "",
+            "source_kind": ""
+          }
+        ],
+        "related_seq_ids": [],
+        "report_id": "synthetic_saved_specificity_report",
+        "request_summary": {},
+        "reverse_hits": [
+          {
+            "accepted_by_policy": true,
+            "alignment_length_bp": 20,
+            "bit_score": 40.0,
+            "effective_mismatches": 0,
+            "evalue": 0.001,
+            "gap_opens": 0,
+            "hit_index": 0,
+            "identity_percent": 100.0,
+            "mismatches": 0,
+            "query_coverage_fraction": 1.0,
+            "query_end_1based": 20,
+            "query_start_1based": 1,
+            "rejection_reasons": [],
+            "role": "reverse",
+            "strand": "-",
+            "subject_end_1based": 81,
+            "subject_id": "synthetic_transcript.1",
+            "subject_max_1based": 100,
+            "subject_min_1based": 81,
+            "subject_start_1based": 100,
+            "three_prime_mismatches": 0,
+            "three_prime_window_bp": 5,
+            "unaligned_query_bases": 0
+          }
+        ],
+        "schema": "gentle.primer_specificity_report.v4",
+        "search_completeness": {
+          "command_count": 2,
+          "complete": true,
+          "database_sequence_count": 2,
+          "observed_min_max_target_seqs": 3,
+          "reason": "synthetic subject-coverage evidence only",
+          "required_max_target_seqs": 3,
+          "status": "complete"
+        },
+        "summary": {
+          "accepted_primer_hit_count": 2,
+          "amplicon_count": 1,
+          "failing_unintended_amplicon_count": 0,
+          "intended_amplicon_count": 1,
+          "long_product_warning_count": 0,
+          "primer_hit_count": 2,
+          "specificity_pass": true,
+          "status": "pass",
+          "summary": "",
+          "unintended_amplicon_count": 0
+        },
+        "target_genome_id": "synthetic_cdna",
+        "target_kind": "transcriptome_cdna",
+        "transcriptome_specificity": {
+          "compatible_product_count": 1,
+          "contiguous_intended_product_expected": false,
+          "expected_intended_product_count": 1,
+          "failing_off_target_product_count": 0,
+          "intended_product_observed": true,
+          "intended_target_model": "transcript_set",
+          "observed_intended_product_count": 1,
+          "status": "pass",
+          "summary": "",
+          "target_space": "transcriptome_cdna"
+        },
+        "warnings": []
+      }
+    },
+    "qpcr_reports": {},
+    "reports": {},
+    "restriction_cloning_handoffs": {},
+    "schema": "",
+    "terminal_exon_rt_primer_pools": {},
+    "transcript_assay_fallback_executions": {},
+    "transcript_assay_panels": {},
+    "transcript_capture_pools": {},
+    "updated_at_unix_ms": 0
+  },
+  "summary": {
+    "content_sha256": "sha256:eb9fd5e8a289b5e6f1cc5aa0cff85df53098daa7bf7397123fc09274b6642d5e",
+    "execution_complete": true,
+    "execution_manifest": {
+      "commands": [
+        {
+          "command_id": "synthetic:forward",
+          "command_sha256": "sha256:425bf3aedfc528b2dbc307f4d011a3d80a7dc64782cd407884b4970ba2bc5a71",
+          "exit_code": 0,
+          "output_path": "synthetic/forward.tsv",
+          "output_sha256": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+          "output_size_bytes": 110,
+          "state": "completed"
+        },
+        {
+          "command_id": "synthetic:reverse",
+          "command_sha256": "sha256:38d58ce73fdd3b732af926832ab851850a178b5be0be91eae7efab298aff906b",
+          "exit_code": 0,
+          "output_path": "synthetic/reverse.tsv",
+          "output_sha256": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+          "output_size_bytes": 67,
+          "state": "completed"
+        }
+      ],
+      "handoff_content_sha256": "sha256:56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+      "handoff_id": "primer_multi_56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+      "pair_binding_sha256": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9",
+      "schema": "gentle.primer_pair_multi_reference_execution_manifest.v1"
+    },
+    "genomic": "not_requested",
+    "handoff_id": "primer_multi_56e9cc6cadac6e508fc50d62f2daaa24d3db53ff168e6b9d784c3258ef6aed39",
+    "nonclaims": [
+      "Specificity applies only to the explicitly bound prepared references and policy, not every genome or transcript.",
+      "A hash binds retained content; it does not authenticate external process execution.",
+      "This standalone summary does not establish isoform discrimination, oligo QC, laboratory validation or order readiness.",
+      "Current applicability is checked at import; historical display performs no database probes."
+    ],
+    "pair_binding_sha256": "sha256:0ee7943c457a4e9169fabcd8e5b2304c69a874cd7e1ea178b1bcdbb65d1289c9",
+    "references": [
+      {
+        "applicability": "synthetic_fixture_only",
+        "diagnostics": [],
+        "genome_id": "synthetic_cdna",
+        "index_kind": "transcriptome_cdna",
+        "reference": {
+          "assembly": null,
+          "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "fingerprint_algorithm": "synthetic_sha256",
+          "genome_id": "synthetic_cdna",
+          "index_kind": "transcriptome_cdna",
+          "release": "synthetic_release",
+          "subject_annotation_fingerprint": null,
+          "subject_annotation_fingerprint_algorithm": null
+        },
+        "report": {
+          "amplicons": [
+            {
+              "combined_mismatches": 0,
+              "end_1based": 100,
+              "failure_reasons": [],
+              "intended": true,
+              "intended_reason": "synthetic_fixture",
+              "kind": "forward_reverse",
+              "left_hit_index": 0,
+              "left_role": "forward",
+              "length_bp": 100,
+              "long_product_warning": false,
+              "max_three_prime_mismatches": 0,
+              "reviewed_allowlisted": false,
+              "right_hit_index": 0,
+              "right_role": "reverse",
+              "specificity_failure": false,
+              "start_1based": 1,
+              "subject_id": "synthetic_transcript.1",
+              "terminal_policy_pass": true,
+              "within_readiness_amplicon_range": true
+            }
+          ],
+          "blast_database": {
+            "blast_database_version": null,
+            "blastdbcmd_reachable": false,
+            "compatible_operations": [],
+            "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fingerprint_algorithm": "synthetic_sha256",
+            "index_files_present": false,
+            "index_kind": "transcriptome_cdna",
+            "masking": "",
+            "prefix": "",
+            "schema": "",
+            "sequence_count": 2,
+            "source_assembly": null,
+            "source_genome_id": "synthetic_cdna",
+            "source_release": "synthetic_release",
+            "status_code": null,
+            "subject_annotation_annotated_count": 0,
+            "subject_annotation_record_count": 0,
+            "subject_annotation_source_counts": {},
+            "subject_annotation_status": "",
+            "tool_executable": "",
+            "tool_version": null,
+            "total_bases": null,
+            "validation_status": "valid",
+            "warnings": []
+          },
+          "blast_preflight": {
+            "blastn": {
+              "detail": null,
+              "env_var": "",
+              "error": null,
+              "executable": "",
+              "found": false,
+              "resolved_path": null,
+              "status_code": null,
+              "tool": "",
+              "version": null,
+              "version_probe_ok": false
+            },
+            "makeblastdb": {
+              "detail": null,
+              "env_var": "",
+              "error": null,
+              "executable": "",
+              "found": false,
+              "resolved_path": null,
+              "status_code": null,
+              "tool": "",
+              "version": null,
+              "version_probe_ok": false
+            },
+            "schema": ""
+          },
+          "blast_runs": [],
+          "characterization_dimensions": [],
+          "compaction": {
+            "detail_mode": "compact",
+            "pairing_candidate_comparison_count": 1,
+            "raw_amplicon_count": 1,
+            "raw_forward_hit_count": 1,
+            "raw_reverse_hit_count": 1,
+            "retained_amplicon_count": 1,
+            "retained_forward_hit_count": 1,
+            "retained_reverse_hit_count": 1
+          },
+          "design_provenance": {
+            "status": "not_run",
+            "summary": ""
+          },
+          "effective_settings_summary": {},
+          "export_kinds": [],
+          "external_inputs": [],
+          "forward_hits": [
+            {
+              "accepted_by_policy": true,
+              "alignment_length_bp": 20,
+              "binding_end_1based": 20,
+              "binding_start_1based": 1,
+              "bit_score": 40.0,
+              "effective_mismatches": 0,
+              "evalue": 0.001,
+              "full_alignment": {
+                "algorithm": "blast_full_query_aligned_strings_v1",
+                "aligned_subject_end_1based": 20,
+                "aligned_subject_start_1based": 1,
+                "cigar": "20M",
+                "deletions": 0,
+                "effective_mismatches": 0,
+                "gap_extend_score": -2,
+                "gap_open_score": -5,
+                "insertions": 0,
+                "match_score": 2,
+                "matches": 20,
+                "mismatch_score": -3,
+                "mismatches": 0,
+                "query_alignment": "ACGTACGTACGTACGTACGT",
+                "relation_alignment": "||||||||||||||||||||",
+                "score": 40,
+                "status": "complete",
+                "strand": "+",
+                "subject_alignment": "ACGTACGTACGTACGTACGT",
+                "subject_window_end_1based": 20,
+                "subject_window_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "subject_window_start_1based": 1,
+                "three_prime_mismatches": 0,
+                "three_prime_window_bp": 5
+              },
+              "gap_opens": 0,
+              "hit_index": 0,
+              "identity_percent": 100.0,
+              "mismatches": 0,
+              "query_coverage_fraction": 1.0,
+              "query_end_1based": 20,
+              "query_start_1based": 1,
+              "rejection_reasons": [],
+              "role": "forward",
+              "strand": "+",
+              "subject_end_1based": 20,
+              "subject_id": "synthetic_transcript.1",
+              "subject_max_1based": 20,
+              "subject_min_1based": 1,
+              "subject_start_1based": 1,
+              "three_prime_mismatches": 0,
+              "three_prime_window_bp": 5,
+              "unaligned_query_bases": 0
+            }
+          ],
+          "generated_at_unix_ms": 0,
+          "genomic_specificity": {
+            "compatible_product_count": 0,
+            "contiguous_intended_product_expected": false,
+            "expected_intended_product_count": 0,
+            "failing_off_target_product_count": 0,
+            "intended_product_observed": false,
+            "intended_target_model": "unknown",
+            "observed_intended_product_count": 0,
+            "status": "",
+            "summary": "",
+            "target_space": ""
+          },
+          "intended_target": {
+            "contiguous_genomic_product_expected": false,
+            "expected_products": [
+              {
+                "expected_product_range": {
+                  "end_1based": 100,
+                  "start_1based": 1
+                },
+                "source_transcript_id": "synthetic_transcript.1",
+                "subject_id": "synthetic_transcript.1",
+                "target_space": "transcriptome_cdna"
+              }
+            ],
+            "forward_binding_ranges": [],
+            "model": "transcript_set",
+            "reference_binding": {
+              "assembly": null,
+              "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "fingerprint_algorithm": "synthetic_sha256",
+              "genome_id": "synthetic_cdna",
+              "index_kind": "transcriptome_cdna",
+              "release": "synthetic_release",
+              "subject_annotation_fingerprint": null,
+              "subject_annotation_fingerprint_algorithm": null
+            },
+            "reverse_binding_ranges": [],
+            "source": "synthetic_fixture",
+            "subject_id": null,
+            "warnings": []
+          },
+          "policy": {
+            "allow_same_gene_splice_variants": false,
+            "avoid_known_variants": false,
+            "avoid_low_complexity": false,
+            "avoid_rmsk_repeats": false,
+            "full_alignment": {
+              "gap_extend_score": -2,
+              "gap_open_score": -5,
+              "match_score": 2,
+              "mismatch_score": -3,
+              "mode": "best_effort",
+              "subject_flank_bp": 0
+            },
+            "max_3prime_mismatches": 0,
+            "max_hits_per_primer": 500,
+            "max_target_amplicon_bp": 4000,
+            "min_primer_coverage_fraction": 0.8,
+            "min_total_mismatches_to_unintended_target": 2,
+            "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+            "report_detail_mode": "compact",
+            "specificity_check": "report_only",
+            "three_prime_window_bp": 5
+          },
+          "primers": [
+            {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "ACGTACGTACGTACGTACGT",
+              "full_sequence": "ACGTACGTACGTACGTACGT",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "forward"
+            },
+            {
+              "annealing_length_bp": 20,
+              "annealing_sequence": "TGCATGCATGCATGCATGCA",
+              "full_sequence": "TGCATGCATGCATGCATGCA",
+              "non_annealing_5prime_tail": "",
+              "non_annealing_5prime_tail_bp": 0,
+              "role": "reverse"
+            }
+          ],
+          "raw_detail_artifacts": [
+            {
+              "checksum": "sha256:e9626f3839012ea6eab28a3d61726bc8bc67383d552d2f50afd8e1614e083ed6",
+              "source_id": "",
+              "source_kind": ""
+            },
+            {
+              "checksum": "sha256:0e350be49f416138cee34a1cfb7e3ac7a4e587879bbbf4e931eeaa3756f76a9c",
+              "source_id": "",
+              "source_kind": ""
+            }
+          ],
+          "related_seq_ids": [],
+          "report_id": "synthetic_saved_specificity_report",
+          "request_summary": {},
+          "reverse_hits": [
+            {
+              "accepted_by_policy": true,
+              "alignment_length_bp": 20,
+              "bit_score": 40.0,
+              "effective_mismatches": 0,
+              "evalue": 0.001,
+              "gap_opens": 0,
+              "hit_index": 0,
+              "identity_percent": 100.0,
+              "mismatches": 0,
+              "query_coverage_fraction": 1.0,
+              "query_end_1based": 20,
+              "query_start_1based": 1,
+              "rejection_reasons": [],
+              "role": "reverse",
+              "strand": "-",
+              "subject_end_1based": 81,
+              "subject_id": "synthetic_transcript.1",
+              "subject_max_1based": 100,
+              "subject_min_1based": 81,
+              "subject_start_1based": 100,
+              "three_prime_mismatches": 0,
+              "three_prime_window_bp": 5,
+              "unaligned_query_bases": 0
+            }
+          ],
+          "schema": "gentle.primer_specificity_report.v4",
+          "search_completeness": {
+            "command_count": 2,
+            "complete": true,
+            "database_sequence_count": 2,
+            "observed_min_max_target_seqs": 3,
+            "reason": "synthetic subject-coverage evidence only",
+            "required_max_target_seqs": 3,
+            "status": "complete"
+          },
+          "summary": {
+            "accepted_primer_hit_count": 2,
+            "amplicon_count": 1,
+            "failing_unintended_amplicon_count": 0,
+            "intended_amplicon_count": 1,
+            "long_product_warning_count": 0,
+            "primer_hit_count": 2,
+            "specificity_pass": true,
+            "status": "pass",
+            "summary": "",
+            "unintended_amplicon_count": 0
+          },
+          "target_genome_id": "synthetic_cdna",
+          "target_kind": "transcriptome_cdna",
+          "transcriptome_specificity": {
+            "compatible_product_count": 1,
+            "contiguous_intended_product_expected": false,
+            "expected_intended_product_count": 1,
+            "failing_off_target_product_count": 0,
+            "intended_product_observed": true,
+            "intended_target_model": "transcript_set",
+            "observed_intended_product_count": 1,
+            "status": "pass",
+            "summary": "",
+            "target_space": "transcriptome_cdna"
+          },
+          "warnings": []
+        },
+        "required": true,
+        "verdict": "pass"
+      }
+    ],
+    "request": {
+      "pair": {
+        "forward": {
+          "annealing_length_bp": 20,
+          "annealing_sequence": "ACGTACGTACGTACGTACGT",
+          "full_sequence": "ACGTACGTACGTACGTACGT",
+          "non_annealing_5prime_tail": "",
+          "non_annealing_5prime_tail_bp": 0,
+          "role": "forward"
+        },
+        "kind": "explicit_pair",
+        "reverse": {
+          "annealing_length_bp": 20,
+          "annealing_sequence": "TGCATGCATGCATGCATGCA",
+          "full_sequence": "TGCATGCATGCATGCATGCA",
+          "non_annealing_5prime_tail": "",
+          "non_annealing_5prime_tail_bp": 0,
+          "role": "reverse"
+        }
+      },
+      "policy": {
+        "allow_same_gene_splice_variants": false,
+        "avoid_known_variants": false,
+        "avoid_low_complexity": false,
+        "avoid_rmsk_repeats": false,
+        "full_alignment": {
+          "gap_extend_score": -2,
+          "gap_open_score": -5,
+          "match_score": 2,
+          "mismatch_score": -3,
+          "mode": "best_effort",
+          "subject_flank_bp": 0
+        },
+        "max_3prime_mismatches": 0,
+        "max_hits_per_primer": 500,
+        "max_target_amplicon_bp": 4000,
+        "min_primer_coverage_fraction": 0.8,
+        "min_total_mismatches_to_unintended_target": 2,
+        "readiness_max_target_amplicon_bp_source": "legacy_policy_max",
+        "report_detail_mode": "compact",
+        "specificity_check": "report_only",
+        "three_prime_window_bp": 5
+      },
+      "references": [
+        {
+          "expected_index_kind": "transcriptome_cdna",
+          "intended_target": {
+            "contiguous_genomic_product_expected": false,
+            "expected_products": [
+              {
+                "expected_product_range": {
+                  "end_1based": 100,
+                  "start_1based": 1
+                },
+                "source_transcript_id": "synthetic_transcript.1",
+                "subject_id": "synthetic_transcript.1",
+                "target_space": "transcriptome_cdna"
+              }
+            ],
+            "forward_binding_ranges": [],
+            "model": "transcript_set",
+            "reference_binding": {
+              "assembly": null,
+              "content_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "fingerprint_algorithm": "synthetic_sha256",
+              "genome_id": "synthetic_cdna",
+              "index_kind": "transcriptome_cdna",
+              "release": "synthetic_release",
+              "subject_annotation_fingerprint": null,
+              "subject_annotation_fingerprint_algorithm": null
+            },
+            "reverse_binding_ranges": [],
+            "source": "synthetic_fixture",
+            "subject_id": null,
+            "warnings": []
+          },
+          "required": true,
+          "target_genome_id": "synthetic_cdna"
+        }
+      ],
+      "schema": "gentle.primer_pair_multi_reference_request.v1"
+    },
+    "schema": "gentle.primer_pair_multi_reference_summary.v1",
+    "source_snapshot_sha256": null,
+    "summary_id": "primer_multi_summary_eb9fd5e8a289b5e6f1cc5aa0cff85df53098daa7bf7397123fc09274b6642d5e",
+    "transcriptome": "pass"
+  },
+  "synthetic_outputs": [
+    "forward\tsynthetic_transcript.1\t100\t20\t0\t0\t1\t20\t1\t20\t0.001\t40\t100\t20\tACGTACGTACGTACGTACGT\tACGTACGTACGTACGTACGT\n",
+    "reverse\tsynthetic_transcript.1\t100\t20\t0\t0\t1\t20\t100\t81\t0.001\t40\t100\n"
+  ]
+}

@@ -1262,6 +1262,10 @@ fn specificity_multi_ordinary_parent(path: &Path) -> Result<&Path, EngineError> 
 }
 
 #[cfg(test)]
+#[path = "primer_specificity_identity_tests.rs"]
+mod identity_tests;
+
+#[cfg(test)]
 pub(super) mod tests {
     use super::*;
 

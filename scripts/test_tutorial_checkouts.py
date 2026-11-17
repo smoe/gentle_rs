@@ -806,6 +806,36 @@ class TutorialCheckoutTests(unittest.TestCase):
         self.assertEqual((fixed / "evidence.json").read_bytes(), self.payload)
         self.assertEqual((self.root / ".gitattributes").read_bytes(), b"# No protection\n")
 
+    def test_primer_specificity_frozen_identities_survive_lf_crlf_checkouts(self):
+        relative = Path("test_files/fixtures/primer_specificity_identity")
+        origin = checker.ROOT / relative
+        destination = self.root / relative
+        destination.mkdir(parents=True)
+        for name in ("records.json", "SHA256SUMS"):
+            (destination / name).write_bytes((origin / name).read_bytes())
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        expected, name = (origin / "SHA256SUMS").read_text().strip().split("  ")
+        self.assertEqual(name, "records.json")
+        self.assertEqual(hashlib.sha256((origin / name).read_bytes()).hexdigest(), expected)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic frozen primer identities")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"primer-identities-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for filename in ("records.json", "SHA256SUMS"):
+                self.assertEqual((target / relative / filename).read_bytes(),
+                                 (origin / filename).read_bytes())
+            self.assertEqual(hashlib.sha256((target / relative / name).read_bytes()).hexdigest(),
+                             expected)
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                   if not line.startswith(relative.as_posix().encode() + b"/"))
+        broken = Path(self.tmp.name) / "primer-identities-unprotected"
+        prepare_unprotected_checkout(self.root, broken, unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative / name).read_bytes()).hexdigest(),
+                            expected)
+
     def test_rnapkin_lock_receipt_bytes_survive_both_checkout_modes(self):
         relative = Path("docker/rnapkin/Cargo.lock")
         payload = (checker.ROOT / relative).read_bytes()

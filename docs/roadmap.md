@@ -199,7 +199,8 @@ Existing implementations retain their own verification ledgers.
 - Deeper Primer3/preflight, virtual PCR, multiplex, LAMP and allele-specific
   assays: [audit](primer3_parity_audit_20261103.md).
 - Global RT-PCR redesign over genome/transcriptome evidence and explicit QC:
-  [staged plan](rt_capture_primer_redesign_plan.md).
+  [staged plan](rt_capture_primer_redesign_plan.md); supplied-pair checks follow
+  the [compatibility plan](primer_blast_local_compatibility_plan_20261116.md#revised-minimal-commit-order).
 - Advanced/Mutagenesis handoffs, persisted views and derived single-primer
   inspection: [residual scope](primer_design_specialist_plan.md).
 - GuideRNA ranking, macro packaging and separately approved base/prime S2:
