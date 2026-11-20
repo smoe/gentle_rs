@@ -538,6 +538,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "gene-locus",
     "gel-image",
     "promoters",
+    "terminators",
     "collections",
     "planning",
     "gibson",
@@ -2556,6 +2557,25 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn test_termination_cli_forwarding_preserves_inline_json_and_output_path() {
+        // Synthetic parser fixture; no catalog I/O or biological claim.
+        let request = serde_json::json!({
+            "seq_id": "toy", "host": "Escherichia coli", "polymerase": "bacterial",
+            "catalog": { "path": r"C:\Catalog folder\owner's elements.json", "expected_sha256": "sha256:parser-only" }
+        });
+        let args = vec![
+            "gentle_cli".to_string(), "terminators".to_string(), "screen".to_string(),
+            request.to_string(), "--output".to_string(), "a report's output.json".to_string(),
+        ];
+        let command = parse_forwarded_shell_command(&args, 1).unwrap().unwrap();
+        let ShellCommand::Op { payload } = command else { panic!("shared operation expected") };
+        let operation: Operation = serde_json::from_str(&payload).unwrap();
+        let Operation::ScreenTranscriptionTermination { request: parsed, path } = operation else { panic!("screen operation expected") };
+        assert_eq!(parsed.catalog.unwrap().path, r"C:\Catalog folder\owner's elements.json");
+        assert_eq!(path.as_deref(), Some("a report's output.json"));
     }
 
     #[test]

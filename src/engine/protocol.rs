@@ -5837,6 +5837,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tata_box_screen: Option<Box<gentle_protocol::tata_boxes::TataBoxScreenReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription_termination_screen: Option<Box<gentle_protocol::transcription_termination::TerminationScreenReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cryptic_splicing_evidence_overlay: Option<Box<CrypticSplicingEvidenceOverlayReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cryptic_splicing_protein_projection: Option<Box<CrypticSplicingProteinProjectionReport>>,

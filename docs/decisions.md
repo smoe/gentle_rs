@@ -1,5 +1,39 @@
 # GENtle Decisions
 
+
+## Termination Evidence And Reviewed Annotation
+
+Status: active
+
+Termination screening inspects explicit source-DNA intervals and caller-selected
+transcript/CDS context in the shared engine. It never assigns whole-sequence hits
+to the nearest gene, reconstructs an unprovided mature RNA end, or infers a 3′ UTR
+from a stop codon and motif. Reference identity, structural/signal candidates,
+annotated RNA ends and polymerase termination regions retain separate evidence
+and geometry. Bacterial intrinsic and mammalian Pol II heuristics are authored,
+uncalibrated policies; Rho-dependent de novo prediction and other unsupported
+mechanisms remain explicit outcomes, not negative findings.
+
+Caller-supplied reference catalogs bind raw bytes, sequence hashes, declared host,
+mechanism and source/redistribution provenance. No biological catalog is bundled
+or downloaded. Core scoring has no external folding dependency. Explicit
+non-wrapping intervals on circular plasmids disclose unassessed origin-crossing
+windows; whole-circle and wrapped searches refuse until separately implemented.
+
+Screening preserves project content across adapters. Generic MCP `op` retains
+its existing confirmation gate; explicit report writes require confirmation and
+materialization is a separate undoable mutation. Apply recomputes the reviewed
+report, checks its content hash and all selected row IDs before mutation, retains
+source annotations and prevents duplicate generated evidence. Hashes establish
+content consistency, not biological activity or source/legal authentication.
+Existing non-generated source annotations are not enriched or overwritten; the
+saved report retains their alternative evidence. Reviewed supporting sources may
+be merged into generated annotations without duplicating geometry, with normal
+undo and change tracking. Cleavage windows explicitly encode sets of interbase
+boundary labels, with reverse projection `p -> length - p`; they are not base
+intervals or experimentally observed endpoints.
+
+
 ## Conditional cDNA Consequences And Same-Unit Isoform Evidence
 
 Status: active

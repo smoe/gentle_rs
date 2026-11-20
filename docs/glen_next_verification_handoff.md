@@ -1,5 +1,54 @@
 # Glen: Next Verification And Return
 
+## Termination Evidence Commit Review, 2026-11-20
+
+After the owner's push, verify the integrated termination screen/materialize
+source at the actual tested SHA. The earlier working-tree macOS results in the
+[implementation ledger](transcription_termination_annotation_plan.md#implementation-ledger--2026-11-16)
+are historical, not acceptance of the subsequent MCP discovery repair. Do not
+repeat completed C1-C4, reader, barcode or prior primer campaigns. The separate
+simple-PCR preparation checklist below remains independently scoped.
+
+Commit review reproduced a failing Python discovery guard: both `terminators`
+paths were declared `mcp-op` but absent from `op.commandPaths`. The repaired
+mapping retains the generic operation and its confirmation gate. The MCP test
+now checks each advertised route exactly once before exercising inspection,
+denied materialization and approved writeback. No scoring policy was changed.
+
+Use a verified run-owned target and compile before execution:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --no-default-features --lib -j1 termination_ -- --test-threads=1
+cargo test --locked --no-default-features --lib -j1 engine::exact_reference -- --test-threads=1
+cargo test --locked -p gentle-protocol --lib -j1 transcription_termination
+cargo test --locked --no-default-features --features script-interfaces --lib -j1 termination_ -- --test-threads=1
+cargo test --locked --no-default-features --bin gentle_cli -j1 test_termination_cli_forwarding
+cargo test --locked --test capability_registry_parity --test parity_matrix_freshness -j1
+```
+
+Require nonzero filter counts, including the actual Lua VM and JavaScript adapter
+test, and inspect live `tools/list` for both command paths. Using a source-matched
+CLI, run `python3 scripts/test_transcription_termination.py --cli /absolute/path/to/gentle_cli`.
+Confirm raw LF/CRLF catalog binding, report parity, unchanged project bytes during
+inspection, selected/stale-bound apply, undo, duplicate/provenance merging and
+GenBank reimport. No private data, model calls or biological reference collection
+is needed; all process inputs are synthetic. Canonical Rust matrix freshness is
+still required even though the fast Python consistency/checkout checks pass.
+
+Commit-review checks: 128 Python source/checkout tests pass after reproducing and
+repairing the discovery failure; documentation, manual/maturity freshness, scoped
+new-module formatting, MCP source parsing and whitespace checks also pass.
+Session-close: four OK, two expected scope/dirty-work reminders, zero failures.
+These checks do not execute Rust or the actual-process companion.
+
+Return exact SHA, binary hash, toolchain/features/platform, commands/counts and
+failures/skips. Windows paths/handles, full-suite and native GUI remain separate;
+dedicated termination GUI, circular-complete scanning and scientific calibration
+are not implemented or accepted by this handoff. No local Rust build/test, push
+or publication was performed during this commit review.
+
 ## Simple PCR Selected-Pair Preparation, 2026-11-19
 
 After an owner-approved push, verify only this new GUI preparation path at the

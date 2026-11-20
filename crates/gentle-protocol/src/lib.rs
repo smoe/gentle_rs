@@ -42,6 +42,8 @@ pub mod sequence_design;
 /// Display-only splicing groups and row geometry; never changes engine payload order.
 pub mod splicing_presentation;
 pub mod tata_boxes;
+/// Provenance-bound termination elements and conservative 3′-processing candidates.
+pub mod transcription_termination;
 /// Source-neutral exon/structure identities retaining independent annotation provenance.
 pub mod transcript_presentation;
 /// Validated coordinate projections of separately scored sparse motif evidence.
@@ -5759,6 +5761,8 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "RenderFeatureExpertSvg",
     "PrepareGeneLocusEvidence",
     "InspectCrypticSplicingScreen",
+    "ScreenTranscriptionTermination",
+    "MaterializeTranscriptionTerminationFeatures",
     "ScreenTataBoxes",
     "MaterializeTataBoxFeatures",
     "RenderCrypticSplicingScreenSvg",

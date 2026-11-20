@@ -1509,6 +1509,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "promoters assess-conserved-modules",
             "promoters tata-screen",
             "promoters tata-materialize",
+            "terminators screen",
+            "terminators materialize",
             "promoters tss-inventory",
             "promoters tss-materialize",
             "promoters tss-list",
@@ -6741,6 +6743,135 @@ mod tests {
             json!({"confirm":true,"state_path":path,"operation":operation}),
         );
         assert_eq!(added["result"]["isError"], false, "{added}");
+    }
+
+    #[test]
+    fn termination_mcp_exact_screen_and_confirmation_preserve_state() {
+        use gentle_protocol::transcription_termination::*;
+        let tools = tool_list();
+        let operation_tool = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "op")
+            .unwrap();
+        assert_eq!(operation_tool["mutating"], true);
+        for path in ["terminators screen", "terminators materialize"] {
+            assert_eq!(
+                operation_tool["commandPaths"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|value| value.as_str() == Some(path))
+                    .count(),
+                1,
+                "advertise each termination route exactly once: {path}"
+            );
+        }
+        fn digest(bytes: &[u8]) -> String {
+            format!(
+                "sha256:{}",
+                ring::digest::digest(&ring::digest::SHA256, bytes)
+                    .as_ref()
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            )
+        }
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("termination state.json");
+        let catalog_path = directory.path().join("O'Brien catalog.json");
+        // Hand-crafted synthetic sequence/catalog, recreated by this test only.
+        // Used to exercise MCP transport, byte-bound source and confirmation;
+        // neither this invented element nor its asserted host is biological data.
+        let element = "GCGCGCAAAAGCGCGCTTTTTTTT";
+        let catalog = TerminationCatalog {
+            schema: TERMINATION_CATALOG_SCHEMA.into(),
+            catalog_id: "synthetic".into(),
+            version: "1".into(),
+            entries: vec![TerminationCatalogEntry {
+                id: "invented".into(),
+                label: "Synthetic element".into(),
+                sequence: element.into(),
+                sequence_sha256: digest(element.as_bytes()),
+                host: "bacteria".into(),
+                mechanism: "bacterial_intrinsic".into(),
+                element_kind: TerminationGeometryKind::ElementMatch,
+                source_url: "synthetic:src/mcp_server.rs".into(),
+                source_version: "1".into(),
+                recreation:
+                    "Literal sequence in termination_mcp_exact_screen_and_confirmation_preserve_state"
+                        .into(),
+                redistribution_status: "synthetic".into(),
+                approval_provenance: "hand-crafted software fixture".into(),
+            }],
+        };
+        let catalog_bytes = serde_json::to_vec_pretty(&catalog).unwrap();
+        std::fs::write(&catalog_path, &catalog_bytes).unwrap();
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "toy".into(),
+            DNAsequence::from_sequence(&format!("AAA{element}CCC")).unwrap(),
+        );
+        state.save_to_path(&path.to_string_lossy()).unwrap();
+        let request = TerminationScreenRequest {
+            seq_id: "toy".into(),
+            host: "bacteria".into(),
+            polymerase: "bacterial_rnap".into(),
+            catalog: Some(TerminationCatalogSource {
+                path: catalog_path.to_string_lossy().into(),
+                expected_sha256: digest(&catalog_bytes),
+            }),
+            ..Default::default()
+        };
+        let before = std::fs::read(&path).unwrap();
+        let output = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":Operation::ScreenTranscriptionTermination {request:request.clone(),path:None}}),
+        );
+        assert_eq!(output["result"]["isError"], false, "{output}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "inspection must not persist project state"
+        );
+        let report: TerminationScreenReport = serde_json::from_value(
+            output["result"]["structuredContent"]["result"]["transcription_termination_screen"].clone(),
+        )
+        .unwrap();
+        assert_eq!(report.schema, TERMINATION_SCREEN_SCHEMA);
+        let row = report
+            .rows
+            .iter()
+            .find(|r| r.evidence_kind == TerminationEvidenceKind::ReferenceMatch)
+            .unwrap();
+        assert_eq!(
+            (row.start_0based, row.end_0based_exclusive, row.reverse),
+            (3, 3 + element.len(), false)
+        );
+        let operation = Operation::MaterializeTranscriptionTerminationFeatures {
+            request: TerminationMaterializeRequest {
+                screen: request,
+                expected_report_sha256: report.content_sha256,
+                row_ids: vec![row.row_id.clone()],
+            },
+        };
+        let denied = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"state_path":path,"operation":operation}),
+        );
+        assert_eq!(denied["result"]["isError"], true, "{denied}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let added = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "op",
+            json!({"confirm":true,"state_path":path,"operation":operation}),
+        );
+        assert_eq!(added["result"]["isError"], false, "{added}");
+        let saved = ProjectState::load_from_path(&path.to_string_lossy()).unwrap();
+        assert_eq!(saved.sequences["toy"].features().len(), 1);
     }
 
     #[test]

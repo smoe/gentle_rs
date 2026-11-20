@@ -2705,6 +2705,60 @@ mod tests {
     }
 
     #[test]
+    fn termination_lua_adapter_matches_engine_without_state_changes() {
+        use gentle_protocol::transcription_termination::*;
+        // Synthetic hairpin followed by T tract, recreated inline; used solely
+        // for shared adapter/report parity, not a validated biological example.
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "termination_toy".into(),
+            crate::dna_sequence::DNAsequence::from_sequence("GCGCGCAAAAGCGCGCTTTTTTTT").unwrap(),
+        );
+        let before = serde_json::to_value(&state).unwrap();
+        let operation = Operation::ScreenTranscriptionTermination {
+            request: TerminationScreenRequest {
+                seq_id: "termination_toy".into(),
+                host: "bacteria".into(),
+                polymerase: "bacterial_rnap".into(),
+                bacterial_intrinsic: true,
+                ..Default::default()
+            },
+            path: None,
+        };
+        let mut oracle = GentleEngine::from_state(state.clone());
+        let expected = oracle
+            .apply(operation.clone())
+            .unwrap()
+            .transcription_termination_screen
+            .unwrap();
+        assert!(!expected.rows.is_empty());
+        let lua = LuaInterface::new();
+        lua.register_rust_functions().unwrap();
+        lua.lua()
+            .globals()
+            .set("state_in", lua.lua().to_value(&state).unwrap())
+            .unwrap();
+        lua.lua()
+            .globals()
+            .set("op_json", serde_json::to_string(&operation).unwrap())
+            .unwrap();
+        lua.lua()
+            .load("out = apply_operation(state_in, op_json)")
+            .exec()
+            .unwrap();
+        let out: Value = lua.lua().globals().get("out").unwrap();
+        let out: serde_json::Value = lua.lua().from_value(out).unwrap();
+        // Lua omits nil-valued optional keys. Compare the decoded project,
+        // preserving the typed engine contract rather than JSON null spelling.
+        let returned: ProjectState = serde_json::from_value(out["state"].clone()).unwrap();
+        assert_eq!(serde_json::to_value(returned).unwrap(), before);
+        assert_eq!(
+            out["result"]["transcription_termination_screen"]["content_sha256"],
+            expected.content_sha256
+        );
+    }
+
+    #[test]
     fn observed_sam_lua_operation_preserves_portable_report_and_project_content() {
         let (_root, request) = GentleEngine::observed_sam_test_fixture();
         let state = ProjectState::default();

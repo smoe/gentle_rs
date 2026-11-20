@@ -2645,6 +2645,22 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["ScreenTranscriptionTermination"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "terminators screen",
+         "summary": "Inspect exact catalog matches, existing annotations and optional bacterial intrinsic or mammalian Pol II candidates in a non-wrapping span. Reports evidence and uncertainty without changing annotations.",
+         "usage": "terminators screen REQUEST_JSON_OR_@FILE [--output REPORT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["MaterializeTranscriptionTerminationFeatures"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "terminators materialize",
+         "summary": "Explicitly add selected termination/3-prime-processing evidence after verifying the reviewed report digest. Undoable, preserves existing annotations and rejects stale inputs.",
+         "usage": "terminators materialize REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": ["ScreenTataBoxes"],
          "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "promoters tata-screen",

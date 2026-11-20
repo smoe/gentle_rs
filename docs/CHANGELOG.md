@@ -15,6 +15,56 @@
   readiness approval, local Rust build, push or termination-behavior change.
   See the [implementation ledger](primer_design_specialist_plan.md#simple-pcr-pair-preparation-ledger-2026-11-19).
 
+## 2026-11-16 - Add Shared Termination And 3′-Processing Evidence
+
+- Implement `terminators screen` and separately reviewed, undoable
+  `terminators materialize` through shared engine operations. Exact reference
+  matching binds caller-supplied catalog bytes, sequence and provenance; candidates
+  remain separate from source annotations and measured termination activity.
+- Add opt-in pure bacterial intrinsic and mammalian Pol II sequence/context
+  heuristics with explicit authored policies, strand-aware source intervals,
+  cleavage-window hypotheses and resource/unsupported/missing-context outcomes.
+  No RNAfold, automatic transcript/UTR inference or bundled biological catalog.
+- Keep direct CLI, shell, generic MCP/JS/Lua/Python and GUI-shell reachability;
+  require confirmation for write attempts and preserve project content during
+  inspection. Retain source annotations and portable selected provenance during
+  digest-bound application. Update scoped discovery/manual projections and
+  source-bound maturity hashes without changing maturity status.
+- Track new-source verification and remaining scientific/native scope in the
+  [implementation ledger](transcription_termination_annotation_plan.md#implementation-ledger--2026-11-16).
+  Dedicated GUI and circular-complete analysis remain separate work.
+- Verify locally on macOS arm64: 21 termination, 2 exact matcher, 2 glossary,
+  1 CLI forwarding, 1 protocol, and 1 each Lua/JavaScript adapter tests pass;
+  default-feature Cargo check, rebuilt CLI/Python/GenBank smoke, canonical parity
+  freshness, 99 checkout tests, manual/maturity checks and whitespace checks pass.
+  Preserve the initial failures and their fixes in the ledger; native Windows/
+  Linux, full-suite, dedicated GUI and scientific acceptance remain unrun.
+- During commit review on 2026-11-20, reproduce the missing MCP `commandPaths`
+  for both terminator commands with the existing Python discovery guard. Register
+  the routes and extend the MCP test to check discovery before execution. Prior
+  local Rust results above predate this repair; new-source Rust/parity and native
+  verification remain external. See the [review handoff](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).
+
+
+## 2026-11-16 - Plan Termination And Transcript 3′-End Annotation
+
+- Save the [proposed annotation plan](transcription_termination_annotation_plan.md)
+  and [read-only Claude prompt](transcription_termination_claude_review_prompt.md).
+  Sequence exact reference recognition before separate bacterial intrinsic and
+  mammalian Pol II candidate profiles; preserve cleavage/UTR/termination
+  distinctions, shared-engine reports and selected stale-bound writeback.
+- Record the silent first Claude attempt and the retry's invalid OAuth token
+  error. Subsequently reconcile the owner-supplied [Claude review](transcription_termination_claude_review.md):
+  select one shared exact-recognition primitive, non-wrapping initial intervals,
+  pure v1 scoring without RNAfold, explicit catalog/provenance prerequisites and
+  parity in each executable phase. Record accepted and qualified advice in the
+  plan; external review execution remains reviewer-reported. Implementation,
+  scientific validation and release scope remain unselected; no Rust changed.
+- Incorporate the supplied review continuation: fix dedicated protocol ownership,
+  enumerate first-slice parity/matrix and confirmation acceptance, choose an
+  explicitly supplied catalog with typed unavailability, and defer dedicated GUI.
+  Keep the guide-table correction as separate follow-up; no executable changes.
+
 ## 2026-11-15 - Record Glen's Focused C3 Regression Return
 
 - Attribute Glen's fresh-main review at exact `919e7163`, four commits after

@@ -1943,6 +1943,47 @@ mod tests {
     }
 
     #[test]
+    fn termination_js_adapter_matches_engine_without_state_changes() {
+        use gentle_protocol::transcription_termination::*;
+        // Synthetic hairpin followed by T tract, recreated inline; used solely
+        // for shared adapter/report parity, not a validated biological example.
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "termination_toy".into(),
+            crate::dna_sequence::DNAsequence::from_sequence("GCGCGCAAAAGCGCGCTTTTTTTT").unwrap(),
+        );
+        let before = serde_json::to_value(&state).unwrap();
+        let operation = Operation::ScreenTranscriptionTermination {
+            request: TerminationScreenRequest {
+                seq_id: "termination_toy".into(),
+                host: "bacteria".into(),
+                polymerase: "bacterial_rnap".into(),
+                bacterial_intrinsic: true,
+                ..Default::default()
+            },
+            path: None,
+        };
+        let mut oracle = GentleEngine::from_state(state.clone());
+        let expected = oracle
+            .apply(operation.clone())
+            .unwrap()
+            .transcription_termination_screen
+            .unwrap();
+        assert!(!expected.rows.is_empty());
+        let response =
+            apply_operation_impl(state, &serde_json::to_string(&operation).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&response.state).unwrap(), before);
+        assert_eq!(
+            response
+                .result
+                .transcription_termination_screen
+                .unwrap()
+                .content_sha256,
+            expected.content_sha256
+        );
+    }
+
+    #[test]
     fn observed_sam_js_operation_preserves_portable_report_and_project_content() {
         let (_root, request) = GentleEngine::observed_sam_test_fixture();
         let state = ProjectState::default();

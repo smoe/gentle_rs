@@ -1130,6 +1130,79 @@ fn genomic_region_homology_routes_parse_typed_read_only_operations() {
 }
 
 #[test]
+fn termination_shell_routes_share_engine_report_and_reviewed_materialization() {
+    use gentle_protocol::transcription_termination::{TerminationMaterializeRequest, TerminationScreenRequest};
+    let mut engine = GentleEngine::new();
+    // Synthetic, hand-crafted inverted repeat plus T tract. Recreated solely in
+    // this test for shell/engine parity; no claim of biological validation.
+    engine.state_mut().sequences.insert(
+        "termination_toy".into(),
+        DNAsequence::from_sequence("CCCCGCGCGCAAAAGCGCGCTTTTTTTTCCCC").unwrap(),
+    );
+    let request = TerminationScreenRequest {
+        seq_id: "termination_toy".into(), host: "e_coli".into(),
+        polymerase: "bacterial_rnap".into(), bacterial_intrinsic: true,
+        include_annotations: false, ..Default::default()
+    };
+    let expected = engine.screen_transcription_termination(&request).unwrap();
+    assert!(!expected.rows.is_empty(), "synthetic heuristic positive");
+    let command = parse_shell_line(&format!(
+        "terminators screen '{}'", serde_json::to_string(&request).unwrap()
+    )).unwrap();
+    let output = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!output.state_changed);
+    assert_eq!(output.output["result"]["transcription_termination_screen"], serde_json::to_value(&expected).unwrap());
+    let materialize = TerminationMaterializeRequest {
+        screen: request, expected_report_sha256: expected.content_sha256,
+        row_ids: vec![expected.rows[0].row_id.clone()],
+    };
+    let command = parse_shell_line(&format!(
+        "terminators materialize '{}'", serde_json::to_string(&materialize).unwrap()
+    )).unwrap();
+    assert!(execute_shell_command(&mut engine, &command).unwrap().state_changed);
+    assert!(parse_shell_line("terminators screen '{}' --unknown x").is_err());
+    assert!(parse_shell_line("terminators screen '{\"unknown\":true}'").is_err());
+    assert!(parse_shell_line("terminators materialize '{}'").is_err());
+    assert!(parse_shell_line("terminators materialize '{}' --output out.json").is_err());
+    assert!(parse_shell_line("terminators unknown '{}'").is_err());
+}
+
+#[test]
+fn termination_json_file_route_preserves_quoted_paths_and_strict_fields() {
+    use gentle_protocol::transcription_termination::TerminationScreenRequest;
+    let scratch = tempdir().unwrap();
+    let request_path = scratch.path().join("owner's request.json");
+    // Synthetic parser-only JSON, regenerated here. The catalog is not opened by parsing.
+    let raw = json!({"seq_id":"toy", "host":"human", "polymerase":"pol_ii",
+        "catalog":{"path":r"C:\Catalog folder\owner's elements.json", "expected_sha256":"sha256:parser-only"}});
+    std::fs::write(&request_path, raw.to_string()).unwrap();
+    let line = format!("terminators screen {} --output {}",
+        quote_shell_arg(&format!("@{}", request_path.display())),
+        quote_shell_arg("owner's output.json"));
+    let ShellCommand::Op { payload } = parse_shell_line(&line).unwrap() else { panic!("shared op expected") };
+    let Operation::ScreenTranscriptionTermination { request, path } = serde_json::from_str(&payload).unwrap() else { panic!("screen expected") };
+    let expected: TerminationScreenRequest = serde_json::from_value(raw).unwrap();
+    assert_eq!(request, expected);
+    assert_eq!(path.as_deref(), Some("owner's output.json"));
+}
+
+#[test]
+fn termination_discovery_registers_both_routes_and_preserves_runtime_catalog_requirements() {
+    let descriptors = annotated_introspection_capability_descriptors();
+    for (id, mutating) in [
+        ("terminators screen", false), ("ScreenTranscriptionTermination", false),
+        ("terminators materialize", true), ("MaterializeTranscriptionTerminationFeatures", true),
+    ] {
+        let descriptor = descriptors.iter().find(|d| d["id"] == id).unwrap();
+        assert_eq!(descriptor["mutating"], if mutating { "true" } else { "false" });
+        assert_eq!(descriptor["requires_confirmation"], mutating);
+        assert_eq!(descriptor["annotation_status"], "fact_annotated");
+        assert!(descriptor["catalog_requirement"].as_str().unwrap().contains("catalog_unavailable"));
+        assert_eq!(capability_precondition_atoms(id), Some(vec![]));
+    }
+}
+
+#[test]
 fn tata_shell_routes_share_engine_results_and_require_reviewed_selection() {
     let _lock = crate::tf_motifs::test_registry_lock()
         .lock()
@@ -1909,6 +1982,10 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "gel-image export" => {
             Some(r#"gel-image export '{"report_id":"demo","path":"out.json","format":"json"}'"#)
         }
+        // Hand-crafted parser-only request; execution validates the actual catalog/report.
+        "terminators materialize" => Some(
+            r#"terminators materialize '{"screen":{"seq_id":"demo","host":"synthetic","polymerase":"bacterial"},"expected_report_sha256":"sha256:parser-only","row_ids":["synthetic"]}'"#,
+        ),
         "promoters tata-materialize" => Some(
             r#"promoters tata-materialize '{"screen":{"seq_id":"demo"},"expected_report_sha256":"sha256:parser-only","row_ids":["synthetic"]}'"#,
         ),

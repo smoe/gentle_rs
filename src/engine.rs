@@ -1327,6 +1327,12 @@ mod region_homology;
 mod regulatory_fragment_panel;
 #[path = "engine/io/sequence_design_preview.rs"]
 mod sequence_design_preview;
+#[path = "engine/analysis/exact_reference.rs"]
+mod exact_reference;
+#[path = "engine/analysis/termination_predictions.rs"]
+mod termination_predictions;
+#[path = "engine/analysis/transcription_termination.rs"]
+mod transcription_termination;
 #[path = "engine/analysis/tata_boxes.rs"]
 mod tata_boxes;
 #[path = "engine/analysis/tss_profiles.rs"]
@@ -4751,6 +4757,14 @@ pub enum Operation {
         request: gentle_protocol::PromoterModuleAssessmentRequest,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    ScreenTranscriptionTermination {
+        request: gentle_protocol::transcription_termination::TerminationScreenRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeTranscriptionTerminationFeatures {
+        request: gentle_protocol::transcription_termination::TerminationMaterializeRequest,
     },
     ScreenTataBoxes {
         request: gentle_protocol::tata_boxes::TataBoxScreenRequest,
@@ -10505,6 +10519,7 @@ impl GentleEngine {
                 | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::InspectCrypticSplicingScreen { .. }
                 | Operation::ScreenTataBoxes { .. }
+                | Operation::ScreenTranscriptionTermination { .. }
                 | Operation::RenderCrypticSplicingScreenSvg { .. }
                 | Operation::InspectCrypticSplicingEvidenceOverlay { .. }
                 | Operation::InspectCrypticSplicingProteinProjection { .. }

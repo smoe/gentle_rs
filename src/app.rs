@@ -12591,6 +12591,7 @@ Error: `{err}`"
                 primer_group_target_design: None,
                 cryptic_splicing_screen: None,
                 tata_box_screen: None,
+                transcription_termination_screen: None,
                 cryptic_splicing_evidence_overlay: None,
                 cryptic_splicing_protein_projection: None,
                 gene_locus_evidence_preparation: None,

@@ -22100,6 +22100,19 @@ fn tata_capability_descriptor(id: &str, mutating: bool) -> Value {
     })
 }
 
+fn termination_capability_descriptor(id: &str, mutating: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": if mutating { "true" } else { "false" },
+        "requires_confirmation": mutating,
+        "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": if mutating { "TerminationMaterializeRequest: screen, expected_report_sha256 and unique reviewed row_ids" } else { "TerminationScreenRequest: seq_id, explicit expression host/polymerase, non-wrapping interval or subject_feature_id, optional raw-hash-bound catalog and opt-in bacterial_intrinsic/mammalian_pol_ii heuristics" }}],
+        "reads": [], "effects": if mutating { vec![json!({"effect_kind":"may_on_success", "description":"Adds only selected, reviewed termination/3-prime-processing evidence features; preserves existing annotations."})] } else { vec![] },
+        "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+        "catalog_requirement": "Exact reference recognition requires a caller-supplied catalog path and expected raw SHA-256. Missing catalog is catalog_unavailable, not zero hits. Prediction-only modes do not require a catalog. Runtime checks availability and binding; discovery does not open input files.",
+        "description": if mutating { "Explicit, undoable termination-evidence materialization with stale report refusal and duplicate prevention. Candidate cleavage windows never become observed polyA sites." } else { "Read-only exact reference, source annotation and optional uncalibrated bacterial intrinsic/mammalian Pol II candidate evidence. No external folding, automatic transcript assignment or origin-crossing search. Optional --output writes report JSON; writes retain confirmation." },
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn workflow_macro_template_run_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -22514,6 +22527,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tata_capability_descriptor("ScreenTataBoxes", false),
         tata_capability_descriptor("promoters tata-materialize", true),
         tata_capability_descriptor("MaterializeTataBoxFeatures", true),
+        termination_capability_descriptor("terminators screen", false),
+        termination_capability_descriptor("ScreenTranscriptionTermination", false),
+        termination_capability_descriptor("terminators materialize", true),
+        termination_capability_descriptor("MaterializeTranscriptionTerminationFeatures", true),
         gel_image_capability_descriptor("gel-image import"),
         gel_image_capability_descriptor("ImportGelImage"),
         gel_image_capability_descriptor("gel-image workbench"),
@@ -32625,6 +32642,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ScreenTataBoxes"
         | "promoters tata-materialize"
         | "MaterializeTataBoxFeatures"
+        | "terminators screen"
+        | "ScreenTranscriptionTermination"
+        | "terminators materialize"
+        | "MaterializeTranscriptionTerminationFeatures"
         | "gel-image import"
         | "ImportGelImage"
         | "gel-image save-draft"
@@ -44226,6 +44247,32 @@ fn tss_workspace_capability_descriptor(id: &str, mutating: bool, collection: boo
     })
 }
 
+fn parse_terminators_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    let usage = "terminators screen REQUEST_JSON_OR_@FILE [--output REPORT.json] | terminators materialize REQUEST_JSON_OR_@FILE";
+    let subcommand = tokens.get(1).ok_or_else(|| usage.to_string())?;
+    if !matches!(subcommand.as_str(), "screen" | "materialize") {
+        return Err(format!("Unknown terminators subcommand '{subcommand}'; {usage}"));
+    }
+    if tokens.len() != 3
+        && !(subcommand == "screen" && tokens.len() == 5 && tokens[3] == "--output")
+    {
+        return Err(usage.to_string());
+    }
+    let operation = if subcommand == "screen" {
+        Operation::ScreenTranscriptionTermination {
+            request: parse_required_json_payload(&tokens[2], "termination screen request")?,
+            path: tokens.get(4).cloned(),
+        }
+    } else {
+        Operation::MaterializeTranscriptionTerminationFeatures {
+            request: parse_required_json_payload(&tokens[2], "termination materialization request")?,
+        }
+    };
+    Ok(ShellCommand::Op {
+        payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+    })
+}
+
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -47966,6 +48013,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "collections" | "collection" => parse_collections_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
         "promoters" => parse_promoters_command(tokens),
+        "terminators" => parse_terminators_command(tokens),
         "reporters" => parse_reporters_command(tokens),
         "resources" => {
             if tokens.len() < 2 {

@@ -40774,6 +40774,7 @@ impl GentleEngine {
             sequence_context_view: None,
             cryptic_splicing_screen: None,
             tata_box_screen: None,
+            transcription_termination_screen: None,
             cryptic_splicing_evidence_overlay: None,
             cryptic_splicing_protein_projection: None,
             sequence_context_bundle: None,
@@ -41554,6 +41555,26 @@ impl GentleEngine {
                     }
                     parent_seq_ids.push(request.seq_id.clone());
                     result.cryptic_splicing_screen = Some(Box::new(report));
+                }
+                Operation::ScreenTranscriptionTermination { request, path } => {
+                    let report = self.screen_transcription_termination(&request)?;
+                    if let Some(path) = path {
+                        let payload = serde_json::to_vec_pretty(&report)
+                            .map_err(|e| EngineError::new(ErrorCode::Internal, e.to_string()))?;
+                        std::fs::write(&path, payload).map_err(|e| EngineError::new(
+                            ErrorCode::Io, format!("Cannot write termination report '{path}': {e}")))?;
+                    }
+                    result.transcription_termination_screen = Some(Box::new(report));
+                }
+                Operation::MaterializeTranscriptionTerminationFeatures { request } => {
+                    let before = self.state.sequences.get(&request.screen.seq_id).map(|dna| serde_json::to_value(dna.features())).transpose().map_err(|e|EngineError::new(ErrorCode::Internal,e.to_string()))?;
+                    let report = self.materialize_transcription_termination(&request)?;
+                    parent_seq_ids.push(request.screen.seq_id.clone());
+                    if before != self.state.sequences.get(&request.screen.seq_id).map(|dna| serde_json::to_value(dna.features())).transpose().map_err(|e|EngineError::new(ErrorCode::Internal,e.to_string()))? {
+                        result.changed_seq_ids.push(request.screen.seq_id.clone());
+                    }
+                    result.messages.push("Applied selected reviewed termination evidence".into());
+                    result.transcription_termination_screen = Some(Box::new(report));
                 }
                 Operation::ScreenTataBoxes { request, path } => {
                     let report = self.screen_tata_boxes(&request)?;

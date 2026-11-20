@@ -157,6 +157,53 @@ These topic links do not imply identical feature coverage across interfaces.
         `restriction_site` rows, and `--restriction-enzyme NAME` can be
         repeated to keep only selected enzymes
 
+## Termination And 3′-End Evidence
+
+Use `terminators screen REQUEST_JSON_OR_@FILE [--output REPORT.json]` to inspect
+an explicitly selected sequence span. `terminators materialize
+REQUEST_JSON_OR_@FILE` adds only selected evidence rows after checking the exact
+reviewed report digest. Both use the shared engine; the GUI shell and generic MCP
+`op` route expose the same records. A dedicated GUI form is deferred.
+
+For example, with `plasmid_1` already loaded, save a request like this as
+`termination_request.json` (replace the end coordinate with a valid local bound):
+
+```json
+{
+  "seq_id": "plasmid_1",
+  "start_0based": 0,
+  "end_0based_exclusive": 1000,
+  "host": "e_coli",
+  "polymerase": "bacterial_rnap",
+  "bacterial_intrinsic": true
+}
+```
+
+```sh
+gentle_cli terminators screen @termination_request.json
+```
+
+This opts into an **uncalibrated structural heuristic**, not reference recognition
+or measured termination efficiency. For exact matching, supply `catalog` with
+`path` and `expected_sha256` binding the raw catalog bytes. No curated biological
+catalog is bundled or downloaded. For a mammalian expression unit use `host: "human"` or `"mouse"`,
+`polymerase: "pol_ii"` and `mammalian_pol_ii: true` instead. A shuttle vector's
+propagation host is not necessarily its expression host.
+
+To apply reviewed rows, save `{ "screen": <the same request>,
+"expected_report_sha256": <returned content_sha256>, "row_ids": [<selected IDs>] }`
+as JSON and call `terminators materialize @selection.json`. Materialization is
+undoable; MCP and agent writes require confirmation. Existing annotations are
+preserved and changed sequence/catalog evidence refuses stale selections.
+
+Coordinates are zero-based and end-exclusive. Optional `subject_feature_id` binds
+one explicit transcript/CDS context and its strand; it may accompany a downstream
+source interval. A CDS alone does not establish a UTR, and whole-sequence hits
+remain unassigned. Origin-crossing spans are unsupported; circular non-wrapping
+scans report that boundary limitation. See the [protocol](../protocol.md)
+for catalog, evidence and non-claim contracts.
+
+
 <!-- manual-page-nav:start -->
 
 ---

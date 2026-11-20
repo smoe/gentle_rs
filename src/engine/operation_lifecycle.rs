@@ -14,7 +14,8 @@ pub enum LifecycleRequest<'a> {
 fn preserves_operation_project_content(op: &Operation) -> bool {
     matches!(
         op,
-        Operation::PlanDnaSequenceDesign { .. }
+        Operation::ScreenTranscriptionTermination { .. }
+            | Operation::PlanDnaSequenceDesign { .. }
             | Operation::ExportRackEquipmentJson { .. }
             | Operation::ValidateRackEquipmentJson { .. }
             | Operation::EvaluateGenomeEditIntent { .. }
@@ -66,6 +67,11 @@ impl OperationApprovalPolicy {
 /// `None` leaves an unmigrated operation's existing conservative rules intact.
 pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationApprovalPolicy> {
     match op {
+        Operation::ScreenTranscriptionTermination { path, .. } => Some(if path.is_some() {
+            OperationApprovalPolicy::ConfirmArtifactWriteAttempt
+        } else {
+            OperationApprovalPolicy::NoAdditionalConfirmation
+        }),
         Operation::RnaReadEnds { command } => Some(if command.requires_confirmation() {
             OperationApprovalPolicy::ConfirmArtifactWriteAttempt
         } else {
@@ -100,6 +106,42 @@ pub(crate) fn operation_approval_policy(op: &Operation) -> Option<OperationAppro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn termination_inspection_preserves_content_and_output_attempt_requires_approval() {
+        use gentle_protocol::transcription_termination::TerminationScreenRequest;
+        let inspect = Operation::ScreenTranscriptionTermination {
+            request: TerminationScreenRequest::default(),
+            path: None,
+        };
+        assert!(LifecycleRequest::Operation(&inspect).preserves_project_content());
+        assert_eq!(
+            operation_approval_policy(&inspect),
+            Some(OperationApprovalPolicy::NoAdditionalConfirmation)
+        );
+        let export = Operation::ScreenTranscriptionTermination {
+            request: TerminationScreenRequest::default(),
+            path: Some("report.json".into()),
+        };
+        assert!(LifecycleRequest::Operation(&export).preserves_project_content());
+        assert_eq!(
+            operation_approval_policy(&export),
+            Some(OperationApprovalPolicy::ConfirmArtifactWriteAttempt)
+        );
+        let apply = Operation::MaterializeTranscriptionTerminationFeatures {
+            request: gentle_protocol::transcription_termination::TerminationMaterializeRequest {
+                screen: TerminationScreenRequest::default(),
+                expected_report_sha256: String::new(),
+                row_ids: vec![],
+            },
+        };
+        assert!(!LifecycleRequest::Operation(&apply).preserves_project_content());
+        assert_eq!(
+            operation_approval_policy(&apply),
+            None,
+            "materialization retains the conservative mutating gate"
+        );
+    }
 
     #[test]
     fn sequence_design_approval_policy_is_request_aware_and_legacy_conservative() {

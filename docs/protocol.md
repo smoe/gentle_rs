@@ -1877,6 +1877,99 @@ Missing fields preserve old JSON; failed source verification clears all plot
 series, including the reference. Image validation is not lane re-extraction.
 
 
+## Transcription Termination And 3′-End Evidence
+
+`ScreenTranscriptionTermination { request, path? }` returns
+`result.transcription_termination_screen`, a
+`gentle.transcription_termination_screen.v1` portable report.
+`MaterializeTranscriptionTerminationFeatures { request: { screen,
+expected_report_sha256, row_ids } }` is a separate undoable mutation. The shared
+shell names are `terminators screen REQUEST_JSON_OR_@FILE [--output REPORT.json]`
+and `terminators materialize REQUEST_JSON_OR_@FILE`. The generic MCP `op` route
+uses the same operations and retains its existing `confirm=true` gate even for
+inspection; materialization requires confirmation in every agent route. Screen
+inspection preserves project content; explicit output still follows
+external-write confirmation.
+
+Records live in `gentle_protocol::transcription_termination`. Unknown request,
+policy and catalog fields are rejected. A request names `seq_id`, `host` and
+`polymerase`; optional `start_0based`/`end_0based_exclusive` bound a non-wrapping
+source span. `subject_feature_id` explicitly binds transcript/CDS context and
+strand; an explicit source interval may extend downstream. Without an explicit
+interval, only supported exact feature geometry can supply the span. Ambiguous,
+fuzzy or unresolved subjects are refused rather than assigned an isoform. A
+whole-sequence scan is unassigned, never associated to the nearest CDS.
+
+Exact recognition uses a caller-supplied `catalog: { path, expected_sha256 }`.
+The expected SHA-256 binds raw file bytes; newline changes cannot silently retain
+the binding. The strict `gentle.transcription_termination_catalog.v1` document has
+`catalog_id`, `version`, and `entries`. Each entry carries `id`, `label`, canonical
+biological 5′-to-3′ DNA `sequence`, `sequence_sha256`, `host`, `mechanism`,
+`element_kind`, `source_url`, `source_version`, `recreation`,
+`redistribution_status`, and `approval_provenance`. Digests establish content,
+not source authorship, biological suitability or legal clearance. Exact matching
+has no approximate identity/indel policy. No catalog is bundled or fetched.
+Catalog unavailability is explicit, not a zero-hit result; malformed or changed
+input refuses. Prediction-only modes do not require catalog availability.
+
+`include_annotations` defaults true. Opt-in `bacterial_intrinsic` uses a pure,
+versioned hairpin/T-tract heuristic with explicit stem, loop, mismatch/wobble,
+GC-pair and tract settings. It is neither a folding calculation nor ΔG.
+Opt-in `mammalian_pol_ii` uses a narrow authored signal/context policy and retains
+candidate cleavage windows separately from signal geometry. Defaults include
+AATAAA/ATTAAA signals; policy thresholds have no measured sensitivity or
+specificity. These modes perform no external folding, download or RNA-read
+analysis. Bacterial support excludes archaea; mammalian Pol II does not cover
+all eukaryotes. Rho-dependent de novo prediction and other unsupported requested
+mechanisms receive explicit mechanism outcomes.
+
+Rows distinguish source annotation, exact reference match, bacterial intrinsic
+candidate and mammalian Pol II candidate. Element extent, processing signal,
+cleavage window, annotated RNA end and polymerase termination region remain
+different geometries. Related intervals carry `coordinate_basis`: ordinary
+`base_interval` uses zero-based half-open base coordinates;
+`interbase_boundary_set` uses a half-open set of boundary labels from 0 through
+sequence length. A cleavage window is the latter: a boundary `p` maps on reverse
+DNA to `length - p`, so `[first, last + 1)` maps to
+`[length - last, length - first + 1)`. It is not a genomic base interval or an
+observed cleavage site. A hexamer alone does not establish cleavage-site usage;
+absence of a hexamer does not establish absent 3′ processing. No result establishes
+expression, physical poly(A) length, termination efficiency, exact transcript
+completion or polymerase release. Annotated endpoints and candidate regions do
+not silently become an annotated 3′ UTR.
+
+The report retains sequence/annotation/catalog hashes, complete request/policies,
+component evidence, exclusions, mechanism outcomes and warnings. `content_sha256`
+hashes the deterministic report with that field empty. Materialization recomputes
+it and requires the reviewed hash and unique existing row IDs; changed evidence
+refuses. Existing source annotations are retained, matching generated features
+are deduplicated and candidate cleavage windows are never written as observed
+exact polyA sites. Repeated execution is inspectable through the same report;
+selected feature additions follow normal undo/redo. Co-located selected new
+evidence retains each supporting row and catalog source in feature qualifiers.
+Structured payloads use `termination_selected_evidence_b64`,
+`termination_selected_catalog_entries_b64`, `termination_evidence_b64`,
+`termination_request_b64` and `termination_catalog_entry_b64`: standard base64 of
+UTF-8 JSON. Decode after removing ASCII transport-folding whitespace from the
+base64 only; never normalize the decoded provenance strings. This preserves
+spaces, quotes, Unicode and escaped newlines through GenBank export/reimport.
+Digest identity qualifiers likewise ignore ASCII transport-folding whitespace.
+Equivalent existing non-generated source annotations are left unchanged;
+additional support remains in the portable report. Later reviewed support for an
+existing generated annotation is merged atomically into its provenance qualifiers
+without duplicating its geometry; these qualifier changes are undoable and
+reported as sequence changes.
+
+Limits `max_rows` (default 5,000) and `max_work` (default 20,000,000) bound output
+and candidate-window/comparison work. Input hashing and source-annotation
+inspection still traverse the supplied sequence/features; these are not claims
+of a whole-process memory or wall-clock limit. Resource failures are not biological absence. Both-strand scans
+within non-wrapping spans do not include origin-crossing windows on circular DNA;
+that incomplete boundary coverage is reported. Origin-crossing requests refuse
+rather than silently linearizing coordinates. Scientific calibration, additional
+host profiles, approximate matching, circular wrap support, Pol III and dedicated
+GUI presentation remain separate work.
+
 ## TATA-Box Evidence
 
 `ScreenTataBoxes { request, path? }` produces the non-persisted
