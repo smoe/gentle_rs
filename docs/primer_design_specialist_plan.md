@@ -27,6 +27,12 @@ not implement another pair-design engine or duplicate the PCR Designer just
 to satisfy this historical plan. First reconcile each proposed control with
 its existing owner.
 
+Report navigation is not absent: `GENtleApp::open_lineage_analysis_artifact`
+already routes primer, specificity, qPCR, RNA-read and other saved artifacts
+to their existing viewers. Lineage offers dedicated open actions, and PCR
+Designer lists/shows/exports its reports. A new all-domain report dashboard or
+an untyped global `REPORT_ID` is not the starting requirement.
+
 Whole-reference specificity is a separate evidence workflow. Source-bound
 intended-target geometry and companion per-dimension reference-selection
 receipts now prevent a newer report on another database from silently replacing
@@ -47,9 +53,10 @@ new handoff/import machinery, reference selection or readiness attachment.
 
 ## Conditional Slice B: Bound Panel Fan-Out
 
-Status: implemented for synthetic evaluation, pending Glen/CI verification of the
-new source. No dedicated GUI, new BLAST execution, changes to the matrix or
-readiness attachment are included.
+Status: implemented for synthetic evaluation, with historical Linux execution
+and canonical parity-repair receipts recorded in the Glen handoff. This is not
+blanket current-candidate, native or real-reference panel acceptance. No dedicated
+GUI, new BLAST execution, changes to the matrix or readiness attachment are included.
 
 ### Motivation And Entry Conditions
 
@@ -93,8 +100,12 @@ cross-assay reference caching on the strength of the single-pair trace.
 See [the protocol](protocol.md#panel-multi-reference-specificity), [tutorial
 04.09](tutorial/04-09_reference_bound_primer_specificity.md) and the
 [verification handoff](glen_next_verification_handoff.md#slice-b-panel-multi-reference-specificity).
-Canonical parity regeneration and checking, Rust execution and Windows behavior
-remain with Glen/CI. No production-capacity or biological pass is implied.
+Glen supplied canonical parity generation/checking and scoped Rust results at
+`27a8de33`; the generated repair was imported. Do not request that historical
+Linux campaign again as missing. Normal CI checks affected integrated source;
+unproved native scenarios and real-reference panel runtime/RSS remain separate.
+The old single-pair phase-trace/reader blocker is resolved, not a reason to defer
+all Slice B verification. No production-capacity or biological pass is implied.
 
 ## Remaining Proposal: Persisted Filtered Views
 
@@ -134,6 +145,62 @@ specificity orchestration are outside this residual plan.
   workflows.
 - Preserve UI-intent and shared-shell parity expectations for agent/MCP/CLI
   pathways.
+
+## Proposed Next Review Slice, 2026-11-16
+
+The owner forwarded Mistral's seven-component proposal for roadmap discussion.
+Keep its UX ideas, not its stale phase-trace blocker, blanket pending Slice B
+status, unverified absence claims or day estimates. Existing source and the
+historical receipts above are the starting evidence. This is planning, not
+authorization for a new implementation or release gate.
+
+**First: audit selected-pair preparation for the three existing PCR forms.**
+Inventory basic PCR, PCR Advanced and PCR Mutagenesis separately: existing
+control, source report/pair/template binding, destination fields, missing inputs,
+overwrite/approval behavior and tests. Reuse `render_primer_design_report_preview`,
+the existing report stores and PCR operation forms. Record unknowns as unknown,
+not as implemented or absent. If an existing control already provides the
+behavior, prefer navigation/documentation repair over another command or button.
+
+Do not conflate three different actions: opening a saved report, building
+`BuildExperimentalAssayHandoff` readiness cards from a transcript panel, and
+preparing a selected pair in a PCR execution form. The first two already have
+GUI paths; their existence does not prove the third for every mode.
+
+If the audit proves a gap, propose one bounded report-to-existing-form flow:
+
+- Preserve exact report identity/content binding, selected pair rank, template,
+  backend/evidence, complete oligos/tails and annealing geometry. Do not silently
+  strip tails or guess advanced-PCR options to fit a simpler form.
+- Preparation is not PCR execution, readiness approval, project/history mutation
+  or output publication. Explain missing/stale evidence without rescoring it;
+  require an explicit decision before replacing edited destination fields.
+- Mutagenesis still requires explicit position/reference/alternate inputs.
+  Selecting a pair must not invent a mutation or silently change PCR defaults.
+- Route any shared preparation contract through existing UI-intent/shell
+  boundaries; adapters must not acquire their own biological transformations.
+  New shell spellings are proposals until implemented and registered.
+- Require deterministic synthetic cases for exact selection and provenance,
+  stale/wrong-template/missing-pair refusal, tails and missing options, edited-form
+  protection, unchanged project/history and no implicit operation execution.
+  Shared-route/quoted-path and native GUI checks follow the actual change;
+  source inspection alone is not their acceptance.
+
+**Second: assess a primer-scoped report locator**, reusing Lineage, report stores
+and existing viewers before considering an all-domain hub. Define typed report
+ownership, ambiguous IDs, missing sources and stale bindings before proposing
+`ui open report ...`. Do not promise arbitrary file-backed RNA reports are in
+the project store or silently import/open unrelated files.
+
+Persisted filtered views and the pair-derived single-primer inspector remain
+separate proposals. They are not independent primer design, score changes or
+order-readiness promotion. Priorities here are provisional; no effort estimate
+is justified before the path audit.
+
+A bounded Mistral Vibe critique was attempted with all tools disabled and only
+selected public source facts; startup failed before a review result. This plan
+is Codex-authored, not Mistral-reviewed or newly Claude-reviewed. Optional Claude
+read-only consultation was offered; it has not been invoked.
 
 ## Simple PCR Pair Preparation Ledger, 2026-11-19
 

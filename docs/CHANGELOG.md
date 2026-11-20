@@ -15,6 +15,7 @@
   readiness approval, local Rust build, push or termination-behavior change.
   See the [implementation ledger](primer_design_specialist_plan.md#simple-pcr-pair-preparation-ledger-2026-11-19).
 
+
 ## 2026-11-16 - Add Shared Termination And 3′-Processing Evidence
 
 - Implement `terminators screen` and separately reviewed, undoable
@@ -64,6 +65,21 @@
   enumerate first-slice parity/matrix and confirmation acceptance, choose an
   explicitly supplied catalog with typed unavailability, and defer dedicated GUI.
   Keep the guide-table correction as separate follow-up; no executable changes.
+
+## 2026-11-16 - Reconcile The Proposed Primer UX Follow-Ups
+
+- Ground the owner-forwarded Mistral proposal in existing Lineage/report and
+  PCR Designer entry points. Distinguish saved-report navigation, panel readiness
+  cards and selected-pair preparation for PCR execution; none substitutes for
+  proof of the others. Prioritize a path audit before a bounded handoff change,
+  then a primer-scoped report locator rather than a new all-domain dashboard.
+- Correct the specialist plan's pending historical Slice B verification:
+  retain Glen's Linux/parity receipts and completed reader repair, without
+  claiming measured real-reference panel capacity or renewed native acceptance.
+  Keep persisted views and derived single-primer inspection separately gated.
+- Record proposals only: no new UI/command/schema, maturity promotion, Rust
+  execution, private-data run or push. The tool-disabled Mistral Vibe review
+  attempt stopped at startup; no model critique or Claude review is claimed.
 
 ## 2026-11-15 - Record Glen's Focused C3 Regression Return
 
