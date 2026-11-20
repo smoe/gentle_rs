@@ -1351,6 +1351,9 @@ mod primer_specificity_multi;
 mod primer_specificity_panel_multi;
 #[path = "engine/analysis/primer_specificity_references.rs"]
 mod primer_specificity_references;
+#[path = "engine/analysis/simple_pcr_handoff.rs"]
+pub(crate) mod simple_pcr_handoff;
+pub use simple_pcr_handoff::SimplePcrPairPreparation;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]

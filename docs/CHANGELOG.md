@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-19 - Prepare Simple PCR From An Explicit Saved Primer Pair
+
+- Add a read-only engine validation helper and an explicit button in the
+  existing report preview. Admit only tail-free saved pairs with matching
+  displayed report, exact rank and current template binding sites; copy both
+  oligos unchanged, retaining backend/source and point-in-time hash information.
+- Fill and focus only the existing simple-PCR form; execution remains a separate
+  click. Confirm replacement of occupied fields and reject source, project or
+  destination drift while confirmation is pending. Do not persist UI metadata,
+  mutate project/History or touch Advanced/Mutagenesis fields or Unique defaults.
+- Add 16 synthetic Rust regressions and fast source/wiring guards. Rust/native
+  execution remains with Glen/CI; no new Operation, command or report schema,
+  readiness approval, local Rust build, push or termination-behavior change.
+  See the [implementation ledger](primer_design_specialist_plan.md#simple-pcr-pair-preparation-ledger-2026-11-19).
+
 ## 2026-11-15 - Record Glen's Focused C3 Regression Return
 
 - Attribute Glen's fresh-main review at exact `919e7163`, four commits after

@@ -136,6 +136,38 @@ Primer pairs form:
     transcriptome/cDNA cross-amplification assessment and records the validated
     database content identity
 
+### Prepare Simple PCR From A Saved Pair
+
+In the saved primer-report preview, select the pair rank and choose
+**Use selected pair in simple PCR**. GENtle checks the displayed report against
+the saved version, the exact selected rank and its binding sites on the current
+template. It copies both oligos in their recorded 5'-to-3' orientation into the
+existing **Sequence tools > Core cloning operations > PCR** form. The reverse
+primer is not reverse-complemented again. Review the form and click **PCR**
+separately to create products.
+
+The sequence viewer must be in **Region**, **Gene** or **cDNA** mode, where
+cloning controls are available. Genome/Chromosomal inspection mode is not
+silently changed to expose an execution form.
+
+Only pairs without non-annealing 5' tails are admitted. Tailed pairs require
+Advanced PCR; this action neither strips their tails nor switches modes. It
+leaves Advanced/Mutagenesis fields, mutation choices and the **Unique** setting
+unchanged. This is not the panel's **Build experimental handoff** readiness card.
+
+If different primers already occupy the simple-PCR form, GENtle shows the old
+and proposed values. **Replace PCR primers** confirms; **Cancel primer
+replacement** leaves them untouched. A changed project, report, template or
+destination value invalidates the pending replacement: request it again.
+Preparation changes only session form state, not project content, History or
+output files, and does not itself persist UI metadata.
+
+The source note identifies the report and pair; its hover text includes the
+report and preparation-time template hashes. Manual primer edits detach that
+displayed pair binding. Legacy reports do not retain an original whole-template
+digest: matching their current binding sites is not proof of historical template
+freshness, a new BLAST search, specificity acceptance or order approval.
+
 qPCR form:
 
 - same ROI/amplicon + pair constraints as primer-pair design

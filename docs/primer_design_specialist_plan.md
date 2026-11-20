@@ -1,8 +1,9 @@
 # Primer Design Specialist: Current Status And Remaining Scope
 
 Slice B was authorized on 2026-11-05 for implementation and synthetic evaluation.
-The remaining specialist proposals are not implementation authorization or
-scientific acceptance.
+The owner authorized only tail-free selected-pair preparation into simple PCR on
+2026-11-19; see the implementation ledger below. The other specialist proposals
+are not implementation authorization or scientific acceptance.
 
 ## Verified Starting Point
 
@@ -133,3 +134,46 @@ specificity orchestration are outside this residual plan.
   workflows.
 - Preserve UI-intent and shared-shell parity expectations for agent/MCP/CLI
   pathways.
+
+## Simple PCR Pair Preparation Ledger, 2026-11-19
+
+Implemented the owner's first bounded slice, not the global report hub or the
+three-mode Mistral draft. A button in the existing saved primer-report preview
+uses one read-only engine helper to validate the exact saved/displayed report,
+explicit rank, tail-free oligos and current template binding sites. Reverse
+oligos are copied unchanged. Source report/backend and preparation-time digests
+remain visible; no report schema, Operation or shell/MCP command was added.
+
+The controller fills only simple-PCR forward/reverse fields, opens/scrolls the
+existing form and keeps execution separate. Different occupied fields require
+an explicit replacement decision. Confirmation is bound to the engine instance,
+source snapshot, whole preparation-time template and previous destination values.
+Invalidation/cancellation does not change fields. The action does not call the
+UI metadata writer, apply an operation, create a product or publish a file.
+Advanced/Mutagenesis inputs and the existing Unique policy are untouched.
+
+The read-only audit found a shared Annealing length in the Advanced/Mutagenesis
+forms and independent per-primer lengths in the engine. General tailed-pair
+handoff therefore remains a separate slice, as do explicit mutation selection
+and the later primer-scoped report locator. Do not silently populate historical
+mutation defaults as if the user chose them. No new scientific logic is needed.
+
+Legacy primer reports contain a template ID, not its original sequence digest.
+Current coordinate/oligo validation and the new confirmation snapshot do not
+retroactively authenticate an old whole-template or whole-reference assessment.
+This control makes no readiness or laboratory acceptance claim.
+
+Sixteen synthetic Rust regressions (six engine, ten GUI/controller) cover
+selection, orientation, tails/geometry, source/destination/project drift,
+confirmation/cancellation, idempotence, unchanged project/History and paint-only
+behavior. They are authored, **not run locally**. Fast source guards and parsing
+are not type checking. Use the
+[remaining verification](glen_next_verification_handoff.md#simple-pcr-selected-pair-preparation-2026-11-19)
+for exact-source Rust and native GUI/Windows/macOS checks. No new Claude review,
+local Rust build, push or publication is claimed here.
+
+Local recording, 2026-11-20: 12 Python source/tutorial cases, documentation
+status, new-module formatting, parent-module syntax parsing and whitespace pass.
+The initial source guard's whitespace-sensitive call match was corrected for
+rustfmt line breaks; no production check was relaxed. Rust/native results remain
+unrun. Session-close has four OK, two intentional warnings and no failures.

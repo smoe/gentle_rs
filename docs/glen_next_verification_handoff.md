@@ -1,5 +1,55 @@
 # Glen: Next Verification And Return
 
+## Simple PCR Selected-Pair Preparation, 2026-11-19
+
+After an owner-approved push, verify only this new GUI preparation path at the
+actual integrated SHA. Do not repeat completed primer matrix/reader, C1-C4,
+barcode or private-data campaigns. Termination work is concurrent and separate;
+this slice does not accept or change it. No provider/model/biological run needed.
+
+Use an explicitly isolated target; compile before running:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked --no-default-features --lib -j1
+cargo test --locked --lib -j1 simple_pcr_handoff_ -- --test-threads=1
+python3 -m unittest scripts.test_simple_pcr_handoff -v
+```
+
+Expect six engine and ten GUI/controller regressions in the default-feature
+root test target, not zero filtered matches. No Rust was compiled/run by Codex.
+Check original reverse oligos, unequal primer lengths, exact rank (no silent
+pair-1 fallback), no tails, invalid/circular/wrong/missing template, stale/deleted
+report, duplicate ranks and malformed geometry; overlapping binding sites retain
+the existing basic-PCR behavior. Read-only Genome/Chromosomal view must not be
+bypassed. Pending replacement must refuse
+changed report/template/project instance or edited destination values; Cancel
+must leave inputs unchanged. Snapshot project/History/metadata before and after.
+
+Native GUI (only on an available host): select a saved pair, copy into empty
+simple-PCR fields, verify source/backend information and that the source sequence
+window's Core cloning operations opens/scrolls to the form. Nothing should run
+until the existing PCR button is clicked. Exercise occupied-field confirmation,
+Cancel, manual edits during confirmation and source/project changes; inspect
+Advanced/Mutagenesis inputs and Unique before/after. Reject tails without
+stripping or automatic mode switching. Check native versus embedded focus on
+Windows/macOS separately; headless paint is not native acceptance.
+
+The operation-free control copies only session form state; no new external
+command, report store or publication exists. Legacy reports have no original
+whole-template digest: checking current binding sites is not historical
+freshness or renewed specificity/order approval. Return actual SHA, lock/toolchain/
+features/platform, nonzero counts, failures/skips and native checks not run.
+
+Codex checks completed 2026-11-20: 12 fast Python source/tutorial cases pass,
+documentation status and whitespace pass, and both new Rust modules pass scoped
+rustfmt checks. The three edited parent modules parse with rustfmt without
+formatting their pre-existing code. This is not Rust type checking or execution.
+Session-close: four OK, two expected warnings (existing dirty/untracked work and
+manual plan fidelity), zero failures. Scope remains the approved simple-PCR
+preparation; termination sources, shared pre-existing hunks, private data,
+outputs and the dirty `paper` submodule are preserved. No push or local Rust build.
+
 ## Glen C3 Regression Return At 919e7163, 2026-11-15
 
 Glen reports a fresh `origin/main` fetch and a temporary-worktree review at exact

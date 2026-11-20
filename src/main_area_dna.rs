@@ -84,6 +84,8 @@ mod tss_view;
 mod gene_assay_study_ui;
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
+#[path = "main_area_dna/simple_pcr_handoff.rs"]
+mod simple_pcr_handoff;
 mod transcript_assay_report_ui;
 mod transcript_assay_specificity_ui;
 
@@ -1494,6 +1496,7 @@ pub struct MainAreaDna {
     pcr_paint_last_drag_end_text: String,
     qpcr_design_ui: QpcrDesignOpsUiState,
     cached_primer_design_report: Option<Arc<PrimerDesignReport>>,
+    simple_pcr_handoff: simple_pcr_handoff::SimplePcrHandoffUiState,
     cached_qpcr_design_report: Option<Arc<QpcrDesignReport>>,
     cached_terminal_exon_rt_primer_pool_report: Option<Arc<TerminalExonRtPrimerPoolReport>>,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
@@ -2392,6 +2395,7 @@ impl MainAreaDna {
             pcr_paint_last_drag_end_text: String::new(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
             cached_primer_design_report: None,
+            simple_pcr_handoff: Default::default(),
             cached_qpcr_design_report: None,
             cached_terminal_exon_rt_primer_pool_report: None,
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
@@ -4781,6 +4785,7 @@ impl MainAreaDna {
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
+        self.simple_pcr_handoff.owner_viewport = Some(ui.ctx().viewport_id());
         let width = ui.available_width().min(ui.clip_rect().width()).max(1.0);
         let max_height = (ui.ctx().content_rect().height() * 0.45).clamp(100.0, 420.0);
         egui::ScrollArea::vertical()
@@ -6996,6 +7001,7 @@ impl MainAreaDna {
                             ui.label(Self::tr("sequence.tools.ids_hint"));
                             let template_seq_id = self.seq_id.clone().unwrap_or_default();
                             let cloning = egui::CollapsingHeader::new("Core cloning operations")
+                                .open(self.simple_pcr_handoff.focus_requested.then_some(true))
                                 .default_open(false)
                                 .show(ui, |ui| {
 
@@ -7243,7 +7249,8 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.sq_forbidden_motifs);
                 });
 
-                ui.horizontal(|ui| {
+                self.render_simple_pcr_handoff_source(ui);
+                let simple_pcr_form = ui.horizontal(|ui| {
                     ui.label("PCR fwd");
                     ui.text_edit_singleline(&mut self.pcr_forward);
                     ui.label("rev");
@@ -7264,6 +7271,10 @@ impl MainAreaDna {
                         });
                     }
                 });
+                if self.simple_pcr_handoff.focus_requested {
+                    ui.scroll_to_rect(simple_pcr_form.response.rect, Some(egui::Align::Center));
+                    self.simple_pcr_handoff.focus_requested = false;
+                }
 
                 ui.horizontal(|ui| {
                     ui.label("PCR adv fwd");
@@ -25603,6 +25614,7 @@ impl MainAreaDna {
         self.pcr_paint_last_drag_end_text.clear();
         self.qpcr_design_ui = s.qpcr_design_ui;
         self.cached_primer_design_report = None;
+        self.simple_pcr_handoff = Default::default();
         self.cached_qpcr_design_report = None;
         self.cached_terminal_exon_rt_primer_pool_report = None;
         self.transcript_assay_panel_ui = s.transcript_assay_panel_ui;

@@ -2763,6 +2763,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_primer_design_report_preview(&mut self, ui: &mut egui::Ui) {
+        self.render_simple_pcr_handoff_confirmation(ui);
         let report_id = self.primer_design_ui.report_id.trim().to_string();
         if report_id.is_empty() {
             ui.small("Current report_id is empty.");
@@ -2920,6 +2921,33 @@ impl MainAreaDna {
                 ));
             }
         });
+        let handoff_rank = self
+            .primer_design_ui
+            .specificity_pair_rank_1based
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|rank| *rank > 0 && report.pairs.iter().any(|pair| pair.rank == *rank));
+        if ui
+            .add_enabled(
+                handoff_rank.is_some(),
+                egui::Button::new("Use selected pair in simple PCR"),
+            )
+            .on_hover_text("Fill the existing simple-PCR form with this exact saved pair. Pairs with 5prime tails require Advanced PCR. This does not run PCR or approve specificity.")
+            .clicked()
+        {
+            if let Some(rank) = handoff_rank {
+                match self.request_simple_pcr_handoff(Arc::clone(&report), rank) {
+                    Ok(true) => self.focus_prepared_simple_pcr_form(ui.ctx()),
+                    Ok(false) => {}
+                    Err(message) => {
+                        self.op_status = message.clone();
+                        self.op_error_popup = Some(message);
+                    }
+                }
+                ui.ctx().request_repaint();
+            }
+        }
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_response_with_outcome(
             &_report_preview.response,
