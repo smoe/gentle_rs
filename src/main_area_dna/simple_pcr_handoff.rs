@@ -6,7 +6,7 @@
 use super::*;
 use crate::engine::SimplePcrPairPreparation;
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct SimplePcrHandoffUiState {
     pending: Option<PendingSimplePcrHandoff>,
     prepared: Option<SimplePcrPairPreparation>,
@@ -14,6 +14,7 @@ pub(super) struct SimplePcrHandoffUiState {
     pub(super) owner_viewport: Option<egui::ViewportId>,
 }
 
+#[derive(Clone, Debug)]
 struct PendingSimplePcrHandoff {
     report: Arc<PrimerDesignReport>,
     prepared: SimplePcrPairPreparation,
@@ -401,20 +402,49 @@ mod tests {
     }
 
     #[test]
+    fn simple_pcr_handoff_gui_pending_state_clones_without_mutating_original_or_project() {
+        fn require_traits<T: Clone + std::fmt::Debug>() {}
+        require_traits::<SimplePcrHandoffUiState>();
+        require_traits::<PendingSimplePcrHandoff>();
+        assert!(SimplePcrHandoffUiState::default().pending.is_none());
+
+        let (mut area, report) = area();
+        area.pcr_forward = "old".to_string();
+        assert!(!area.request_simple_pcr_handoff(report, 7).unwrap());
+        let before = snapshot(&area);
+        let mut cloned = area.simple_pcr_handoff.clone();
+        assert!(format!("{cloned:?}").contains("PendingSimplePcrHandoff"));
+        cloned.pending.as_mut().unwrap().previous_forward = "clone edit".to_string();
+        assert_eq!(
+            area.simple_pcr_handoff
+                .pending
+                .as_ref()
+                .unwrap()
+                .previous_forward,
+            "old"
+        );
+        cloned.pending = None;
+        assert!(cloned.pending.is_none());
+        assert!(area.simple_pcr_handoff.pending.is_some());
+        assert_eq!(area.pcr_forward, "old");
+        assert!(area.pcr_reverse.is_empty());
+        assert_eq!(before, snapshot(&area));
+    }
+
+    #[test]
     fn simple_pcr_handoff_gui_report_preview_paints_without_copying_or_running_pcr() {
         let (mut area, report) = area();
         area.primer_design_ui.report_id = report.report_id.clone();
         area.primer_design_ui.specificity_pair_rank_1based = "7".to_string();
         let before = snapshot(&area);
         let ctx = egui::Context::default();
-        let output = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                area.render_primer_design_report_preview(ui);
-            });
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            area.render_primer_design_report_preview(ui);
         });
         assert!(area.pcr_forward.is_empty() && area.pcr_reverse.is_empty());
         assert!(area.simple_pcr_handoff.pending.is_none());
         assert!(output.platform_output.commands.is_empty());
         assert_eq!(before, snapshot(&area));
+        output.drop_without_applying_deltas();
     }
 }

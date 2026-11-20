@@ -244,3 +244,21 @@ status, new-module formatting, parent-module syntax parsing and whitespace pass.
 The initial source guard's whitespace-sensitive call match was corrected for
 rustfmt line breaks; no production check was relaxed. Rust/native results remain
 unrun. Session-close has four OK, two intentional warnings and no failures.
+
+### Compile Repair After Glen's Return, 2026-11-20
+
+Glen's two source-bound Linux returns at `ccd839dc` establish default GUI/test
+compile failures, not runtime failures or acceptance. The outer and pending UI
+state lacked required `Clone, Debug`, and the paint test used egui's removed
+`Context::run`; the engine-test wildcard import was unused. The headless library
+check passed, but zero default Rust tests and no native GUI checks executed.
+
+Add the derives, remove only the redundant import and use the current `run_ui`
+root-Ui callback with explicit disposal of unused texture deltas. A new Rust
+regression checks cloned pending-state independence, trait bounds and unchanged
+project content. There are now 17 authored tests (six engine, eleven GUI), plus
+four fast source guards. Thirteen scoped Python source/tutorial cases and scoped
+format/documentation checks pass; none establishes repaired-source compilation.
+Keep the [focused compile/native handoff](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20)
+open for Glen/CI without replaying completed unrelated campaigns. No new biological
+policy, command, report schema, termination change, local Rust build or push.

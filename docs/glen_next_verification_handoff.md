@@ -1,5 +1,49 @@
 # Glen: Next Verification And Return
 
+## Simple PCR Compile Repair, 2026-11-20
+
+Glen tested exact `ccd839dc58a02cc0117055c3d231677638994546` in clean detached
+Linux worktrees. Default GUI/test compilation failed: `MainAreaDna` derives
+`Clone, Debug` but its new handoff state did not; the paint test also used the
+removed egui `Context::run` API. An unused engine-test `use super::*` was reported.
+The requested default Rust tests therefore **did not execute: zero tests**, not
+a filtered pass. The separate headless library check passed; it does not accept
+the GUI path. The routine scan's three Python source checks passed independently.
+No native GUI ran: compilation failed and no display/native device was available.
+The supplied report names Cargo/rustc 1.98.1 on Debian x86_64 and lock SHA-256
+`d880f70bcb3bb8ebd8db53e0ef7a8456a060c841a891f97f8d4a2eaf159569fe`;
+no raw archive verification is claimed here.
+
+The repair adds `Clone, Debug` to both transient types, retains `Default` on
+the outer state, removes the redundant test import and uses egui 0.37 `run_ui`
+with its supplied root `Ui`. The paint test explicitly discards unused texture
+deltas. One additional Rust regression checks trait bounds, independent cloned
+pending fields and unchanged project content. Total expected default-feature
+filter: **6 engine + 11 GUI/controller = 17 tests**.
+
+After the owner's push, first compile the actual integrated SHA with an explicit
+run-owned target; stop at the first real compiler failure:
+
+```sh
+cargo check --locked --tests -j1
+cargo check --locked -j1
+cargo test --locked --lib -j1 simple_pcr_handoff_ -- --test-threads=1
+```
+
+Reuse matching-source shared compile results with the termination checklist,
+but keep the acceptance scopes separate. Do not repeat completed Python, C1-C4,
+reader or barcode campaigns. A headless check need not be repeated solely for
+this GUI-only repair; new unrelated headless changes retain their own checklist.
+Native GUI checks from the selected-pair section below still require a real
+available host: open/scroll/focus, overwrite/Cancel, stale bindings and no implicit
+PCR or project/History changes. A paint test is not native acceptance.
+
+Codex ran 13 Python source/tutorial checks and scoped formatting/documentation
+checks, not Rust compilation/tests. Return exact SHA/toolchain/features/platform,
+nonzero Rust counts, warnings, failures/skips and native checks not run. The
+`ccd839dc` compile failure remains historical; repaired-source acceptance is open.
+No push or local Rust build/test was performed for this repair.
+
 ## Termination Evidence Commit Review, 2026-11-20
 
 After the owner's push, verify the integrated termination screen/materialize
@@ -65,8 +109,9 @@ cargo test --locked --lib -j1 simple_pcr_handoff_ -- --test-threads=1
 python3 -m unittest scripts.test_simple_pcr_handoff -v
 ```
 
-Expect six engine and ten GUI/controller regressions in the default-feature
-root test target, not zero filtered matches. No Rust was compiled/run by Codex.
+Expect six engine and eleven GUI/controller regressions in the default-feature
+root test target after the compile repair above, not zero filtered matches.
+No Rust was compiled/run by Codex.
 Check original reverse oligos, unequal primer lengths, exact rank (no silent
 pair-1 fallback), no tails, invalid/circular/wrong/missing template, stale/deleted
 report, duplicate ranks and malformed geometry; overlapping binding sites retain

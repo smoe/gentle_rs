@@ -47,6 +47,27 @@ class SimplePcrHandoffSourceTests(unittest.TestCase):
             self.assertNotIn(forbidden, production)
         self.assertIn("simple_pcr_handoff_gui_report_preview_paints_without_copying_or_running_pcr", tests)
 
+    def test_ui_traits_and_paint_follow_current_egui_contract(self):
+        source = (ROOT / "src/main_area_dna/simple_pcr_handoff.rs").read_text()
+        production, tests = source.split("#[cfg(test)]", 1)
+        self.assertRegex(
+            production,
+            r"#\[derive\(Clone, Debug, Default\)\]\s+pub\(super\) struct SimplePcrHandoffUiState",
+        )
+        self.assertRegex(
+            production,
+            r"#\[derive\(Clone, Debug\)\]\s+struct PendingSimplePcrHandoff",
+        )
+        self.assertIn("ctx.run_ui(egui::RawInput::default(), |ui|", tests)
+        self.assertNotIn("ctx.run(", tests)
+        self.assertIn("output.drop_without_applying_deltas()", tests)
+        self.assertIn("require_traits::<SimplePcrHandoffUiState>()", tests)
+        self.assertIn("require_traits::<PendingSimplePcrHandoff>()", tests)
+        engine_tests = (ROOT / "src/engine/analysis/simple_pcr_handoff.rs").read_text().split(
+            "#[cfg(test)]", 1
+        )[1]
+        self.assertNotIn("use super::*;", engine_tests)
+
     def test_existing_report_and_form_are_wired_without_new_operations(self):
         preview = (ROOT / "src/main_area_dna/primer_design_ui.rs").read_text()
         start = preview.index("fn render_primer_design_report_preview")

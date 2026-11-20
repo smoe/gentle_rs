@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-20 - Repair Simple PCR Handoff Compilation
+
+- Address Glen's default-feature E0277/E0599 findings at `ccd839dc`: derive
+  `Clone, Debug` on the outer and pending handoff state, retain `Default`, move
+  the paint regression to egui 0.37 `run_ui` and discard unused texture deltas.
+  Remove the unused engine-test wildcard import. Preparation, confirmation,
+  report binding, PCR execution and termination semantics are unchanged.
+- Add a cloned-pending-state Rust regression and fast trait/API source guards.
+  Thirteen Python source/tutorial checks pass; the 17 Rust regressions and native
+  GUI remain unrun locally. Preserve Glen's headless pass separately from the
+  default compile failure and zero executed Rust tests. See the
+  [focused handoff](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20).
+
 ## 2026-11-19 - Prepare Simple PCR From An Explicit Saved Primer Pair
 
 - Add a read-only engine validation helper and an explicit button in the

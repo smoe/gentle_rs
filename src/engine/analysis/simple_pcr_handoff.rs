@@ -112,7 +112,6 @@ impl GentleEngine {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::*;
     use crate::{dna_sequence::DNAsequence, engine::*};
 
     /// Hand-crafted, non-palindromic reverse primer, unequal lengths and rank 7.
