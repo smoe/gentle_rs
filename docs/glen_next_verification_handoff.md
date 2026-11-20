@@ -208,6 +208,36 @@ WM793/TP73 remains undercovered: 9/14 Q20 and 11/15 Q30 sites are uncallable;
 shared ALT2/2 is visible below threshold. Native/new-source CI, scientific and
 release acceptance remain separate. No provider/private-archive run or push.
 
+
+### Glen Routine Scan At 114126e0, 2026-11-13
+
+Glen reports no concrete product regression across 13 commits from `d8656d46`
+to exact `114126e09ec5be17e4f860f212c986a8dd0589c3`. The source worktree was
+fresh/detached; diff review and `git diff --check` passed, with 17/17 focused
+engine tests and 8/8 Python source tests reported green. These overlap earlier
+campaigns; do not add them to the independent C2-C4 acceptance counts below.
+No raw archive, exact commands or toolchain receipt accompanied this routine
+message, so these counts remain Glen-attributed, not independently rerun here.
+His scan boundary advanced at `2026-11-13T04:33:32Z`; the worktree was removed.
+
+Local Git confirms that only five documentation files changed after accepted
+`5d310958`; runtime sources, tests and lockfile are unchanged. A separate Codex
+read-only API check closes the routine message's HTTP-401 CI-query gap:
+[run 43343570552](https://github.com/smoe/gentle_rs/actions/runs/43343570552)
+is completed/success at exact `114126e0`. Windows, macOS, Linux/headless,
+release safety and aggregate passed; full Linux and optional GUI/audit jobs
+skipped. The earlier `5d310958` run is also terminal/success. Neither receipt
+establishes the remaining native/data/release checks below.
+
+**Scan infrastructure follow-up only:** Cargo inherited the shared target
+`/home/clawbio/GENtle/target`; no run-owned build cache was created or cleaned.
+This is not a product failure or run-owned cache-isolation proof. Before each
+future Cargo call, explicitly set and verify
+`CARGO_TARGET_DIR=<temporary-worktree>/target`, including helper/subprocess
+invocations. After the run and process checks, clean only that verified run-owned
+target with `cargo clean --target-dir ...`; never clean the inherited shared
+cache. No product patch or repetition of completed checks is requested.
+
 ### Glen Return At 5d310958
 
 Glen accepts the repaired C2-C4 Linux gates at exact source

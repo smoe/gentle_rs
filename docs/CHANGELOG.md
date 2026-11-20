@@ -137,6 +137,22 @@
   [source-bound receipt](tp53_tp73_c3_capacity_20261114.md). Keep earlier
   refusals, WM793/TP73 undercoverage and scientific/native acceptance explicit.
 
+
+## 2026-11-13 - Record The Documentation-Only Routine Scan
+
+- Record Glen's no-regression report at `114126e0`: 17/17 focused engine and
+  8/8 Python source checks passed. Keep these attributed, overlapping results
+  separate from the earlier C2-C4 acceptance; no new raw archive was supplied.
+- Confirm that only five documentation files changed after `5d310958` and
+  independently observe terminal same-source CI `43343570552`: Windows,
+  macOS, Linux/headless, release safety and aggregate passed; full Linux and
+  optional GUI/audit jobs skipped. This closes the routine CI-query gap without
+  expanding native, data or release acceptance.
+- Retain the scan-infrastructure finding: its Cargo call inherited the shared
+  target. Require an explicit verified run-owned target for future calls and
+  cleanup only after process checks. The shared cache was correctly left alone;
+  no GENtle source fix, local Rust execution or repeat campaign is needed.
+
 ## 2026-11-13 - Run Bound TP53 Then TP73 Conditional Consequences
 
 - Commit verification documentation at `114126e0` before executing the newly
