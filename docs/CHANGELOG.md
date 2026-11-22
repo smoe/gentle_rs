@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-22 - Restore Roadmap Version Marker After Owner Test Run
+
+- Retain the owner's finalized Nextest return: 5363 passed, one roadmap-marker
+  failure and 16 skipped. Recorded default registry/freshness and termination/CLI
+  cases pass; the five newer GUI history tests and actual JS/Lua VMs are absent.
+- Restore `Current candidate` in the compact roadmap, keeping the development-only,
+  unselected/unpublished boundary. Leave the Rust release guard unchanged.
+  Direct execution of its existing binary passes the single failed test; do not
+  turn that rerun into a new green full-suite or repaired-GUI claim.
+- Extend the fast documentation-status gate with matching version/status/section
+  checks and LF/CRLF/public-version negative controls. Reproduce its failure
+  before the wording fix; all 24 documentation/checkout tests pass afterward.
+  See the [terminal receipt and narrow remaining request](glen_next_verification_handoff.md#owner-nextest-return-and-roadmap-marker-repair-2026-11-22).
+  No local Rust build, dependency change, push, dispatch or publication.
+
 ## 2026-11-22 - Verify Actual Termination MCP Stdio And Canonical Parity
 
 - Reuse newly available owner-built executables reporting `5faca9cd`, without

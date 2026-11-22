@@ -522,3 +522,13 @@ canonical Rust parity checker using newly available owner-built executables
 reporting `5faca9cd`. The owner's active Nextest run is not a terminal verdict,
 and its 5,179-test binary lacks the five GUI repair tests. Keep those two
 acceptance scopes separate; a matching repaired GUI build/test is still needed.
+
+The owner's run subsequently completed with 5,363 passes and one roadmap
+version-marker failure. Its recorded default registry/freshness and 21 root
+termination plus one CLI-forwarding cases pass. Restore only the roadmap's
+recognized label, preserving its explicit unselected/unpublished state and the
+unchanged Rust guard; a direct existing-binary rerun of that sole failure passes.
+The fast Python status gate now catches this regression before compilation.
+See the [terminal receipt and remaining checks](glen_next_verification_handoff.md#owner-nextest-return-and-roadmap-marker-repair-2026-11-22).
+Neither the repaired documentation nor that old test binary executes the five
+new GUI history tests or missing JS/Lua VMs.

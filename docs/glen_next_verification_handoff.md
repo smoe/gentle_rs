@@ -1,6 +1,66 @@
 # Glen: Next Verification And Return
 
+## Owner Nextest Return And Roadmap Marker Repair, 2026-11-22
+
+The previously observed owner-started run is now **terminal**, not an inferred
+timeout or a missing log. Run `aa88ed6e-d941-4a62-8baa-84a2f1c5b0a0`, Nextest
+0.9.150, default profile, command `cargo nextest run`: **5363 passed, 1 failed,
+16 skipped across 17 binaries**, 4571.368 seconds, exit 100. This is the default
+selection, not a workspace/doctest/script-feature or new-source acceptance claim.
+The self-reported build source and working-tree/lock limitations remain in the
+[artifact receipt](#additional-mcp-stdio-and-canonical-parity-return-2026-11-22);
+no new toolchain version is inferred from the runner version. The command did
+not include `--locked`; observed lock bytes remain unchanged.
+
+Codex replayed the existing record, without starting Cargo or repeating tests.
+It proves **32/32 registry + 1/1 canonical freshness**, **21 root termination
+tests + 1 CLI-forwarding test**, all passed. Actual JS/Lua VM cases and the five
+new GUI Shell history tests are absent; these passes do not replace them.
+
+The sole failure is `release_metadata_matches_cargo_package_version` at
+`tests/release_version_consistency.rs:90`: the condensed roadmap used
+`Development version` instead of the guard's literal `Current candidate`.
+Restore the recognized current-version label while explicitly retaining
+**no selected release SHA, freeze or publication**. Do not change or weaken the
+Rust release guard, its status/section boundaries or negative controls.
+
+The existing compiled test executable was then run directly with
+`release_metadata_matches_cargo_package_version --exact --nocapture --test-threads=1`:
+**1 passed, 0 failed, 3 filtered**, no compilation. Binary SHA-256:
+`ed19e64859f68250221ff9f2b9e2b3b1fec871eff6f1e31cd323000c1ce93b03`.
+The recorded full run remains red; do not relabel it or add the rerun count to
+claim a new green full suite at a later SHA.
+
+Add the same version/status/Release-Gate check to the existing fast Python
+documentation-status gate. It reproduces the original failure before the prose
+fix and passes after it. **24/24 documentation/checkout tests pass**, including
+three new regressions: accepted candidate/published markers with LF/CRLF,
+renamed/stale/out-of-section marker refusal, and unchanged public-version scope.
+The real LF/CRLF Git checkout test also now checks the roadmap marker. No new
+byte-exact artifact, fixture digest, release status or Rust-test source changes.
+
+The finalized local Nextest files remain in the owner's record store, not
+published or copied into the repository. SHA-256 `store.zip`:
+`a2c5451a0147e2be60c4d5f146e5937a8b308c23f0d8177dd6a0f34142ba1fd5`;
+`run.log.zst`:
+`a10a71042f865d17d0c47c4c527f40ee35b054e58e59036a74b34d5874408f91`.
+These identify retained files, not an independently sealed portable archive.
+
+After the owner's push, focus on a matching build, the five GUI Shell history
+tests and native failed-boundary replay, plus actual termination JS/Lua VMs.
+Do not repeat the completed 5363 cases or the stdio/canonical/registry/PCR checks
+solely for this documentation/Python repair. A later selected release SHA still
+needs its own full CI gates. Windows remains separate and external; nothing was
+pushed, rebuilt, cleaned, dispatched or published by Codex.
+Final documentation status/manual/whitespace checks pass; session-close reports
+five OK, two known unrelated-work/scope reminders and no failures. The roadmap
+has 1,536 words. The Rust guard, engine/GUI source, manifest/lock, `paper` and
+private/untracked files are unchanged by this marker/Python repair.
+
 ## Additional MCP Stdio And Canonical Parity Return, 2026-11-22
+
+The in-progress observation below is historical; the [terminal return](#owner-nextest-return-and-roadmap-marker-repair-2026-11-22)
+above now records the one failure, narrow repair and actual rerun.
 
 The owner independently started `cargo nextest run` in this checkout. Newly
 available executables report source `5faca9cdf1f5a5948b7a4060b50e757e7e6c76be`,
@@ -51,8 +111,9 @@ self-reported build revision and `e7209425`; the new Rust change is confined to
 GUI Shell persistence and its tests. Reuse these scoped stdio/canonical passes
 without presenting them as a compile or native pass for that GUI repair.
 Still required: the five new controller tests and matching native replay,
-actual termination JS/Lua VMs and remaining source/lock-bound registry/platform
-acceptance. Native Windows remains the owner's separate external gate.
+actual termination JS/Lua VMs and remaining source/lock-bound platform
+acceptance. The terminal return supplies the default registry/freshness assertions.
+Native Windows remains the owner's separate external gate.
 Documentation status, manual inventory and whitespace checks pass;
 session-close reports five OK, two known unrelated-work/scope reminders and no
 failure. Only these records/plan/roadmap change in this follow-up; the owner's
@@ -94,7 +155,8 @@ and that new real edits still invalidate Redo. Do not weaken the engine's
 metadata side-edit rule if a test fails. No need to replay completed screening,
 catalog, Python/CLI, MCP-handler, PCR or export campaigns solely for this patch.
 
-Actual termination JS/Lua VMs and remaining registry assertions stay open;
+Actual termination JS/Lua VMs stay open; default registry/freshness assertions
+now pass in the [owner's terminal return](#owner-nextest-return-and-roadmap-marker-repair-2026-11-22);
 the [additional scoped return](#additional-mcp-stdio-and-canonical-parity-return-2026-11-22)
 now supplies actual MCP stdio and the canonical checker. The owner explicitly retained
 native Windows as a **separate external gate**, not a requirement to acquire a

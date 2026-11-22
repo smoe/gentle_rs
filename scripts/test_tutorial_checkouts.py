@@ -123,6 +123,7 @@ class DocumentationStatusTests(unittest.TestCase):
             "Cargo.toml", "README.md", "build.rs", "src/app.rs",
             "crates/gentle-shell/src/ui_intent.rs",
             "docs/reviewer_preview.md", "docs/primer_design_specialist_plan.md",
+            "docs/roadmap.md",
             "docs/cloning_pattern_catalog.md", "docs/cloning_routine_catalog_plan.md",
             "assets/cloning_routines.json", ".gitattributes",
         }
@@ -347,6 +348,7 @@ class DocumentationStatusTests(unittest.TestCase):
                 payload = (clone / "docs/reviewer_preview.md").read_bytes()
                 self.assertNotIn(b"\r", payload, "Repository policy keeps documentation LF")
                 self.assertEqual(doc_status.readme_version_errors(clone), [])
+                self.assertEqual(doc_status.roadmap_version_errors(clone), [])
                 self.assertEqual(doc_status.preview_errors(clone), [])
                 self.assertEqual(doc_status.catalog_errors(clone), [])
 
@@ -364,6 +366,47 @@ class DocumentationStatusTests(unittest.TestCase):
                     path.write_bytes(original.replace(marker, replacement).replace("\n", newline).encode("utf-8"))
                     self.assertEqual(doc_status.readme_version_errors(root),
                                      [f"README project status must name Cargo package version {version}"])
+
+    def test_roadmap_release_guard_accepts_unselected_candidate_and_published_status(self):
+        root = self.fixture()
+        path = root / "docs/roadmap.md"
+        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        for status in ("Current candidate", "Published baseline"):
+            for newline in ("\n", "\r\n"):
+                with self.subTest(status=status, newline=newline):
+                    text = (f"# Roadmap\n\n## Release Gate\n\n{status}: `v{version}`; "
+                            "no selected release SHA or publication.\n## Priorities\n")
+                    path.write_bytes(text.replace("\n", newline).encode())
+                    self.assertEqual(doc_status.roadmap_version_errors(root), [])
+
+    def test_roadmap_release_guard_rejects_renamed_stale_and_out_of_scope_markers(self):
+        root = self.fixture()
+        path = root / "docs/roadmap.md"
+        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        marker = f"Current candidate: `v{version}`"
+        invalid = (
+            f"## Release Gate\nDevelopment version: `v{version}`\n",
+            "## Release Gate\nCurrent candidate: `v0.0.0-internal.0`\n",
+            f"## Release Gate\nCurrent candidate: `v{version}.1`\n",
+            f"## Release Gate\nPublished baseline: `v{version}0`\n",
+            f"{marker}\n## Release Gate\n",
+            f"## Release Gate\n## History\n{marker}\n",
+            f"## Release Gate\n# History\n{marker}\n",
+            f"## Release Gate\nHistorical mention: {marker}\n",
+            marker + "\n",
+        )
+        for newline in ("\n", "\r\n"):
+            for text in invalid:
+                with self.subTest(text=text, newline=newline):
+                    path.write_bytes(text.replace("\n", newline).encode())
+                    self.assertEqual(doc_status.roadmap_version_errors(root), [
+                        f"roadmap release gate must name v{version} as current candidate or published baseline"])
+
+    def test_roadmap_release_guard_does_not_require_an_internal_gate_for_public_versions(self):
+        with tempfile.TemporaryDirectory(prefix="gentle-public-version-") as tmp:
+            root = Path(tmp)
+            (root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
+            self.assertEqual(doc_status.roadmap_version_errors(root), [])
 
     def test_stale_version_and_unsafe_shared_state_are_refused(self):
         root = self.fixture()

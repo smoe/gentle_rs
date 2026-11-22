@@ -2,8 +2,8 @@
 
 Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
 updated-lock platform checks; do not repeat the scoped macOS cases.
-Verify the GUI Shell Redo repair; termination VM and registry
-acceptance stay separate from completed process checks.
+Verify the GUI Shell Redo repair and actual termination VMs; keep remaining
+acceptance separate from completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -16,8 +16,8 @@ and contracts in [protocol.md](protocol.md).
 
 Published baseline: `v0.1.0-internal.12`; retain its
 [publication ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence).
-Development version: `v0.1.0-internal.13`, with **no selected release SHA or
-publication**. Ordinary development continues without interim freezes.
+Current candidate: `v0.1.0-internal.13` (development version only), with **no
+selected release SHA or publication**. Development continues without interim freezes.
 
 At actual release preparation, complete the unchanged
 [nine-gate acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger):
@@ -52,7 +52,7 @@ remains source-bound, not a current-source pass.
    broader/platform acceptance; do not replay completed macOS or focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
 2. Compile and verify the narrow GUI Shell Redo repair, preserving side-edit
-   invalidation; finish only unrun termination VM/registry checks.
+   invalidation; finish only unrun termination VM checks.
    [Focused request](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.

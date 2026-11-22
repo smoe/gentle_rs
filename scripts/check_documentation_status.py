@@ -50,6 +50,25 @@ def readme_version_errors(root):
     return []
 
 
+def roadmap_version_errors(root):
+    """Match the existing Rust release-gate marker contract, not a release approval."""
+    version = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"]
+    if "-internal." not in version:
+        return []
+    tag = f"v{version}"
+    markers = (f"Current candidate: `{tag}`", f"Published baseline: `{tag}`")
+    lines = iter((root / "docs/roadmap.md").read_text(encoding="utf-8").splitlines())
+    for line in lines:
+        if line.strip() == "## Release Gate":
+            break
+    for line in lines:
+        if line.startswith("## ") or line.startswith("# "):
+            break
+        if line.startswith(markers):
+            return []
+    return [f"roadmap release gate must name {tag} as current candidate or published baseline"]
+
+
 def preview_errors(root):
     errors = []
     preview = (root / "docs/reviewer_preview.md").read_text(encoding="utf-8")
@@ -144,7 +163,8 @@ def lifecycle_errors(root):
 
 
 def check(root=ROOT):
-    return readme_version_errors(root) + preview_errors(root) + catalog_errors(root) + lifecycle_errors(root)
+    return (readme_version_errors(root) + roadmap_version_errors(root) + preview_errors(root)
+            + catalog_errors(root) + lifecycle_errors(root))
 
 
 if __name__ == "__main__":
