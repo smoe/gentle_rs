@@ -1,400 +1,245 @@
 # GENtle Roadmap
 
-Last session: 2026-10-29 - Follow the [S2.1 close-out](observed_transcript_structures_s2_plan.md#s21c-execution-and-close-out-2026-10-29): carry its scoped local verification and outstanding native/provider acceptance separately from S2.2. Use the [S2.3 source-bound verification](observed_transcript_structures_s2_plan.md#s23-implementation-and-verification-2026-10-29) for SAM intake/report/route checks; carry optional VM, native/platform and real-provider/scientific acceptance separately, with explicit real-data annotation policies. Verify the integrated [FASTQ panel and tutorial 10.04](glen_next_verification_handoff.md#targeted-fastq-panel-2026-10-22), including explicit child-module paths and JSON Value imports (`f37f7039`), canonical generators and synthetic replay before authorized real-data use; compiler/runtime, Windows handles and live-agent responsiveness remain unverified. Keep repository text LF on every platform and carry the restored LF policy into normal CI. Verify the [provider preview-writer fixture isolation](glen_next_verification_handoff.md#provider-preview-fixture-follow-up-2026-10-22), including the original macOS reopen and strict symlink/source-destination guards; the absent optional-source repairs already exist in current source. Preserve the owner's committed dependency update. Do not repeat the completed glossary/protocol/all-features repair campaign at `5ab0b02a`; preserve its [source-bound return](glen_next_verification_handoff.md#glossary-and-all-features-follow-up-2026-10-22) separately from later source. Retrieve the named macOS full-suite failure if it persists in normal CI; the retained historical run `39774820033` fails overall despite passing both repaired gates. Full Linux was skipped; no new-source Rust/CI pass is claimed. Carry the Windows path/ZIP/proxy fixes, isolated BLAST test fixtures and owner-updated lockfile into normal CI; retain the [Windows evidence](CHANGELOG.md#2026-10-21---isolate-missing-blast-tools-in-async-tests) at its tested source without inferring merged-source, package or GUI acceptance. Verify the [unscaled custom-only reference panel](gel_workbench.md#unscaled-custom-only-reference-panel) with its separate Y axis/native bins, explicit export pairing and selection-bound worker alongside [comparison density](gel_workbench.md#comparison-density-display) and signed algebra. Tutorial 10.03 selects density explicitly; real-data subtraction remains undecided. Omitted/explicit integral mode must retain legacy SVG bytes; display changes do not alter stored weights/statistics or establish acquisition comparability. Keep Glen's [scoped Linux return](gel_workbench.md#integrated-linux-return-at-bb1686bd-2026-10-20) at its actual source and retain the [bounded catalog-parity handoff](glen_next_verification_handoff.md#catalog-parity-repair-and-gel-return-2026-10-20) for unfiltered protocol, matrix/introspection and canonical freshness; project/selection/Cancel native checks remain unrun. Preserve advisory planning, expression, the [six-item ledger](glen_audit_followups_20261008.md#gel-integration-return-2026-10-20), VKORC1, implemented carrier support modes and pending rack/tube/sequence-design acceptance. Scaled/fitted references, ratios and encrypted D5000 decoding stay deferred; compact storage/box geometry remains separate. Follow the [release-only cadence](decisions.md#development-and-release-verification-cadence), without interim freezes or recurring bundles. Focused macOS gel Rust tests pass at their recorded source; merged native/platform, full-suite/live-agent/scroll/package/scientific gates remain open. Further local Rust remains scoped to the current authorized task; no push, dispatch, provider call, new capture or publication; `.11` DMG stays deferred.
+Last session: 2026-11-20. Verify the simple-PCR compiler repair and termination
+discovery on the pushed source before claiming runtime acceptance. Preserve
+completed source-bound checks; run only missing or affected gates from the
+[Glen handoff](glen_next_verification_handoff.md).
 
-Purpose: fast session orientation. This file answers "what next?" and should be
-readable in under two minutes. Completed work belongs in
-[`CHANGELOG.md`](CHANGELOG.md). Durable implementation constraints belong in
-[`decisions.md`](decisions.md). Protocol and schema contracts remain in
-[`protocol.md`](protocol.md).
-
-Maintenance invariant:
-
-- Do not add a `Done` entry to this roadmap. Move completed work directly to
-  [`CHANGELOG.md`](CHANGELOG.md) in the same session.
-- The roadmap may temporarily contain at most one active session's in-flight
-  status notes; migrate them before handoff.
-- If a note is a durable rule, move it to [`decisions.md`](decisions.md).
-- If a note is a speculative idea, keep it as a one-line parking-lot entry.
+Purpose: fast session orientation, followed by optional phase and parking-lot
+navigation. The opening release/priorities overview should take about two
+minutes; the whole file has an advisory 2,000-word budget. Completed work belongs
+in [CHANGELOG.md](CHANGELOG.md), durable rules in [decisions.md](decisions.md),
+and contracts in [protocol.md](protocol.md).
 
 ## Release Gate
 
-Published baseline: `v0.1.0-internal.12` at `5e6201a69a599cba87491c86cfd7311cb6fee173`, published 2026-10-13 with all three native `package-opt1` packages, four JSON receipts and GHCR publication. Preserve the [release ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence) and separately verified [non-publishing headless receipt](audits/glen_followups_20261008/container_validate_5e6201a6/README.md), including the initial Ubuntu setup failure and open independent native acceptance; the `.10`/`.11` scientific ledgers stay historical.
-Current candidate: `v0.1.0-internal.13` is the development version, with no selected release SHA or publication. Validate version/tutorial metadata through the [Glen handoff](internal_13_rollover_glen_handoff.md); consolidate fresh `package-opt2` native/container/extracted-package and full acceptance at actual release preparation, not every intermediate commit. Root `Cargo.toml` owns compiler compatibility; the sequence-design crate has no independent Rust 1.85 floor. Preserve owner dependency updates and older source-bound lock hashes; verify the [compatible bio update policy](glen_next_verification_handoff.md#compatible-bio-update-policy-2026-11-08) in normal `--locked` CI, retaining the other seven flagged exact pins and unchanged lockfile without repeating completed biological campaigns. Rerun the [raw traversal fixture repair](glen_next_verification_handoff.md#windows-specificity-bundle-raw-path-fixture-2026-11-08) on native Windows without weakening production path refusal. Retain Glen's [scoped discovery/decision pass at `7f73a42a`](GENtle_discovery_verification_7f73a42a.md); verify the [egui 0.37 API alignment and ported SAM fixture](glen_next_verification_handoff.md#egui-037-and-ported-glossary-repair-2026-11-02) externally, without inheriting older-source passes. External Rust verification remains required without becoming an interim development freeze.
-Active aim (owner, 2026-10-15): review early containers/pools/arrangements/racks/plates and 3D exports; ship minimal provider-neutral protein-expression and explicit collection-to-storage paths with tutorials. Require one candidate's green Windows/macOS/full-Linux CI, build-only installers/container with extracted smokes, Glen's rollover/tutorial/readiness verdict and owner approval. Native latency, real-reference primer-import performance, profile comparisons, live-agent and historical scientific ledgers carry forward without blocking `.13`; retain the focused Linux worker result without inferring Windows/full-suite acceptance.
-First official `0.1` direction (owner-earmarked, 2026-11-02): follow [Glen's prioritized release aims](official_0_1_release_aims.md) after stabilization and `.13` preparation: installable OpenClaw skill, scoped golden-path maturity, global RT-PCR specificity/redesign, long-read cohorts, lifecycle safety and measured GUI refinement. For Glen's TP73 RT-primer findings, verify the bounded supplied-candidate `primers assess-rt-candidates` implementation under the [assessment/redesign ledger](rt_capture_primer_redesign_plan.md#first-slice-implementation-ledger); prospective reference counts stay separate from deferred old-selected junction comparisons. Verify the [per-isoform comparison slice](rt_capture_primer_redesign_plan.md#second-slice-implementation-ledger) with shared CDS/UTR/unknown geometry and explicit denominators; verify the [saved-junction inspector](rt_capture_primer_redesign_plan.md#third-slice-implementation-ledger) separately from source analysis acceptance; verify the [constrained explicit-group redesign slice](rt_capture_primer_redesign_plan.md#fourth-slice-implementation-ledger) separately from experimental acceptance. Recheck the [four-path MCP discovery repair](glen_next_verification_handoff.md#rt-capture-mcp-command-path-repair-2026-11-04) with the unchanged full parity/freshness assertions; abundance, native forms and calibrated structure remain later slices; no new freeze or release candidate follows.
-Retained scientific story, not a selected `.13` aim: source-bound TP73/PATZ1 evidence, conservation navigation and approval-bound reporter plans. Designed products are not validated assays; similarity does not prove sufficiency.
+Published baseline: `v0.1.0-internal.12`; retain its
+[publication ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence).
+Development version: `v0.1.0-internal.13`, with **no selected release SHA or
+publication**. Ordinary development continues without interim freezes.
 
-Smoke status: headless proofs do not replace graphical acceptance. All three
-Linux chapters (branch/reverse complement, digest, compact Simple PCR) must pass,
-without waiving the ten-minute budget. Glen reports green at `3de4803a`; retain the newer Simple-PCR evidence at `9070cb1d` separately. Recheck at the merged candidate and improve the result capture's clipped lower rows without treating five saved pairs as five visibly complete rows.
-Glen validates Linux and BLAST (missing-tool skips are not acceptance); CI owns Windows/macOS and containers. Verify the [vector-PDF writer alignment](glen_next_verification_handoff.md#vector-pdf-writer-dependency-alignment-2026-11-10) with locked compile and existing vector-PDF regressions, preserving other owner dependency updates. Recheck the [ported annotation/SAM publication fault tests](glen_next_verification_handoff.md#publication-fault-test-port-2026-11-03) on native Windows; retain scoped local results separately from Windows handle and full-suite acceptance.
+At actual release preparation, complete the unchanged
+[nine-gate acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger):
 
-Proof path:
+1. Select one clean, pushed candidate SHA, lockfile and profile; never combine
+   different revisions' passes.
+2. Obtain green Windows, macOS and full Linux CI at that SHA, including locked
+   checks, tests and canonical tutorial/parity freshness.
+3. Build all three native packages with receipts and extracted smokes; retain
+   the headless container identity/receipt and no-network CLI/MCP smokes.
+4. Complete rollover/version/tutorial/parity and the A/B/C functional/native
+   checks below, then obtain Glen's scoped readiness verdict.
+5. Obtain explicit owner tag/publication approval. After confirmed release,
+   perform the next development-version rollover.
 
-- [Headless regeneration workflow](examples/workflows/tp73_genome_evidence_viewer_release_proof.json)
-  loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat and Clariom-style
-  array fixtures, exercises CUT&RUN V1-V3 with synthetic paired reads, adds
-  TFBS fixtures, and emits SVG/JSON/TSV proof artifacts.
-- Public [TP73 evidence-viewer runbook](tp73_genome_evidence_viewer_runbook.md).
-- Offline [PATZ1 Gene Locus Evidence workflow](examples/workflows/patz1_gene_locus_evidence_offline.json)
-  and generated tutorial align transcript models, PSR/JUC effects, grouped
-  occupancy, TP73 motif scoring, provenance, and assay continuation on one
-  negative-strand axis.
-- [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
-- Published [`.10` release notes and pending exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.10.md).
+Use the [owner procedure](internal_13_preparation_handoff.md#owner-procedure)
+and [release process](release.md): `package-opt2` first; select the separate
+opt1 fallback only after a retained hosted failure, on a new candidate.
+These instructions authorize no push, dispatch, tag, build or publication.
 
-Release acceptance:
-
-- The proof workflow remains offline-safe and writes non-empty sequence,
-  splicing-expert, TFBS SVG, repeat-materialization JSON, CUT&RUN regulatory
-  JSON, and CUT&RUN coverage/cut-site/fragment TSV artifacts.
-- Version metadata, LF/CRLF tutorial replays, capability/parity checks, and the
-  deterministic proof workflow pass the pre-tag validation recorded in the
-  versioned release notes.
-- Require Windows CI on every push plus one selected Linux/macOS job; before tagging, retain both Unix verdicts at the same SHA. Confirm the `.11` retained tutorial-version replay on native Windows, not only locally.
-  Track job `107075366344` at `e4c94bf3`'s legacy SHA-1 CertUtil probe sharing violation separately; it was identical in both outputs, not the parity failure. The historical CLI-lock recheck is recorded in the [archived handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#corrected-ci-evidence), not a `.12` pass.
-- Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
-  external resources; CI uses tiny local fixtures without restricting the
-  engine or GUI contracts to those fixture sizes.
-- Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
-- For each new candidate verify the [package-opt2 recipe](release.md): opt-level 2, all LTO off, 256 codegen units, assertions/overflow checks on, unwinding, no stripping, incremental/debug off, one build job, five native/three container binaries and unoptimized helpers. Keep `package-opt1` unchanged. The owner authorizes this one recipe change, not builds/publication; fresh exact-source receipts and extracted smokes remain required. Glen compares same-SHA opt1/opt2 resources, startup/PATZ1 and output parity before any further optimization; `.12` package success is not a speedup verdict.
-- Require fresh headless `runtime-cli` receipts when source/profile changes, preserving RNAPKIN's corrected helper lock, SVG/PNG and unprivileged no-network smokes. Released `.12` container publication passed at `5e6201a6`; that evidence does not accept newer source, independent native behavior or scientific results.
-- Owner candidate order ([commands](internal_13_preparation_handoff.md#owner-procedure)): complete generated follow-up; owner-approved push of main including the integrated Ubuntu 24.04 pin before October 19; select the full SHA; `gh workflow run ci.yml -R smoe/gentle_rs --ref main -f platform=linux` (also macOS if unsampled); dispatch `release.yml` and `container.yml` with `tag=v0.1.0-internal.13`, full `candidate_sha`, `publish=false`; if hosted opt2 fails, select the separate opt1 fallback and repeat on a new SHA; Glen's rollover/tutorial/A-B-C/readiness; owner tag/publication approval; .14 rollover only after confirmed release. Hosted execution is pending; opt1 fallback remains unmerged, no Ubuntu 26 qualification.
-
-Release cut line:
-
-- Carry unrecorded `.10`/`.11` scientific and GUI acceptance forward without erasing historical ledgers; bind each new verdict to its explicitly selected source SHA.
-- Preserve the successful `.12` CI-native package and container cycle at `5e6201a6`, including DMG/extracted-package smokes. Independent downloaded-package/native checks remain pending; later candidates require fresh receipts, Glen's readiness verdict and owner publication approval.
-
-Outstanding acceptance scope (including [native Windows repairs and the expanded input audit](testing.md#september-2026-failure-analysis), and [independent anchor-to-assembly authority](architecture.md#source-coherent-locus-transcript-presentation)):
-- Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance. Run `dbsnp_spdi_` GenBank re-import regressions via Glen/CI; live dbSNP/native C/T acceptance remains separate.
-- Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation and [DNA-map/Structure source comparison](transcript_source_presentation.md#dna-map-and-structure-tab) with unchanged primer targets; obtain canonical
-  CD44/TGFB1/SERPINE1 region sets before real-candidate analysis; verify overlapping TSS bands, zero-position peaks and per-TSS CUT&RUN/TFBS arrays against continuation-page IDs in the exact supplied bundle, never infer missing ROIs.
-- Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
-  to report one of three linked cDNAs and two of four linked records covered,
-  with only the true patch record genomically unassessed.
-- Decide `.13` retention/removal of deprecated ClawBio shell-normalizer modes
-  using the [compatibility inventory](clawbio_gentle_integration_onepager.md#compatibility-review-inventory); `.11` eligibility did not authorize removal.
+Historical `.10`/`.11` scientific ledgers, native latency, real-reference import
+performance, profile comparisons and live-agent research carry forward without
+becoming new `.13` blockers. Older passes never certify newer source; headless
+checks do not replace graphical acceptance. Keep detailed scope distinctions in
+the [verification navigation](glen_next_verification_handoff.md#roadmap-detail-navigation-2026-11-20).
+The [historical CI correction](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#corrected-ci-evidence)
+remains source-bound, not a current-source pass.
 
 ## Next Session Priorities
 
-1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots. Run the 10-step learner path in [synthetic TSS acceptance](tutorial/08-15_tss_collection_gui.md) first; retain Glen's `1fcee6c0` evidence separately from merged-candidate acceptance. Repeated-open reuse, Forget/Undo, restart and stale-member editing remain separate contributor checks, not part of that learner verdict. Verify compact validation, cascade and first-member native focus (including mixed open/new members) without harness refocusing; multi-window clutter and individual-member navigation remain follow-ups. Exercise the [TSS collection workflow](tss_workspace.md#acceptance) on TP73: membership, strands/flanks, separate-process approval, cache refresh, DeltaNp73-only cropped locus, validated scans, repeated opening and inner-agent handoff. Compare symbol/ID memberships with mixed or case-variant gene labels; verify historical collections stay intact while new grouping requires fresh approval. Include stored-collection inspection and confirmed stale-registry removal without deleting sequences. Check unsupported-index warnings and locus-level unassigned transcripts remain distinct from loaded-feature coverage and gene-specific exclusions. Verify remaining [DNA-map/Dotplot contextual/native checks](glen_next_verification_handoff.md#dna-map-and-dotplot-separation-2026-10-27) and affected-source regressions, retaining the [focused `b8e0118f` return](glen_next_verification_handoff.md#glen-scoped-scan-at-b8e0118f-report-received-2026-10-28) without repeating it as unrun work.
-2. Carry historical `.10`/`.11` acceptance into one named `.13` candidate: locked tests, five native package entrypoints plus separate optional scripting checks, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs. Keep both tagged-source ledgers unchanged.
-   Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests. For private five-gene rescoring, first obtain the old scored report/receipt and exact matrix/context bindings; the [historical input inventory](tss_tfbs_profiles.md#check-input-completeness-before-regeneration) alone is not acceptance.
-3. Preserve the `.12` [published package ledger](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence); do not redispatch that completed CI artifact cycle as unfinished work. After explicit push/dispatch approval, require fresh macOS/Linux/Windows, headless and build-only package evidence for any new candidate. Keep independent native GUI/tutorial checks and source/profile identity separate; preserve all existing tags/assets.
-4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
-5. Have Glen run the [promoter-cofactor tutorial](tutorial/08-14_promoter_cofactor_browser.md) against the exact candidate: live stale-form/copy binding, saved evidence, verified plus/minus feature preview/confirmation/undo, then the optional IRF9 package. Human scientific approval remains pending; unstranded evidence remains regions and raw coverage reconstruction is not supported by the reduced package.
-   Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands and run the [regulatory/TSS-subset reader](regulatory_motif_subset.md) against the actual genome-wide delivery (including MT and source floors); synthetic fixture acceptance is not production acceptance. Native TSS follow-up (not an added release gate): live acceptance of [report attachment](gui.md#attach-the-quantitative-report) and [view SVG export](gui.md#export-the-native-tss-view), including CD44/TGFB1 gaps, local-strand legends, curve colours, span-only navigation, missing units, axes, selected lanes and sparse-hit coverage; reporter rows remain open. Validate approved [local scoring](gui.md#compute-local-tss-scores): InlineSequence/matrix provenance, separate score kinds/scales/cache, cancellation, stale-form handling and genuine zero versus unavailable masks. Its agent/headless routes now exist (`ui open tss-view --local-score`, `promoters tss-view-svg`) with a real-locus walkthrough in [tutorial 08.17](tutorial/08-17_tp73_dnp73_factor_curves.md); retain Glen's Linux/manual 08.16/08.17 screenshots at `8652ecf2` separately from merged-candidate equivalence, live hosted-intent adoption and Windows/macOS acceptance per [handoff](tp73_dnp73_factor_curves_glen_handoff.md). Span-scoped headless local scoring is implemented pending tests/acceptance: complete footprints inside the requested span, full-window admission, explicit span counts/hashes and no hidden GUI/report rescoring. Native TSS export follow-ups are implemented pending tests/acceptance: disclosed default cap of 128 hover titles per lane/strand without dropping curve points or validity bands, top-three within-matrix raw positions, documented prepared-reference P1 access and validated collection SVG/index/hash receipts with per-window/per-lane scales (no new calibration). Retain current paint/file-size refusals; Glen measures the revised title counts and checks receipts, cancellation and GUI/headless equivalence before any limit increase. New live database queries still require exact reference-bound interval admission; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md). Glen: regenerate [source-coherent Ensembl/RefSeq pages](transcript_source_presentation.md) from one enriched locus and verify mappings/PDF/SVG/HTML receipts; synthetic coverage is not real-data acceptance. Keep the [standalone comparison](transcript_source_presentation.md#standalone-comparison-review) deferred rather than adding a second source-join implementation.
-6. Continue the [responsive-command migration](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14): validate BLAST start-v2 deferred diagnostics, bounded FIFO/cancellation and observation-only status at the merged revision. Preserve DEC-026 merging and [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution); audit general managed-command queuing/dependencies and result/file/job semantics before expanding beyond the BLAST queue.
-   Have Glen validate genome preparation, Run/slash, live navigation/conversation and cancellation at one revision; extend the synthetic growing-journal cost probe to a representative project before claiming bounded UI lock latency. Keep cross-process control, durable admission and other adapters pending. No private T2T/model run in development; general asynchronous migration is not complete.
-7. Carry into `.13` the [gene-informed primer-PAIR study GUI](gene_assay_study_gui_plan.md), not single-primer capture. Have Glen annotate the authentic-reference [PATZ1 tutorial 04.08](tutorial/04-08_gene_assay_study_gui.md) at G1-G6, including the 13-Ensembl/four-RefSeq source comparison and unresolved discrimination matrix; authentic whole-reference specificity and order approval remain pending. Verify reference-bound specificity, companion selection receipts, standalone multi-reference import/manifest/parity and legacy fail-closed regressions at the merged SHA using [tutorial 04.09's verification commands](tutorial/04-09_reference_bound_primer_specificity.md#verification-scope); Rust execution and real-reference acceptance remain with Glen/CI. Validate read-only `primers transcript-assay-specificity-matrix` receipt history, binding failures and unlinked oligo citations at that SHA; verify [Slice B's standalone panel import](primer_design_specialist_plan.md#conditional-slice-b-bound-panel-fan-out) with synthetic receipts; retain Glen's scoped `27a8de33` Linux passes and the imported canonical parity matrix; normal CI must check the integrated source; real-reference panel capacity and Windows remain unverified; readiness attachment remains a later policy decision. Verify the owner-authorized [tail-free selected-pair preparation into simple PCR](primer_design_specialist_plan.md#simple-pcr-pair-preparation-ledger-2026-11-19), with exact source/template/rank validation, unchanged reverse oligos, stale-bound overwrite confirmation, no execution/project writes and native form focus; Glen found default-feature compile blockers at `ccd839dc`; verify the [trait/paint repair](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20) before the 17 Rust regressions and native acceptance. Advanced/Mutagenesis handoff, separate annealing lengths, explicit mutation selection, a primer-scoped report locator, persisted views and derived single-primer inspection remain separately gated; do not build a new all-domain hub or confuse preparation with readiness cards. Supply an original typed paper-facing dossier/source bundle. Include coverage-scope interpretation and last-page navigation for large transcript/assay panels in that live check; synthetic pagination tests do not establish real-locus GUI performance. Retain the historical [reconciled `.11` scope](internal_11_plan.md#review-reconciliation) at the new candidate: package parity, exact-SHA TP73/DeltaNp73/tutorial acceptance and independent tutorial/vector-PDF verification. Keep TSS managed-worker migration and capture-retention requirements optional; defer capture specificity/thermodynamics/order readiness until lab inputs are retained and calibrated cofactor ranking until anchor/expression/background contracts exist. Retain separate RefSeq accession matching and real-image gel acceptance; automatic band proposals need separate new-source/native acceptance under the gel workbench contract.
-
-Current non-goals:
-
-- Do not add private proposal or unpublished grant content to this repository.
-- Do not start broad engine extraction, GUI redesign, or infrastructure work
-  before it is tied to the selected next-release story.
-- Do not add GUI-only business logic for convenience; keep shared
-  engine/shell/protocol contracts as the source of truth.
-- Do not promote speculative assistant ideas into protocols without
-  confirmation.
-
-Useful session close:
-- Name the next-release aim or state that it remains undecided.
-- Keep completed outcomes in [`CHANGELOG.md`](CHANGELOG.md) and durable rules in [`decisions.md`](decisions.md).
-- Leave unrelated local paper/figure work untouched unless explicitly requested.
+1. Verify the simple-PCR trait/paint compiler repair, then its 17 Rust
+   regressions and native form handoff; preparation must not execute PCR.
+   [Focused checks](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20).
+2. Verify termination discovery, screening and separately confirmed
+   materialization, preserving biological/non-runtime limits.
+   [Focused checks](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).
+3. Prepare A/B/C release evidence only when a candidate is selected; retain
+   historical package and scientific receipts without reissuing completed work.
+   [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
+4. Carry only remaining read-end/exon-locus, C1-C4, RNA and native-platform gaps;
+   do not repeat the completed reader, barcode, VM or bound-artifact campaigns.
+   [Detailed boundaries](glen_next_verification_handoff.md#roadmap-detail-navigation-2026-11-20).
+5. Complete TSS/tutorial native inspection, source-coherent exports and
+   live-host acceptance without treating synthetic geometry as scientific proof.
+   [Native checklist](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks).
+6. Verify responsive jobs, cancellation and lifecycle save/preview guards;
+   general queues and durable cross-process admission remain separate work.
+   [Migration plan](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14).
+7. Review authentic-reference primer-PAIR studies and specificity imports,
+   retaining ambiguity, source bindings and separate order readiness.
+   [Specialist scope](primer_design_specialist_plan.md).
 
 ## .13 Priorities
-Owner-selected aim, 2026-10-15; use the [release notes](release_notes/release_notes_v0.1.0-internal.13.md) for the acceptance ledger. Minimal working paths, not breadth or a new performance claim:
-- A: review early containers, pools/aliquots, arrangements/gels, racks/plates/templates and 3D exports plus early cloning/analysis features; verify the authored 1,536-slot guards and [source-backed tube/carrier models](../data/labware/README.md) with Glen/CI, including both Safe-Lock support modes at conservative 20-mm pitch, drawing-backed 0.2-ml PCR/8x12 carrier, clean incomplete-model refusals, legacy carrier byte baselines and native review. Verify [BRAND cut strips](../data/labware/README.md#cut-pcr-strips-02-ml-per-tube) and the [derived variable-grid storage box](../data/labware/README.md#derived-storage-box) through source-matched exports/native GUI. Claude reports a [focused macOS pass at `39ac4e44`](glen_next_verification_handoff.md#focused-macos-labware-evidence-2026-10-25): protocol 14, render 4, root filtered tests 289 and Python/OpenSCAD 11 (none skipped); the [strip-test repair](glen_next_verification_handoff.md#pcr-strip-test-contract-repairs-2026-10-23) has a reported focused rerun. [Compact pitch/rack-mutation confirmation](glen_next_verification_handoff.md#rack-mutation-confirmation-follow-up), full `--lib`/normal CI including Windows, nine legacy baselines, GENtle-exported-file OpenSCAD renders and native GUI remain Glen/CI work. Template rendering is not exported-file or physical-fit acceptance; commercial-box profiles, material/temperature qualification and optional square-cell SVG work remain separate, with no new `.13` acceptance or later-source pass.
-- B: finish the shared provider-neutral protein-expression draft and tutorial 09.03; preserve explicit provider selection, no submission/order/contact and conservative product/readiness boundaries. Inspector is stretch-only; ranking stays later.
-- C: verify the minimal `CreateGeneSetArrangement`/generic-op path and [registered tutorial 03.10](tutorial/03-10_gene_set_storage_projection.md): explicit complete-set/source-tube binding, one serial/default storage rack, provenance and existing exports. Sorted fallback IDs repair Glen's reported `b2b6b30a` parity failure; all four storage and both reconstruction regressions pass in Linux default-feature CI at `1c5be317`. Headless filters, CLI/parity and `scripts.test_release_workflow_tutorials` with a built CLI, generator freshness, fresh exports and native acceptance remain Glen/CI work; no implicit placement, new freezer template or GUI mapper.
-- Release blockers: green Windows/macOS/full-Linux CI, build-only native/container/extracted smokes, Glen's rollover/version/tutorial/readiness checks and owner approval at one selected candidate; package-opt2 first, prepared opt1 fallback if hosted builds fail. Ordinary [CI at `1c5be317`](glen_audit_followups_20261008.md#ordinary-ci-observation-at-1c5be317-2026-10-17) is terminal/failure: Linux/Windows hit the same README metadata guard after 4,182/4,121 root-library passes; `57a2403a` restores the label and adds an offline guard, not yet externally accepted. Optional audits skip; no release freeze is selected.
-- Non-blocking carry-forward: [S6/native latency](dna_feature_rendering_latency_plan.md), remaining [native-Windows reader and sealed-evidence checks](glen_next_verification_handoff.md#linux-reader-and-mcp-return-at-e4bc7386-2026-11-05), same-host profile comparisons, live agent and the [remaining native/human checks](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks). Verify the [public TapeStation regression](gel_image_analysis.md#public-tapestation-regression) in current-source Rust/native CI; its older matching-code CLI replay is not raw-gel, native-GUI or full-candidate acceptance. No earlier evidence becomes a current-source pass.
-- Historical scientific/FLNA gates remain open at their true sources, without blocking `.13`; preserve human teaching-exon/version-label decisions and the inactive draft, plus the [`.10`](release_notes/release_notes_v0.1.0-internal.10.md)/[`.11`](release_notes/release_notes_v0.1.0-internal.11.md) ledgers. VKORC1: focused Linux repair passed at `6b7109db`; all five [stripped-child families now pass Linux/Windows at `1c5be317`](glen_audit_followups_20261008.md#completed-windows-job-and-terminal-run-2026-10-18). New-source public/native and physical GUI acceptance remain with the owner/Glen. Package/extracted-installer acceptance stays separate; no earlier verdict accepts newer source.
+
+Owner-selected aim, 2026-10-15: minimal working paths, not feature breadth.
+Use the ledger above for candidate-bound acceptance and responsibility.
+
+- A: review early containers, pools/aliquots, arrangements/gels, racks/plates
+  and 3D exports. Check fresh GENtle-exported SCAD, nine legacy baselines and
+  native controls; template renders do not establish physical fit.
+  [Labware scope](../data/labware/README.md).
+- B: verify provider-neutral protein-expression drafts and tutorial 09.03:
+  explicit provider choice, unanswered inputs and no submission/order/contact.
+  Inspector refinements are stretch-only; ranking is later work.
+  [Expression workflow](tutorial/09-03_protein_expression_handoff_cli.md).
+- C: verify explicit complete-set/source-tube binding, one serial/default
+  storage rack, provenance, save/reopen, undo/redo and fresh exports; no implicit
+  placement or new freezer mapper.
+  [Storage workflow](tutorial/03-10_gene_set_storage_projection.md).
+
+The first official `0.1` direction remains the separately owner-earmarked
+[Glen release aims](official_0_1_release_aims.md), not an expansion of `.13`.
 
 ## Phase A: AI Communication And Safety Plane
 
-Keep MCP, agent, shell, ClawBio/OpenClaw, and UI-intent surfaces thin and
-adapter-equivalent. The next work is breadth and safety, not new biology:
-expand deterministic tool coverage over shared shell/engine routes, harden
-mutating-intent confirmation consistently across agent, voice, and MCP paths,
-and preserve the shared `ui ...` intent catalog across menu, command palette,
-shell, agent, MCP, and ClawBio discovery. Useful work here is parity,
-discoverability, confirmation wording, and `ui_intent`-shaped operator handoff;
-defer autonomous planning policy or biology-specific reasoning that is not
-backed by current engine records. Preserve full fact-annotation guards for both introspection catalogs, including named MCP routes such as `primers_preflight`; probe readiness is not tool reachability. Carry forward to `.13` Glen's validation of explicit Splicing Expert open/focus/close and the [transcript-assay playbook](ai_task_playbooks.md#playbook-12-gene-informed-primer-pairs-and-isoform-discrimination) with a live inner agent: real feature IDs, assay objectives, coverage and separate QA gates. This is not a retroactive `.10` gate or order approval. Run `tutorial-check` for declared command/confirmation parity before model review; live review remains for model quality, voice and broader MCP parity.
+Keep GUI, CLI, MCP, JS/Lua and ClawBio/OpenClaw thin over shared engine/shell
+contracts. Prioritize reachability, fact-annotated discovery, explicit approvals
+and typed UI intents, not tool counts or autonomous biology.
+See [agent contracts and exclusions](agent_interface.md).
 
-For ClawBio/OpenClaw specifically, keep new integration work centered on
-descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
-trigger-keyword drift checks; verify [scoped maturity discovery](capability_maturity.md) with Glen/CI) plus explicit scope/presentation contracts rather
-than adding more biology-specific wrapper modes. Following 08.15's six TSS descriptor routes, extend the existing 08.16/08.17 cases plus the new `promoters tss-view-svg --collection ID OUTPUT_DIR` route through the same delegate with artifact-write/selection approvals, using the settled per-window scale policy and ordered SVG/index/receipt contract; retain model-quality and GUI-host acceptance separately. After the first GENtle-side
-ClawBio panel, the next bridge work should stay contract-led: reserve any
-action-level `skill_alias` field on the ClawBio side before GENtle honors it,
-and avoid adding routing or planner semantics to GENtle.
+Validate descriptor/runtime/tutorial parity before live model-quality review.
+New skill activation, alias routing, commercial APIs and credentials require
+separate contracts; provider handoffs are not submission or procurement.
+See [capability maturity](capability_maturity.md).
 
-External-service bridge status: the provider-neutral schema/shell layer is now
-concrete through `services providers list`, `services providers doctor`,
-`services delivery-route`, `services project-preflight`, and
-`services project-quote`. Built-in provider configuration covers GeneArt quote
-handoff for DNA fragments/cloned genes/reorders/mutagenesis/protein expression
-and Metabion handoff routes for single-tube DNA oligos and m-block fragments. The global protocol-supplier directory is discovery-only; verify [guarded local provider imports](catalog_updates.md), tombstones, stale/tampered previews, LF/CRLF and atomic recovery with Glen/CI. Verify [09.04's literal vector/decision/catalog replay and native checkpoints](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md#acceptance-and-limits); product/offer joins, retained documents, reviewed procedures and private observations remain later lanes, not procurement or laboratory acceptance.
-Generic "deliver this sequence" wording should go through delivery-route
-classification first so sequence kind, length, and construct/protein context
-choose the provider/service route before any quote packet is prepared. Agent
-work should stay focused on ClawBio intent/example parity and clear "handoff,
-not submission" wording; direct GeneArt API use, WOP/OCI automation,
-credential handling, and commercial order state remain later explicitly
-confirmed integration phases; readable protocol references do not enable them.
-
-Near-term consult rule: keep `planning consult cloning` narrow and
-deterministic until richer construct reasoning lands. The preferred v1 surface
-is one best candidate per the 11 catalogued routine families plus structured
-helper/vector ranking; `seq_id` stays traceability-only and unresolved
-marker/promoter/MCS constraints stay explicit questions rather than hidden
-heuristics. Keep bench-model display separate from legacy ranking/time-guardrail policy; verify counterfactual invariance before changing calibrated ranking. Verify the preliminary read-only Protocol Overview and 09.04 graph/JSON/SVG contract with Glen/CI and native GUI checks; material-flow binding and calibrated timing stay separate.
-High-yield protein-production requests should go through the separate
-read-only `planning protein-expression-handoff` route, which now surfaces
-product-readiness context for stored DNA/protein sequences, chassis/route
-candidates and yield/folding/chassis questions without creating constructs.
-The v2 shared report separates the canonical neutral delivery request from
-optional provider projection. Supplied reviewed requirements and annotation
-evidence populate the draft; missing facts remain unanswered, never vendor
-example defaults. Provider binding requires explicit selection, permitted
-outsourcing, an unambiguous product and catalog capability/allowlist checks.
-No usable product means no draft; quote suggestions also require local preflight.
-V1 stays readable; external Rust checks and static checks do not prove wet-lab yield.
-Keep text, JSON, CLI and agent consumers on the same report and action rows.
-Do not add submission, ordering or automatic biological optimization.
-
-Keep the next synthetic-biology bridge slices in this order:
-
-1. Verify the read-only Protein Expression Handoff inspector and tutorial
-   09.03 on the integrated source: shared-report parity, explicit selection,
-   typed withholding, stale-result rejection and unchanged project/history.
-   Glen/CI must execute Rust/CLI checks including quote-disabled refusals and native review;
-   offline source checks do not establish runtime or native acceptance.
-   Include the inspector and inner-agent regressions; retain Glen's [89df315a scoped Lua/MCP/shell/parity passes](glen_next_verification_handoff.md#glens-scoped-return-at-89df315a-2026-11-03), but repair the shared JS populated-project `u128` transport before claiming JS acceptance; explicitly execute feature-gated VM tests, not just compilation;
-   keep unanswered inputs, copy-only actions and stale/closed-worker rejection.
-   Review the four retained macOS 09.03 captures at `9f01098b`; retain integrated typed/snapshot evidence separately.
-   Check shared UI intents, semantic locators and canonical tutorial/parity freshness.
-   Reporter sibling views and ranking remain separate follow-ups.
-2. Rank chassis, vector/tag
-   routes, and provider candidates from structured biology, provider
-   capabilities, and local inventory. Emit score components and rejection
-   reasons; do not silently codon-optimize or create constructs.
-
-MCP follow-up: `tools/list` is curated, not a one-command/one-tool mirror.
-Keep `docs/agent_interface.md` as the exclusion ledger; add tools only with
-stable typed schemas and mutating/external safety semantics. Prioritize the
-remaining parity-matrix gaps by user workflow, not tool counts or exclusions.
+Verify the shared expression inspector and explicit provider gates before later
+chassis/vector/provider ranking; execute actual JS/Lua VMs rather than infer
+acceptance from compilation. Check catalog imports and tutorial 09.04 without
+inventing commercial offers or calibrated timing.
+See [external-service contracts](catalog_updates.md).
 
 ## Phase B: Cloning Routine Standardization
 
-Continue routine catalog and macro-box work when it fits the selected release
-scope. Priorities are richer routine-family preflight, replay-friendly macro instances,
-dense-lineage controls, and protocol packs that make Golden Gate, Gateway,
-TOPO, TA/GC, In-Fusion, NEBuilder HiFi, and deeper restriction variants feel
-first-class without duplicating biology in adapters. Useful work here extends
-engine-owned descriptors, portable macro records, candidate auditability, and
-protocol-pack wording; defer new cloning families unless they reuse the current
-routine framework.
+Extend routine-family preflight, replayable macros and protocol packs only
+within the selected story. Preserve portable records and candidate auditability;
+do not add biology in adapters or silently optimize constructs.
+See [routine catalog plan](cloning_routine_catalog_plan.md).
 
 ## Phase C: Engine And Protocol Parity Hardening
 
-Promote adapter-level helpers into engine-owned operations where they matter,
-keep process/run-bundle artifacts portable, and converge persisted
-computational conclusions on one provenance vocabulary. Sequence file loading
-now routes through the shared DNA sequence module rather than the GUI top-level
-type; continue XML/SnapGene, sequencing-confirmation, primer/qPCR, projection,
-construct-reasoning, RNA-read, and ClawBio/MCP parity work only through shared
-contracts. Useful work here is contract hardening, adapter-helper promotion,
-stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
-broad crate surgery that is not tied to the selected release story.
-- Phase 2 has begun with `crates/gentle-engine` re-introduced and
-  `iupac_code` moved as the first root-independent execution-side module behind
-  the existing root compatibility shim.
-- New operations adopt the three-level parity model: engine and reachability
-  parity from the parity matrix in [`gui_cli_mcp_parity.md`](gui_cli_mcp_parity.md);
-  first-class surfacing decisions land per adapter and may be staged.
-- The parity matrix tests reachability, not surfacing; surfacing decisions are
-  recorded per row with a one-line justification.
-- Inline/stateless operand follow-up order from
-  [`inline_operand_audit.md`](inline_operand_audit.md): `RenderSequenceSvg`,
-  `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
-  `ComputeDotplot`, then `ComputeFlexibilityTrack`.
-- Clariom D and splice-isoform evidence now have engine-owned interpretation
-  layers beyond prepared-track projection. Current explicit APT
-  imports can preserve supplied PM probe-level intensity matrices in
-  `probe_intensity_chrom_order.csv` and project rows marked
-  `probe_level_input` into genome-anchored array features. The first read-only
-  `InterpretProbeRegionEvidence` report now compares projected array features
-  with transcript/exon geometry and records shared transcript, parent probeset,
-  multi-hit-not-assessed, and coordinate-projection ambiguity; the
-  sequence-window GUI panel can run and preview that report after projection.
-  The report now includes explicit per-evidence transcript mappings with exon
-  ordinals, exon ranges, junction spans, overlap base counts, and conservative
-  geometry score/basis fields plus review-only transcript labels for unique,
-  shared, constraining, or absent geometry. Those audited records now feed the
-  read-only `gentle.gene_isoform_evidence.v2` ledger, which composes curated
-  transcript families, RNA-read/cDNA/EST support, expression, probe
-  constraints, selected projected occupancy tracks, existing qPCR candidates,
-  per-source/contrast measurements, annotation-derived protein identities, and
-  rule-based assay-triage tiers while retaining unknown/not-evaluated states.
-  `gentle.gene_transcript_assay_routine.v1` can now join that exported ledger
-  with persisted common-control, junction, and endpoint assay panels by
-  digest, without rerunning them. Future work may add
-  persisted probe/expression report stores and separately sourced
-  antibody-epitope evidence; it must not turn overlap, protein mass, or array
-  intensity into an isoform-validation or antibody-compatibility claim.
+Harden shared file, sequencing, primer, projection and RNA contracts with
+targeted tests; defer broad crate surgery. Separate strict engine/reachability
+parity from optional first-class surfacing.
+See [parity policy](architecture.md#1-product-intent).
+
+Follow the [inline-operand audit](inline_operand_audit.md) order rather than
+adding one-off adapters. Keep Clariom/probe/transcript evidence ambiguity,
+provenance and unknown states; overlap/intensity are not isoform validation or
+antibody compatibility.
 
 ### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
 
-The first collection mapping now exposes construct-reasoning inspection actions
-across project sequences and homogeneous gene-set resolutions without persisting
-batch-built graphs. Structured GUI evidence panes have also landed. A later
-phase stays intentionally separate: broader mapping of additional
-single-sequence operations across sequence sets. Portable inspection actions,
-cross-adapter parity, curated repeat-family provenance, and objective-aware
-severity presentation are recorded in `docs/CHANGELOG.md`.
+Extend collection inspection only through portable, objective-aware evidence
+records; curated repeat families and broader sequence-set mappings stay scoped.
 
 ## Phase D: Visualization And Workflow UX
 
-Use the GUI as the human inspection surface for engine-owned evidence. Verify the owner-approved [manual document tree and contextual Help](manual_navigation_plan.md): GUI/CLI topic files, reciprocal links, offline loading, shared navigation and typed window bindings are authored. Run the affected [Help click/glossary fixture regressions](glen_next_verification_handoff.md#help-and-observed-transcript-smoke-fixtures-2026-10-28) without repeating unrelated completed checks; new-source Rust/native acceptance remains pending. Verify wheel/trackpad, Find, reload, cross-book history, links, copying and capture-free Help at the packaged source; retain actual timing separately from synthetic checks. Continue dense DNA-map readability, alternative-splicing polish, gel/feature editing and scroll/zoom hardening within the selected release story.
-Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Verify the [tutorial review follow-up](glen_next_verification_handoff.md#tutorial-review-follow-up-2026-11-04): derived versus expected protein lengths, native-table/SVG teaching and portable links; retain [Glen's microarray captures](glen_next_verification_handoff.md#microarray-native-evidence-port-2026-11-04) at their actual sources, with high-contrast teaching images and the parent overview/color tranche still pending. Rendering-latency work belongs to [.13 Priorities](#13-priorities), not here. Next [contextual availability](contextual_action_availability_plan.md): Glen's live native/hosted check of item-first lineage context menus (especially clicked-DNA PCR binding), compact palette guidance and Edit-menu/palette Undo/Redo; prioritize map/result/empty-space context-click guidance next. Native-menu and agent/host-probe integration remain deferred.
+Verify offline manual navigation/contextual Help, dense DNA/splicing inspection,
+scroll/zoom, deterministic exports and context-click actions on real hosts.
+No unrelated redesign; source tests and paint tests are not native acceptance.
+See [manual navigation](manual_navigation_plan.md).
 
-- Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
-  on large real loci and add direct report-store selectors if probe/expression
-  reports become persisted project objects.
-- Cryptic-splicing v2 follow-up: consider explicitly versioned segmented spans
-  for origin-crossing circular sequences, non-GT/AG boundary policies, and an
-  opt-in typed ORF-inference contract. Do not fold those inferences into the v1
-  annotation-bound CDS or evidence-layer semantics.
-- External-services GUI follow-up: keep the window a thin inspector over the
-  shared provider/preflight/quote contracts, then improve product-specific
-  starter templates, validation previews, and exported-bundle review affordances
-  before considering provider-specific portal/API actions.
+Retain microarray captures as attributed raw evidence; high-contrast teaching
+derivatives and parent-overview polish remain separate. Keep cryptic-splicing
+v2, persisted report selectors and richer provider GUI refinements deferred.
+See [contextual availability](contextual_action_availability_plan.md).
 
 ## Phase E: Integration Polish And Deferred Policy Items
 
-Keep integration work focused on reproducible distribution and policy clarity:
-OCI/Apptainer validation, release attachment decisions, cross-application
-clipboard contracts, documentation automation, GUI screenshot atlas work after
-explicit screenshot approval, and broader adapter/documentation polish. Useful
-work here validates headless MCP deployment, aligns install docs with actual
-outputs, and decides release attachments versus git-tracked assets; defer
-infrastructure expansion that does not reduce release risk.
-- Agent GUI acceptance: test screenshot consent on Linux/Xvfb and native macOS;
-  review Assistant/setup translations and small-window layout, especially
-  Chinese/Japanese fonts and Latin. Native child capture must match its viewport;
-  hosted/embedded fallback captures the GENtle root. Consider a content-layer
-  crop only if review finds the selected hosted window insufficiently clear.
+Reduce distribution risk through reproducible native/container receipts,
+headless MCP smokes and truthful installation docs. Capture/viewport consent,
+translations and small-window fonts require native review; no new screenshots
+are authorized by this roadmap.
+See [release procedures](release.md).
 
 ## Phase F: Interpretation Later
 
-Later interpretation work includes image/sketch-to-state patch proposals, richer assistant-facing findings records, deeper wet-lab process modeling, repeat/mobile-element curation, and cohort-scale comparative reasoning.
-These remain explicit, inspectable proposals with confirmation before mutation; read-only evidence inspection uses its declared observation policy.
-Useful work here improves proposal formats, evidence records, reproducible cohort comparisons and rollback paths. Follow the [integrated Glen return at d8656d46](glen_next_verification_handoff.md#glen-integrated-cdna-and-exon-locus-return-at-d8656d46-2026-11-11): the reported 208 focused checks cover the committed anchor/locus, actual CLI/JS/Lua/MCP and new provenance/checkout boundaries; do not repeat them or add the overlapping routine-scan counts. Same-source CI is terminal/green for Windows/macOS workspace suites, Linux/headless and release safety; full Linux and optional GUI/audit jobs skip. Preserve the earlier [7fa6b15a transcript-bound pass](glen_next_verification_handoff.md#glen-oriented-pileup-return-2026-11-09) and [Claude b95aae07 overlay return](glen_next_verification_handoff.md#claude-exon-locus-return-at-b95aae07-2026-11-10) at their actual sources. Remaining work is native GUI, unexecuted native path/handle scenarios, full-Linux and candidate-bound release verification, plus distinct-isoform/real capacity and OD-L1 through OD-L4 beyond their defaults. The 5,543,670-work fixture is not a measured 360-read threshold. Keep the [general locus/Assignments contract](rna_read_end_integration_plan.md#exon-locus-review-repair-ledger-2026-11-10), fixed-genome/transcript projections, source/model/rule bindings, unique IDs/denominators, original A/T, bounded work and publication/raster guards. No fixed genes/barcodes or inherited acceptance. The integrated real-cDNA fixture does not authorize private archive regeneration or new allele analysis; OD2 permits supplied originals, not automatic SAM/FASTQ joins. Have CI run `indexed_locus_isolates_all_three_samtools_calls`, `indexed_locus_retains_selected_sam_only_on_opt_in`, `read_end_pileup_value_sorts_separate_observations_from_bounds` and the [read-end input budget](rna_read_end_metrics.md#read-end-input-budget) boundary regressions on Unix and Windows; earlier receipts predate these changes. Do not repeat unrelated reader/BLAST/barcode campaigns. No release candidate, packages or publication are accepted by these development receipts.
-- Carry only the remaining [C1-C4 host/data/release boundaries](glen_next_verification_handoff.md#glen-return-at-5d310958): cover native GUI and unproved Windows CLI/Python path/handle scenarios where required; terminal same-source macOS/Windows/headless/safety/aggregate CI passed, with full Linux and optional GUI/audit jobs skipped. Preserve the scoped Linux Rust/VM/MCP/CLI, historical comparison-byte and Windows raw-log receipts; do not repeat completed campaigns as missing, including earlier C1/Read-End/projection gates. Follow only the remaining independent CLI/Python, raw-artifact, native/platform and scientific boundaries in the [source-bound TP53/TP73 C3 receipt](tp53_tp73_c3_capacity_20261114.md) and [919e7163 handoff](glen_next_verification_handoff.md#glen-c3-regression-return-at-919e7163-2026-11-15): focused Rust regression review returned 23/23 engine and 10/10 headless root cases, including all six cache regressions; do not repeat those as missing. All eight local linked views fit the unchanged 100M cap with all reads/models and exact C2 evidence preserved; retain prior refusals as historical controls. Neither this scoped return nor the earlier `72176091` software return establishes an independent real-artifact rehash. The C3 normalization repair preserves strict identity checks; synthetic verification remains separate from scientific acceptance. Keep distinct annotation-reference/analysis-source IDs, strict shared bindings, transcript-reference HGVS, conditional protein parentheses, inherited counts/policy, all-hypothesis linkage and cumulative budgets; no QNAME/transitive splice joins. OD-I1-I5 retain the [plan defaults](cdna_allele_interpretation_plan.md); richer linkage and multi-codon protein composites remain separately gated. Scientifically review [TP53/TP73 cDNA results](tp53_tp73_cdna_fixture_analysis_20261110.md) at their original sources, not as acceptance of conditional consequences. The eight original SNP/phasing Q20/Q30 runs were not repeated. WM793/TP73 remains undercovered; post hoc panels, shared ALT, sparse callability and absent switch/K>2 flags establish neither cell-line differences, complete alleles/molecules nor normal copy number. Additional WM793/full-mapping/orthogonal DNA evidence needs separate authorization. MDM4 and private archive regeneration remain excluded; no new data run, scientific or release approval follows.
-- Later release: [robotic wet-lab simulation and equipment digital twins](robotic_wetlab_simulation_plan.md#safe-lock-geometry-correction-2026-11-08): verify the corrected Safe-Lock radius/label-depth Rust exporter and new operation tests with Glen/CI, preserving D1, original emitter pins and other templates' bytes; native source-template checks are not new-Rust execution. Keep runtime reports/schemas, new fixture publication and further backends deferred; D2 remains repository-wide. Catalog publication, protocol/material inputs, worlds and CUT&RUN simulation have separate later gates; native rendering does not establish physical fit, safety or biological validity.
+Keep interpretation inspectable, bounded and separately approved before
+mutation. For read-end/exon-locus and C1-C4, verify only unproved native/data/
+release boundaries; preserve original hypotheses, counts, bindings and caps.
+See [remaining evidence navigation](glen_next_verification_handoff.md#roadmap-detail-navigation-2026-11-20).
+
+Image-to-state proposals, richer findings, cohort reasoning and wet-lab digital
+twins are later work. Rendered geometry is not physical fit or biological
+validity; no private archive regeneration or new data run is authorized.
+See [robotic simulation plan](robotic_wetlab_simulation_plan.md).
 
 ## Parking Lot
-- Experimental [synonymous motif/GC design](dna_sequence_optimization_plan.md) stays outside `.12`; retain the [394dd5d regression result](sequence_design_acceptance.md#executed-regression-follow-up-at-394dd5d), earlier [repair/GC acceptance](sequence_design_acceptance.md#executed-audit-at-de9df8af) and [first-slice audit](glen_sequence_design_handoff_20261005.md) at their actual sources. Recheck affected current-source paths at release preparation, with native Windows/macOS/Pi, usefulness/live-model and biological verdicts separate. Verify the private core's standalone compiler contract before extraction/publication; do not restore an untested floor or infer a workspace minimum from core-only tests. Dedicated GUI, codon objectives and richer specifications need their own contracts; bounded Linux/X11/process evidence implies no general performance or suitability claim. The unrelated parity-document repair still needs freshness/CI; no local Rust or interim acceptance freeze.
-- Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md#rescoring-existing-reports): Glen to rescore original five-gene inputs after the inclusive-tail correction, then repeat PDF pixel/hash, shared-scale and sparse-peak acceptance; the `44b73e4a` audit does not cover this scoring method. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.
-- Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
-- Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
-  inventory construction with indexed/streaming retrieval, and expose bounded
-  progress during large specificity finalization joins.
-- Extend the feature-gated semantic GUI test identifier registry beyond the
-  bounded TP73/PATZ1 DNA-viewer, Splicing Expert, and Agent Assistant release
-  controls as additional native acceptance stories require it.
-- Have Glen run the candidate-bound tutorial gate for `smoke` plus conservation's
-  view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
-  MCP/Feature Editor, transcript-assay, vendor and trace guides need Glen's review; keep biological verdicts separate.
-- Extend the transcript follow-up with provenance-complete array evidence for positive differential selection and approved-study execution.
-- Extend inner-agent context with readiness-bound tutorial actions and explicit headless receipt replay; deferred-job observation is part of active DEC-048 work. Keep approvals and undo history unchanged.
-  Defer skill activation and inverse discovery until readiness is safeguarded.
-- Optional OS credential-store persistence for Agent Assistant API keys.
-- Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local
-  harnesses, with explicit workspace scope, tool permissions, diff review,
-  bounded tests, and rollback. Do not inherit Agent Assistant command-execution
-  permissions or present model prose as an applied source change.
-- Optional tiny generation probe for quota verification.
-- Implement opt-in Mistral conformance (`docs/testing.md`); skip without `MISTRAL_API_KEY`.
-- Audit restriction-catalog cut offsets (especially Type IIS) and extend usage annotations beyond REBASE; recheck older cloning absence/uniqueness claims before laboratory use.
-- Floating restriction-site detail popover/window if the Description panel is
-  too easy to miss.
-- Audit general linear-SVG feature clipping (inclusive-end helper versus half-open feature bounds); retain broader plasmid-map presentation parity and dense selected-site polish.
-- Engine-owned portable findings/artifact inspection for agent-driven work.
-- Engine-owned exhaustive operation-effect metadata so new filesystem-writing
-  operations cannot bypass rollback-safety classification or provenance path
-  collection when the `Operation` enum grows.
-- Later cohort exploration beyond bounded exon-locus pages: thousands of per-read aligned-column blocks with richer navigation; keep the current general locus/scored-alternatives verification in the active read-end scope, not a duplicate implementation request or fixed TP73/TP73-AS feature.
-- Owner decision: optional explicit `relative_to` for selected-gene observed-junction relations ([scope](observed_transcript_structures.md#saved-results)); spliced/unspliced-view conflict handling remains separate, not committed work.
-- Vendor-protocol and deeper wet-lab process modeling beyond the single-routine synthetic time/cost breakdown; quantities, dated offers, resource scheduling and other routines remain parked.
-- Automatic cross-gene homology anchors on top of explicit `query_anchor_bp`.
-- Catalog-extensible gene-group and ontology bridge after the next release scope
-  is selected.
-- External-service provider/CRO integration once deterministic local contracts are stable enough to wrap.
-- Luebeck S1 vector-resource follow-up: resolve sequence/procurement URLs and
-  redistribution clearance before bundling actual sequences for the metadata
-  candidates.
-- VKORC1 / warfarin Factor X follow-up tutorial idea: after the maintained
-  VKORC1 rs9923231 promoter-reporter tutorial, design a separate companion
-  story for downstream warfarin-relevant Factor X target-site constructs once
-  the construct family, controls, readout, and bench-facing success criteria
-  are stable enough for a validated walkthrough.
-- Bind the transcript-aware SERPINE1 architecture comparison to the actual
-  laboratory insert/vector sequence and prepared Rostock CUT&RUN manifests
-  before any construct assignment, occupancy comparison, or materialization.
-  The public pinned SERPINE1 plus clearly synthetic evidence test proves the
-  integrated presentation only; it does not substitute for those materials.
-- Primer-walking support and iterative read/contig data management.
-- Helper-construct terminology migration away from legacy "helper genome" wording.
-- CUT&RUN controls/replicate comparison, calibrated differential support, formal
-  peak calling, and whole-genome read processing beyond the ROI-first release scope.
-- Add viewport-bounded quantitative Ensembl/ENCODE regulatory-signal lanes, retaining assay/biosample/condition/replicate/units and separate activity rules.
-- Deeper Primer3 parity and bounded asynchronous preflight ([audit and reader scope](primer3_parity_audit_20261103.md)); verify the [MCP fact-annotation repair](glen_next_verification_handoff.md#primer-preflight-introspection-repair-2026-11-04); virtual PCR/off-target filtering, multiplex tiling, LAMP, and
-  allele-specific assay families.
-- First-class global RT-PCR specificity/redesign workflow: build on the local
-  assembly-aware variant screen and native panel-matrix review (pending);
-  combine prepared genome/transcriptome searches, intended-product/paralogue policy,
-  junction evidence, Primer3 plus exact-run QC, ranked redesign candidates,
-  and one provenance-bound review bundle.
-- GuideRNA off-target ranking and macro-template packaging; verify remaining [Slice 3 construction/workflow/autosave](operation_lifecycle_slice3_plan.md), [Slice 4 fresh-only Plan writer/host binding](operation_lifecycle_slice4_plan.md) and owner-authorized [Slice 5 snapshot-bound no-path preview publication](operation_lifecycle_slice5_plan.md) boundaries via the [consolidated handoff](glen_next_verification_handoff.md#lifecycle-slice-5-2026-10-28), retaining the [Claude-reported 28 Rust passes at 284e5b70](glen_next_verification_handoff.md#claude-reported-lifecycle-rust-results-at-284e5b70-2026-10-29) and [scoped process/macOS rehearsal](glen_next_verification_handoff.md#synthetic-lifecycle-rehearsal-at-284e5b70-2026-10-28) separately. Native cancellation/concurrent responsiveness remains inconclusive; remaining headless/JS/Lua/other-suite/new-source/platform checks need their own receipts. Prior [approval/S1 evidence](operation_lifecycle_policy_proposal.md#executed-local-verification-2026-10-26) is historical. Verify remaining preview concurrency and cancel/freshness ordering without reissuing reported Rust passes or the observed no-History/historical-sharing subset as unrun; raw adapters, S1, with-path Plan and workflows remain controls. Retain the [reported Slice 6 macOS Rust/VM and corrected companion pass at d9b1015c](glen_next_verification_handoff.md#claude-reported-lifecycle-slice-6-results-at-d9b1015c-2026-11-01); its Python harness fixes do not change production save behavior. Verify remaining native GUI/Windows and affected newer-source gaps without reissuing completed same-source checks. No new payload resolver: opaque wrappers and other journal conflicts stay explicit boundaries. Retain source-bound project/sidecar/Unicode checks and tutorial 06.07; no hostile parent-swap, crash-durability or later Save As survival guarantee. The 16 MiB preview refusal has a synthetic infrastructure test, not a reachable full-solver fixture. [S2 synthetic editor feasibility](base_prime_editing_preparation.md#ownership-and-next-decision) still needs separate authorization. Later consider saved SOP-bound drafts, DNA-viewer inspection and measured outcomes. The [learner draft](tutorial_drafts/base_prime_editing.md) stays inactive; no new release gate, and exact editor/cell-context approval, native Windows/full-suite and biological acceptance remain open.
-- Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene; separately assess JS plain-JSON project ingress (sequence bytes currently require the public loader's native buffers), without changing the lifecycle test-only repair or promising a new codec. Verify [compile/VM oracle repairs](glen_next_verification_handoff.md#lifecycle-compile-and-vm-oracles-2026-10-28) externally.
-- Measured gels: verify [comparison density](gel_workbench.md#comparison-density-display), [signed-algebra/weighted operand plots](gel_workbench.md#verify-and-display-a-saved-residual) and the [unscaled reference panel](gel_workbench.md#unscaled-custom-only-reference-panel), worker/selection invalidation and legacy exports through the [consolidated native checklist](glen_next_verification_handoff.md#catalog-parity-repair-and-gel-return-2026-10-20), including summary/QQ withheld until successful verification; retain focused macOS Rust passes at their source. The [10.03 no-subtraction priming return](figures/tapestation_priming/README.md) compares all three pairs per cell through the existing `40aa261d` CLI with matching gel sources; it is image-display evidence, not new Rust/native/scientific acceptance. Retain [verified-ladder and real/native-image acceptance](gel_image_analysis.md#remaining-work) separately. The [owner permits cross-ladder residuals](decisions.md#cross-ladder-residual-policy), 2026-10-25; real-data coefficients and background/marker masks remain undecided. Scaled/fitted references, vendor point-trace integration, encrypted `.D5000` decoding, ratios and replicate inference remain open. Tutorial/QQ shape similarity does not establish gene enrichment, fluorescence or yield; no added `.13` gate.
-- Weekly/monthly maintenance chore automation rollout from [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
-- First regular release: local-first GENtle server with optional browser interaction and shared project/job ownership; deferred beyond internal releases, with WebAssembly portability considered separately.
-- Expand the landed policy-driven collection surface beyond promoter
-  derivation, primer specificity, construct-reasoning inspection,
-  restriction-site and TFBS hit scanning,
-  fingerprint-locked restriction digestion, and atomic physical-container
-  pool export plus explicit gene-set-to-pool aliquoting and registry-declared
-  serial-arrangement gel rendering to later shared BLAST, generic arrangement,
-  and storage-projection adapters described in
-  [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
-- Gene-set enrichment analysis over resolved logical sets, with an explicit
-  background universe, identifier namespace/mapping audit, ontology and cache
-  provenance, biological-context compatibility, multiple-testing correction,
-  unresolved-member accounting, and no causal-regulation claim inferred from
-  enrichment alone.
-- Extend the [evidence-guided boundary selector](reporter_fragment_selection.md) with real called-peak/cohort/GUI acceptance, independently verified control/replicate metadata, calibrated local support and native-cloning simulation;
-  keep broad-window enrichment separate from insert-local proof and approved downstream plans.
-- Extend regulatory-fragment exact design products with explicit cloning-reaction
-  simulation and final-product QA; retain live GUI acceptance of exact-product
-  review, digest approval, receipt inspection and one-step undo before release.
-- Extend the promoter regulatory-partner screen beyond its exact motif-tuple
-  ledger with explicit matched/background cohorts, calibrated enrichment and
-  multiple-testing correction, local ontology/hallmark interpretation, and
-  distal-element evidence. Preserve the landed per-hit coordinates and
-  replayable decision traces as the audit layer for those later statistics.
-- Add paralog mapping/resolution only with a concrete engine consumer,
-  preserving relationship provenance and one-to-many ambiguity without
-  inferring functional equivalence from matching symbols.
-- Verify the [RNA panel processing implementation](rna_panel_gui_processing_plan.md): shared file-only bindings, native setup/monitor/inspector/export and [tutorial 10.04](tutorial/10-04_targeted_nanopore_fastq_panel.md) rehearsal/parity acceptance. Confirm the [compile repairs](glen_next_verification_handoff.md#native-rna-compile-repairs-2026-10-25), [typed glossary/exact-result fixture repairs](glen_next_verification_handoff.md#rna-glossary-and-bound-rehearsal-fixtures-2026-10-25), [draft admission/retry/cancellation boundaries](glen_next_verification_handoff.md#rna-draft-admission-and-cancellation-boundaries-2026-10-25), [historical source/strand/budget follow-up](glen_next_verification_handoff.md#historical-rna-review-follow-up-2026-10-25), [shared-sequence/legacy-output regressions](glen_next_verification_handoff.md#shared-sequence-ambiguity-and-legacy-output-regressions-2026-10-25), [work profiles/error scripts/summary evidence](glen_next_verification_handoff.md#rna-work-profiles-error-scripts-and-summary-evidence-2026-10-26) and [genomic-exon/strand admission](glen_next_verification_handoff.md#rna-genomic-exon-and-strand-admission-2026-10-26). Preserve exact ambiguity, verified/control-error units, legacy hashes, independent control capacity and mutation guards; see [Glen's native/agent handoff](glen_next_verification_handoff.md#native-rna-processing-and-tutorial-1004-2026-10-24). Verify [gene-set preparation/graph](glen_next_verification_handoff.md#gene-set-rna-panel-preparation-and-graph-2026-10-24), 20-locus extension, source hashes and stale workers alongside retained [approval expectations](glen_next_verification_handoff.md#stored-plan-and-rna-mcp-test-expectations-2026-10-23). Rust/native/background/throughput acceptance stays with Glen/CI; no isoform-resolution claim. Queueing, result attachment, legacy tie/cap, annotation-independent ROI and generic posting work remain separate; see [origin status](rna_read_origin_sparse_index_plan.md). Verify the separate [primer trace Phase 0/1](primer_trace_phase01_plan_20261026.md) through the [consolidated handoff](glen_next_verification_handoff.md#primer-trace-phase-01-2026-10-26); Rust/MCP/native-platform execution, including typed discovery, agent-outcome and managed-worker regressions, and real-library calibration are pending. Verify the experimental [generic payload-partner Phase 2](primer_payload_partner_phase2_plan_20261026.md) through its [new execution checklist](glen_next_verification_handoff.md#primer-payload-phase-2-2026-10-26): strict source/query/reference accounting, PAF geometry, ambiguity, separate profiles/edge clusters and named artifact-only publication are authored; verify the [shared mask/denominator arithmetic regressions](glen_next_verification_handoff.md#primer-payload-mask-geometry-2026-10-26) and [rehashed exclusion/record-budget guards](glen_next_verification_handoff.md#primer-payload-exclusion-bindings-2026-10-26); Recheck the [explicit CLI-path documentation](glen_next_verification_handoff.md#cli-documentation-coverage-2026-10-26) with the unchanged glossary guard. Actual-process/VM, platform and live-agent acceptance remain pending; retain the scoped unit results below rather than treating them as full acceptance. No current-panel hard-coding, implicit FASTQ replay or mechanism claim. Axis/default biology and later phases remain separate; verify the [observed-junction S0 kernel](observed_transcript_structures_plan.md#s0-implementation-ledger-2026-10-27) and its Phase 2 byte/work guards with variable reference-gene IDs and strand-neutral physical chains. S1 bound Phase 2 consumption is separately owner-authorized through shared engine/CLI/MCP: [scoped macOS verification](observed_transcript_structures_plan.md#s1-commit-and-rebase) passes 14 S1, 24 S0, 46 primer-payload and 11 lifecycle tests, registry/parity guards and headless/default-test Cargo checks. Filters overlap; preserve the configurable reference gene and old Phase 2 bytes. The explicit local S1 exception does not authorize broader Rust work or imply later-main, actual-process/VM, native, Windows/Linux or scientific acceptance; consolidate only missing/changed-source checks with Glen/CI. Retain S2.0a's [scoped headless preservation results](observed_transcript_structures_s2_plan.md#s20a-implementation-and-verification-2026-10-28), including six new guards, the unchanged ten-case Phase 2 oracle and the approved test-only module-path correction; filters overlap and the sandbox socket/whole-workspace formatting failures remain explicit. S2.0b is separately authorized for the private shared core/identity seam and pure decoded-SAM normalization, with focused local Rust checks; verify its [bounded implementation ledger](observed_transcript_structures_s2_plan.md#s20b-implementation-2026-10-28), not a runtime SAM capability; the [supplied Claude review's original prompt](observed_transcript_structures_s2_claude_review_prompt.md) is historical. Verify the separately authorized [S2.1a pure GTF kernel](observed_transcript_structures_s2_plan.md#s21a-implementation-2026-10-28) against the [reconciled review](observed_transcript_structures_s2_plan.md#s21-review-reconciliation-2026-10-28): receipt-only refusal semantics, explicit private dictionary/grammar, whole-file collision scope, bounded resource/control and legacy touching-exon/byte guards, with focused local Rust checks; S2.1b is separately owner-authorized for the versioned dictionary/request/receipt and direct verified file/publication boundary with focused local Rust checks; follow its [bounded ledger](observed_transcript_structures_s2_plan.md#s21b-file-boundary-2026-10-28), not a CLI/MCP/SAM capability. S2.1c is committed/merged and the owner reports tests have run; its [ledger](observed_transcript_structures_s2_plan.md#s21c-operation-boundary-2026-10-28) preserves its original execution scope; the [projection follow-up](observed_transcript_structures_s2_plan.md#s21c-projection-follow-up-2026-10-28) records canonical freshness; carry the [S2.1 close-out receipt](observed_transcript_structures_s2_plan.md#s21c-execution-and-close-out-2026-10-29) into native Windows/Linux and real-provider acceptance separately from later SAM work. Retain [Glen's b6863907 J1/Phase 2/S1 passes](glen_next_verification_handoff.md#glen-return-at-b6863907-2026-10-30) for the implemented [J1 saved-junction assessment](observed_junction_consequences_plan.md#j1-execution-ledger); verify the [J1 A1--A4 follow-up](glen_next_verification_handoff.md#j1-review-follow-up-2026-11-01) for off-gene/shared-end geometry, overlapping denominator causes and actual JS/Lua VM execution while preserving S1 bytes. Owner-confirmed synthetic coordinates/hierarchy/window are distinct from real RNA certainty and scientific acceptance. Verify the separate [Phase 2/S1 completeness compatibility fix](observed_junction_consequences_plan.md#completeness-compatibility-follow-up) and its saved-source definite/possible regressions at the merged candidate; preserved formats and a producer declaration are not real exhaustive-search or biological acceptance. J2/J3 remain owner-gated. Retain [S2.2a's scoped macOS verification](observed_transcript_structures_s2_plan.md#s22a-private-text-decoder-2026-10-28): twelve new raw-line SAM decoder cases, existing byte/work/normalizer regressions and headless Cargo check pass; filters overlap and native/platform/scientific acceptance stays separate, without claiming file/unit ingress or new SAM commands; real-provider/gap policies, verified SAM file/unit admission, public SAM reports and further operations/adapters remain separately gated; preserve Phase 2/S1 bytes and configurable gene/query identity scopes. SAM/BAM ingress, GUI and RNA/protein identity claims remain separately gated. Retain Glen's [15-test focused Linux containment/preservation pass at 1cf7e120](glen_next_verification_handoff.md#glen-linux-return-received-2026-11-08); do not repeat it as unrun. Normal CI, affected later-source, Windows, GUI and scientific acceptance stay separate; no local Rust run is claimed.
-- Synonymous restriction-site introduction with verification-digest proof, distinct from motif-avoidance sequence design.
-- Report-first curated feature-library auto-annotation with a separately confirmed apply step. Related: verify [termination and 3′-end annotation](transcription_termination_annotation_plan.md#implementation-ledger--2026-11-16) exact recognition/confirmed apply and opt-in bacterial/mammalian candidate modes; carry scientific calibration, biological catalog and circular-complete/dedicated-GUI work separately; no release commitment.
-- Full glossary/help-generation inversion so `docs/glossary.json` becomes a
-  generated or validated projection of engine/protocol-side descriptors. Verify [canonical discovery identities/signatures and unique parity totals](glen_next_verification_handoff.md#discovery-and-decision-status-follow-up-2026-11-02), then derive a typed parity backlog; see [remaining inversion work](introspection.md#12-deferred-follow-up).
+
+These are unselected follow-ups, not release commitments or execution authority.
+Existing implementations retain their own verification ledgers.
+
+- Sequence-design GUI, codon objectives and a verified standalone compiler
+  contract: [scope](dna_sequence_optimization_plan.md).
+- TSS original-input rescoring, shared-scale/PDF checks and source acceptance:
+  [profiles](tss_tfbs_profiles.md#rescoring-existing-reports).
+- A bounded representative Simple-PCR native smoke preset.
+- Stream/index UniProt transcript inventory and bound finalization progress.
+- Extend semantic GUI IDs and candidate tutorial gates; review Gibson/dotplot.
+- Provenance-complete array evidence and approved transcript-study execution.
+- Readiness-bound agent tutorial actions and explicit receipt replay.
+- Optional OS credential storage and a bounded quota-generation probe.
+- Separate opt-in coding-agent mode with workspace scope, diff review and
+  rollback, never inherited Assistant execution authority.
+- Opt-in Mistral conformance without implicit model calls.
+- Restriction cut-offset/usage audit, detail popovers and linear-SVG clipping.
+- Portable report/finding inspection and exhaustive operation-effect metadata.
+- Larger cohort/locus navigation without collapsing reads or hard-coded genes.
+- Explicit observed-junction `relative_to`; separate spliced-view conflicts.
+- Vendor protocols, scheduling, quantities and dated offers beyond synthetic
+  time/cost breakdowns.
+- Cross-gene homology anchors, extensible gene groups and ontology bridges.
+- Provider/CRO integrations and redistributable Luebeck vector resources.
+- VKORC1/Factor X companion after constructs, controls and readouts are agreed.
+- Bind SERPINE1 comparisons to actual insert/vector and CUT&RUN manifests.
+- Primer walking, contig management and helper-construct terminology cleanup.
+- CUT&RUN controls, replicates, calibrated differentials and whole-genome input.
+- Quantitative Ensembl/ENCODE lanes with assay, units and context retained.
+- Deeper Primer3/preflight, virtual PCR, multiplex, LAMP and allele-specific
+  assays: [audit](primer3_parity_audit_20261103.md).
+- Global RT-PCR redesign over genome/transcriptome evidence and explicit QC:
+  [staged plan](rt_capture_primer_redesign_plan.md).
+- Advanced/Mutagenesis handoffs, persisted views and derived single-primer
+  inspection: [residual scope](primer_design_specialist_plan.md).
+- GuideRNA ranking, macro packaging and separately approved base/prime S2:
+  [editing preparation](base_prime_editing_preparation.md).
+- Lifecycle extensions beyond remaining Slice 3-6 verification: opaque wrappers,
+  queues, durability and broader exporter safety remain outside those slices.
+- Cross-tool comparison and separately assessed JS plain-JSON ingress.
+- Measured gels: remaining native checks, coefficients/masks, scaled references,
+  vendor traces, D5000, ratios and replicate inference; no enrichment claim.
+  [Cross-ladder permission](decisions.md#cross-ladder-residual-policy) does not
+  approve real coefficients or masks; see [gel boundaries](gel_workbench.md).
+- Weekly/monthly maintenance automation, without creating a release treadmill.
+- Local-first server/browser ownership; WebAssembly portability separately.
+- More collection BLAST/arrangement/storage adapters over shared policies:
+  [collection plan](gui_gene_set_collection_operations_plan.md).
+- Gene-set enrichment with explicit universe, mappings, context, provenance,
+  multiple-testing correction and unresolved counts; no causal claim.
+- Reporter boundary/native-cloning QA with real peaks, controls and cohorts:
+  [selector](reporter_fragment_selection.md).
+- Regulatory-partner calibration, background cohorts, ontology and distal
+  evidence, preserving the exact-hit audit layer.
+- Paralog resolution only with a concrete consumer and relationship provenance.
+- RNA panel throughput, queues/attachment and primer-payload calibration:
+  [processing plan](rna_panel_gui_processing_plan.md).
+- Observed-structure/J1 affected-source verification; J2/J3 stay owner-gated:
+  [junction plan](observed_junction_consequences_plan.md).
+- Synonymous restriction-site introduction with verification-digest proof.
+- Report-first feature-library annotation; termination catalogs/calibration,
+  circular-complete scans and dedicated GUI remain separate:
+  [termination plan](transcription_termination_annotation_plan.md).
+- Glossary/help inversion from typed descriptors:
+  [remaining discovery work](introspection.md#12-deferred-follow-up).
+
+## Scope And Session Close
+
+- Do not add private proposal, grant, sequencing or unrelated paper/figure work.
+- No broad engine extraction, GUI redesign or speculative protocol expansion
+  without a selected task; keep business logic engine-owned.
+- Do not add a `Done` entry. Move completed work directly to
+  [CHANGELOG.md](CHANGELOG.md); durable rules belong in [decisions.md](decisions.md).
+- Migrate detailed evidence before expanding this file; retain open requirements
+  through [handoff navigation](glen_next_verification_handoff.md#roadmap-detail-navigation-2026-11-20).
+- Run `scripts/maintenance_chore.py session-close --plan PATH_OR_LABEL`;
+  report warnings and actual tests, without changing source-bound verdicts.

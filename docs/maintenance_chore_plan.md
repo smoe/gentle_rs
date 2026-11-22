@@ -45,6 +45,7 @@ Checks:
 ```bash
 scripts/maintenance_chore.py session-close --plan PATH_OR_LABEL
 wc -l docs/roadmap.md
+wc -w docs/roadmap.md
 rg -n "^\s*[-*]\s*(Done|shipped|baseline is now available|already implemented)" docs/roadmap.md
 rg -n "CHANGELOG.md|decisions.md|Done entry|completed work directly" docs/roadmap.md docs/architecture.md AGENTS.md
 rg -n "^(<<<<<<< .+|=======|>>>>>>> .+)$" docs AGENTS.md
@@ -57,6 +58,16 @@ or external inspector can verify the script's behavior without trusting it.
 Its plan-fidelity item is deliberately a reminder, not an automatic pass/fail
 check, because only the session owner can confirm whether the final diff stayed
 inside the authorized plan.
+
+The roadmap word budget is 2,000 whitespace-separated words, including Markdown
+links and headings. `session-close` reports an excess as **warn**, not **fail**,
+and returns success when no other check fails. LF/CRLF and rewrapping do not
+change the count. Keep a short orientation before the detailed navigation;
+2,000 words are an upper bound, not a two-minute reading-time claim. When adding
+detail, migrate older evidence to an existing plan, handoff or release ledger
+and retain a link without dropping open requirements. The existing line-count
+and other failure checks are unchanged. Run the offline regressions with
+`python3 -m unittest scripts.test_maintenance_chore -v`.
 
 Pass criteria:
 

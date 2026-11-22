@@ -5711,6 +5711,87 @@ must not be reissued as unfinished work. Native/physical-host, model, scroll,
 package and scientific verdicts stay separate; this request authorizes none
 of their additional execution.
 
+## Roadmap Detail Navigation, 2026-11-20
+
+This is a navigation/migration record, **not a new verification campaign**.
+The compact roadmap replaces the accumulated session/release/phase briefings
+at [source `5e14ed0c`](https://github.com/smoe/gentle_rs/blob/5e14ed0caf70eb597a5fb14c6162566c7ff9b913/docs/roadmap.md).
+That immutable snapshot retains the complete previous wording. Use the linked
+plans and dated returns below for detailed requirements and actual evidence;
+do not revive an old "pending" assertion when a later scoped return covers it.
+No acceptance row, selected candidate, release aim or execution permission
+changes in this editorial migration. In particular, do not repeat completed
+C1-C4, read-end, reader/BLAST, barcode or historical package campaigns.
+
+| Former roadmap detail | Detailed owner / retained evidence |
+| --- | --- |
+| Published baseline, old `.10`/`.11` receipts and `.13` gates | [`.12` publication](release_notes/release_notes_v0.1.0-internal.12.md#publication-evidence), separate [headless receipt](audits/glen_followups_20261008/container_validate_5e6201a6/README.md), [`.13` nine-gate ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger), [owner procedure](internal_13_preparation_handoff.md#owner-procedure); prior packages/CI never accept a later candidate. |
+| Introductory GUI chapters, six audit gates and native/human carry-forward | [Final native checklist](glen_final_candidate_execution_handoff.md#remaining-native-and-human-checks), [six-item ledger](glen_audit_followups_20261008.md), and the source-bound returns in this handoff; keep ten-minute smoke budgets, independent packages, tutorial 08.04 and live-agent requirements separate. |
+| TSS collection learner/contributor checks and Dotplot | [Tutorial 08.15](tutorial/08-15_tss_collection_gui.md), [TSS acceptance](tss_workspace.md#acceptance), [Dotplot checklist](#dna-map-and-dotplot-separation-2026-10-27); preserve the focused [b8e0118f return](#glen-scoped-scan-at-b8e0118f-report-received-2026-10-28). |
+| Cofactor, TATA, local scoring, peak-centred review and source exports | [Candidate-first plan](cofactor_candidate_interface_plan.md), [08.14 acceptance](tutorial/08-14_promoter_cofactor_browser.md), [factor-curve native checklist](tp73_dnp73_factor_curves_glen_handoff.md), [annotated readability](tss_annotated_sequence_readability_plan.md), [source presentation](transcript_source_presentation.md); original inputs/assembly/score bindings are required for real rescoring. |
+| A/B/C labware, expression and storage readiness | [Early-feature review](glen_final_candidate_execution_handoff.md#internal13-early-features), [labware provenance](../data/labware/README.md), [expression tutorial](tutorial/09-03_protein_expression_handoff_cli.md), [storage tutorial](tutorial/03-10_gene_set_storage_projection.md); retain focused [macOS labware evidence](#focused-macos-labware-evidence-2026-10-25), not physical-fit or exported-file acceptance. |
+| Primer-PAIR study, specificity matrix, fan-out and simple-PCR preparation | [Specialist ledger](primer_design_specialist_plan.md), [PATZ1 G1-G6](tutorial/04-08_gene_assay_study_gui.md), [reference-bound verification](tutorial/04-09_reference_bound_primer_specificity.md#verification-scope), [compiler repair](#simple-pcr-compile-repair-2026-11-20); the [reader return](#linux-reader-and-mcp-return-at-e4bc7386-2026-11-05) is historical Linux evidence, not real-reference panel capacity or order approval. |
+| Shared service/agent/provider policy and tutorial 09.04 | [Agent exclusion ledger](agent_interface.md), [catalog import guards](catalog_updates.md), [09.04 acceptance](tutorial/09-04_cloning_time_cost_and_protocol_suppliers.md#acceptance-and-limits), [expression scoped return](#glens-scoped-return-at-89df315a-2026-11-03); actual VM execution, provider gates and no contact/submission remain explicit. |
+| Asynchronous jobs and lifecycle Slices 3-6 | [Command migration](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14), [Slice 3](operation_lifecycle_slice3_plan.md), [Slice 4](operation_lifecycle_slice4_plan.md), [Slice 5](operation_lifecycle_slice5_plan.md), [Slice 6](operation_lifecycle_slice6_plan.md); retain source-bound Rust/VM/process returns in this handoff. |
+| RNA panel, trace/payload and observed-junction history | [Processing plan](rna_panel_gui_processing_plan.md), [primer trace](primer_trace_phase01_plan_20261026.md), [payload Phase 2](primer_payload_partner_phase2_plan_20261026.md), [S0/S1](observed_transcript_structures_plan.md), [S2](observed_transcript_structures_s2_plan.md), [J1 consequences](observed_junction_consequences_plan.md); preserve hashes, ambiguity and verified/control-error units, with real-data/scientific and J2/J3 authority separate. |
+| Read-end/exon-locus and bound-cDNA C1-C4 | [Read-end ledger](rna_read_end_integration_plan.md), [d8656d46 integrated return](#glen-integrated-cdna-and-exon-locus-return-at-d8656d46-2026-11-11), [C1-C4 ledger](cdna_allele_interpretation_plan.md), [5d310958 return](#glen-return-at-5d310958), [919e7163 C3 return](#glen-c3-regression-return-at-919e7163-2026-11-15); keep original real-artifact/scientific boundaries distinct from software checks. |
+| Measured gel and sequence-design regression history | [Gel native checklist](#catalog-parity-repair-and-gel-return-2026-10-20), [gel boundaries](gel_workbench.md), [image acceptance](gel_image_analysis.md#remaining-work), [no-subtraction priming evidence](figures/tapestation_priming/README.md), [sequence-design acceptance](sequence_design_acceptance.md); earlier scoped results are not merged-source or biological approval. |
+| Manual, teaching/protein-length and microarray evidence | [Manual plan](manual_navigation_plan.md), [Help fixtures](#help-and-observed-transcript-smoke-fixtures-2026-10-28), [tutorial follow-up](#tutorial-review-follow-up-2026-11-04), [attributed microarray port](#microarray-native-evidence-port-2026-11-04); retain raw captures, native navigation and later teaching-derivative work separately. |
+| Dependency, discovery and provider fixture repairs | [Bio policy](decisions.md#compatible-bio-updates), [Windows raw-path fixture](#windows-specificity-bundle-raw-path-fixture-2026-11-08), [PDF alignment](#vector-pdf-writer-dependency-alignment-2026-11-10), [discovery/decision return](GENtle_discovery_verification_7f73a42a.md), [provider fixture isolation](#provider-preview-fixture-follow-up-2026-10-22); preserve exact source/lock identities and do not weaken production guards. |
+
+The following distinctions previously embedded in the long roadmap remain
+requirements, not implied passes or new release gates:
+
+- Native TSS checks include mixed/new window focus without harness refocusing,
+  repeated open/Forget/Undo/restart, stale members, symbol/case grouping and
+  unsupported-index versus unassigned-transcript accounting. Live scoring/export
+  keeps span admission, missing/zero masks, per-lane scales, the 128-title cap,
+  hashes, cancellation and GUI/headless equivalence. Do not raise limits or
+  infer production Parquet/source acceptance from synthetic teaching fixtures.
+- Candidate proofs retain IRF9/Q00978 linked-record coverage, circular ORF/feature
+  regressions, exact JASPAR matrices and TP73/PATZ1 reporter/CUT&RUN receipts.
+  Keep the historical scientific ledgers, teaching-exon choice, inactive FLNA
+  draft and separate native/scientific verdicts intact.
+- Lifecycle cancellation/concurrent native responsiveness remains inconclusive
+  where no admitted job and terminal receipt were observed. Missing sidecars
+  must still refuse unsafe saving; no queue, opaque-wrapper migration, hostile
+  parent-swap/crash durability or new payload resolver is promised. The 16 MiB
+  preview test is an infrastructure control, not a full-solver capacity result;
+  base/prime-editing S2 still requires separate owner authorization.
+- Read-end follow-up retains Unix/Windows checks for
+  `indexed_locus_isolates_all_three_samtools_calls`,
+  `indexed_locus_retains_selected_sam_only_on_opt_in`,
+  `read_end_pileup_value_sorts_separate_observations_from_bounds` and the
+  [input-budget boundary](rna_read_end_metrics.md#read-end-input-budget).
+  Unique read IDs, original A/T, model/rule bindings, work and raster/publication
+  guards remain unchanged. The 5,543,670-work synthetic fixture does not prove a
+  360-read threshold; distinct-isoform capacity and OD-L1-L4 beyond defaults
+  need their own evidence.
+- C1-C4 retains distinct reference/analysis IDs, conditional transcript-bound
+  consequences, inherited counts/policy, all-hypothesis linkage and cumulative
+  budgets. No QNAME/transitive splice joins, DNA genotype/copy-number or
+  complete-molecule claims follow. The [C3 receipt](tp53_tp73_c3_capacity_20261114.md)
+  and [original cDNA analysis](tp53_tp73_cdna_fixture_analysis_20261110.md) keep
+  software, artifact rehash and scientific evidence separate; WM793 depth,
+  MDM4, private archive regeneration and new DNA/data runs are not authorized.
+- Gel display/export parity does not establish acquisition comparability,
+  enrichment or yield. Coefficients/masks, fitted references, vendor traces,
+  encrypted D5000, ratios and replicate inference remain separate decisions.
+  Labware still requires nine legacy baselines, actual exported-file OpenSCAD
+  renders and native review; geometry alone is not physical-fit qualification.
+
+No Rust, native, live-model or scientific check is requested merely because
+this navigation was added. Use the active focused requests at the top of this
+handoff and consolidate remaining candidate gates only at release preparation.
+Codex's 37 offline maintenance/tutorial/TapeStation tests pass; the six new
+maintenance cases include real CLI processes and LF/CRLF synthetic documents.
+The first combined run found two removed direct evidence links; both were
+restored without changing the existing tests. Documentation/manual checks,
+release-gate structure and scoped local-link/anchor validation pass. Session
+close reports five OK, two expected scope/dirty-work reminders and zero failures.
+The 2,000-word budget is advisory only. Unrelated `paper`, private sequencing
+data, local output/figures and loose prompt files remain untouched.
+
 ## How To Return Results
 
 Send **one concise response to Steffen for forwarding into the main Codex

@@ -278,6 +278,7 @@ jobs:
       - run: python3 -m unittest scripts.test_egui_compatibility -v
       - run: python3 -m unittest scripts.test_container -v
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
+      - run: python3 -m unittest scripts.test_maintenance_chore -v
       - run: python3 -m unittest scripts.test_capability_maturity -v
       - run: python3 -m unittest scripts.test_primer_reference_reader -v
       - run: python3 -m unittest scripts.test_cdna_allele_interpretation.InterpretationSourceTests -v

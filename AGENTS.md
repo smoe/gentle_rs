@@ -77,6 +77,10 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
 - For session-close hygiene, prefer
   `scripts/maintenance_chore.py session-close --plan PATH_OR_LABEL` before
   handoff, then report any warnings or failures.
+- Keep the roadmap overview brief and the full file at most 2,000
+  whitespace-separated words. Its session-close budget check is advisory, not
+  a release/CI gate; migrate detailed evidence to existing plans, handoffs or
+  release ledgers before adding more, preserving links and open requirements.
 - For weekly or post-merge drift review, prefer
   `scripts/maintenance_chore.py drift-scan --base-ref REF` as the first pass,
   then manually inspect any warning before treating it as a bug.

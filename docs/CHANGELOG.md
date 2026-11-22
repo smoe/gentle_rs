@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-11-20 - Condense Roadmap And Warn On Planning Accumulation
+
+- Replace the stale October session briefing and repeated release/phase evidence
+  with a short current overview, seven bounded priorities and linked phase/
+  parking-lot navigation. Keep the `.13` A/B/C aim, unchanged nine-gate release
+  ledger and separate historical/scientific boundaries; select no candidate and
+  mark no acceptance passed. The [migration map](glen_next_verification_handoff.md#roadmap-detail-navigation-2026-11-20)
+  retains detailed owners, unique open requirements and the immutable prior text.
+- Add an advisory 2,000-word `session-close` check, documented in agent/chore
+  guidance. Keep the existing 200-400-line/failure checks; word overflow only
+  warns and cannot alone fail the command. Add offline synthetic LF/CRLF,
+  boundary and actual-process regressions to the existing Python CI gate.
+  All 37 targeted maintenance/tutorial/TapeStation checks pass after restoring
+  the two direct evidence links identified by existing guards. Documentation,
+  manual and release-structure checks pass; session-close reports five OK,
+  two expected dirty-work/plan reminders and no failures.
+  No engine/biology, dependency, generated-artifact or release-policy change;
+  no local Rust build, push, dispatch or publication.
+
 ## 2026-11-20 - Repair Simple PCR Handoff Compilation
 
 - Address Glen's default-feature E0277/E0599 findings at `ccd839dc`: derive

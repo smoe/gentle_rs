@@ -21,6 +21,7 @@ from typing import Iterable, Optional
 
 ROADMAP_MIN_LINES = 200
 ROADMAP_MAX_LINES = 400
+ROADMAP_MAX_WORDS = 2000
 COMPLETED_HISTORY_RE = re.compile(
     r"^\s*[-*]\s*(Done|shipped|baseline is now available|already implemented)",
     re.IGNORECASE,
@@ -131,6 +132,28 @@ def check_roadmap_line_count(repo_root: Path) -> Check:
         else [
             "Move completed history to docs/CHANGELOG.md, durable rules to "
             "docs/decisions.md, or condense roadmap-only context."
+        ],
+    )
+
+
+def check_roadmap_word_count(repo_root: Path) -> Check:
+    path = repo_root / "docs" / "roadmap.md"
+    count = len(path.read_text(encoding="utf-8").split())
+    ok = count <= ROADMAP_MAX_WORDS
+    return Check(
+        name="roadmap word count",
+        status="ok" if ok else "warn",
+        evidence=[
+            f"{relative(repo_root, path)} has {count} whitespace-separated words; "
+            f"advisory limit is {ROADMAP_MAX_WORDS}"
+        ],
+        findings=[] if ok else [
+            "Roadmap exceeds the session-orientation budget; this is a warning, "
+            "not a release or CI failure."
+        ],
+        minimal_fix=[] if ok else [
+            "Migrate detailed evidence to the existing plan, handoff or release "
+            "ledger and retain a short link; do not drop open requirements."
         ],
     )
 
@@ -418,6 +441,7 @@ def check_plan_fidelity(repo_root: Path, plan: Optional[str]) -> Check:
 def session_close(repo_root: Path, plan: Optional[str]) -> list[Check]:
     return [
         check_roadmap_line_count(repo_root),
+        check_roadmap_word_count(repo_root),
         check_completed_history_bullets(repo_root),
         check_maintenance_links(repo_root),
         check_conflict_markers(repo_root),
