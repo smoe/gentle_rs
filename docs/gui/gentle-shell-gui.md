@@ -25,6 +25,11 @@ Behavior:
 - Same command set as CLI `gentle_cli shell`.
 - Shows a command preview before execution.
 - Maintains command output history in the panel.
+- Executing a command does not additionally save the panel's prompt/settings
+  into project metadata. Use `history undo` / `history redo` (or `/undo` /
+  `/redo`) for operation history; inspection between them must not discard
+  Redo. A new project edit or an explicitly persisted UI-setting change still
+  starts a new history branch. This is not durable history across reopening.
 
 Supported commands:
 

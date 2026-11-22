@@ -1,3 +1,5 @@
+//! Sequence-window controller regressions, including in-memory GUI history fixtures.
+
 #[test]
 fn annotated_format_parity_gui_export_extension_selection() {
     use crate::engine::ExportFormat;
@@ -109,6 +111,190 @@ use std::{
     time::{Duration, Instant},
 };
 use tempfile::{TempDir, tempdir};
+
+fn gui_shell_history_area() -> (MainAreaDna, Arc<RwLock<GentleEngine>>) {
+    // Hand-crafted in-memory sequence; no biological reference or filesystem I/O.
+    let dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("synthetic sequence");
+    let mut state = ProjectState::default();
+    state.sequences.insert("toy".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("toy".to_string()), Some(Arc::clone(&engine)));
+    area.shell_command_text = "help".to_string();
+    area.save_engine_ops_state();
+    (area, engine)
+}
+
+#[test]
+fn gui_shell_history_undo_redo_preserves_redo_and_saved_prompt() {
+    for (undo, redo) in [("history undo", "history redo"), ("/undo", "/redo")] {
+        let (mut area, engine) = gui_shell_history_area();
+        let key = area.engine_ops_state_key();
+        let saved = engine.read().expect("engine").state().metadata[&key].clone();
+        area.shell_command_text = "display hide features".to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+        assert!(!engine.read().expect("engine").state().display.show_features);
+
+        area.shell_command_text = undo.to_string();
+        area.run_shell_command();
+        {
+            let guard = engine.read().expect("engine");
+            assert!(
+                area.op_status.starts_with("shell ok:"),
+                "{}",
+                area.op_status
+            );
+            assert!(guard.state().display.show_features);
+            assert_eq!(guard.history_summary().redo_count, 1);
+            assert_eq!(guard.state().metadata[&key], saved);
+        }
+
+        area.shell_command_text = redo.to_string();
+        area.run_shell_command();
+        let guard = engine.read().expect("engine");
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+        assert!(!guard.state().display.show_features);
+        assert_eq!(guard.history_summary().undo_count, 1);
+        assert_eq!(guard.history_summary().redo_count, 0);
+        assert_eq!(guard.state().metadata[&key], saved);
+    }
+}
+
+#[test]
+fn gui_shell_history_inspection_between_undo_and_redo_keeps_redo() {
+    let (mut area, engine) = gui_shell_history_area();
+    let key = area.engine_ops_state_key();
+    let saved = engine.read().expect("engine").state().metadata[&key].clone();
+    for command in ["display hide features", "history undo"] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+    }
+    for command in [
+        "state-summary",
+        "features query toy",
+        "history status",
+        "help",
+    ] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        let guard = engine.read().expect("engine");
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+        assert_eq!(guard.history_summary().redo_count, 1, "{command}");
+        assert_eq!(guard.state().metadata[&key], saved, "{command}");
+    }
+    area.shell_command_text = "history redo".to_string();
+    area.run_shell_command();
+    assert!(
+        area.op_status.starts_with("shell ok:"),
+        "{}",
+        area.op_status
+    );
+    assert!(!engine.read().expect("engine").state().display.show_features);
+}
+
+#[test]
+fn gui_shell_history_failed_commands_do_not_discard_redo() {
+    let (mut area, engine) = gui_shell_history_area();
+    for command in ["display hide features", "history undo"] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+    }
+    for (command, expected_status) in [
+        ("history not-a-command", "shell parse error:"),
+        ("op '{}'", "shell error:"),
+    ] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with(expected_status),
+            "{}",
+            area.op_status
+        );
+        assert_eq!(
+            engine.read().expect("engine").history_summary().redo_count,
+            1
+        );
+    }
+    area.shell_command_text = "history redo".to_string();
+    area.run_shell_command();
+    assert!(
+        area.op_status.starts_with("shell ok:"),
+        "{}",
+        area.op_status
+    );
+    assert!(!engine.read().expect("engine").state().display.show_features);
+}
+
+#[test]
+fn gui_shell_history_new_operation_still_discards_redo() {
+    let (mut area, engine) = gui_shell_history_area();
+    for command in ["display hide features", "history undo", "display show tfbs"] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+    }
+    let guard = engine.read().expect("engine");
+    assert!(guard.state().display.show_features);
+    assert!(guard.state().display.show_tfbs);
+    assert_eq!(guard.history_summary().redo_count, 0);
+    drop(guard);
+    area.shell_command_text = "history redo".to_string();
+    area.run_shell_command();
+    assert!(
+        area.shell_output_text
+            .ends_with("ERROR: No operation to redo\n")
+    );
+}
+
+#[test]
+fn gui_shell_history_explicit_ui_side_edit_still_discards_redo() {
+    let (mut area, engine) = gui_shell_history_area();
+    for command in ["display hide features", "history undo"] {
+        area.shell_command_text = command.to_string();
+        area.run_shell_command();
+        assert!(
+            area.op_status.starts_with("shell ok:"),
+            "{}",
+            area.op_status
+        );
+    }
+    assert_eq!(
+        engine.read().expect("engine").history_summary().redo_count,
+        1
+    );
+    area.digest_enzymes_text = "EcoRI".to_string();
+    area.save_engine_ops_state();
+    let key = area.engine_ops_state_key();
+    let guard = engine.read().expect("engine");
+    assert_eq!(guard.history_summary().redo_count, 0);
+    assert_eq!(guard.state().metadata[&key]["digest_enzymes_text"], "EcoRI");
+}
 
 #[test]
 fn cutrun_tfbs_confirmation_label_covers_occupancy_support_statuses() {

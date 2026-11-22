@@ -1,6 +1,57 @@
 # Glen: Next Verification And Return
 
+## GUI Shell Redo Repair, 2026-11-22
+
+Based on the [reproduced native failure](#termination-process-and-native-shell-return-2026-11-22)
+recorded in `5faca9cd`, remove only the unconditional
+`save_engine_ops_state` call following successful `run_shell_command` execution.
+Keep the shared parser/executor and display synchronization. No history-command
+special case, engine checkpoint change, metadata schema migration or termination
+scoring change is introduced. Explicit UI preference saves still use the same
+side-edit safeguard and invalidate Redo as before. Existing prompt state remains
+loadable; running a command no longer auto-persists that prompt into the project.
+
+Five new `main_area_dna::tests::gui_shell_history_` regressions drive the actual
+controller entry point with synthetic in-memory DNA: normal/alias Undo -> Redo,
+read-only inspection between them, parse/execution failures, a new operation,
+and an explicit UI side edit. The last two controls require Redo invalidation.
+They deliberately assert only the saved shell-UI record, not whole-project
+metadata invariance: the existing construct-reasoning refresh is separate.
+
+**Rust compile/tests and post-fix native acceptance are not run.** The retained
+GUI/test executables predate this source change and cannot prove the repair.
+After the owner's push, use one verified run-owned target and actual integrated
+SHA, compile first, then require five nonzero tests:
+
+```sh
+cargo check --locked --tests -j1
+cargo test --locked --lib -j1 main_area_dna::tests::gui_shell_history_ -- --test-threads=1
+```
+
+With a matching new GUI binary and a disposable synthetic project, repeat only
+the failed history boundary: materialize the reviewed single terminator, Undo,
+then immediate Redo; repeat with `state-summary`, `features query` and history
+inspection between Undo/Redo. Confirm exactly zero/one feature as appropriate,
+and that new real edits still invalidate Redo. Do not weaken the engine's
+metadata side-edit rule if a test fails. No need to replay completed screening,
+catalog, Python/CLI, MCP-handler, PCR or export campaigns solely for this patch.
+
+Actual termination JS/Lua VMs, external MCP stdio and canonical parity remain
+separate open checks from the preceding return. The owner explicitly retained
+native Windows as a **separate external gate**, not a requirement to acquire a
+Windows host in this local session. Updated-lock platform CI and release gates
+remain open; no push, dispatch or local Rust build is authorized here.
+Local documentation status, manual freshness, whitespace and scoped rustfmt
+checks pass. Formatting is checked for the production file and changed test
+ranges only: the full test file has an older unrelated help-entry formatting
+diff, left untouched. Session-close: five OK, two expected unrelated-work/scope
+reminders, zero failures; roadmap 1,533 words. `Cargo.toml`, `Cargo.lock`, engine
+and shared-shell implementations, `paper` and private/untracked files are unchanged.
+
 ## Termination Process And Native Shell Return, 2026-11-22
+
+Historical pre-repair receipt; see the [source repair and pending checks](#gui-shell-redo-repair-2026-11-22)
+above. Its passing binaries do not establish post-repair acceptance.
 
 Codex reused the existing binaries from the [updated-lock receipt](#updated-lock-macos-pcr-verification-2026-11-22)
 at local main `0b29b552`. Production source and manifest remain unchanged from

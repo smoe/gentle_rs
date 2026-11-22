@@ -10836,8 +10836,8 @@ impl MainAreaDna {
                 self.shell_output_text
                     .push_str(&format!("$ {line}\n{output}\n"));
                 self.op_status = format!("shell ok: {}", command.preview());
+                // Persisting the prompt here would turn Undo into a side edit and clear Redo.
                 self.sync_from_engine_display();
-                self.save_engine_ops_state();
             }
             Err(e) => {
                 if !self.shell_output_text.is_empty() {

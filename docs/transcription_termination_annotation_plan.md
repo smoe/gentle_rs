@@ -498,3 +498,20 @@ The [current handoff](glen_next_verification_handoff.md#termination-process-and-
 records exact binary identities, unchanged synthetic project bytes and remaining
 VM/stdio/parity/platform scope. No private inputs, scientific acceptance, push
 or publication is involved; Windows remains untested natively.
+
+## GUI Shell History Repair, 2026-11-22
+
+The native follow-up above identified an adapter persistence defect, not a
+termination-kernel or engine-checkpoint defect. Remove the unconditional UI
+settings save after successful shared-shell execution. Preserve the command
+result, display synchronization, legacy saved UI record and the engine's
+intentional Redo invalidation for genuine persisted side edits. This is not a
+special case for termination or the history command family.
+
+Five synthetic controller regressions cover direct and alias Undo/Redo,
+intervening inspection, failed commands, real new operations and explicit UI
+side edits. They exercise `run_shell_command`, not just a new helper. No local
+Rust build/test or fresh native acceptance is claimed; old binaries still
+contain the reproduced failure. Follow the [focused compile/test/native request](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
+The owner keeps native Windows separate as an external gate. Existing
+termination process/MCP-handler passes remain source-bound and are not reissued.

@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-22 - Preserve GUI Shell Redo After Command Execution
+
+- Remove only automatic shell-UI metadata persistence after shared-shell
+  success, which discarded the Redo entry immediately after Undo. Keep shared
+  execution/display synchronization and the engine's side-edit safeguard;
+  genuine operations and explicit persisted settings still invalidate Redo.
+- Add five synthetic actual-controller Rust regressions for normal/alias
+  Undo/Redo, intervening inspection, failed commands and both invalidation
+  controls. Document prompt/history behavior and the [pending verification](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
+  No local Rust build/test or post-fix native pass is claimed; existing binaries
+  predate this patch. Native Windows stays an owner-confirmed external gate.
+  No push, dispatch, dependency update or biological-contract change.
+
 ## 2026-11-22 - Record Termination Process Passes And Native Redo Defect
 
 - Reuse the existing updated-lock CLI/test binaries without compilation: the
