@@ -292,3 +292,20 @@ records exact lock/binary identities, toolchain, the non-fatal linker warning
 and limits. Native stale-confirmation/project-switch and viewport-mode checks,
 updated-lock Windows/Linux/full-suite and release acceptance remain open.
 This does not extend the older clean-source CI passes to new dependencies.
+
+### Native Safeguards And Viewport Follow-Up, 2026-11-22
+
+Using the same already-built binary, macOS inspection now covers destination
+edits during confirmation, a linear-to-circular source change, project reset
+and reopening the same sequence ID with no retained pending/form state.
+The embedded-mode counterpart also opens and scrolls the basic form with the
+unchanged original oligos and accepts field focus. No PCR runs and the input
+project bytes remain unchanged; deliberate topology edits are distinguished
+from preparation, preference writes and its unchanged History behavior.
+
+The [case-by-case receipt](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22)
+records the initial failed wrapper launch, successful identical-copy launch,
+actual build identity and exact limits. Native DNA/report-content changes
+were not separately replayed; their controller tests already pass. Separate
+native Windows/focus and updated-lock broader/platform acceptance remain open.
+No new Rust build/test, source change, push or release acceptance is claimed.

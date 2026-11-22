@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-22 - Record Native PCR Safeguards And Embedded Focus
+
+- Exercise the existing synthetic macOS GUI binary without rebuilding: refuse
+  destination drift and a circular-source change during pending replacement;
+  clear pending/form state across project replacement and reopening the same ID.
+- Verify the embedded counterpart opens/scrolls the basic form, preserves both
+  original oligos and accepts field focus, with no implicit PCR or input-file
+  change. Record deliberate topology operations and preference writes separately
+  from preparation. Keep Windows/native and updated-lock broader CI unclaimed;
+  retain the initial wrapper launch failure and final session cleanup in the
+  [scoped receipt](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
+  No source, dependency or termination change, Rust build/test, push or dispatch.
+
 ## 2026-11-22 - Build Updated Dependencies And Exercise Native PCR Handoff
 
 - Following explicit owner build authorization, build GUI/CLI at `14146c93`

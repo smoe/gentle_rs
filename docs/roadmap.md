@@ -1,8 +1,8 @@
 # GENtle Roadmap
 
-Last session: 2026-11-22. Complete native simple-PCR stale-confirmation and
-viewport checks; verify the owner's updated lock on other platforms separately
-from older CI passes. Termination-specific process/VM acceptance stays separate.
+Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
+updated-lock platform checks; do not repeat the scoped macOS cases.
+Termination-specific process/VM acceptance stays separate.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -47,10 +47,9 @@ remains source-bound, not a current-source pass.
 
 ## Next Session Priorities
 
-1. Complete only unrun native PCR stale-confirmation/project-switch and
-   viewport checks; validate the updated lock's broader/platform behavior
-   without replaying passed focused filters.
-   [Remaining checks](glen_next_verification_handoff.md#updated-lock-macos-pcr-verification-2026-11-22).
+1. Obtain the separate native Windows PCR/focus check and the updated lock's
+   broader/platform acceptance; do not replay completed macOS or focused tests.
+   [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
 2. Complete missing termination-specific process/VM and native checks,
    preserving confirmation and scientific limits; reuse recorded unit/CI gates.
    [Focused checks](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).

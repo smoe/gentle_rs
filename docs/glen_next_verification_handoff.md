@@ -1,6 +1,82 @@
 # Glen: Next Verification And Return
 
+## Native PCR Safeguards And Viewports, 2026-11-22
+
+Codex continued the synthetic macOS inspection with the **existing** GUI binary
+from the [updated-lock receipt](#updated-lock-macos-pcr-verification-2026-11-22).
+No Rust build/test, source patch, push or CI dispatch was performed in this
+follow-up. At inspection time main is `7274577b`; its only differences from
+the recorded build source `14146c93` are the tested lockfile and four
+documentation files. The binary still reports the earlier build revision;
+this is not a newly built clean-SHA or release receipt.
+
+The unchanged lock SHA-256 is
+`89ae39205b9c273a48bd40229682833db51ae06883a9d937e246ad178624bb2a`.
+Both native and embedded sessions use GUI bytes SHA-256
+`6067b1a2551e4649016ca3f9aa19c41572e1ce166353edb6862aa526168679df`
+on the same macOS/toolchain/features/profile recorded below. Only the
+hand-crafted 20-bp project described below was loaded; no PCR, primer design,
+provider/model call or private-data operation was executed.
+
+### Additional Observed Cases
+
+- **Destination drift:** open replacement for `GGGTT`/`CCCAA`, then edit only
+  the forward field to `TTTTG`. Replace refuses with `PCR fields changed;
+  request the handoff again`. A fresh replacement preview still shows
+  `TTTTG`/`CCCAA`, not the proposed saved pair.
+- **Source geometry drift:** open a fresh replacement, close the tools panel
+  and deliberately change the disposable template from linear to circular.
+  Reopening tools preserves the pending confirmation; Replace refuses with
+  `simple_pcr_handoff:circular_template_unsupported`. Restore linear topology
+  explicitly before the next case. These two deliberate topology operations
+  account for Undo 2 and a refreshed construct-reasoning artifact; they are
+  not effects of primer preparation. DNA/report-content drift retains its
+  separate passing controller regressions, not a new native execution claim.
+- **Project replacement:** leave a fresh confirmation pending, choose
+  File -> New Project and Don't Save. The new workspace has zero sequences,
+  analyses and containers and Undo/Redo 0/0. Reopen the same original file and
+  sequence ID: both basic and Advanced PCR fields are empty, Unique is off,
+  the old confirmation/source banner is absent and Undo/Redo remain 0/0.
+- **Embedded focus:** launch a separate temporary app wrapper with
+  `GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS=1` and
+  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=0`, using a distinct, byte-identical
+  executable copy and temporary home. The observed sequence window is hosted
+  inside the root viewport. Selecting rank 7 and transferring opens the
+  collapsed Core cloning operations section, scrolls to the form and exposes
+  `AACCG`/`TAGTGC`. The forward field accepts focus; Advanced remains empty,
+  Unique off and Mutagenesis defaults unchanged. Together with the earlier
+  native-child session this establishes the bounded macOS viewport comparison.
+- **No implicit PCR:** the embedded session remains one sequence, two original
+  analyses, one container, no arrangements and Undo/Redo 0/0. The original
+  project remains byte-identical, SHA-256
+  `73e2b07b8376285641d8e2aa82f4aedad35f2f601fb64b09a08038711b8d16b0`.
+  Preference/window navigation may mark the session unsaved, as disclosed
+  below; no whole-session metadata-invariance claim is made.
+
+The initial embedded-wrapper launch did not establish a running app. Replacing
+its hard-linked executable with an independent identical copy allowed launch;
+the failed attempt is not a GENtle product or focus verdict. Both temporary
+sessions were subsequently observed absent from the running-app inventory,
+without saving the project. No screenshots were retained or fixture bytes
+added to the repository. This is an observed, attributed checklist, not a
+sealed native evidence archive or a portable GUI automation regression.
+
+### Remaining Platform Scope
+
+Do not repeat these macOS cases or the completed PCR/export/unit/Python filters
+merely to accept this documentation. **Native Windows PCR/focus is still
+not run** and cannot be inferred from macOS or headless tests. Updated-lock
+Windows/Linux CI, broader feature/full-suite checks, termination-specific
+process/VM work, packages and scientific/release acceptance remain independent.
+No permission to push, dispatch or build follows from this checklist.
+Ten PCR/maintenance Python checks, documentation status and whitespace pass;
+session-close reports five OK, two known dirty-work/plan reminders and no failure.
+
 ## Updated-Lock macOS PCR Verification, 2026-11-22
+
+The native pending-confirmation/viewports below were still open when this
+first subset was recorded; the follow-up above now supplies the scoped macOS
+cases without transferring that evidence to Windows.
 
 The owner explicitly authorized local builds after `rustup update` and
 `cargo update`. Codex built GUI and CLI successfully with
