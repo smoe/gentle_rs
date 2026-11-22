@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-22 - Verify Actual Termination MCP Stdio And Canonical Parity
+
+- Reuse newly available owner-built executables reporting `5faca9cd`, without
+  starting a Rust build: the canonical Rust parity checker passes, and actual
+  initialized MCP stdio proves unique discovery, confirmation before input I/O,
+  unchanged bytes for inspection/denied/stale apply and explicit single-feature
+  materialization. Retain exact binary/lock identities and synthetic-only scope
+  in the [additional return](glen_next_verification_handoff.md#additional-mcp-stdio-and-canonical-parity-return-2026-11-22).
+- Observe the owner's existing Nextest run as live/incomplete, not passed; its
+  test list lacks the five Redo-repair regressions. Leave that run/target alone
+  and require a matching new test/native build for the GUI repair. No source
+  change, push, dispatch, cleanup or scientific/release acceptance in this update.
+
 ## 2026-11-22 - Preserve GUI Shell Redo After Command Execution
 
 - Remove only automatic shell-UI metadata persistence after shared-shell

@@ -515,3 +515,10 @@ Rust build/test or fresh native acceptance is claimed; old binaries still
 contain the reproduced failure. Follow the [focused compile/test/native request](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
 The owner keeps native Windows separate as an external gate. Existing
 termination process/MCP-handler passes remain source-bound and are not reissued.
+
+The [additional process return](glen_next_verification_handoff.md#additional-mcp-stdio-and-canonical-parity-return-2026-11-22)
+supplies actual initialized MCP stdio confirmation/discovery/writeback and the
+canonical Rust parity checker using newly available owner-built executables
+reporting `5faca9cd`. The owner's active Nextest run is not a terminal verdict,
+and its 5,179-test binary lacks the five GUI repair tests. Keep those two
+acceptance scopes separate; a matching repaired GUI build/test is still needed.

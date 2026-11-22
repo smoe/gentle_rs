@@ -2,7 +2,7 @@
 
 Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
 updated-lock platform checks; do not repeat the scoped macOS cases.
-Verify the GUI Shell Redo repair; termination VM/stdio and parity
+Verify the GUI Shell Redo repair; termination VM and registry
 acceptance stay separate from completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
@@ -52,7 +52,7 @@ remains source-bound, not a current-source pass.
    broader/platform acceptance; do not replay completed macOS or focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
 2. Compile and verify the narrow GUI Shell Redo repair, preserving side-edit
-   invalidation; finish only unrun termination VM/stdio/parity checks.
+   invalidation; finish only unrun termination VM/registry checks.
    [Focused request](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.

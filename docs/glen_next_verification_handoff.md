@@ -1,5 +1,63 @@
 # Glen: Next Verification And Return
 
+## Additional MCP Stdio And Canonical Parity Return, 2026-11-22
+
+The owner independently started `cargo nextest run` in this checkout. Newly
+available executables report source `5faca9cdf1f5a5948b7a4060b50e757e7e6c76be`,
+build `1795345091612`, with unchanged lock SHA-256
+`89ae39205b9c273a48bd40229682833db51ae06883a9d937e246ad178624bb2a`.
+Codex did not start or restart that build/test run, edit Rust source during this
+follow-up, clean its target or interrupt it. These are owner working-tree build
+artifacts, not a clean-source acceptance receipt.
+
+The current test executable still lists **5179 tests** and contains none of the
+five new `gui_shell_history_` regressions from `e7209425`. Therefore this run
+cannot establish the repair's acceptance. Its live process and recorded run
+`aa88ed6e-d941-4a62-8baa-84a2f1c5b0a0` were observed in progress/incomplete;
+no terminal full-suite verdict is claimed. The unfinished archive is not a
+corrupt-result finding. Read-only `nextest store list` initially lacked access
+to its advisory lock; the approved status-only invocation succeeded. No rerun,
+record rewrite or retention change was performed.
+
+Using only the existing executables, the following previously open checks pass:
+
+- `target/debug/gentle_examples_docs parity-matrix-check`: exit 0, canonical
+  matrix current, no generated diff. Binary SHA-256
+  `deb651f714356ae7c80fbf5df2c7826dec0482f275a957c9bdff83bde9477ab3`.
+  This is the actual Rust generator/check path, not a Python projection;
+  separate integration assertions/full-suite results are not inferred.
+- An actual initialized MCP stdio process advertises both termination paths
+  exactly once. Missing confirmation refuses before a deliberately missing
+  catalog can be read or project created. Confirmed inspection preserves exact
+  project bytes; denied materialization and a stale review digest preserve
+  those bytes; explicit approved materialization creates exactly one terminator,
+  independently queried through the actual CLI. Inputs are only the earlier
+  invented catalog and a new disposable 30-bp project under an apostrophe/spaced
+  path; no private data, provider/model call, network or biological catalog.
+  MCP binary SHA-256
+  `aee4a315250443b1f55ea138455fda37eee4e98398fd948bb32797ba6c6c8b8c`;
+  companion CLI SHA-256
+  `c43a3db344d761032141e74257e1702754a61f4862503de3989fb6554c278d73`.
+
+The local stdio verifier remains at
+`/private/tmp/gentle-termination-stdio-20261122.py`, SHA-256
+`59fddb54332356a613aa51e5d434aeaf2933d2f7facfe6217894f69fb83768f4`.
+It uses the same synthetic operation/confirmation assertions as the committed
+MCP regression, with real framed subprocess transport and initialization.
+It is not a committed portable fixture or a sealed evidence archive.
+
+Shared engine, protocol, MCP and generator source are unchanged between the
+self-reported build revision and `e7209425`; the new Rust change is confined to
+GUI Shell persistence and its tests. Reuse these scoped stdio/canonical passes
+without presenting them as a compile or native pass for that GUI repair.
+Still required: the five new controller tests and matching native replay,
+actual termination JS/Lua VMs and remaining source/lock-bound registry/platform
+acceptance. Native Windows remains the owner's separate external gate.
+Documentation status, manual inventory and whitespace checks pass;
+session-close reports five OK, two known unrelated-work/scope reminders and no
+failure. Only these records/plan/roadmap change in this follow-up; the owner's
+test process, Rust sources, lockfile, `paper` and private/untracked data are untouched.
+
 ## GUI Shell Redo Repair, 2026-11-22
 
 Based on the [reproduced native failure](#termination-process-and-native-shell-return-2026-11-22)
@@ -36,8 +94,9 @@ and that new real edits still invalidate Redo. Do not weaken the engine's
 metadata side-edit rule if a test fails. No need to replay completed screening,
 catalog, Python/CLI, MCP-handler, PCR or export campaigns solely for this patch.
 
-Actual termination JS/Lua VMs, external MCP stdio and canonical parity remain
-separate open checks from the preceding return. The owner explicitly retained
+Actual termination JS/Lua VMs and remaining registry assertions stay open;
+the [additional scoped return](#additional-mcp-stdio-and-canonical-parity-return-2026-11-22)
+now supplies actual MCP stdio and the canonical checker. The owner explicitly retained
 native Windows as a **separate external gate**, not a requirement to acquire a
 Windows host in this local session. Updated-lock platform CI and release gates
 remain open; no push, dispatch or local Rust build is authorized here.
