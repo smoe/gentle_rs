@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-22 - Record Termination Process Passes And Native Redo Defect
+
+- Reuse the existing updated-lock CLI/test binaries without compilation: the
+  synthetic actual-process Python/CLI companion passes, as does the selected
+  in-process MCP discovery/confirmation regression (1/1, 5178 filtered).
+- Verify native macOS screening parity, stale-review refusal, explicit
+  single-feature annotation and Undo removal. Record the immediate GUI Shell
+  Redo failure and its automatic UI-metadata persistence boundary separately;
+  preserve the engine's intentional side-edit redo invalidation and make no
+  source-fix or green native-history claim. The synthetic input remains unchanged.
+- Narrow remaining work to the history repair and unrun VM/stdio/parity/platform
+  checks in the [current handoff](glen_next_verification_handoff.md#termination-process-and-native-shell-return-2026-11-22).
+  Documentation only; no new Rust build, push, dispatch or biological acceptance.
+
 ## 2026-11-22 - Record Native PCR Safeguards And Embedded Focus
 
 - Exercise the existing synthetic macOS GUI binary without rebuilding: refuse

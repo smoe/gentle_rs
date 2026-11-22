@@ -474,3 +474,27 @@ The [new-source handoff](glen_next_verification_handoff.md#termination-evidence-
 requires compile, actual adapter/process and canonical parity checks after the
 owner's push. No local Rust build/test, provider call, push or publication is
 authorized or performed by this commit review.
+
+## Updated-Lock Process And Native Follow-Up, 2026-11-22
+
+With unchanged production source and the already built binaries described in
+the [source/lock receipt](glen_next_verification_handoff.md#updated-lock-macos-pcr-verification-2026-11-22),
+the actual Python/direct CLI companion passes. The existing default-feature
+test executable also passes the selected MCP discovery/confirmation regression
+(1 passed, 5178 filtered); this does not execute an external MCP server or JS/Lua
+VMs. No further Rust build occurred.
+
+Native macOS GUI Shell confirms exact-reference report parity, stale-digest
+refusal, explicitly selected single-feature materialization and feature removal
+by Undo. It also exposes a concrete history defect: Undo reports one redo entry,
+but the immediate Redo fails. The shell automatically persists its changed UI
+command text after success, reaching the engine's intentional side-edit redo
+invalidation. Do not weaken that engine safeguard or claim native history green.
+The GUI persistence boundary needs a separate repair and regressions covering
+immediate Redo and read-only inspection between Undo/Redo. No repair is included
+in this evidence-only update.
+
+The [current handoff](glen_next_verification_handoff.md#termination-process-and-native-shell-return-2026-11-22)
+records exact binary identities, unchanged synthetic project bytes and remaining
+VM/stdio/parity/platform scope. No private inputs, scientific acceptance, push
+or publication is involved; Windows remains untested natively.

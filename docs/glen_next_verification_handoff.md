@@ -1,5 +1,69 @@
 # Glen: Next Verification And Return
 
+## Termination Process And Native Shell Return, 2026-11-22
+
+Codex reused the existing binaries from the [updated-lock receipt](#updated-lock-macos-pcr-verification-2026-11-22)
+at local main `0b29b552`. Production source and manifest remain unchanged from
+build source `14146c93`; the retained updated lock is the same. This is not a
+clean-current-SHA build. No additional Rust compilation, push or dispatch occurred.
+
+### Completed Checks
+
+- `python3 scripts/test_transcription_termination.py --cli /absolute/path/to/gentle_cli`
+  exits 0: actual Python/direct CLI report parity, export, inspection byte
+  preservation, explicit materialization, idempotence, GenBank round-trip and
+  raw-byte LF/CRLF freshness pass. CLI SHA-256 remains
+  `46fc1a3d73326a402c4f9a893bba3c4d777e361603c6403781ec0b221cd0d790`.
+- Direct execution of the existing default-feature root test binary selects
+  `mcp_server::tests::termination_mcp_exact_screen_and_confirmation_preserve_state`
+  with `--exact --nocapture --test-threads=1` and `RUST_MIN_STACK=16777216`:
+  **1 passed, 0 failed, 0 ignored, 5178 filtered**. Both discovery paths occur
+  exactly once; unconfirmed materialization refuses and confirmed writeback
+  succeeds. Test executable SHA-256 is
+  `d76ee3246eef8018bcb932546fae2babadf267c9ab5b0c2bc6aa5d6bacb9a3ed`.
+  This is an in-process MCP handler test, not a stdio-server or JS/Lua VM run.
+- Native macOS GUI Shell, using the same isolated hosted wrapper and GUI bytes
+  as the PCR receipt, screens a hand-crafted 30-bp linear sequence and an
+  invented exact-reference catalog. GUI and CLI content hashes agree. A stale
+  review digest refuses before annotation; explicit reviewed materialization
+  adds exactly one terminator at `[3,27)`. Undo removes it, confirmed through
+  `features query toy`. No biological reference or private data was used.
+
+### Reproduced Native Defect
+
+Immediately after GUI Shell `history undo`, its response reports
+`redo_count: 1`, but the root status already shows Redo 0. With no intervening
+command, GUI Shell `history redo` fails with **`No operation to redo`**.
+This is a red native history boundary, not a fully green termination acceptance.
+
+Source inspection identifies the automatic metadata write after every
+successful `MainAreaDna::run_shell_command`: `save_engine_ops_state` persists
+the changed command text through `auxiliary_metadata_mut`, which deliberately
+clears redo for persisted side edits. Keep that engine safeguard intact. A
+separate narrow GUI persistence repair needs actual-path regressions for
+Undo -> Redo and Undo -> read-only inspection -> Redo; no source fix or
+post-fix acceptance is claimed here.
+
+The disposable app was closed without saving and observed absent from the app
+inventory. The original synthetic project remains byte-identical, SHA-256
+`317462f2280950a6ea32c0aeb86d736d89ebe32d5c000975d8798cd7c85cf82a`.
+Navigation/preferences can change in-memory metadata; no dirty-state invariance
+is claimed. No screenshots or fixture files were committed.
+
+### Remaining Checks Only
+
+Do not repeat the completed process companion, in-process MCP or native stale
+digest/single-annotation cases for these documentation changes. After a separate
+repair, verify GUI Shell history using a matching new binary. Actual JS/Lua VMs,
+external MCP stdio discovery/execution, canonical parity and updated-lock broader
+platform checks remain open: the required binaries were not available and no
+new local builds are authorized. Native Windows remains `not_run`; macOS is not
+Windows evidence. No scientific or release acceptance follows.
+Documentation/manual freshness and whitespace checks pass, as do ten fast
+maintenance/PCR source tests. Session-close: five OK, two known unrelated-work
+and manual-scope reminders, zero failures; roadmap 1,534 words. `paper`, private
+inputs and untracked outputs remain untouched.
+
 ## Native PCR Safeguards And Viewports, 2026-11-22
 
 Codex continued the synthetic macOS inspection with the **existing** GUI binary
@@ -284,6 +348,10 @@ nonzero Rust counts, warnings, failures/skips and native checks not run. The
 No push or local Rust build/test was performed for this repair.
 
 ## Termination Evidence Commit Review, 2026-11-20
+
+Historical request: use the [new process/native return](#termination-process-and-native-shell-return-2026-11-22)
+to avoid repeating completed checks and retain the newly reproduced GUI history
+defect. The earlier source-bound unit/CI passes remain independently recorded.
 
 After the owner's push, verify the integrated termination screen/materialize
 source at the actual tested SHA. The earlier working-tree macOS results in the

@@ -2,7 +2,8 @@
 
 Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
 updated-lock platform checks; do not repeat the scoped macOS cases.
-Termination-specific process/VM acceptance stays separate.
+Repair the reproduced GUI Shell Redo failure; termination VM/stdio and parity
+acceptance stay separate from completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -50,9 +51,9 @@ remains source-bound, not a current-source pass.
 1. Obtain the separate native Windows PCR/focus check and the updated lock's
    broader/platform acceptance; do not replay completed macOS or focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
-2. Complete missing termination-specific process/VM and native checks,
-   preserving confirmation and scientific limits; reuse recorded unit/CI gates.
-   [Focused checks](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).
+2. Repair GUI Shell UI persistence invalidating Redo, preserving the engine's
+   side-edit safeguard; finish only unrun termination VM/stdio/parity checks.
+   [Current return](glen_next_verification_handoff.md#termination-process-and-native-shell-return-2026-11-22).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.
    [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
