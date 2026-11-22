@@ -1,9 +1,9 @@
 # GENtle Roadmap
 
-Last session: 2026-11-20. Verify the simple-PCR compiler repair and termination
-discovery on the pushed source before claiming runtime acceptance. Preserve
-completed source-bound checks; run only missing or affected gates from the
-[Glen handoff](glen_next_verification_handoff.md).
+Last session: 2026-11-22. Complete the remaining native simple-PCR checks;
+reuse the source-bound Glen/CI results rather than rerunning completed Rust
+gates. Termination-specific process/VM and native acceptance stay separate.
+See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
 navigation. The opening release/priorities overview should take about two
@@ -47,11 +47,11 @@ remains source-bound, not a current-source pass.
 
 ## Next Session Priorities
 
-1. Verify the simple-PCR trait/paint compiler repair, then its 17 Rust
-   regressions and native form handoff; preparation must not execute PCR.
-   [Focused checks](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20).
-2. Verify termination discovery, screening and separately confirmed
-   materialization, preserving biological/non-runtime limits.
+1. Complete native simple-PCR form/focus, overwrite/Cancel and stale-binding
+   checks using a source-matched GUI build; automated gates need no repeat.
+   [Remaining checks](glen_next_verification_handoff.md#simple-pcr-glen-and-ci-return-2026-11-22).
+2. Complete missing termination-specific process/VM and native checks,
+   preserving confirmation and scientific limits; reuse recorded unit/CI gates.
    [Focused checks](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.

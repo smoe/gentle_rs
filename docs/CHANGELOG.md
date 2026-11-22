@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-11-22 - Reconcile PCR Verification With Glen And Same-Source CI
+
+- Record Glen's focused return at exact `5e14ed0c`: locked test-target check,
+  17 PCR, 21 termination, two exact-reference, one protocol and four Python
+  checks pass; no patch recommended. Retain his unrun full-suite/native/CLI
+  scope and missing toolchain details without inventing a sealed receipt.
+- Independently inspect terminal-green [CI run 44800702871](https://github.com/smoe/gentle_rs/actions/runs/44800702871)
+  and Windows/macOS logs: workspace root suites pass 5102/5167 cases,
+  respectively, with 17 ignored each; headless and safety pass, full Linux and
+  optional GUI/audit jobs skip. Bind all results to the original SHA, not the
+  later roadmap commit. No new release or scientific acceptance follows.
+- Narrow the next PCR request to native form/focus, confirmation/cancel and
+  stale-state checks; do not reissue completed Rust tests. No source-matched
+  local GUI binary or downloadable artifact was available, so native acceptance
+  remains not run. See the [return and native-only checklist](glen_next_verification_handoff.md#simple-pcr-glen-and-ci-return-2026-11-22).
+  No production source, local Rust build, push, dispatch or publication.
+
 ## 2026-11-20 - Condense Roadmap And Warn On Planning Accumulation
 
 - Replace the stale October session briefing and repeated release/phase evidence

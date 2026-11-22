@@ -262,3 +262,14 @@ format/documentation checks pass; none establishes repaired-source compilation.
 Keep the [focused compile/native handoff](glen_next_verification_handoff.md#simple-pcr-compile-repair-2026-11-20)
 open for Glen/CI without replaying completed unrelated campaigns. No new biological
 policy, command, report schema, termination change, local Rust build or push.
+
+### Automated Return And Remaining Native Scope, 2026-11-22
+
+Glen's exact `5e14ed0c` return closes the compile gate and **17/17** focused
+PCR regressions. Independently reviewed same-source Windows/macOS workspace
+logs also pass; full Linux and optional GUI jobs skip. Do not rerun completed
+tests because the roadmap was condensed. The [source-bound return](glen_next_verification_handoff.md#simple-pcr-glen-and-ci-return-2026-11-22)
+separates Glen's receipt, CI aggregates and missing native evidence.
+Only native form/focus, overwrite/Cancel and stale-binding acceptance remains
+for this PCR slice, on a host with a verified matching GUI binary. No such local
+binary or CI artifact was available here; no build or native pass is claimed.

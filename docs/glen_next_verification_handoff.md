@@ -1,6 +1,81 @@
 # Glen: Next Verification And Return
 
+## Simple PCR Glen And CI Return, 2026-11-22
+
+**Automated PCR regression gate passed at exact
+`5e14ed0caf70eb597a5fb14c6162566c7ff9b913`; native GUI remains `not_run`.**
+This return supersedes the pending compile/test request below for that source.
+Do not rerun its completed Rust gates merely because this receipt or the
+roadmap changed. No new biological or release acceptance follows.
+
+The owner supplied Glen's clean detached-worktree report, with scan boundary
+`2026-11-21T05:04:51Z`: `git diff --check` and
+`CARGO_BUILD_JOBS=1 cargo check --locked --tests` passed. Simple-PCR **17/17**,
+termination **21/21**, exact-reference **2/2**, protocol **1/1** and Python source
+checks **4/4** passed. No regression or source patch was recommended. Only the
+unchanged manifest `lints.cargo` warning was reported. The full suite, native
+GUI and actual-process CLI smoke were **not run by Glen**. His compiler version
+and detailed profile were not supplied in this text; do not borrow CI versions
+for his run. This is an attributed report, not an independently sealed archive.
+
+Codex independently inspected the GitHub API and Windows/macOS raw job logs on
+2026-11-22. [Run 44800702871](https://github.com/smoe/gentle_rs/actions/runs/44800702871)
+is terminal **success**, push event, attempt 1, exact SHA above, completed
+2026-11-20T23:41:30Z. The inspected checkout lines and source-version smoke
+outputs name that SHA. Source `Cargo.lock` SHA-256 is
+`d880f70bcb3bb8ebd8db53e0ef7a8456a060c841a891f97f8d4a2eaf159569fe`;
+the inspected commands use `--locked`. No independently archived CI lockfile
+bytes or binary hash are claimed.
+
+| Job | Observed source-bound result |
+| --- | --- |
+| [Windows 136511782860](https://github.com/smoe/gentle_rs/actions/runs/44800702871/job/136511782860) | Windows Server 2025, 10.0.26100, x86_64 MSVC; Rust 1.100.0 (`0ef1bc386`, 2026-11-09). Default/all-feature/script-feature checks and `cargo test -q --locked --workspace` passed. Root suite: **5102 passed, 0 failed, 17 ignored, 0 filtered**. |
+| [macOS 136511847117](https://github.com/smoe/gentle_rs/actions/runs/44800702871/job/136511847117) | macOS 26.7.2 (25G332), aarch64; same reported Rust version. Default/all-feature/script-feature checks and `cargo test -q --locked --workspace` passed. Root suite: **5167 passed, 0 failed, 17 ignored, 0 filtered**. |
+| Linux / headless CLI and MCP 136511783628 | Success: headless binaries/test-target checks, dependency guard and registry parity. Not full Linux or graphical acceptance. |
+| Release safety and selected-platform aggregate | Success. No release candidate, package or publication selected. |
+| Full Linux, GUI scroll CPU, 08.04 GUI and macOS authenticated-audit jobs | Skipped; not passes or native GUI evidence. |
+
+The Windows/macOS workspace runs are ordinary Dev/Test, incremental disabled,
+with `RUST_MIN_STACK=16777216`. Exact Cargo numeric versions are not printed in
+the inspected logs. Quiet output has aggregate counts, not named PCR cases;
+the **17/17 focused PCR count comes from Glen**, not an invented CI selection.
+GUI/controller paint tests do not exercise a native window. Script feature
+compilation/version smokes do not prove the termination-specific VM/CLI replay;
+that distinct remaining checklist below is unchanged.
+
+### Remaining Native PCR Check
+
+Use an available native host and a verified GUI binary of the tested source;
+retain its actual revision, SHA-256, platform/toolchain/features/profile.
+Use only a disposable synthetic project with a saved tail-free primer report,
+not private laboratory data. Follow the existing native checklist below:
+
+- Select the explicit saved pair; copy to empty simple-PCR fields. Check both
+  original oligos, source/backend display and opening/scroll/focus of the form.
+- Exercise occupied-field Replace/Cancel and edits/source/project changes
+  while confirmation is pending; stale confirmation must not copy anything.
+- Reject tailed pairs without stripping/switching modes; preserve Advanced,
+  Mutagenesis and Unique settings. Check native versus embedded focus on the
+  actual host without presenting one platform as another.
+- Record unchanged project/History/UI metadata and no PCR/product/file write
+  caused by preparation. Execution stays the separate existing PCR button.
+
+No matching local `target/` or installed/running GENtle app was found during
+this session; the inspected CI run lists zero downloadable artifacts. Codex
+therefore **did not perform native acceptance**, start a build, dispatch/rerun
+CI or use an older binary as a substitute. A source-matched GUI binary or a
+separate native-host receipt is needed. The roadmap maintenance commit
+`c55beffd` changes docs/Python/CI wiring, not PCR Rust source or `Cargo.lock`;
+the passing evidence remains explicitly bound to `5e14ed0c`, not a new binary.
+Local receipt/document checks: ten Python PCR/maintenance guards, documentation
+status, manual inventory, scoped links and whitespace pass. These are not a
+substitute for the remaining native execution.
+
 ## Simple PCR Compile Repair, 2026-11-20
+
+Historical request: its compile/Rust gates at `5e14ed0c` are closed by the
+[Glen/CI return above](#simple-pcr-glen-and-ci-return-2026-11-22).
+Only the stated native/affected-source boundaries remain open.
 
 Glen tested exact `ccd839dc58a02cc0117055c3d231677638994546` in clean detached
 Linux worktrees. Default GUI/test compilation failed: `MainAreaDna` derives
