@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-11-22 - Build Updated Dependencies And Exercise Native PCR Handoff
+
+- Following explicit owner build authorization, build GUI/CLI at `14146c93`
+  plus the owner's updated lockfile. All 17 PCR, 10 PNG and six vector-PDF
+  regressions, the locked test-target check and 71 dependency/release Python
+  checks pass; no source patch was needed. Record binary/lock/toolchain
+  identities and the non-fatal compact-unwind linker warning without suppressing it.
+- Verify the synthetic macOS native transfer, form scroll, Replace/Cancel and
+  tail refusal, unchanged other PCR modes, no PCR execution/product/History
+  growth and unchanged input-file bytes. Keep report-selection preference
+  writes distinct from preparation, and native stale/project-switch, viewport,
+  updated-lock platform/full-suite and release gates explicitly open. See the
+  [scoped receipt](glen_next_verification_handoff.md#updated-lock-macos-pcr-verification-2026-11-22).
+  Preserve the owner's dependency update and unrelated work; nothing pushed.
+
 ## 2026-11-22 - Reconcile PCR Verification With Glen And Same-Source CI
 
 - Record Glen's focused return at exact `5e14ed0c`: locked test-target check,

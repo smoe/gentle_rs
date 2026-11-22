@@ -1,6 +1,94 @@
 # Glen: Next Verification And Return
 
+## Updated-Lock macOS PCR Verification, 2026-11-22
+
+The owner explicitly authorized local builds after `rustup update` and
+`cargo update`. Codex built GUI and CLI successfully with
+`cargo build --locked -j1 --bin gentle --bin gentle_cli`, then ran **17/17**
+`simple_pcr_handoff_`, **10/10** `svg_png::tests` and **6/6**
+`svg_vector_pdf::tests`, all default-feature root library tests, single-threaded,
+with no failures or skips. The export tests cover the updated raster/font path;
+they are not a full dependency-update or release acceptance campaign.
+The independent closing `cargo check --locked --tests -j1` also passes (exit 0).
+No source incompatibility or required production patch was found.
+
+This is **working-tree build evidence**, not a build of the recording commit
+or the old CI lock. The recording commit retains the exact tested lock bytes;
+no rebuild or new-revision acceptance is implied:
+
+- Source at build/test time: `14146c93b9a20f7bd9b27d56694cb9d0c4a22d23` plus
+  the owner's then-uncommitted `Cargo.lock`; no production source or manifest edits.
+- Lock SHA-256: `89ae39205b9c273a48bd40229682833db51ae06883a9d937e246ad178624bb2a`.
+- macOS 27.2.1 (26B131), aarch64; rustc 1.102.0-nightly
+  (`c7d5ba59d`, 2026-11-20), Cargo 1.102.0-nightly (`f93c676e3`, 2026-11-15).
+- Default features, normal Dev/Test profiles, one build job,
+  `RUST_MIN_STACK=16777216`, repository-local target. GUI and CLI `--version`
+  identify source `14146c93` and build `1795308758290`; that source string alone
+  does not authenticate the modified lockfile.
+- GUI `target/debug/gentle` SHA-256:
+  `6067b1a2551e4649016ca3f9aa19c41572e1ce166353edb6862aa526168679df`.
+- CLI `target/debug/gentle_cli` SHA-256:
+  `46fc1a3d73326a402c4f9a893bba3c4d777e361603c6403781ec0b221cd0d790`.
+
+The build/test linker warns that `__eh_frame` exceeds the 16-MiB compact-unwind
+encoding limit and exception-handling performance might be affected. Linking
+and execution succeed. This warning was not suppressed; no profiling, panic
+policy change or performance acceptance is claimed. The owner's earlier
+`cargo check --locked` was allowed to finish, but its exit status was not
+captured and is not claimed here. Dependency/release Python guards: **71/71**.
+
+### Observed Native Path
+
+A temporary local macOS app wrapper used a byte-identical copy of the new GUI
+binary, an isolated home and empty provider-key variables. This was not an
+installed/release package. Through native File Open, load a hand-crafted
+20-bp linear template `AACCGGATTTGCATGCACTA` with two saved reports. Rank **7**
+has forward `AACCG` and reverse `TAGTGC`, lengths 5/6; the tail-control report
+has forward `GGAACCG`, annealing length 5 and tail length 2. These short oligos
+are synthetic controls, not a laboratory design or a Primer3 execution.
+
+Observed in the native DNA window's hosted Sequence Tools panel:
+
+- Selecting rank 7 enables the transfer; it opens the collapsed core form and
+  scrolls to the simple-PCR fields, copying both original oligos unchanged.
+  The report/backend preview and preparation-source banner remain visible.
+- Editing fields to `GGGTT`/`CCCAA` prompts an explicit old-to-new replacement.
+  Cancel preserves those values, confirmed by the next replacement preview;
+  explicit Replace restores `AACCG`/`TAGTGC` and focuses the basic form.
+- The tailed pair shows `simple_pcr_handoff:5prime_tails_require_advanced_pcr`;
+  basic fields remain unchanged, Advanced fields empty, Unique off and
+  Mutagenesis defaults unchanged. No mode switch or tail stripping occurs.
+- No PCR/design/provider/model command was executed. The project overview
+  remains one sequence, two pre-existing analyses, one container and no
+  arrangements; Undo/Redo remain **0/0**. CLI report inspection and state-summary
+  also succeed. The input project remains byte-identical, SHA-256
+  `73e2b07b8376285641d8e2aa82f4aedad35f2f601fb64b09a08038711b8d16b0`.
+
+Report-ID/rank navigation independently writes auxiliary UI preferences and an
+unsaved marker was observed. Therefore no whole-session in-memory metadata or
+dirty-flag preservation claim is made. The 17 controller/engine regressions
+separately prove that preparation itself does not mutate project/History/UI
+metadata. The synthetic session was closed without saving; screenshots were
+ephemeral observations, not retained evidence artifacts.
+
+### Remaining Scope
+
+Do not repeat the passed PCR/export filters or the older source-bound CI checks
+solely for these documentation changes. Native pending-confirmation destination,
+source and project replacement, and a separate embedded/native viewport-focus
+comparison remain **not run**; the matching unit tests pass, but are not native
+acceptance. Windows and Linux behavior of the updated lockfile, the full suite,
+all-feature/headless builds, termination-specific process/VM checks, release
+packaging and scientific acceptance remain separate. The owner's lock update,
+private files and `paper` are preserved; nothing pushed or published.
+Ten PCR/maintenance Python checks, documentation status and whitespace checks
+also pass. Session-close: five OK, two intentional dirty-work/plan reminders,
+zero failures; roadmap 1,521 words, below the advisory 2,000-word budget.
+
 ## Simple PCR Glen And CI Return, 2026-11-22
+
+Historical clean-source receipt; the updated-lock native subset above has a
+different build identity and does not retroactively certify this exact SHA.
 
 **Automated PCR regression gate passed at exact
 `5e14ed0caf70eb597a5fb14c6162566c7ff9b913`; native GUI remains `not_run`.**

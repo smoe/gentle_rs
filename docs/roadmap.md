@@ -1,8 +1,8 @@
 # GENtle Roadmap
 
-Last session: 2026-11-22. Complete the remaining native simple-PCR checks;
-reuse the source-bound Glen/CI results rather than rerunning completed Rust
-gates. Termination-specific process/VM and native acceptance stay separate.
+Last session: 2026-11-22. Complete native simple-PCR stale-confirmation and
+viewport checks; verify the owner's updated lock on other platforms separately
+from older CI passes. Termination-specific process/VM acceptance stays separate.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -47,9 +47,10 @@ remains source-bound, not a current-source pass.
 
 ## Next Session Priorities
 
-1. Complete native simple-PCR form/focus, overwrite/Cancel and stale-binding
-   checks using a source-matched GUI build; automated gates need no repeat.
-   [Remaining checks](glen_next_verification_handoff.md#simple-pcr-glen-and-ci-return-2026-11-22).
+1. Complete only unrun native PCR stale-confirmation/project-switch and
+   viewport checks; validate the updated lock's broader/platform behavior
+   without replaying passed focused filters.
+   [Remaining checks](glen_next_verification_handoff.md#updated-lock-macos-pcr-verification-2026-11-22).
 2. Complete missing termination-specific process/VM and native checks,
    preserving confirmation and scientific limits; reuse recorded unit/CI gates.
    [Focused checks](glen_next_verification_handoff.md#termination-evidence-commit-review-2026-11-20).

@@ -273,3 +273,22 @@ separates Glen's receipt, CI aggregates and missing native evidence.
 Only native form/focus, overwrite/Cancel and stale-binding acceptance remains
 for this PCR slice, on a host with a verified matching GUI binary. No such local
 binary or CI artifact was available here; no build or native pass is claimed.
+
+### Owner-Authorized Updated-Lock Native Subset, 2026-11-22
+
+After updating Rust and Cargo dependencies, the owner authorized local GUI/CLI
+builds. At `14146c93` plus the then-uncommitted owner-updated lockfile, both binaries
+build and 17 PCR, 10 raster and six vector-PDF regressions pass. No production
+compatibility patch was needed; the locked default test-target check also
+passes. Native macOS observation verifies rank-7
+tail-free transfer, original unequal-length oligos, form opening/scrolling,
+occupied-field Replace/Cancel and explicit tail refusal without altering the
+other PCR modes. No PCR executes, no new product/History row appears and the
+synthetic input file is byte-identical. Report-selection preferences do mark
+the session unsaved; no whole-session metadata invariance is claimed.
+
+The [working-tree receipt](glen_next_verification_handoff.md#updated-lock-macos-pcr-verification-2026-11-22)
+records exact lock/binary identities, toolchain, the non-fatal linker warning
+and limits. Native stale-confirmation/project-switch and viewport-mode checks,
+updated-lock Windows/Linux/full-suite and release acceptance remain open.
+This does not extend the older clean-source CI passes to new dependencies.
