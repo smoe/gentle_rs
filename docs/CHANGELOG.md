@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-24 - Integrate Primer Groundwork And Record Blocked Native Redo
+
+- Fast-forward main to `gentle_rs_2_main` at `4ec86787`, retaining its frozen
+  primer identity fixtures, unwired mismatch classifier and scoped Windows GUI
+  release-policy clarification. No history implementation or dependency change.
+- Attempt only the open native history boundary with the existing `702d65e0`
+  GUI. Record the owner's actual project-dialog crash separately from tooling
+  failures; synthetic annotation application succeeds, but subsequent Undo/Redo
+  input is not verified. Keep the original input bytes and prior passing tests
+  unchanged. See the [native attempt](glen_next_verification_handoff.md#native-redo-attempt-and-project-dialog-crash-2026-11-24).
+  No local Rust build, repeated completed campaign, push or publication.
+
 ## 2026-11-23 - Keep Cross-Platform CI Required, Exclude Manual Windows GUI Acceptance
 
 - Apply the owner's clarification only to manual native Windows GUI acceptance;

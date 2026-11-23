@@ -9,6 +9,54 @@ remain required. Keep unrun/failed manual reviews visible, not passed.
 This supersedes older manual Windows GUI release-gate wording, not test results
 or scientific requirements. See the [decision](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
 
+## Native Redo Attempt And Project Dialog Crash, 2026-11-24
+
+Main fast-forwarded from `702d65e0` to `4ec86787` via `gentle_rs_2_main`,
+integrating `644a220e` and `4ec86787` without conflicts. The added frozen-primer
+fixtures, unwired classifier and release-policy documentation do not change
+the GUI Shell history implementation. No local Rust build or completed test
+campaign was repeated; this is not runtime acceptance of the merged source.
+
+The existing GUI reports source `702d65e0ed5c8c6e481e4aeab58748c6d314d7f5`,
+build `1795439542570`, SHA-256
+`0dfdd1177778dea713dc93c3d47e23c994a012137c7392a9152a4fe57ac9bcef`.
+Its isolated temporary app has a separate home/config and empty provider-key
+variables. It is not a package or a same-source build of the merged tip.
+
+Native attachment eventually succeeded after an initial CUA launch timeout.
+The owner supplied a crash report for this exact test app at 00:21:18 +0100:
+main-thread SIGABRT, Rust `panic_cannot_unwind`, a winit queued macOS callback,
+and `rfd`/`NSSavePanel::runModal` reached from `prompt_open_project`.
+This is an actual app crash during File -> Open Project, before any history
+action, not merely a computer-control continuation error. The report does not
+contain the original panic message; re-entrancy is a hypothesis, not an
+established root cause. The supplied report's raw SHA-256 is
+`5e6c4533dcea230d27e44cfe612b6d1aef42df128d5bc059556f747e14266edd`;
+the private machine/incident details were not copied into the repository.
+
+After cancelling the later file dialog, Codex used New Sequence to recreate
+the same hand-crafted 30-bp `toy` in memory, without loading or saving a file.
+The native shell confirmed zero features, then successfully applied the
+existing reviewed materialization request with its unchanged content digest
+`sha256:391372dd91744d31ddd5f50160bd68694fb2875a5e6f3108c8fc203ad99f89ef`.
+The UI showed Undo 2 / Redo 0, including the sequence-creation setup operation.
+Subsequent text/menu actions did not yield an observed `history undo` result;
+no Undo/Redo or genuine-new-edit control is accepted. After a quit attempt a
+later observation showed an empty project, but final process exit was not
+confirmed; do not treat app reattachment as evidence of a clean shutdown.
+
+The original synthetic `project.json` remains byte-identical, SHA-256
+`317462f2280950a6ea32c0aeb86d736d89ebe32d5c000975d8798cd7c85cf82a`.
+Only synthetic inputs were used; no provider/model calls, retained screenshots,
+private-data runs, dependency changes, pushes or dispatches occurred.
+
+Next: diagnose the native project-dialog crash separately, then obtain usable
+native input for only immediate Undo -> Redo, Undo -> read-only inspection ->
+Redo and genuine-new-edit invalidation. The two actual termination JS/Lua VM
+cases below remain open. Do not repeat the five passing controller regressions,
+PCR, CLI/MCP or parity campaigns. The Windows GUI clarification above still
+applies; neither this crash nor an unrun check is relabelled as passed.
+
 ## f76a6840 Redo Return And Remaining Host Checks
 
 The owner's newly available GUI/CLI report source

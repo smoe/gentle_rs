@@ -1,10 +1,10 @@
 # GENtle Roadmap
 
-Last session: 2026-11-23. Obtain required updated-lock CI/platform checks;
+Last session: 2026-11-24. Obtain required updated-lock CI/platform checks;
 manual native Windows GUI acceptance is non-blocking. Do not repeat the scoped
 macOS cases.
-Finish native GUI Shell Redo acceptance and actual termination VMs; keep remaining
-acceptance separate from completed process checks.
+Diagnose the native project-dialog crash; finish GUI Shell Redo acceptance and
+actual termination VMs without repeating completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -55,9 +55,9 @@ remains source-bound, not a current-source pass.
 1. Obtain the updated lock's required cross-platform acceptance. Keep manual
    Windows GUI/focus checks non-blocking; do not replay completed focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
-2. Complete native GUI Shell Redo acceptance and the two actual termination VM
-   tests; do not repeat the matched five-test controller pass.
-   [Remaining host checks](glen_next_verification_handoff.md#f76a6840-redo-return-and-remaining-host-checks).
+2. Diagnose the project-dialog crash and complete native GUI Shell Redo plus
+   the two actual termination VM tests; retain the matched controller pass.
+   [Native attempt and remaining checks](glen_next_verification_handoff.md#native-redo-attempt-and-project-dialog-crash-2026-11-24).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.
    [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
