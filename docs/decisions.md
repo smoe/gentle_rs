@@ -1,5 +1,19 @@
 # GENtle Decisions
 
+## Windows GUI Acceptance Is Not A Release Gate
+
+Status: active; owner clarification 2026-11-23
+
+Starting with `v0.1.0-internal.13`, a manual native Windows GUI acceptance run
+is not required for release. Unrun or failed Windows GUI reviews remain visible
+carry-forward work, not passed checks or a withdrawal of Windows support.
+
+Automated CI remains mandatory across Windows, macOS and full Linux, including
+automated GUI/controller tests. All three native packages, their exact-source
+receipts and extracted-package smokes remain required. No CI failure, package
+failure or scientific acceptance requirement is waived by this GUI-only rule.
+See the [acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
+
 
 ## Termination Evidence And Reviewed Annotation
 

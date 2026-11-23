@@ -104,6 +104,10 @@ separate from making these two literal paths pass.
 
 ## Owner Procedure
 
+Owner clarification 2026-11-23: manual native Windows GUI acceptance is not a
+release gate. Windows/macOS/Linux CI, automated GUI tests and all three package
+receipts/smokes remain mandatory. See the [decision](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
+
 Commands below are instructions for the owner/main-maintaining thread; none
 were executed here. Integrate this task into main without losing unrelated
 work, complete the external/generated follow-up above, then:

@@ -1,5 +1,14 @@
 # Glen: Next Verification And Return
 
+## Windows GUI Acceptance Clarification, 2026-11-23
+
+Only manual native Windows GUI acceptance is non-blocking for `.13`, including
+the manual focus/viewport portion of older Windows requests below. Automated
+PCR/GUI tests, Windows/macOS/Linux CI and all three package receipts/smokes
+remain required. Keep unrun/failed manual reviews visible, not passed.
+This supersedes older manual Windows GUI release-gate wording, not test results
+or scientific requirements. See the [decision](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
+
 ## f76a6840 Redo Return And Remaining Host Checks
 
 The owner's newly available GUI/CLI report source

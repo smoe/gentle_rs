@@ -15,6 +15,10 @@ ledgers carry forward as non-blocking work, not waived or completed checks.
 Release blockers are green Windows, macOS and full Linux CI; build-only native
 installers/container with extracted-package smokes; Glen's rollover, version,
 tutorial and readiness verdict; and owner approval, all at one selected source.
+Owner clarification 2026-11-23: manual Windows GUI acceptance is not required
+for release. Windows CI (including automated GUI tests), all three native
+packages and extracted-package smokes remain mandatory. Pending/failed manual
+Windows GUI reviews stay visible without being marked passed.
 Try `package-opt2` first; if hosted builds fail, select a new candidate containing
 the separately prepared `package-opt1` fallback and repeat the gates.
 
@@ -139,6 +143,10 @@ the owner's 2026-10-15 decision. The release blockers are in the table below.
 No candidate has been selected. Every row is **Pending**, even where an older
 source has narrower passing evidence. Record exact source, lockfile, toolchain,
 profile, run URLs, binary/artifact hashes and reviewer in the final receipts.
+All nine rows remain required. Only manual native Windows GUI acceptance is
+non-blocking, including that portion of linked functional/native handoffs.
+This does not waive automated Windows tests or any package check. See the
+[owner clarification](../decisions.md#windows-gui-acceptance-is-not-a-release-gate).
 
 Development evidence received 2026-11-09: Glen's [scoped pixel-guard return](../glen_next_verification_handoff.md#glen-pixel-guard-linux-return-and-release-inventory-2026-11-09)
 passes seven tests and the locked test-target check at `01d42b71`.

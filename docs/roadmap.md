@@ -1,7 +1,8 @@
 # GENtle Roadmap
 
-Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
-updated-lock platform checks; do not repeat the scoped macOS cases.
+Last session: 2026-11-23. Obtain required updated-lock CI/platform checks;
+manual native Windows GUI acceptance is non-blocking. Do not repeat the scoped
+macOS cases.
 Finish native GUI Shell Redo acceptance and actual termination VMs; keep remaining
 acceptance separate from completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
@@ -19,7 +20,7 @@ Published baseline: `v0.1.0-internal.12`; retain its
 Current candidate: `v0.1.0-internal.13` (development version only), with **no
 selected release SHA or publication**. Development continues without interim freezes.
 
-At actual release preparation, complete the unchanged
+At actual release preparation, complete the
 [nine-gate acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger):
 
 1. Select one clean, pushed candidate SHA, lockfile and profile; never combine
@@ -38,6 +39,9 @@ and [release process](release.md): `package-opt2` first; select the separate
 opt1 fallback only after a retained hosted failure, on a new candidate.
 These instructions authorize no push, dispatch, tag, build or publication.
 
+Only manual Windows GUI acceptance is non-blocking. Windows/macOS/Linux CI and
+all three native packages remain required. See the [owner clarification](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
+
 Historical `.10`/`.11` scientific ledgers, native latency, real-reference import
 performance, profile comparisons and live-agent research carry forward without
 becoming new `.13` blockers. Older passes never certify newer source; headless
@@ -48,8 +52,8 @@ remains source-bound, not a current-source pass.
 
 ## Next Session Priorities
 
-1. Obtain the separate native Windows PCR/focus check and the updated lock's
-   broader/platform acceptance; do not replay completed macOS or focused tests.
+1. Obtain the updated lock's required cross-platform acceptance. Keep manual
+   Windows GUI/focus checks non-blocking; do not replay completed focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
 2. Complete native GUI Shell Redo acceptance and the two actual termination VM
    tests; do not repeat the matched five-test controller pass.

@@ -306,6 +306,11 @@ requires an owner-selected new candidate after hosted failure, not mixed-profile
 receipts or reuse of `.12` acceptance. The [.13 ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger)
 starts Pending. These are future approved actions, not executed commands here.
 
+Owner clarification 2026-11-23: manual Windows GUI acceptance is non-blocking.
+Windows/macOS/Linux CI, automated GUI tests, all three native packages and
+their extracted-package smokes remain required. Keep missing/failed manual
+Windows GUI reviews visible, not passed. See the [decision](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
+
 After the tutorial fix and candidate changes are merged, record one clean
 candidate commit and use it for both workflows. Run these commands only after
 explicit push/dispatch approval and when that commit is available on GitHub.

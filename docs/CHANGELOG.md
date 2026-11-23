@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-23 - Keep Cross-Platform CI Required, Exclude Manual Windows GUI Acceptance
+
+- Apply the owner's clarification only to manual native Windows GUI acceptance;
+  retain pending/failed review states without requiring that review for release.
+- Keep Windows/macOS/full Linux CI, automated GUI tests and all three native
+  packages with exact-source receipts and extracted smokes mandatory. Withdraw
+  the broader uncommitted CI/package exemptions; no workflow, collector,
+  dependency or runtime behavior change remains.
+- Align the roadmap, `.13` ledger and release/Glen/owner handoffs with the
+  [decision](decisions.md#windows-gui-acceptance-is-not-a-release-gate).
+- After rebase onto `702d65e0`, all 83 offline release-policy/documentation
+  tests pass at `644a220e` plus this documentation diff. No hosted CI dispatch,
+  native GUI acceptance or new Rust build was performed.
+
 ## 2026-11-22 - Confirm Source-Matched Redo Rerun And Narrow Host Checks
 
 - Inspect the owner's `f76a6840` Nextest rerun: all five new GUI Shell history
