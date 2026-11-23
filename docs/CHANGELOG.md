@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-11-22 - Confirm Source-Matched Redo Rerun And Narrow Host Checks
+
+- Inspect the owner's `f76a6840` Nextest rerun: all five new GUI Shell history
+  regressions and the version guard pass, with 5379 skips including prior passes.
+  Retain exact run/artifact/lock identities without calling the narrow rerun
+  a new green full suite or rebuilding/repeating it locally.
+- Record two failed CUA attachment attempts as inconclusive tooling: no File Open
+  or native history action obtained. Preserve native/Windows scope
+  separately; do not turn a tool continuation error into a product finding.
+- Narrow Glen's work to the native failed boundary and two actual JS/Lua VM
+  cases. Source-bound Linux/headless and safety CI pass; Windows/macOS remain
+  in progress at observation. See the [current scoped return](glen_next_verification_handoff.md#f76a6840-redo-return-and-remaining-host-checks).
+  No Rust source/dependency change, local build, push, dispatch or publication.
+
 ## 2026-11-22 - Restore Roadmap Version Marker After Owner Test Run
 
 - Retain the owner's finalized Nextest return: 5363 passed, one roadmap-marker

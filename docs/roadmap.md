@@ -2,7 +2,7 @@
 
 Last session: 2026-11-22. Obtain separate native Windows PCR/focus evidence and
 updated-lock platform checks; do not repeat the scoped macOS cases.
-Verify the GUI Shell Redo repair and actual termination VMs; keep remaining
+Finish native GUI Shell Redo acceptance and actual termination VMs; keep remaining
 acceptance separate from completed process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
@@ -51,9 +51,9 @@ remains source-bound, not a current-source pass.
 1. Obtain the separate native Windows PCR/focus check and the updated lock's
    broader/platform acceptance; do not replay completed macOS or focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
-2. Compile and verify the narrow GUI Shell Redo repair, preserving side-edit
-   invalidation; finish only unrun termination VM checks.
-   [Focused request](glen_next_verification_handoff.md#gui-shell-redo-repair-2026-11-22).
+2. Complete native GUI Shell Redo acceptance and the two actual termination VM
+   tests; do not repeat the matched five-test controller pass.
+   [Remaining host checks](glen_next_verification_handoff.md#f76a6840-redo-return-and-remaining-host-checks).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.
    [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).

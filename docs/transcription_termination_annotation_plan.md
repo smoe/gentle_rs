@@ -532,3 +532,13 @@ The fast Python status gate now catches this regression before compilation.
 See the [terminal receipt and remaining checks](glen_next_verification_handoff.md#owner-nextest-return-and-roadmap-marker-repair-2026-11-22).
 Neither the repaired documentation nor that old test binary executes the five
 new GUI history tests or missing JS/Lua VMs.
+
+The owner's later source-matched `f76a6840` rerun now passes all five GUI Shell
+history tests plus the version guard, without repeating the historical passes.
+Codex read that record rather than executing the tests again. The new GUI
+binary is available, but CUA app attachment failed twice with an expired
+continuation; no project/native history action was observed, so the result is
+inconclusive tooling, not a GENtle defect or native pass. Actual JS/Lua VM tests
+remain absent from the default build. Use only the
+[remaining host/VM request](glen_next_verification_handoff.md#f76a6840-redo-return-and-remaining-host-checks),
+not the earlier request to rerun all five tests. No local Rust build or push.

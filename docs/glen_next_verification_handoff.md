@@ -1,6 +1,83 @@
 # Glen: Next Verification And Return
 
+## f76a6840 Redo Return And Remaining Host Checks
+
+The owner's newly available GUI/CLI report source
+`f76a68409c338e2a4c2afebe89f8fd34d9b2ae9f`, build `1795368719565`.
+The actual test executable now lists all five `gui_shell_history_` tests.
+Codex replayed recorded run `23710f25-708e-4ae8-90ad-e3dd4d7d3388`, Nextest
+0.9.150, default profile, command `cargo nextest run -R latest`, parent
+`aa88ed6e-d941-4a62-8baa-84a2f1c5b0a0`: **6 passed**, exit 0, 0.694 seconds.
+All five actual-controller Redo regressions and the release-metadata guard
+passed; **5379 skipped**, including the 5363 previously passing cases. Codex
+did not rerun these tests or start a Rust build. The later zero-test rerun is
+not additional verification, nor is this a new green full-suite result.
+
+Current matching artifacts, all SHA-256:
+
+- GUI: `0488220b64485f796380a2a85e3384fccc69a4f9292f1f5dabf03360f3dd1081`.
+- CLI: `9e646ad382a7d1badfa40f7fb9fee28a388915c6c1a21dd95f319c21bc46b7e0`.
+- Test executable: `12e39b19280087f09c8e6d2674ae81d8a7857721e6c9d214f105fb77752998db`.
+- Unchanged lock: `89ae39205b9c273a48bd40229682833db51ae06883a9d937e246ad178624bb2a`.
+
+These are owner-built local artifacts, not release packages or a newly captured
+compiler receipt. No later source-changing commit inherits this acceptance.
+The existing default test executable still lacks both actual termination
+JS/Lua VM cases; default-feature passes cannot stand in for them.
+
+### Native Attempt: Inconclusive Tooling, Not A Product Finding
+
+Codex prepared a separate temporary macOS app wrapper using an independent,
+byte-identical GUI copy, isolated home/config and empty provider-key variables.
+Two CUA `getApp` attempts ended with `unknown or expired node_repl continuation`,
+including after a kernel reset. Fresh inventories supplied no usable test-app
+handle/window. No File Open or shell/history action was issued or observed. This
+does **not** establish a GENtle startup defect or a repaired native Undo/Redo pass.
+Do not substitute the five passing controller tests for that missing observation.
+
+The optional manually opened test app is
+`/private/tmp/gentle-redo-native-f76.FZ02NX/GENtle Shell Redo Acceptance.app`.
+It is not installed as a release package. The original synthetic project's
+SHA-256 remains `317462f2280950a6ea32c0aeb86d736d89ebe32d5c000975d8798cd7c85cf82a`;
+no private inputs, provider/model calls or retained screenshots were involved.
+
+### Remaining Verification Only
+
+Do not repeat the five completed Redo regressions, release guard, historical
+5363 cases, stdio, canonical/registry, PCR or export checks merely for this
+receipt. On a usable GUI host, replay only materialize -> Undo -> immediate
+Redo and Undo -> read-only inspection -> Redo; confirm zero/one feature and
+that a real new edit still discards Redo. Native Windows remains separate and
+external as the owner requested.
+
+On Glen's isolated run-owned target, compile the still-missing script-feature
+test targets first, then select only the two actual VM cases (one each):
+
+```sh
+cargo check --locked --no-default-features --features script-interfaces --tests -j1
+cargo test --locked --no-default-features --features script-interfaces --lib -j1 termination_js_adapter_matches_engine_without_state_changes -- --test-threads=1
+cargo test --locked --no-default-features --features script-interfaces --lib -j1 termination_lua_adapter_matches_engine_without_state_changes -- --test-threads=1
+```
+
+GitHub [run 45136203518](https://github.com/smoe/gentle_rs/actions/runs/45136203518)
+is source-bound to `f76a6840`. At observation, Linux/headless and release safety
+are successful; Windows/macOS are still in progress, full Linux and optional
+GUI/audit jobs skipped, no downloadable artifacts. The inspected
+[headless log](https://github.com/smoe/gentle_rs/actions/runs/45136203518/job/137562962351)
+confirms Ubuntu 24.04.5, Rust 1.100.0, exact checkout, locked headless binary/test
+checks and **30/30 headless registry tests**. Do not conflate that count with
+the 32 default-feature assertions, an actual VM invocation or native acceptance.
+There is no final whole-CI verdict or new release authorization. Codex made no
+push, dispatch, Rust build, package or publication.
+Documentation status, manual inventory and whitespace checks pass; session-close
+reports five OK, two known unrelated-work/scope reminders and no failures.
+The roadmap is 1,540 words. Rust/manifest/lock files, `paper` and private/untracked
+files are unchanged; no passed test was re-executed for this receipt.
+
 ## Owner Nextest Return And Roadmap Marker Repair, 2026-11-22
+
+Historical full-run receipt; the [matched rerun above](#f76a6840-redo-return-and-remaining-host-checks)
+now closes its five-test GUI-source gap, but not native/VM acceptance.
 
 The previously observed owner-started run is now **terminal**, not an inferred
 timeout or a missing log. Run `aa88ed6e-d941-4a62-8baa-84a2f1c5b0a0`, Nextest
