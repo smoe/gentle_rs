@@ -542,3 +542,9 @@ inconclusive tooling, not a GENtle defect or native pass. Actual JS/Lua VM tests
 remain absent from the default build. Use only the
 [remaining host/VM request](glen_next_verification_handoff.md#f76a6840-redo-return-and-remaining-host-checks),
 not the earlier request to rerun all five tests. No local Rust build or push.
+
+The later [native macOS return](glen_next_verification_handoff.md#native-macos-picker-and-gui-shell-history-pass)
+confirms picker and Redo behavior. [Glen's scripting return](glen_next_verification_handoff.md#termination-scripting-return-and-v8-follow-up-2026-11-24)
+confirms the locked compile, actual Lua VM and Rust JavaScript adapter on
+`e9e1e0d5`. The replacement JavaScript regression exercises the registered
+V8 operation; its execution remains open, not the completed Lua or native work.

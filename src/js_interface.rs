@@ -1943,7 +1943,7 @@ mod tests {
     }
 
     #[test]
-    fn termination_js_adapter_matches_engine_without_state_changes() {
+    fn termination_js_vm_matches_engine_without_state_changes() {
         use gentle_protocol::transcription_termination::*;
         // Synthetic hairpin followed by T tract, recreated inline; used solely
         // for shared adapter/report parity, not a validated biological example.
@@ -1952,7 +1952,6 @@ mod tests {
             "termination_toy".into(),
             crate::dna_sequence::DNAsequence::from_sequence("GCGCGCAAAAGCGCGCTTTTTTTT").unwrap(),
         );
-        let before = serde_json::to_value(&state).unwrap();
         let operation = Operation::ScreenTranscriptionTermination {
             request: TerminationScreenRequest {
                 seq_id: "termination_toy".into(),
@@ -1963,24 +1962,37 @@ mod tests {
             },
             path: None,
         };
-        let mut oracle = GentleEngine::from_state(state.clone());
+        let td = tempdir().unwrap();
+        let project = td.path().join("termination VM's project.json");
+        state.save_to_path(project.to_str().unwrap()).unwrap();
+        let before = fs::read(&project).unwrap();
+        let mut oracle = GentleEngine::from_state(state);
         let expected = oracle
             .apply(operation.clone())
             .unwrap()
             .transcription_termination_screen
             .unwrap();
         assert!(!expected.rows.is_empty());
-        let response =
-            apply_operation_impl(state, &serde_json::to_string(&operation).unwrap()).unwrap();
-        assert_eq!(serde_json::to_value(&response.state).unwrap(), before);
-        assert_eq!(
-            response
-                .result
-                .transcription_termination_screen
-                .unwrap()
-                .content_sha256,
-            expected.content_sha256
-        );
+        let mut js = JavaScriptInterface::new();
+        js.run_checked(format!(
+            r#"{oracle}
+            const input = load_project({project});
+            const original = load_project({project});
+            const out = apply_operation(input, {operation});
+            if (out.result.transcription_termination_screen.content_sha256 !== {digest}) {{
+                throw Error('termination VM report differs from engine');
+            }}
+            if (!eq(out.state, original) || !eq(input, original)) {{
+                throw Error('termination screening changed project state');
+            }}
+            "#,
+            oracle = LIFECYCLE_STATE_ORACLE,
+            project = serde_json::to_string(project.to_str().unwrap()).unwrap(),
+            operation = serde_json::to_string(&operation).unwrap(),
+            digest = serde_json::to_string(&expected.content_sha256).unwrap(),
+        ))
+        .unwrap();
+        assert_eq!(fs::read(&project).unwrap(), before);
     }
 
     #[test]

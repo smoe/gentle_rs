@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-11-24 - Record Glen's Termination Scripting Checks And Cover V8
+
+- Retain Glen's locked Linux test-target compile and **1/1** results for each
+  termination test at `e9e1e0d5`. Lua ran in a VM; JavaScript exercised the
+  Rust adapter without invoking V8.
+- Replace that adapter-only JavaScript test with a V8 regression for engine
+  report identity, byte-aware project state and unchanged project-file bytes.
+  Keep the [Glen follow-up](glen_next_verification_handoff.md#termination-scripting-return-and-v8-follow-up-2026-11-24)
+  limited to the new test. No production change, local Rust build or push.
+
 ## 2026-11-24 - Verify Native macOS Project Open And GUI Shell Redo
 
 - Use the owner-built `2ae5c446` GUI to open, cancel and reopen a synthetic

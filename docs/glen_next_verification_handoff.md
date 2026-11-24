@@ -1,5 +1,47 @@
 # Glen: Next Verification And Return
 
+## Termination Scripting Return And V8 Follow-Up, 2026-11-24
+
+Glen reports a clean isolated checkout of
+`e9e1e0d52a59d50d38b664274fa842c06a695894`, with `origin/main` unchanged before
+and after the run. Debian forky/sid x86_64 (kernel `7.3.4+deb14-amd64`, glibc
+`2.43`), Rust/Cargo `1.98.1`, `--locked --no-default-features --features
+script-interfaces -j1`, and serial tests. The script-feature test-target check
+passed in 10m21s. The lock SHA-256 was
+`89ae39205b9c273a48bd40229682833db51ae06883a9d937e246ad178624bb2a`;
+both tests used the same ELF test binary, SHA-256
+`ed93356f2799e467996d1ac0d87993befa0133e7b4c7ea964256bb90d4d7a01a`.
+
+- `termination_lua_adapter_matches_engine_without_state_changes`: **1/1**;
+  calls the registered Lua function in a real VM, preserving the report digest
+  and typed project state.
+- `termination_js_adapter_matches_engine_without_state_changes`: **1/1**;
+  calls `apply_operation_impl` in Rust. This is a JavaScript adapter-logic pass,
+  not execution of the registered operation in V8. Each filter excluded 3,807
+  tests; there were no failures. The local ancestry-only merge `f3800050` left
+  the tested tree unchanged.
+
+**Only remaining check for this handoff, after the owner's push:** on the new
+source, run the replacement regression through the registered JavaScript
+function. It uses a synthetic project and compares the report digest to the
+engine, the VM state including sequence bytes, and the original file bytes.
+
+```sh
+cargo test --locked --no-default-features --features script-interfaces --lib -j1 js_interface::tests::termination_js_vm_matches_engine_without_state_changes -- --exact --test-threads=1
+```
+
+Require one executed test; return the exact SHA, toolchain, platform and result.
+Do not repeat the Lua, native picker/Redo, CLI/MCP, parity, PCR or export checks.
+Codex has not built or run the new test. This is not a release-candidate run;
+same-source CI and package acceptance remain separate.
+
+Local checks: 30 Python documentation/maintenance tests, documentation status,
+manual inventory and whitespace pass. The new test is rustfmt-clean; the file
+still has pre-existing formatting differences in the adjacent SAM test.
+Session-close reported five OK, two warnings (unrelated worktree files and
+manual scope review), and no failures. The dirty `paper` submodule and untracked
+inputs and outputs are untouched.
+
 ## Asynchronous Project Picker Repair, 2026-11-24
 
 Owner-authorized separate repair after the native attempt below. The existing
@@ -79,13 +121,12 @@ Changing project ownership or editing it while a sheet is open was not forced
 in the native run; those cases have controller coverage. Other picker paths,
 detached viewports and Windows GUI were not tested here.
 
-**Remaining for Glen:** only the two actual termination JS/Lua VM cases in the
-[commands below](#remaining-verification-only). The default Nextest run was
-still active with no VM evidence at observation. Do not repeat the completed
-native cases, twelve picker tests, five history regressions, PCR, CLI/MCP or
-parity campaigns for this handoff. Return exact source, binary, toolchain,
-features, platform, counts and unrun checks. Required same-source CI/package
-gates remain separate; Windows manual GUI remains non-blocking.
+The default Nextest run was still active with no VM evidence at observation.
+See [Glen's scripting return](#termination-scripting-return-and-v8-follow-up-2026-11-24)
+for the completed Lua and JavaScript adapter checks and the separate V8 gap.
+Do not repeat the completed native cases or twelve controller tests. Required
+same-source CI/package gates remain separate; Windows manual GUI remains
+non-blocking.
 
 ## Windows GUI Acceptance Clarification, 2026-11-23
 
@@ -183,6 +224,10 @@ SHA-256 remains `317462f2280950a6ea32c0aeb86d736d89ebe32d5c000975d8798cd7c85cf82
 no private inputs, provider/model calls or retained screenshots were involved.
 
 ### Remaining Verification Only
+
+Historical command set. Glen already ran all three commands at `e9e1e0d5`;
+see [the current V8 follow-up](#termination-scripting-return-and-v8-follow-up-2026-11-24)
+for the scope of those passes. Do not reissue this command set.
 
 Do not repeat the five completed Redo regressions, release guard, historical
 5363 cases, stdio, canonical/registry, PCR or export checks merely for this

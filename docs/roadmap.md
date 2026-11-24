@@ -3,7 +3,7 @@
 Last session: 2026-11-24. Obtain required updated-lock CI/platform checks;
 manual native Windows GUI acceptance is non-blocking. Do not repeat the scoped
 macOS cases.
-Finish actual termination JS/Lua VM checks without repeating the scoped
+Verify termination screening through V8 without repeating the Lua VM,
 macOS picker, GUI Shell Redo, controller or process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
@@ -55,9 +55,9 @@ remains source-bound, not a current-source pass.
 1. Obtain the updated lock's required cross-platform acceptance. Keep manual
    Windows GUI/focus checks non-blocking; do not replay completed focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
-2. Complete the two actual termination VM tests; do not repeat the scoped
-   native picker/Redo or controller passes.
-   [Native receipt and remaining checks](glen_next_verification_handoff.md#native-macos-picker-and-gui-shell-history-pass).
+2. Run the corrected termination V8 regression; the JavaScript Rust adapter
+   and the actual Lua VM already passed at `e9e1e0d5`.
+   [Scoped follow-up](glen_next_verification_handoff.md#termination-scripting-return-and-v8-follow-up-2026-11-24).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.
    [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
