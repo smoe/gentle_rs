@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-11-24 - Record Glen's Actual V8 Pass
+
+- Glen ran the exact registered-operation V8 regression at `e1160a93` on
+  Debian x86_64: **1/1 passed**. Retain the [source-bound receipt](glen_next_verification_handoff.md#accepted-v8-return-at-e1160a93),
+  distinguishing the counted run from the earlier exit-only observation.
+- Close the focused scripting handoff without repeating Lua or other completed
+  checks. Same-source CI and package acceptance remain separate.
+
 ## 2026-11-24 - Record Glen's Termination Scripting Checks And Cover V8
 
 - Retain Glen's locked Linux test-target compile and **1/1** results for each

@@ -21,22 +21,36 @@ both tests used the same ELF test binary, SHA-256
   tests; there were no failures. The local ancestry-only merge `f3800050` left
   the tested tree unchanged.
 
-**Only remaining check for this handoff, after the owner's push:** on the new
-source, run the replacement regression through the registered JavaScript
-function. It uses a synthetic project and compares the report digest to the
-engine, the VM state including sequence bytes, and the original file bytes.
+### Accepted V8 Return At e1160a93
+
+Glen reports **1 passed, 0 failed, 0 ignored, 3,807 filtered**, exit 0, in a
+clean isolated checkout of `e1160a93ff5f45ef48da5570e2ca639ed52fa0ed`.
+`origin/main` remained at that SHA before and after the run and the lock hash
+matches the earlier receipt. Debian forky/sid x86_64, kernel
+`7.3.4+deb14-amd64`, Rust/Cargo `1.98.1`, LLVM `22.1.8`. Accepted test-binary
+SHA-256: `a0836d6f0156bafd4f144a9ca9c5db0ea617912b6845b038e637b53e22fbdd8a`.
+The fresh build took 19m16s; the single VM test took 0.02s.
 
 ```sh
 cargo test --locked --no-default-features --features script-interfaces --lib -j1 js_interface::tests::termination_js_vm_matches_engine_without_state_changes -- --exact --test-threads=1
 ```
 
-Require one executed test; return the exact SHA, toolchain, platform and result.
-Do not repeat the Lua, native picker/Redo, CLI/MCP, parity, PCR or export checks.
-Codex has not built or run the new test. This is not a release-candidate run;
-same-source CI and package acceptance remain separate.
+The first call exited 0 but did not retain the test count in its PTY output.
+Only the second, non-PTY call is accepted; it explicitly ran one test. That
+test calls the registered operation in V8 and checks the engine report digest,
+VM project state including sequence bytes, and unchanged project-file bytes.
+The isolated checkout and 7.9 GiB of run-owned build data were removed.
 
-Local checks: 30 Python documentation/maintenance tests, documentation status,
-manual inventory and whitespace pass. The new test is rustfmt-clean; the file
+**This focused handoff is closed.** Lua, native picker/Redo, CLI/MCP, parity,
+PCR and export checks were not repeated. This is not a full-suite or release
+verdict; same-source CI and package acceptance remain separate. Glen's root
+filesystem remained critically full (about 34 MiB free) despite removing the
+temporary target. Before another build, check root and target capacity separately;
+the disk warning is a host issue, not a GENtle test failure.
+
+Earlier local checks for the regression commit: 30 Python documentation and
+maintenance tests, documentation status, manual inventory and whitespace pass.
+The new test is rustfmt-clean; the file
 still has pre-existing formatting differences in the adjacent SAM test.
 Session-close reported five OK, two warnings (unrelated worktree files and
 manual scope review), and no failures. The dirty `paper` submodule and untracked
@@ -123,7 +137,7 @@ detached viewports and Windows GUI were not tested here.
 
 The default Nextest run was still active with no VM evidence at observation.
 See [Glen's scripting return](#termination-scripting-return-and-v8-follow-up-2026-11-24)
-for the completed Lua and JavaScript adapter checks and the separate V8 gap.
+for the completed Lua, JavaScript adapter and actual V8 checks.
 Do not repeat the completed native cases or twelve controller tests. Required
 same-source CI/package gates remain separate; Windows manual GUI remains
 non-blocking.
@@ -226,7 +240,7 @@ no private inputs, provider/model calls or retained screenshots were involved.
 ### Remaining Verification Only
 
 Historical command set. Glen already ran all three commands at `e9e1e0d5`;
-see [the current V8 follow-up](#termination-scripting-return-and-v8-follow-up-2026-11-24)
+see [the completed scripting return](#termination-scripting-return-and-v8-follow-up-2026-11-24)
 for the scope of those passes. Do not reissue this command set.
 
 Do not repeat the five completed Redo regressions, release guard, historical
