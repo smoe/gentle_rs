@@ -29,29 +29,38 @@ sheet refusal, one-poll admission/wakeup, duplicates after a late edit,
 cancellation, selected-file load once, LF/CRLF and spaced/apostrophe/Unicode
 paths with the canonical loaded binding, initial/late dirty guards, unchanged
 Discard approval, replacement, pending confirmation/quit and GUI pass polling.
-They do not launch an OS picker or mutate user preferences. **Rust compilation,
-these tests and the repaired native path have not run locally.** The existing
-`702d65e0` GUI predates this repair; do not reuse it to certify the new picker.
-No dependency/lock/schema, CLI/MCP or biology change; no push/build/dispatch.
+They do not launch an OS picker or mutate user preferences.
+No dependency/lock/schema, CLI/MCP or biology change; no Codex push/build/dispatch.
 The plan was not Claude-reviewed; optional consultation was offered, not run.
 Scoped rustfmt, documentation status, manual inventory and whitespace checks
 pass. Session-close: five OK, two known worktree/plan-review reminders, no
 failures; `paper` and private/untracked inputs and plots remain untouched.
 
-After an owner push, use an isolated target and one build job. First compile,
-then run only the new filter, requiring twelve tests rather than zero:
+### Owner Controller Results And Remaining Checks
 
-```sh
-cargo check --locked --tests -j1
-cargo test --locked --lib -j1 project_open_dialog_ -- --test-threads=1
-```
+On macOS arm64, the owner's default `cargo nextest run` record
+`cbec2455-5ed9-42c1-8436-0f67cda86236` contains completed passes for **all
+twelve picker tests**, with no failures/skips in that filter. The logged test
+executable embeds `2ae5c4466fc21c4b21dce2c7a433332169873e8e`, SHA-256
+`7b9870edf3e19fbe90a8e31f8527d372a1b63445d6a4808f73aaeb601132b1bd`.
+Codex read the individual finished events without restarting or repeating the
+run. The full run was still active at observation. This is not a finished
+workspace, locked-profile, cross-platform, or native GUI result.
 
-With a source-matched macOS GUI, verify File -> Open Project and Cmd+O: navigate
+The owner-built macOS GUI reports the same revision, build `1795513231216`,
+SHA-256 `8dcefb181e778e148a7b256b54b8606af0fb9dee12eb86fb02d5276712ad8f6b`.
+The isolated copy has the same hash and its empty window was observed. CUA
+input did not open a confirmed picker; no new crash or successful native
+flow was observed. The synthetic project remained byte-identical. A manual
+File -> Open Project click is the next step if CUA input remains unavailable.
+
+With this or another source-matched macOS GUI, verify File -> Open Project and Cmd+O: navigate
 and select a synthetic project, cancel without changes, repeat without duplicate
 panels, and retain the unsaved/changed-project controls. Use the same binary for
 only the outstanding native materialize -> Undo -> immediate Redo,
 Undo -> inspection -> Redo and real-new-edit invalidation cases. Do not repeat
-the five completed history regressions, PCR, CLI/MCP or parity campaigns.
+the twelve completed picker tests, five history regressions, PCR, CLI/MCP or
+parity campaigns solely for this handoff. Keep required same-source CI separate.
 The two actual termination VMs below remain open: local artifact discovery
 still finds no JS/Lua executables, and listing either exact VM test in the
 existing default test executable returns zero tests, not a VM pass.

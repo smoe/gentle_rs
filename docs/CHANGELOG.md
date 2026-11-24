@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-11-24 - Confirm The Twelve Project Picker Controller Results
+
+- Read the owner's in-progress Nextest record at `2ae5c446`: all twelve picker
+  controller tests individually passed on macOS arm64. The full run had not
+  finished, and these tests did not open a native dialog.
+- Confirm the same-source GUI window is available but automated input has not
+  produced a verified picker result. The [Glen handoff](glen_next_verification_handoff.md#asynchronous-project-picker-repair-2026-11-24)
+  now retains only the native picker/Redo and actual JS/Lua checks. No Codex
+  build, test rerun or push.
+
 ## 2026-11-24 - Guard The Asynchronous Project Picker Fallback
 
 - On macOS, refuse project-file selection when AppKit cannot host a sheet;
