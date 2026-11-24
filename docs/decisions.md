@@ -1421,7 +1421,8 @@ windows, dialogs, and active viewer selections, but must route target
 resolution through shared `ui ...` shell command contracts where possible.
 
 The project-open picker must not enter a synchronous native modal loop inside
-the GUI event callback. Its asynchronous result is bound to the initiating
+the GUI event callback, including the async library's macOS fallback when no
+window can host a sheet. Its asynchronous result is bound to the initiating
 engine instance and approved mutation revision. A replaced project discards it;
 new edits require fresh unsaved-changes review before file I/O, and existing
 confirmation/quit actions must not be overwritten. The shared project loader

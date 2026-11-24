@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-11-24 - Guard The Asynchronous Project Picker Fallback
+
+- On macOS, refuse project-file selection when AppKit cannot host a sheet;
+  rfd would otherwise fall back to the synchronous modal loop. Suppress a
+  duplicate request before it can replace an unsaved-changes decision.
+- Exercise the unavailable-sheet path and a duplicate after a late edit;
+  assert canonical loaded paths in the synthetic file tests. Updated
+  [Glen checklist](glen_next_verification_handoff.md#asynchronous-project-picker-repair-2026-11-24):
+  twelve controller tests and native acceptance remain unrun. No local Rust
+  build, push, dependency change or migration of other dialogs.
+
 ## 2026-11-24 - Avoid Reentrant Native Project-Open Dialog
 
 - Recover the primary winit event-handler re-entrancy panic from the existing

@@ -16329,6 +16329,9 @@ Error: `{err}`"
     }
 
     fn request_project_action(&mut self, action: ProjectAction) {
+        if matches!(action, ProjectAction::Open) && self.pending_project_open_dialog.is_some() {
+            return;
+        }
         if self.project_has_user_content() && self.is_project_dirty() {
             self.pending_project_action = Some(action);
         } else {

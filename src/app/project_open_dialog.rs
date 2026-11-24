@@ -13,7 +13,36 @@ use std::{
     task::{Context, Poll, Wake, Waker},
 };
 
-type ProjectSelection = Pin<Box<dyn Future<Output = Option<PathBuf>> + Send>>;
+type ProjectSelectionResult = Result<Option<PathBuf>, &'static str>;
+type ProjectSelection = Pin<Box<dyn Future<Output = ProjectSelectionResult> + Send>>;
+
+const PROJECT_PICKER_UNAVAILABLE: &str = "Cannot open the project picker without a native window";
+
+#[cfg(target_os = "macos")]
+fn project_sheet_available() -> bool {
+    let Some(main_thread) = objc2::MainThreadMarker::new() else {
+        return false;
+    };
+    let app = objc2_app_kit::NSApplication::sharedApplication(main_thread);
+    // rfd 0.18 falls back to runModal unless both conditions hold.
+    app.isRunning() && (app.mainWindow().is_some() || app.windows().firstObject().is_some())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn project_sheet_available() -> bool {
+    true
+}
+
+async fn pick_project_file(sheet_available: bool) -> ProjectSelectionResult {
+    if !sheet_available {
+        return Err(PROJECT_PICKER_UNAVAILABLE);
+    }
+    Ok(rfd::AsyncFileDialog::new()
+        .add_filter("GENtle project", &["json"])
+        .pick_file()
+        .await
+        .map(|file| file.path().to_path_buf()))
+}
 
 pub(super) struct PendingProjectOpenDialog {
     owner_instance_id: u64,
@@ -36,13 +65,7 @@ impl Wake for RepaintProjectDialog {
 impl GENtleApp {
     pub(super) fn prompt_open_project(&mut self) {
         self.begin_project_open_dialog_with(|| {
-            Box::pin(async {
-                rfd::AsyncFileDialog::new()
-                    .add_filter("GENtle project", &["json"])
-                    .pick_file()
-                    .await
-                    .map(|file| file.path().to_path_buf())
-            })
+            Box::pin(async { pick_project_file(project_sheet_available()).await })
         });
     }
 
@@ -69,7 +92,7 @@ impl GENtleApp {
         };
         let waker = Waker::from(Arc::new(RepaintProjectDialog(ctx.clone())));
         let mut context = Context::from_waker(&waker);
-        let Poll::Ready(path) = pending.selection.as_mut().poll(&mut context) else {
+        let Poll::Ready(selection) = pending.selection.as_mut().poll(&mut context) else {
             return;
         };
         let owner_instance_id = pending.owner_instance_id;
@@ -90,16 +113,23 @@ impl GENtleApp {
                 "Ignored project file selection while another project action is pending".into();
             return;
         }
-        if let Some(path) = path {
-            let action = ProjectAction::OpenPath(path.display().to_string());
-            if current_revision == approved_mutation_revision {
-                self.execute_project_action(action);
-            } else {
-                // Initial discard approval does not cover edits made during selection.
-                self.request_project_action(action);
+        let path = match selection {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                self.app_status = "Project opening cancelled".into();
+                return;
             }
+            Err(reason) => {
+                self.app_status = reason.into();
+                return;
+            }
+        };
+        let action = ProjectAction::OpenPath(path.display().to_string());
+        if current_revision == approved_mutation_revision {
+            self.execute_project_action(action);
         } else {
-            self.app_status = "Project opening cancelled".into();
+            // Initial discard approval does not cover edits made during selection.
+            self.request_project_action(action);
         }
     }
 }
@@ -135,7 +165,7 @@ mod tests {
     }
 
     fn select(app: &mut GENtleApp, path: Option<PathBuf>) {
-        app.begin_project_open_dialog_with(|| Box::pin(std::future::ready(path)));
+        app.begin_project_open_dialog_with(|| Box::pin(std::future::ready(Ok(path))));
     }
 
     fn add_unsaved_sequence(app: &mut GENtleApp) {
@@ -183,7 +213,7 @@ mod tests {
             Box::pin(std::future::poll_fn(move |cx| {
                 observed_polls.fetch_add(1, Ordering::Relaxed);
                 *observed_wake.lock().unwrap() = Some(cx.waker().clone());
-                Poll::<Option<PathBuf>>::Pending
+                Poll::<ProjectSelectionResult>::Pending
             }))
         });
         app.poll_project_open_dialog(&ctx);
@@ -198,11 +228,26 @@ mod tests {
     fn project_open_dialog_duplicate_request_does_not_create_second_picker() {
         let mut app = GENtleApp::default();
         select(&mut app, None);
+        add_unsaved_sequence(&mut app);
+        app.request_project_action(ProjectAction::Open);
+        assert!(app.pending_project_action.is_none());
         app.begin_project_open_dialog_with(|| panic!("second picker must not be constructed"));
         assert!(app.pending_project_open_dialog.is_some());
         app.poll_project_open_dialog(&egui::Context::default());
         assert!(app.pending_project_open_dialog.is_none());
         assert_eq!(app.app_status, "Project opening cancelled");
+    }
+
+    #[test]
+    fn project_open_dialog_unavailable_sheet_refuses_before_native_picker() {
+        let mut app = GENtleApp::default();
+        let owner = app.engine.read().unwrap().instance_id();
+        app.begin_project_open_dialog_with(|| Box::pin(pick_project_file(false)));
+        app.poll_project_open_dialog(&egui::Context::default());
+        assert_eq!(app.app_status, PROJECT_PICKER_UNAVAILABLE);
+        assert_eq!(app.engine.read().unwrap().instance_id(), owner);
+        assert!(app.pending_project_open_dialog.is_none());
+        assert!(app.pending_project_action.is_none());
     }
 
     #[test]
@@ -250,14 +295,14 @@ mod tests {
             let bytes = fixture(&path, crlf);
             let mut app = GENtleApp::default();
             // Avoid writing user preferences; the real recent-path code is unchanged.
-            app.recent_project_paths =
-                vec![GENtleApp::normalize_project_path(path.to_str().unwrap())];
+            let expected = GENtleApp::normalize_project_path(path.to_str().unwrap());
+            app.recent_project_paths = vec![expected.clone()];
             let owner = app.engine.read().unwrap().instance_id();
             select(&mut app, Some(path.clone()));
             app.poll_project_open_dialog(&egui::Context::default());
             let loaded_owner = app.engine.read().unwrap().instance_id();
             assert_ne!(loaded_owner, owner);
-            assert_eq!(app.current_project_path.as_deref(), path.to_str());
+            assert_eq!(app.current_project_path.as_deref(), Some(expected.as_str()));
             assert_eq!(
                 app.engine.read().unwrap().state().metadata["picked_fixture"],
                 true
@@ -313,7 +358,8 @@ mod tests {
         let path = temp.path().join("selected.gentle.json");
         let bytes = fixture(&path, false);
         let mut app = GENtleApp::default();
-        app.recent_project_paths = vec![GENtleApp::normalize_project_path(path.to_str().unwrap())];
+        let expected = GENtleApp::normalize_project_path(path.to_str().unwrap());
+        app.recent_project_paths = vec![expected.clone()];
         add_unsaved_sequence(&mut app);
         app.request_project_action(ProjectAction::Open);
         let approved_action = app.pending_project_action.take().unwrap();
@@ -321,10 +367,10 @@ mod tests {
         // This is the existing Unsaved Changes -> Discard action, not a new bypass.
         app.execute_project_action(approved_action);
         app.pending_project_open_dialog.as_mut().unwrap().selection =
-            Box::pin(std::future::ready(Some(path.clone())));
+            Box::pin(std::future::ready(Ok(Some(path.clone()))));
         app.poll_project_open_dialog(&egui::Context::default());
         assert!(app.pending_project_action.is_none());
-        assert_eq!(app.current_project_path.as_deref(), path.to_str());
+        assert_eq!(app.current_project_path.as_deref(), Some(expected.as_str()));
         assert!(
             !app.engine
                 .read()

@@ -28,6 +28,8 @@ Use the top application menu:
 - `File -> Open Project...`
   - selects one saved project using a nonblocking native picker; Cancel leaves
     the current project unchanged, and repeated requests do not open duplicates
+  - on macOS, if no window can host the picker, activate the main GENtle window
+    and try again
   - if the project changes while the picker is open, new unsaved edits still
     need review; a selection from a replaced project is ignored
   - this does not change Save/Save As or the separate sequence-import picker

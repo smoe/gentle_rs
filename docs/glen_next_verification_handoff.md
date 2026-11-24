@@ -14,7 +14,9 @@ only this sanitized diagnosis is retained here, not the machine-specific log.
 
 `src/app/project_open_dialog.rs` replaces only the project picker with an
 `AsyncFileDialog` future. The root frame polls it once without blocking;
-completion wakes the root viewport. One picker is admitted at a time. A
+completion wakes the root viewport. On macOS, without a running AppKit event
+loop and a window to host the sheet, it refuses before rfd can fall back to
+`runModal`. Duplicate Open requests stop before the unsaved-changes gate. A
 project-instance change discards the selection, pending confirmation/quit is
 not replaced, and edits since initial approval re-enter the existing unsaved-
 changes guard before selected-file I/O. Unchanged Discard approval is not
@@ -22,10 +24,11 @@ requested twice. Project loading/validation and recent-path persistence remain
 the existing implementation. Save/Save As, sequence import and other pickers
 are not migrated or claimed repaired by this slice.
 
-Eleven synthetic controller tests cover deferred native construction, one-poll
-admission/wakeup, duplicates, cancellation, selected-file load once, LF/CRLF
-and spaced/apostrophe/Unicode paths, initial/late dirty guards, unchanged Discard
-approval, replacement, pending confirmation/quit and polling during a GUI pass.
+Twelve synthetic controller tests cover deferred native construction, missing
+sheet refusal, one-poll admission/wakeup, duplicates after a late edit,
+cancellation, selected-file load once, LF/CRLF and spaced/apostrophe/Unicode
+paths with the canonical loaded binding, initial/late dirty guards, unchanged
+Discard approval, replacement, pending confirmation/quit and GUI pass polling.
 They do not launch an OS picker or mutate user preferences. **Rust compilation,
 these tests and the repaired native path have not run locally.** The existing
 `702d65e0` GUI predates this repair; do not reuse it to certify the new picker.
@@ -36,7 +39,7 @@ pass. Session-close: five OK, two known worktree/plan-review reminders, no
 failures; `paper` and private/untracked inputs and plots remain untouched.
 
 After an owner push, use an isolated target and one build job. First compile,
-then run only the new filter, requiring eleven tests rather than zero:
+then run only the new filter, requiring twelve tests rather than zero:
 
 ```sh
 cargo check --locked --tests -j1
