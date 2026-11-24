@@ -73,6 +73,9 @@ mod history_ui;
 #[path = "app/root_ui.rs"]
 mod root_ui;
 
+#[path = "app/project_open_dialog.rs"]
+mod project_open_dialog;
+
 #[path = "app/splash_ui.rs"]
 mod splash_ui;
 
@@ -870,6 +873,7 @@ pub struct GENtleApp {
     sequence_window_open_runtime_frames: HashMap<String, RuntimeStatusGuard>,
     pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
+    pending_project_open_dialog: Option<project_open_dialog::PendingProjectOpenDialog>,
     pending_app_quit: bool,
     pending_prepared_genome_reinstall: Option<PreparedGenomeReinstallRequest>,
     pending_ensembl_catalog_update: Option<PendingEnsemblCatalogUpdateDialog>,
@@ -2833,6 +2837,7 @@ impl Default for GENtleApp {
             sequence_window_open_runtime_frames: HashMap::new(),
             pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
+            pending_project_open_dialog: None,
             pending_app_quit: false,
             pending_prepared_genome_reinstall: None,
             pending_ensembl_catalog_update: None,
@@ -8285,16 +8290,6 @@ Error: `{err}`"
                 }),
             });
         });
-    }
-
-    fn prompt_open_project(&mut self) {
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("GENtle project", &["json"])
-            .pick_file()
-        {
-            let path = path.display().to_string();
-            self.open_project_path(&path);
-        }
     }
 
     fn prompt_open_sequence(&mut self) {
@@ -26037,6 +26032,7 @@ impl GENtleApp {
                 self.render_history_panel(ctx);
                 self.render_unsaved_changes_dialog(ctx);
             }
+            self.poll_project_open_dialog(ctx);
             self.render_status_bar(ctx);
 
             if self.pending_app_quit {

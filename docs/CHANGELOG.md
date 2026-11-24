@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-11-24 - Avoid Reentrant Native Project-Open Dialog
+
+- Recover the primary winit event-handler re-entrancy panic from the existing
+  local panic hook; distinguish the later cannot-unwind/SIGABRT cascade.
+- Replace only synchronous project-file selection with a nonblocking async
+  picker, root wakeup, duplicate/owner guards and revision-bound unsaved review.
+  Preserve unchanged Discard approval, project loading and recent-path behavior;
+  do not migrate other dialogs or alter the history/engine contracts.
+- Add eleven synthetic controller regressions, including LF/CRLF and Unicode
+  paths, and document the [remaining native/Rust checks](glen_next_verification_handoff.md#asynchronous-project-picker-repair-2026-11-24).
+  No local Rust build or native pass is claimed; the available GUI predates the
+  repair. No dependency/lock change, repeated completed test campaign or push.
+
 ## 2026-11-24 - Integrate Primer Groundwork And Record Blocked Native Redo
 
 - Fast-forward main to `gentle_rs_2_main` at `4ec86787`, retaining its frozen

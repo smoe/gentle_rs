@@ -1420,6 +1420,13 @@ GUI `ui open|focus|close|selection ...` handlers may open/focus/close host
 windows, dialogs, and active viewer selections, but must route target
 resolution through shared `ui ...` shell command contracts where possible.
 
+The project-open picker must not enter a synchronous native modal loop inside
+the GUI event callback. Its asynchronous result is bound to the initiating
+engine instance and approved mutation revision. A replaced project discards it;
+new edits require fresh unsaved-changes review before file I/O, and existing
+confirmation/quit actions must not be overwritten. The shared project loader
+and other picker contracts are unchanged by this scoped repair (2026-11-24).
+
 ## DEC-013: Mutating Agent/MCP Safety
 
 Status: active

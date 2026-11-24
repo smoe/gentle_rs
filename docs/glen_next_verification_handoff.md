@@ -1,5 +1,61 @@
 # Glen: Next Verification And Return
 
+## Asynchronous Project Picker Repair, 2026-11-24
+
+Owner-authorized separate repair after the native attempt below. The existing
+panic hook supplied the missing primary message at 00:21:11 +0100:
+`tried to handle event while another event is currently being handled`,
+from winit 0.30.13 `macos/event_handler.rs:135`. Its backtrace reaches
+`prompt_open_project` -> synchronous rfd picker -> `NSSavePanel::runModal`.
+The subsequent cannot-unwind panic and macOS SIGABRT are the cascade.
+The local `gentle_panic.log` SHA-256 is
+`14df59762ca561f1aee3035387d20feb6ae3dff92c67843ddd469cf797f608ae`;
+only this sanitized diagnosis is retained here, not the machine-specific log.
+
+`src/app/project_open_dialog.rs` replaces only the project picker with an
+`AsyncFileDialog` future. The root frame polls it once without blocking;
+completion wakes the root viewport. One picker is admitted at a time. A
+project-instance change discards the selection, pending confirmation/quit is
+not replaced, and edits since initial approval re-enter the existing unsaved-
+changes guard before selected-file I/O. Unchanged Discard approval is not
+requested twice. Project loading/validation and recent-path persistence remain
+the existing implementation. Save/Save As, sequence import and other pickers
+are not migrated or claimed repaired by this slice.
+
+Eleven synthetic controller tests cover deferred native construction, one-poll
+admission/wakeup, duplicates, cancellation, selected-file load once, LF/CRLF
+and spaced/apostrophe/Unicode paths, initial/late dirty guards, unchanged Discard
+approval, replacement, pending confirmation/quit and polling during a GUI pass.
+They do not launch an OS picker or mutate user preferences. **Rust compilation,
+these tests and the repaired native path have not run locally.** The existing
+`702d65e0` GUI predates this repair; do not reuse it to certify the new picker.
+No dependency/lock/schema, CLI/MCP or biology change; no push/build/dispatch.
+The plan was not Claude-reviewed; optional consultation was offered, not run.
+Scoped rustfmt, documentation status, manual inventory and whitespace checks
+pass. Session-close: five OK, two known worktree/plan-review reminders, no
+failures; `paper` and private/untracked inputs and plots remain untouched.
+
+After an owner push, use an isolated target and one build job. First compile,
+then run only the new filter, requiring eleven tests rather than zero:
+
+```sh
+cargo check --locked --tests -j1
+cargo test --locked --lib -j1 project_open_dialog_ -- --test-threads=1
+```
+
+With a source-matched macOS GUI, verify File -> Open Project and Cmd+O: navigate
+and select a synthetic project, cancel without changes, repeat without duplicate
+panels, and retain the unsaved/changed-project controls. Use the same binary for
+only the outstanding native materialize -> Undo -> immediate Redo,
+Undo -> inspection -> Redo and real-new-edit invalidation cases. Do not repeat
+the five completed history regressions, PCR, CLI/MCP or parity campaigns.
+The two actual termination VMs below remain open: local artifact discovery
+still finds no JS/Lua executables, and listing either exact VM test in the
+existing default test executable returns zero tests, not a VM pass.
+Return exact source/binary/toolchain/features/platform, counts and unrun checks.
+Windows manual GUI remains non-blocking under the clarification below; required
+cross-platform CI/package and scientific gates are unchanged.
+
 ## Windows GUI Acceptance Clarification, 2026-11-23
 
 Only manual native Windows GUI acceptance is non-blocking for `.13`, including
@@ -28,9 +84,9 @@ The owner supplied a crash report for this exact test app at 00:21:18 +0100:
 main-thread SIGABRT, Rust `panic_cannot_unwind`, a winit queued macOS callback,
 and `rfd`/`NSSavePanel::runModal` reached from `prompt_open_project`.
 This is an actual app crash during File -> Open Project, before any history
-action, not merely a computer-control continuation error. The report does not
-contain the original panic message; re-entrancy is a hypothesis, not an
-established root cause. The supplied report's raw SHA-256 is
+action, not merely a computer-control continuation error. The initial report
+omitted the primary panic message; the [later panic-hook diagnosis](#asynchronous-project-picker-repair-2026-11-24)
+confirms event-handler re-entrancy. The supplied report's raw SHA-256 is
 `5e6c4533dcea230d27e44cfe612b6d1aef42df128d5bc059556f747e14266edd`;
 the private machine/incident details were not copied into the repository.
 
@@ -50,7 +106,7 @@ The original synthetic `project.json` remains byte-identical, SHA-256
 Only synthetic inputs were used; no provider/model calls, retained screenshots,
 private-data runs, dependency changes, pushes or dispatches occurred.
 
-Next: diagnose the native project-dialog crash separately, then obtain usable
+Next: verify the separate project-dialog repair above, then obtain usable
 native input for only immediate Undo -> Redo, Undo -> read-only inspection ->
 Redo and genuine-new-edit invalidation. The two actual termination JS/Lua VM
 cases below remain open. Do not repeat the five passing controller regressions,

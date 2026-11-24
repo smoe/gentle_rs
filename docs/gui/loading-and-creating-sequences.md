@@ -26,6 +26,11 @@ Use the top application menu:
   - each successfully imported file opens its own sequence window
 - `File -> Protein Evidence...`
 - `File -> Open Project...`
+  - selects one saved project using a nonblocking native picker; Cancel leaves
+    the current project unchanged, and repeated requests do not open duplicates
+  - if the project changes while the picker is open, new unsaved edits still
+    need review; a selection from a replaced project is ignored
+  - this does not change Save/Save As or the separate sequence-import picker
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
 - `File -> Save Project...`
