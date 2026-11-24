@@ -49,24 +49,43 @@ workspace, locked-profile, cross-platform, or native GUI result.
 
 The owner-built macOS GUI reports the same revision, build `1795513231216`,
 SHA-256 `8dcefb181e778e148a7b256b54b8606af0fb9dee12eb86fb02d5276712ad8f6b`.
-The isolated copy has the same hash and its empty window was observed. CUA
-input did not open a confirmed picker; no new crash or successful native
-flow was observed. The synthetic project remained byte-identical. A manual
-File -> Open Project click is the next step if CUA input remains unavailable.
+The isolated copy has the same hash. Initial CUA input did not open a confirmed
+picker; the native checks below succeeded after the owner opened it manually.
 
-With this or another source-matched macOS GUI, verify File -> Open Project and Cmd+O: navigate
-and select a synthetic project, cancel without changes, repeat without duplicate
-panels, and retain the unsaved/changed-project controls. Use the same binary for
-only the outstanding native materialize -> Undo -> immediate Redo,
-Undo -> inspection -> Redo and real-new-edit invalidation cases. Do not repeat
-the twelve completed picker tests, five history regressions, PCR, CLI/MCP or
-parity campaigns solely for this handoff. Keep required same-source CI separate.
-The two actual termination VMs below remain open: local artifact discovery
-still finds no JS/Lua executables, and listing either exact VM test in the
-existing default test executable returns zero tests, not a VM pass.
-Return exact source/binary/toolchain/features/platform, counts and unrun checks.
-Windows manual GUI remains non-blocking under the clarification below; required
-cross-platform CI/package and scientific gates are unchanged.
+### Native macOS Picker And GUI Shell History Pass
+
+On macOS arm64 `27.2.1` (`26B131`), with hosted sequence/tool windows and the
+actual AppKit project-open sheet, the owner opened File -> Open Project and
+Codex navigated via Cmd+Shift+G and loaded `project.json`. Cmd+O opened the sheet
+again; pressing it while the sheet was active did not leave a second sheet after
+Cancel. The original clean project and Undo 0 / Redo 0 stayed visible. No crash
+occurred in these observed cases, including the Go-to-folder path in the
+earlier crash attempt.
+
+Native GUI Shell applied the reviewed synthetic annotation. Immediate Undo ->
+Redo succeeded, restoring one terminator. A second Undo removed it; `features
+query toy` returned zero and `history status` retained Redo 1. Redo restored
+exactly one terminator. After another Undo, `display show tfbs` created a new
+history entry, and Redo correctly refused with `No operation to redo`; the
+feature count stayed zero.
+
+With the project dirty, Cmd+O showed the existing unsaved-changes prompt. Cancel
+kept the dirty project and history. On retry, Don't Save opened the sheet and
+selecting the same file reloaded it cleanly without a second prompt, with Undo
+0 / Redo 0. Cmd+Q closed the isolated app. No Save was issued; original fixture
+SHA-256 remains `317462f2280950a6ea32c0aeb86d736d89ebe32d5c000975d8798cd7c85cf82a`.
+No screenshots retained, provider calls, private data, package or publication.
+Changing project ownership or editing it while a sheet is open was not forced
+in the native run; those cases have controller coverage. Other picker paths,
+detached viewports and Windows GUI were not tested here.
+
+**Remaining for Glen:** only the two actual termination JS/Lua VM cases in the
+[commands below](#remaining-verification-only). The default Nextest run was
+still active with no VM evidence at observation. Do not repeat the completed
+native cases, twelve picker tests, five history regressions, PCR, CLI/MCP or
+parity campaigns for this handoff. Return exact source, binary, toolchain,
+features, platform, counts and unrun checks. Required same-source CI/package
+gates remain separate; Windows manual GUI remains non-blocking.
 
 ## Windows GUI Acceptance Clarification, 2026-11-23
 
@@ -118,12 +137,9 @@ The original synthetic `project.json` remains byte-identical, SHA-256
 Only synthetic inputs were used; no provider/model calls, retained screenshots,
 private-data runs, dependency changes, pushes or dispatches occurred.
 
-Next: verify the separate project-dialog repair above, then obtain usable
-native input for only immediate Undo -> Redo, Undo -> read-only inspection ->
-Redo and genuine-new-edit invalidation. The two actual termination JS/Lua VM
-cases below remain open. Do not repeat the five passing controller regressions,
-PCR, CLI/MCP or parity campaigns. The Windows GUI clarification above still
-applies; neither this crash nor an unrun check is relabelled as passed.
+The [later native pass](#native-macos-picker-and-gui-shell-history-pass) on the
+repaired build supersedes this attempt as acceptance evidence. It does not
+relabel this crash or extend the verified scope to other picker paths or hosts.
 
 ## f76a6840 Redo Return And Remaining Host Checks
 
@@ -170,10 +186,8 @@ no private inputs, provider/model calls or retained screenshots were involved.
 
 Do not repeat the five completed Redo regressions, release guard, historical
 5363 cases, stdio, canonical/registry, PCR or export checks merely for this
-receipt. On a usable GUI host, replay only materialize -> Undo -> immediate
-Redo and Undo -> read-only inspection -> Redo; confirm zero/one feature and
-that a real new edit still discards Redo. Native Windows remains separate and
-external as the owner requested.
+receipt. The previously pending native Redo boundary is covered by the
+[later macOS pass](#native-macos-picker-and-gui-shell-history-pass).
 
 On Glen's isolated run-owned target, compile the still-missing script-feature
 test targets first, then select only the two actual VM cases (one each):

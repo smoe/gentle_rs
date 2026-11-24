@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-11-24 - Verify Native macOS Project Open And GUI Shell Redo
+
+- Use the owner-built `2ae5c446` GUI to open, cancel and reopen a synthetic
+  project through the AppKit sheet. Confirm Cmd+O, no second sheet after a
+  repeated shortcut, and the unsaved-changes Cancel/Don't Save decisions.
+- Verify immediate Redo, Redo after read-only inspection, and Redo refusal
+  after a new operation. The feature count moves between zero and one; the
+  saved input bytes remain identical after exiting without saving.
+- The [native receipt](glen_next_verification_handoff.md#native-macos-picker-and-gui-shell-history-pass)
+  distinguishes controller-only cases and leaves only the two actual VM
+  checks in this handoff. No Codex build, repeated controller tests or push.
+
 ## 2026-11-24 - Confirm The Twelve Project Picker Controller Results
 
 - Read the owner's in-progress Nextest record at `2ae5c446`: all twelve picker

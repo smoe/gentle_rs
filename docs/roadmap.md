@@ -3,8 +3,8 @@
 Last session: 2026-11-24. Obtain required updated-lock CI/platform checks;
 manual native Windows GUI acceptance is non-blocking. Do not repeat the scoped
 macOS cases.
-Finish native project-picker and GUI Shell Redo acceptance, and actual
-termination VMs, without repeating completed controller or process checks.
+Finish actual termination JS/Lua VM checks without repeating the scoped
+macOS picker, GUI Shell Redo, controller or process checks.
 See the [Glen handoff](glen_next_verification_handoff.md).
 
 Purpose: fast session orientation, followed by optional phase and parking-lot
@@ -55,9 +55,9 @@ remains source-bound, not a current-source pass.
 1. Obtain the updated lock's required cross-platform acceptance. Keep manual
    Windows GUI/focus checks non-blocking; do not replay completed focused tests.
    [Remaining checks](glen_next_verification_handoff.md#native-pcr-safeguards-and-viewports-2026-11-22).
-2. Complete native project-picker and GUI Shell Redo acceptance plus the two
-   actual termination VM tests; do not repeat the matched controller passes.
-   [Picker repair and remaining checks](glen_next_verification_handoff.md#asynchronous-project-picker-repair-2026-11-24).
+2. Complete the two actual termination VM tests; do not repeat the scoped
+   native picker/Redo or controller passes.
+   [Native receipt and remaining checks](glen_next_verification_handoff.md#native-macos-picker-and-gui-shell-history-pass).
 3. Prepare A/B/C release evidence only when a candidate is selected; retain
    historical package and scientific receipts without reissuing completed work.
    [Acceptance ledger](release_notes/release_notes_v0.1.0-internal.13.md#internal13-acceptance-ledger).
