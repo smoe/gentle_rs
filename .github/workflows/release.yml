@@ -164,6 +164,19 @@ jobs:
             --binary /usr/bin/true
           git diff --exit-code -- Cargo.lock Cargo.toml
 
+      - name: Add Linux build swap
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          swapfile="$RUNNER_TEMP/gentle-build.swap"
+          sudo dd if=/dev/zero of="$swapfile" bs=1M count=16384 status=progress
+          sudo chmod 600 "$swapfile"
+          sudo mkswap "$swapfile"
+          sudo swapon "$swapfile"
+          free -h
+          swapon --show
+
       - name: Build locked native binaries
         shell: bash
         run: |
