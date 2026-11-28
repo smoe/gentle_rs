@@ -92,13 +92,10 @@ package acceptance receipts.
 Ubuntu job `139256507709` in run `45628857779` at `42b92faefab6180bc1adc69aaeb0f1c3077435f5`
 received a runner shutdown signal while one `rustc` had reached 15,319,244 KiB RSS
 and nearly all 3 GiB of swap was in use. Memory pressure is strongly indicated,
-but the signal alone does not establish why the runner shut down. Future Linux
-installer jobs add a 16 GiB swapfile before the build, without changing its
-profile or other platforms; setup failure stops the job. The existing monitor
-still records pressure and swap usage, and the normal job limit remains in
-force. A fresh hosted build and extracted-package smoke are needed to determine
-whether this headroom is sufficient; it does not establish macOS or Windows
-package acceptance.
+but the signal alone does not establish why the runner shut down. The existing
+monitor records pressure and swap usage without changing system swap. A fresh
+hosted build and extracted-package smoke remain necessary; this evidence does
+not establish macOS or Windows package acceptance.
 
 A controlled external Linux cold build on 2026-09-25 provides the first
 measurement of the revised internal recipe and bounded B0 extraction. Against

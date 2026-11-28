@@ -445,23 +445,14 @@ class MacosBundleMetadataTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
-    def test_linux_build_swap_is_enabled_before_native_build(self) -> None:
+    def test_release_workflow_does_not_configure_swap(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()
-        name = "- name: Add Linux build swap\n"
-        self.assertLess(workflow.index(name), workflow.index("- name: Build locked native binaries\n"))
-        step = workflow.split(name, 1)[1].split("\n      - name:", 1)[0]
-        self.assertIn("if: runner.os == 'Linux'", step)
-        self.assertIn("set -euo pipefail", step)
-        self.assertIn('swapfile="$RUNNER_TEMP/gentle-build.swap"', step)
-        commands = (
-            'sudo dd if=/dev/zero of="$swapfile" bs=1M count=16384 status=progress',
-            'sudo chmod 600 "$swapfile"',
-            'sudo mkswap "$swapfile"',
-            'sudo swapon "$swapfile"',
+        self.assertNotRegex(
+            workflow,
+            r"(?m)^[ \t]*(?:sudo[ \t]+)?(?:mkswap|swapoff)\b"
+            r"|^[ \t]*(?:sudo[ \t]+)?swapon\b(?![ \t]+--show(?:[ \t]|$))",
         )
-        self.assertEqual(sorted(step.index(command) for command in commands),
-                         [step.index(command) for command in commands])
 
     def test_macos_metadata_targets_the_explicit_binary_and_uses_the_pinned_schema(self) -> None:
         repo = Path(__file__).resolve().parents[1]

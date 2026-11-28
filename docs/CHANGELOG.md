@@ -1,11 +1,11 @@
 # GENtle Changelog
 
-## 2026-11-25 - Add Linux Package Build Swap Headroom
+## 2026-11-25 - Record Linux Package Build Resource Pressure
 
 - Ubuntu package job `139256507709` showed high compiler RSS and nearly
   exhausted swap before runner shutdown; the shutdown cause is not confirmed.
-  Add 16 GiB of Linux-only swap while retaining the existing package recipe,
-  diagnostic sampling and acceptance gates. Hosted validation remains pending.
+  The package recipe, diagnostic sampling and acceptance gates remain unchanged.
+  Hosted validation remains pending.
 
 ## 2026-11-24 - Record Glen's Actual V8 Pass
 
